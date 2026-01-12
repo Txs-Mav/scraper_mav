@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirmez votre inscription - Go-Data</title>
+    <!--[if mso]>
+    <style type="text/css">
+        body, table, td, a { font-family: Arial, sans-serif !important; }
+    </style>
+    <![endif]-->
+</head>
+
+<body
+    style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+        style="background-color: #f3f4f6;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <!-- Container principal -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600"
+                    style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); max-width: 600px;">
+                    <!-- Header avec logo -->
+                    <tr>
+                        <td align="center"
+                            style="padding: 40px 40px 30px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px 12px 0 0;">
+                            <img src="{{ .SiteURL }}/Go-Data.png" alt="Go-Data" width="120" height="auto"
+                                style="display: block; margin: 0 auto; max-width: 120px;">
+                            <h1
+                                style="margin: 20px 0 0 0; color: #ffffff; font-size: 28px; font-weight: 700; text-align: center; letter-spacing: -0.5px;">
+                                Confirmez votre inscription
+                            </h1>
+                        </td>
+                    </tr>
+
+                    <!-- Contenu principal -->
+                    <tr>
+                        <td style="padding: 40px 40px 30px 40px;">
+                            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px; line-height: 1.6;">
+                                Bonjour,
+                            </p>
+                            <p style="margin: 0 0 24px 0; color: #6b7280; font-size: 16px; line-height: 1.6;">
+                                Merci de vous &ecirc;tre inscrit sur <strong style="color: #667eea;">Go-Data</strong> !
+                                Pour activer votre compte et commencer &agrave; utiliser notre plateforme de scraping
+                                intelligent, veuillez confirmer votre adresse email en cliquant sur le bouton
+                                ci-dessous.
+                            </p>
+
+                            <!-- Bouton CTA -->
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+                                style="margin: 32px 0;">
+                                <tr>
+                                    <td align="center" style="padding: 0;">
+                                        <a href="{{ .ConfirmationURL }}"
+                                            style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25);">
+                                            Confirmer mon email
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Texte alternatif pour le lien -->
+                            <p
+                                style="margin: 24px 0 0 0; color: #9ca3af; font-size: 14px; line-height: 1.6; text-align: center;">
+                                Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :
+                            </p>
+                            <p
+                                style="margin: 12px 0 0 0; color: #667eea; font-size: 12px; line-height: 1.6; word-break: break-all; text-align: center; font-family: monospace;">
+                                {{ .ConfirmationURL }}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Section informations supplémentaires -->
+                    <tr>
+                        <td style="padding: 0 40px 40px 40px;">
+                            <div
+                                style="background-color: #f9fafb; border-left: 4px solid #667eea; border-radius: 6px; padding: 20px; margin-top: 24px;">
+                                <p style="margin: 0 0 12px 0; color: #374151; font-size: 15px; font-weight: 600;">
+                                    &Agrave; propos de Go-Data
+                                </p>
+                                <p style="margin: 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+                                    Go-Data est votre solution compl&egrave;te pour le scraping web intelligent. Notre
+                                    plateforme utilise l&apos;IA pour analyser automatiquement les sites web et extraire
+                                    les donn&eacute;es dont vous avez besoin, le tout de mani&egrave;re
+                                    automatis&eacute;e et efficace.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td
+                            style="padding: 30px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+                            <p
+                                style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px; line-height: 1.6; text-align: center;">
+                                Si vous n&apos;avez pas cr&eacute;&eacute; de compte, vous pouvez ignorer cet email en
+                                toute s&eacute;curit&eacute;.
+                            </p>
+                            <p
+                                style="margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.6; text-align: center;">
+                                &copy; 2024 Go-Data. Tous droits r&eacute;serv&eacute;s.
+                            </p>
+                            <p
+                                style="margin: 16px 0 0 0; color: #9ca3af; font-size: 12px; line-height: 1.6; text-align: center;">
+                                Cet email a &eacute;t&eacute; envoy&eacute; &agrave; <a href="mailto:{{ .Email }}"
+                                    style="color: #667eea; text-decoration: none;">{{ .Email }}</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
+                <!-- Note de sécurité -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600"
+                    style="margin-top: 24px; max-width: 600px;">
+                    <tr>
+                        <td align="center" style="padding: 0 20px;">
+                            <p
+                                style="margin: 0; color: #9ca3af; font-size: 11px; line-height: 1.5; text-align: center;">
+                                Pour votre s&eacute;curit&eacute;, ce lien expire dans 24 heures. Si vous rencontrez des
+                                probl&egrave;mes, contactez notre &eacute;quipe de support.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+
+</html>
