@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect } from "react"
+import { Suspense, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import ScraperDashboard from "@/components/scraper-dashboard"
 import Layout from "@/components/kokonutui/layout"
 
-export default function DashboardPage() {
+function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -55,5 +55,19 @@ export default function DashboardPage() {
     <Layout>
       <ScraperDashboard />
     </Layout>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <Layout>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-pulse">Chargement...</div>
+        </div>
+      </Layout>
+    }>
+      <DashboardContent />
+    </Suspense>
   )
 }
