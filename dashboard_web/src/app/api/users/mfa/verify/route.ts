@@ -21,7 +21,8 @@ export async function POST(request: Request) {
     const supabase = await createClient()
 
     // Vérifier le code TOTP
-    const { data, error } = await supabase.auth.mfa.verify({
+    // Note: mfa.verify nécessite challengeId, mais pour TOTP on peut utiliser mfa.challengeAndVerify
+    const { data, error } = await supabase.auth.mfa.challengeAndVerify({
       factorId,
       code,
     })

@@ -3,26 +3,20 @@ import { getCurrentUser } from '@/lib/supabase/helpers'
 import { createClient } from '@/lib/supabase/server'
 import Stripe from 'stripe'
 
-// Vérifier que la clé Stripe est configurée
-if (!process.env.STRIPE_SECRET_KEY) {
-  console.error('STRIPE_SECRET_KEY is not configured')
-}
-
-const stripe = process.env.STRIPE_SECRET_KEY 
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-11-20.acacia',
-    })
-  : null
-
 export async function POST(request: Request) {
   try {
     // Vérifier que Stripe est configuré
-    if (!stripe || !process.env.STRIPE_SECRET_KEY) {
+    if (!process.env.STRIPE_SECRET_KEY) {
       return NextResponse.json(
         { error: 'Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables.' },
         { status: 500 }
       )
     }
+
+    // Initialiser Stripe seulement si la clé est présente
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2025-12-15.clover',
+    })
 
     const user = await getCurrentUser()
     if (!user) {

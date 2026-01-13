@@ -60,13 +60,20 @@ export async function POST(request: Request) {
         }
         
         // Extraire les sélecteurs depuis SELECTORS = {...}
-        const selectorsMatch = scraper_code.match(/SELECTORS\s*=\s*(\{.*?\})/s)
+        // Utiliser [\s\S] au lieu de . avec flag s pour compatibilité ES2017
+        const selectorsMatch = scraper_code.match(/SELECTORS\s*=\s*(\{[\s\S]*?\})/)
         if (selectorsMatch) {
           try {
-            // Essayer d'évaluer le dictionnaire (sécurisé car seulement des chaînes)
-            metadata.selectors = eval(selectorsMatch[1], {"__builtins__": {}})
+            // Essayer de parser le dictionnaire JSON (sécurisé)
+            metadata.selectors = JSON.parse(selectorsMatch[1])
           } catch {
-            // Ignorer si échec
+            // Si ce n'est pas du JSON valide, ignorer
+            try {
+              // Fallback: utiliser Function pour évaluer de manière plus sécurisée
+              metadata.selectors = new Function('return ' + selectorsMatch[1])()
+            } catch {
+              // Ignorer si échec
+            }
           }
         }
         

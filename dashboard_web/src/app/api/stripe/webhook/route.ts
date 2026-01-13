@@ -3,14 +3,22 @@ import { createClient } from '@/lib/supabase/server'
 import Stripe from 'stripe'
 import { headers } from 'next/headers'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-11-20.acacia',
-})
-
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
-
 export async function POST(request: Request) {
   try {
+    // Vérifier que Stripe est configuré
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return NextResponse.json(
+        { error: 'Stripe is not configured' },
+        { status: 500 }
+      )
+    }
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2025-12-15.clover',
+    })
+
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
     const body = await request.text()
     const headersList = await headers()
     const signature = headersList.get('stripe-signature')
@@ -63,16 +71,22 @@ export async function POST(request: Request) {
             .update({ subscription_plan: plan })
             .eq('id', user.id)
 
+          const startedAt = 'current_period_start' in subscription && typeof subscription.current_period_start === 'number'
+            ? new Date(subscription.current_period_start * 1000).toISOString()
+            : new Date().toISOString()
+          
+          const expiresAt = 'current_period_end' in subscription && typeof subscription.current_period_end === 'number'
+            ? new Date(subscription.current_period_end * 1000).toISOString()
+            : null
+
           await supabase
             .from('subscriptions')
             .upsert({
               user_id: user.id,
               plan,
               status: subscription.status === 'active' ? 'active' : 'cancelled',
-              started_at: new Date(subscription.current_period_start * 1000).toISOString(),
-              expires_at: subscription.current_period_end
-                ? new Date(subscription.current_period_end * 1000).toISOString()
-                : null,
+              started_at: startedAt,
+              expires_at: expiresAt,
             }, {
               onConflict: 'user_id',
             })

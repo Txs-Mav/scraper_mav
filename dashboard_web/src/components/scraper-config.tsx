@@ -95,8 +95,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       const urlsWithout = allUrls.filter(url => {
         // Normaliser l'URL pour la comparaison (enlever trailing slash, etc.)
         const normalized = url.replace(/\/$/, '').toLowerCase()
-        return !Array.from(cachedUrls).some((cached: string) => {
-          const normalizedCached = (cached as string).replace(/\/$/, '').toLowerCase()
+        return !Array.from(cachedUrls).some((cached) => {
+          const normalizedCached = String(cached).replace(/\/$/, '').toLowerCase()
           // Comparer les domaines
           try {
             const urlDomain = new URL(normalized).hostname.replace('www.', '')

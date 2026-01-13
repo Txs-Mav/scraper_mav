@@ -24,8 +24,8 @@ export async function POST() {
     }
 
     return NextResponse.json({
-      qr_code: data.qr_code,
-      secret: data.secret,
+      qr_code: data.totp.qr_code,
+      secret: data.totp.secret,
       factor_id: data.id,
     })
   } catch (error: any) {
