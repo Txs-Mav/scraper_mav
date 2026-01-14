@@ -12,10 +12,12 @@ export async function GET(request: Request) {
   const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`
 
   if (!code) {
-    // Si pas de code mais qu'on a un type=recovery, rediriger quand même vers reset-password
-    // (le token peut être dans le hash fragment)
+    // Pas de code : on oriente vers les pages dédiées selon le type
     if (type === 'recovery') {
       return NextResponse.redirect(`${baseUrl}/reset-password?type=recovery`)
+    }
+    if (type === 'signup') {
+      return NextResponse.redirect(`${baseUrl}/auth/email-confirmed`)
     }
     return NextResponse.redirect(`${baseUrl}/login?message=missing_code`)
   }
@@ -42,8 +44,8 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${baseUrl}/reset-password?type=recovery`)
   }
 
-  // Sinon, c'est une confirmation d'email
-  return NextResponse.redirect(`${baseUrl}/login?message=confirmed`)
+  // Sinon, c'est une confirmation d'email : afficher la page dédiée
+  return NextResponse.redirect(`${baseUrl}/auth/email-confirmed`)
 }
 
 

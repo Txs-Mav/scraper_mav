@@ -4,7 +4,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Bell, User, Home, BarChart2, Building2, CreditCard, Users2 } from "lucide-react"
+import { Bell, User, Home, BarChart2, Building2, CreditCard } from "lucide-react"
 import Profile01 from "./profile-01"
 import { ThemeToggle } from "../theme-toggle"
 import { useAuth } from "@/contexts/auth-context"
@@ -19,7 +19,6 @@ export default function TopNav() {
     { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
     { label: "Organization", href: "/dashboard/organization", icon: Building2 },
     { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
-    { label: "Members", href: "/dashboard/members", icon: Users2 },
   ]
 
   return (

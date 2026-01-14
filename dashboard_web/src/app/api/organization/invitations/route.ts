@@ -75,7 +75,10 @@ export async function POST(request: Request) {
     }
 
     const orgName = ownerOrg[0].name || 'votre organisation'
-    const fromEmail = process.env.INVITE_FROM_EMAIL || 'no-reply@invites.yourapp.com'
+    const fromEmail =
+      process.env.EMAIL_FROM ||
+      process.env.INVITE_FROM_EMAIL ||
+      'gestion@go-data.co'
     const baseMessage = `Vous avez été invité à rejoindre l’organisation ${orgName}.`
     const finalMessage = (message && message.trim()) ? message.trim() : baseMessage
 

@@ -178,11 +178,8 @@ function ResetPasswordContent() {
       }
 
       setSuccess(true)
-      
-      // Rediriger vers la page de connexion après 2 secondes
-      setTimeout(() => {
-        router.push("/login?message=password_reset")
-      }, 2000)
+      // Rediriger vers la page de confirmation de mot de passe mis à jour
+      router.replace("/auth/password-updated")
     } catch (err: any) {
       setError(err.message || "Une erreur est survenue")
     } finally {

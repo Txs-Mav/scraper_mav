@@ -66,6 +66,12 @@ export default function SettingsPage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // États pour les préférences scraper
@@ -338,6 +344,37 @@ export default function SettingsPage() {
     }
   }
 
+  // Handler pour changer le mot de passe
+  const handleChangePassword = async () => {
+    setPasswordError(null)
+    setPasswordSuccess(null)
+
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordError("Le mot de passe doit contenir au moins 8 caractères.")
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Les mots de passe ne correspondent pas.")
+      return
+    }
+
+    setPasswordLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+
+      setPasswordSuccess("Mot de passe mis à jour.")
+      setShowPasswordModal(false)
+      setNewPassword("")
+      setConfirmPassword("")
+    } catch (error: any) {
+      console.error("Error updating password:", error)
+      setPasswordError(error?.message || "Impossible de mettre à jour le mot de passe.")
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
   // Handler pour sauvegarder les settings scraper
   const handleSaveSettings = async () => {
     setSavingSettings(true)
@@ -596,9 +633,21 @@ export default function SettingsPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Mot de passe
             </label>
-            <button className="px-4 py-2 bg-gray-100 dark:bg-[#1F1F23] text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-[#2B2B30] transition-colors">
+            <div className="space-y-1">
+              <button
+                onClick={() => {
+                  setShowPasswordModal(true)
+                  setPasswordError(null)
+                  setPasswordSuccess(null)
+                }}
+                className="px-4 py-2 bg-gray-100 dark:bg-[#1F1F23] text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-[#2B2B30] transition-colors"
+              >
               Changer le mot de passe
-            </button>
+              </button>
+              {passwordSuccess && (
+                <p className="text-sm text-green-600 dark:text-green-400">{passwordSuccess}</p>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-4">
@@ -1214,6 +1263,67 @@ export default function SettingsPage() {
           </a>
         </div>
       </SectionCard>
+
+      {/* Modal changement de mot de passe */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-[#0F0F12] rounded-lg p-6 max-w-md w-full mx-4 border border-gray-200 dark:border-[#1F1F23]">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Changer le mot de passe
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Nouveau mot de passe
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-[#2B2B30] bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+                  placeholder="Au moins 8 caractères"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">Utilisez un mot de passe fort.</p>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Confirmer le mot de passe
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-[#2B2B30] bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+                  placeholder="Répétez le mot de passe"
+                />
+              </div>
+              {passwordError && <p className="text-sm text-red-600 dark:text-red-400">{passwordError}</p>}
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setShowPasswordModal(false)
+                    setNewPassword("")
+                    setConfirmPassword("")
+                    setPasswordError(null)
+                  }}
+                  className="px-4 py-2 bg-gray-100 dark:bg-[#1F1F23] text-gray-900 dark:text-white rounded-lg hover:bg-gray-200 dark:hover:bg-[#2B2B30] transition-colors flex-1"
+                  disabled={passwordLoading}
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={passwordLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex-1 flex items-center justify-center gap-2"
+                >
+                  {passwordLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Mettre à jour
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de suppression */}
       {showDeleteModal && (

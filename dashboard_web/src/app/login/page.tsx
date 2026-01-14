@@ -42,6 +42,13 @@ function LoginContent() {
     }
   }, [loginSuccess, router])
 
+  // Rediriger si déjà connecté
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace("/dashboard")
+    }
+  }, [user, isLoading, router])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
