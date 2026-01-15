@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowRight, Check, Zap, BarChart3, Database, Download, Shield, Clock } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context"
 export default function Home() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
+  const [showContent, setShowContent] = useState(false)
 
   // Redirect to dashboard if user is already logged in
   useEffect(() => {
@@ -18,13 +19,30 @@ export default function Home() {
     }
   }, [user, isLoading, router])
 
-  // Show nothing while checking auth or redirecting
-  if (isLoading || user) {
+  // Show landing page content after auth check or timeout
+  useEffect(() => {
+    if (!isLoading && !user) {
+      setShowContent(true)
+    }
+    // Fallback: show content after 1s even if still loading
+    const timeout = setTimeout(() => {
+      if (!user) setShowContent(true)
+    }, 1000)
+    return () => clearTimeout(timeout)
+  }, [isLoading, user])
+
+  // Show spinner only briefly while checking auth
+  if (!showContent) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-[#0a0a0c]">
         <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
+  }
+
+  // If user is logged in, show nothing (will redirect)
+  if (user) {
+    return null
   }
 
   const plans = [
@@ -328,8 +346,8 @@ export default function Home() {
               <div
                 key={plan.name}
                 className={`relative p-8 rounded-2xl border transition-all hover:-translate-y-1 ${plan.highlighted
-                    ? "bg-gradient-to-br from-blue-600 to-blue-700 border-blue-500 text-white shadow-2xl shadow-blue-600/25"
-                    : "bg-white dark:bg-[#111113] border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900"
+                  ? "bg-gradient-to-br from-blue-600 to-blue-700 border-blue-500 text-white shadow-2xl shadow-blue-600/25"
+                  : "bg-white dark:bg-[#111113] border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900"
                   }`}
               >
                 {plan.highlighted && (
@@ -360,8 +378,8 @@ export default function Home() {
                 <Link
                   href={plan.href}
                   className={`block w-full py-3 rounded-xl text-center text-sm font-semibold transition-all ${plan.highlighted
-                      ? "bg-white text-blue-600 hover:bg-blue-50"
-                      : "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100"
+                    ? "bg-white text-blue-600 hover:bg-blue-50"
+                    : "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100"
                     }`}
                 >
                   {plan.cta}

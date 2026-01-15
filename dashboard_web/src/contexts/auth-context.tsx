@@ -65,12 +65,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    refreshUser()
+    let isMounted = true
+
+    // Vérifier la session immédiatement au chargement
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!isMounted) return
+        
+        if (session) {
+          await refreshUser()
+        } else {
+          setUser(null)
+          setIsLoading(false)
+        }
+      } catch (error) {
+        console.error('[Auth] Error initializing:', error)
+        if (isMounted) {
+          setUser(null)
+          setIsLoading(false)
+        }
+      }
+    }
+
+    initializeAuth()
 
     // Écouter les changements d'authentification
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return
+      
+      console.log('[Auth] Event:', event)
+      
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         await refreshUser()
         // Proposer la migration des scrapings locaux
@@ -79,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const { getLocalScrapingsCount } = await import('@/lib/local-storage')
             const localCount = getLocalScrapingsCount()
             if (localCount > 0) {
-              // Afficher une notification pour migrer (sera géré par le composant)
               window.dispatchEvent(new CustomEvent('local-scrapings-available', { 
                 detail: { count: localCount } 
               }))
@@ -90,10 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
+        setIsLoading(false)
       }
     })
 
     return () => {
+      isMounted = false
       subscription.unsubscribe()
     }
   }, [])
