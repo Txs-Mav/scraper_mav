@@ -155,6 +155,29 @@ class ExplorationAgent:
             discovered_urls = tools.discover_product_urls(initial_html, url)
             all_product_urls.extend(discovered_urls)
 
+        # 4. Si peu d'URLs, explorer les pages de listage (ex: /usage/motocyclette/inventaire/)
+        #    pour découvrir les fiches produit (ex: .../triumph-scrambler-2022-a-vendre-ins00023/)
+        if len(all_product_urls) < 50:
+            candidate_listing_urls = self._get_listing_page_candidates(
+                all_product_urls, url
+            )
+            if candidate_listing_urls:
+                print(
+                    f"      📂 Exploration des pages listage ({len(candidate_listing_urls)} pages)...")
+                for listing_url in candidate_listing_urls[:8]:  # max 8 pages
+                    try:
+                        listing_html = tools.get(
+                            listing_url, use_selenium=False)
+                        if listing_html and len(listing_html) > 2000:
+                            extra = tools.discover_product_urls(
+                                listing_html, listing_url)
+                            all_product_urls.extend(extra)
+                            if len(all_product_urls) >= 500:
+                                break
+                    except Exception as e:
+                        print(
+                            f"      ⚠️ Erreur page listage {listing_url[:60]}...: {e}")
+
         # Dédupliquer
         normalized_urls_dict = {}
         for url_item in all_product_urls:
@@ -172,11 +195,24 @@ class ExplorationAgent:
         unique_urls = list(model_year_urls_dict.values())
         print(f"      ✅ {len(unique_urls)} URLs uniques après déduplication")
 
+        # ------------------------------------------------------------
+        # Filtrage adaptatif (PRODUCTION):
+        # - Si on détecte suffisamment d'URLs "inventaire-likely", on devient strict (inventaire seulement)
+        # - Sinon, on garde un fallback pour les sites où "catalogue/showroom" représente les fiches produits
+        # ------------------------------------------------------------
+        inventory_likely = [u for u in unique_urls if self._looks_like_inventory_url(u)]
+        inventory_only_mode = len(inventory_likely) >= 10  # seuil conservateur
+        print(
+            f"      🧭 Mode filtrage: "
+            f"{'inventaire strict' if inventory_only_mode else 'adaptatif (fallback si nécessaire)'} "
+            f"(inventaire-likely: {len(inventory_likely)}/{len(unique_urls)})"
+        )
+
         # Filtrer les URLs invalides (pages non-produits)
         filtered_urls = []
         excluded_count = 0
         for url in unique_urls:
-            if self._is_valid_product_url(url):
+            if self._is_valid_product_url(url, inventory_only=inventory_only_mode):
                 filtered_urls.append(url)
             else:
                 excluded_count += 1
@@ -190,8 +226,51 @@ class ExplorationAgent:
             f"      ✅ {len(filtered_urls)} URLs de produits valides après filtrage")
         return filtered_urls
 
-    def _is_valid_product_url(self, url: str) -> bool:
-        """Valide qu'une URL est bien une page de produit d'inventaire (pas de catalogue) et non une page de service/article/etc.
+    def _looks_like_inventory_url(self, url: str) -> bool:
+        """Heuristique: URL "inventaire-likely" (pour activer le mode strict).
+
+        Objectif: détecter si le site expose des fiches d'inventaire réelles (IDs, stock, a-vendre, etc.).
+        """
+        import re
+
+        url_lower = (url or "").lower()
+        if not url_lower:
+            return False
+
+        # Patterns d'identifiants de produit (très fiables)
+        product_id_patterns = [
+            r'ins\d{3,}',      # ins00023, ins12345 (Morin Sports)
+            r'inv\d{3,}',      # inv02011 (autres concessionnaires)
+            r'[/-][tu]\d{4,}', # /t96538/, /u00380/ (RPM, certains sites)
+            r'vin[-_]?([a-hj-npr-z0-9]{8,})',  # VIN explicite
+            r'\b[a-hj-npr-z0-9]{17}\b',        # VIN 17 caractères
+            r'stock[-_ ]?\d{3,}',              # stock 12345
+            r'sku[-_]?\d+',                    # sku123, sku-456
+            r'ref[-_]?\d+',                    # ref123, ref_456
+            r'p\d{4,}',                        # p12345 (ID produit)
+        ]
+        has_product_id = any(re.search(pattern, url_lower) for pattern in product_id_patterns)
+        if has_product_id:
+            return True
+
+        # Indicateurs de vente / inventaire dans l'URL
+        inventory_markers = [
+            'inventaire', 'inventory', 'for-sale', 'a-vendre', 'stock', 'en-stock',
+            'disponible', 'in-stock', 'instock',
+        ]
+        has_inventory_marker = any(m in url_lower for m in inventory_markers)
+
+        # Dernier segment "détail" (contient souvent année/id)
+        last_segment = url_lower.rstrip('/').split('/')[-1]
+        looks_like_detail = any(ch.isdigit() for ch in last_segment) and len(last_segment) > 10
+
+        return has_inventory_marker and looks_like_detail
+
+    def _is_valid_product_url(self, url: str, inventory_only: bool = False) -> bool:
+        """Valide qu'une URL est bien une page de produit (adaptatif inventaire vs catalogue).
+
+        - Si inventory_only=True: on exclut les URLs "catalogue-like" sauf si elles ont des signaux inventaire forts.
+        - Si inventory_only=False: on accepte aussi les URLs "catalogue-like" quand le site n'expose pas d'inventaire clair.
 
         Args:
             url: URL à valider
@@ -200,14 +279,14 @@ class ExplorationAgent:
             True si l'URL est une page de produit d'inventaire valide, False sinon
         """
         url_lower = url.lower()
-        
-        # EXCLURE explicitement les URLs de catalogue
-        if 'catalogue' in url_lower or 'catalog' in url_lower:
-            return False
+
+        # NOTE: On ne hard-exclut pas "catalogue" car certains sites utilisent des chemins ambigus.
+        # On s'en sert comme signal "catalogue-like" (exclu seulement si inventory_only=True).
 
         # Segments de chemin à exclure (pages non-produits)
         exclude_segments = [
-            '/catalogue', '/catalog',  # URLs de catalogue (déjà vérifié ci-dessus mais ajout pour sécurité)
+            # URLs de catalogue (déjà vérifié ci-dessus mais ajout pour sécurité)
+            '/catalogue', '/catalog',
             '/service', '/service-', '/services', '/sav',
             '/article', '/articles', '/blog', '/blogs',
             '/conseil', '/conseils', '/guide', '/guides',
@@ -237,14 +316,75 @@ class ExplorationAgent:
                         continue  # C'est une page produit avec promotion, garder
                 return False
 
-        # INDIQUEURS pour pages d'INVENTAIRE (prioriser sur les indicateurs généraux)
+        # INDIQUEURS STRICTS pour pages de DÉTAIL PRODUIT (pas listing)
+        # Format type Morin Sports: /usage/motocyclette/inventaire/triumph-scrambler-2022-a-vendre-ins00023/
+        # Ces patterns indiquent une VRAIE fiche produit, pas une page de listing
+        import re
+        
+        # Patterns d'identifiants de produit (très fiables)
+        product_id_patterns = [
+            r'ins\d{3,}',      # ins00023, ins12345 (Morin Sports)
+            r'inv\d{3,}',      # inv02011 (autres concessionnaires)
+            r'[/-][tu]\d{4,}', # /t96538/, /u00380/ (RPM, certains sites)
+            r'p\d{4,}',        # p12345 (ID produit)
+            r'sku[-_]?\d+',    # sku123, sku-456
+            r'ref[-_]?\d+',    # ref123, ref_456
+        ]
+        
+        # Vérifier si l'URL contient un ID produit (très fiable pour détail)
+        has_product_id = any(re.search(pattern, url_lower) for pattern in product_id_patterns)
+        
+        # Patterns qui indiquent une page de détail (avec nom de produit dans l'URL)
+        # Ex: /triumph-scrambler-2022-a-vendre-ins00023/
+        detail_indicators = [
+            'a-vendre', 'for-sale', 'a-vendre-', '-a-vendre',
+            'fiche-', 'detail-', 'details-',
+        ]
+        has_detail_indicator = any(ind in url_lower for ind in detail_indicators)
+        
+        # Patterns qui indiquent une page de LISTING (à éviter pour extraction directe)
+        # Ces URLs sont OK pour découvrir plus de produits mais pas pour extraction
+        listing_only_patterns = [
+            r'/inventaire/?$',           # Se termine par /inventaire/ ou /inventaire
+            r'/inventory/?$',
+            r'/neuf/?$',
+            r'/usage/?$', 
+            r'/used/?$',
+            r'/new/?$',
+            r'\?page=',                  # Pagination
+            r'\?make=',                  # Filtres
+            r'\?category=',
+        ]
+        is_listing_page = any(re.search(pattern, url_lower) for pattern in listing_only_patterns)
+
+        # Si c'est une page de listing sans ID produit, c'est pas une page de détail
+        if is_listing_page and not has_product_id:
+            return False
+        
+        # INDIQUEURS pour pages d'INVENTAIRE (mais pas suffisant seuls)
         inventory_indicators = [
-            'inventaire', 'inventory', 'vendre', 'a-vendre', 'a-vendre-',
-            'stock', 'en-stock', 'disponible'
+            'inventaire', 'inventory', 'vendre', 
+            'stock', 'en-stock', 'disponible',
         ]
         has_inventory_indicator = any(
             indicator in url_lower for indicator in inventory_indicators)
-        
+
+        # Signal "catalogue-like" (adaptatif)
+        catalogue_keywords = ['catalogue', 'catalog', 'showroom', 'modele', 'model', 'gamme', 'range']
+        has_catalogue_keyword = any(kw in url_lower for kw in catalogue_keywords)
+        showroom_pattern = r'/neuf/[^/]+/[^/]+/[^/]+/?$'  # pattern courant, pas universel
+        looks_like_showroom = bool(re.search(showroom_pattern, url_lower))
+        is_catalogue_like = (
+            (has_catalogue_keyword or looks_like_showroom)
+            and not has_product_id
+            and not has_detail_indicator
+            and not has_inventory_indicator
+        )
+
+        # Si le site a suffisamment d'inventaire détectable, on devient strict (inventaire seulement)
+        if inventory_only and is_catalogue_like:
+            return False
+
         # Mots-clés qui indiquent une page de produit (fallback)
         product_indicators = [
             'moto', 'motorcycle', 'motocyclette', 'vehicule', 'vehicle',
@@ -253,24 +393,76 @@ class ExplorationAgent:
             'produit', 'product', 'detail', 'details', 'fiche'
         ]
 
-        # L'URL doit contenir au moins un indicateur de produit (prioriser inventaire)
         has_product_indicator = has_inventory_indicator or any(
             indicator in url_lower for indicator in product_indicators)
 
-        # Vérifier aussi le format : les URLs de produits ont souvent :
-        # - Un identifiant (ex: /t96538/, /u00380/)
-        # - Un modèle spécifique (ex: /ktm-1290-adv-r-2024/)
-        # - Un format structuré (ex: /motocyclette/ktm-350-xc-f/)
-        has_structured_format = (
-            # Contient des chiffres
-            any(char.isdigit() for char in url.split('/')[-1]) or
-            # Au moins 4 segments (ex: /fr/motocyclette/model/)
-            len(url.split('/')) >= 4 or
-            any(part.isdigit() for part in url.split('/')
-                if len(part) > 3)  # Segment avec chiffres
+        # Vérifier le format de l'URL - les pages de DÉTAIL ont:
+        # - Un identifiant unique (ex: ins00023, t96538)
+        # - Un nom de modèle dans le dernier segment
+        # - Plus de segments que les pages listing
+        url_parts = url.strip('/').split('/')
+        last_segment = url_parts[-1] if url_parts else ''
+        
+        # Critère strict: le dernier segment doit contenir des infos produit
+        # (pas juste "inventaire" ou un filtre)
+        has_product_in_last_segment = (
+            # Contient des chiffres (année, ID, etc.)
+            any(char.isdigit() for char in last_segment) and
+            # Pas juste un numéro de page
+            not re.match(r'^(page|p)?\d+$', last_segment) and
+            # A une certaine longueur (nom de modèle)
+            len(last_segment) > 10
         )
+        
+        # LOGIQUE FINALE:
+        # - Si ID produit trouvé → TOUJOURS accepter (très fiable)
+        # - Si indicateur de détail → accepter si a aussi indicateur produit
+        # - Sinon → besoin d'avoir produit dans le dernier segment ET indicateur produit
+        if has_product_id:
+            return True
+        if has_detail_indicator and has_product_indicator:
+            return True
+        if has_product_in_last_segment and has_product_indicator:
+            return True
+            
+        return False
 
-        return has_product_indicator and has_structured_format
+    def _get_listing_page_candidates(
+        self, discovered_urls: List[str], base_url: str
+    ) -> List[str]:
+        """Retourne les URLs qui ressemblent à des pages de listage (catégories)
+        à explorer pour découvrir plus de fiches produit.
+        Ex: /fr/usage/motocyclette/inventaire/ ou /fr/neuf/motoneige/
+        """
+        from urllib.parse import urlparse
+        listing_segments = {
+            'inventaire', 'motocyclette', 'motoneige', 'vtt', 'motomarine',
+            'neuf', 'usage', 'inventaire-neuf', 'inventaire-usage'
+        }
+        candidates = []
+        seen = set()
+        for u in discovered_urls:
+            u = (u or '').strip()
+            if not u or u in seen:
+                continue
+            parsed = urlparse(u)
+            path = (parsed.path or '').strip('/').lower()
+            if not path:
+                continue
+            parts = path.split('/')
+            last = (parts[-1] or '').lower()
+            # Page listage = chemin contient inventaire/usage/neuf et dernier segment
+            # est une catégorie (court) ou URL se termine par /inventaire/
+            is_short_last = len(last) < 25 and not any(
+                c.isdigit() for c in last)
+            ends_with_listing = last in listing_segments or u.rstrip(
+                '/').endswith('/inventaire')
+            if ('inventaire' in path or 'usage' in path or 'neuf' in path) and (
+                is_short_last or ends_with_listing
+            ):
+                seen.add(u)
+                candidates.append(u)
+        return candidates
 
     def _fetch_product_html(self, product_urls: List[str]) -> Dict[str, str]:
         """Récupère le HTML de chaque URL produit
@@ -373,12 +565,19 @@ Exemple: {{"name": "h1", "prix": "span.number", "price": "span.number", "image":
                 show_prompt=False
             )
 
-            products = result.get('products', [])
-            all_products.extend(products)
+            # Gérer le cas où Gemini retourne une liste directement au lieu d'un dict
+            if isinstance(result, list):
+                # Gemini a retourné directement la liste de produits
+                all_products.extend(result)
+            elif isinstance(result, dict):
+                products = result.get('products', [])
+                all_products.extend(products)
 
-            # Essayer d'extraire les sélecteurs depuis la réponse
-            if 'detected_selectors' in result:
-                detected_selectors.update(result['detected_selectors'])
+                # Essayer d'extraire les sélecteurs depuis la réponse
+                if 'detected_selectors' in result:
+                    detected_selectors.update(result['detected_selectors'])
+            else:
+                print(f"         ⚠️ Réponse Gemini inattendue (type: {type(result).__name__})")
 
         except Exception as e:
             print(f"         ⚠️ Erreur lors de l'extraction Gemini: {e}")

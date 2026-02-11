@@ -4,22 +4,33 @@ import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Bell, User, Home, BarChart2, Building2, CreditCard } from "lucide-react"
+import { Bell, User, Home, BarChart2, CreditCard } from "lucide-react"
 import Profile01 from "./profile-01"
 import { ThemeToggle } from "../theme-toggle"
 import { useAuth } from "@/contexts/auth-context"
 import { cn } from "@/lib/utils"
+import { canAccessAnalytics, canAccessOrganisation } from "@/lib/plan-restrictions"
 
 export default function TopNav() {
   const { user } = useAuth()
   const pathname = usePathname()
+  const plan = user?.subscription_plan ?? "standard"
+  // Fallback : si subscription_source est null mais promo_code_id est défini → promo
+  const subscriptionSource = user?.subscription_source || (user?.promo_code_id ? 'promo' : null)
 
-  const navItems = [
-    { label: "Dashboard", href: "/dashboard", icon: Home },
-    { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
-    { label: "Organization", href: "/dashboard/organization", icon: Building2 },
-    { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
+  const allNavItems = [
+    { label: "Dashboard", href: "/dashboard", icon: Home, requiresPaid: false },
+    { label: "Analyse", href: "/dashboard/analytics", icon: BarChart2, requiresPaid: true },
+    { label: "Alerte", href: "/dashboard/alerte", icon: Bell, requiresPaid: true },
+    { label: "Paiements", href: "/dashboard/payments", icon: CreditCard, requiresPaid: false },
   ]
+
+  const navItems = allNavItems.filter(
+    (item) =>
+      !item.requiresPaid ||
+      (item.href === "/dashboard/analytics" && canAccessAnalytics(plan, subscriptionSource)) ||
+      (item.href === "/dashboard/alerte" && canAccessOrganisation(plan, subscriptionSource))
+  )
 
   return (
     <nav className="px-3 sm:px-6 flex items-center justify-between bg-white dark:bg-[#0F0F12] border-b border-gray-200 dark:border-[#1F1F23] h-full">
@@ -97,12 +108,12 @@ export default function TopNav() {
               name={user?.name || "Utilisateur"}
               role={user?.role === "main" ? "Compte principal" : user?.role === "employee" ? "Employé" : "Visiteur"}
               subscription={
-                user?.subscription_plan === "free"
+                user?.subscription_plan === "standard"
                   ? "Gratuit"
-                  : user?.subscription_plan === "standard"
-                    ? "Standard"
-                    : user?.subscription_plan === "premium"
-                      ? "Premium"
+                  : user?.subscription_plan === "pro"
+                    ? "Pro"
+                    : user?.subscription_plan === "ultime"
+                      ? "Ultime"
                       : "Gratuit"
               }
             />

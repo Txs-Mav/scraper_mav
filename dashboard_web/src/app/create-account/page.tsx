@@ -9,31 +9,51 @@ import { Loader2, Eye, EyeOff } from "lucide-react"
 import { Sparkles, Zap, Crown } from "lucide-react"
 
 const PLANS = [
-  { 
-    id: "free", 
-    name: "Gratuit", 
-    description: "Accès de base", 
+  {
+    id: "standard",
+    name: "Gratuit",
+    description: "Idéal pour tester et découvrir les fonctionnalités de base",
+    price: "0 $ / mois",
     icon: Sparkles,
     color: "from-gray-500 to-gray-600",
-    features: ["10 scrapings maximum", "Dashboard de base"]
+    features: [
+      "6 scrapings par mois",
+      "2 scrapers en cache",
+      "Dashboard de base",
+      "Export CSV",
+    ]
   },
-  { 
-    id: "standard", 
-    name: "Standard", 
-    description: "Fonctionnalités avancées", 
-    price: "À venir",
+  {
+    id: "pro",
+    name: "Pro",
+    description: "Pour les professionnels qui veulent automatiser leur veille prix",
+    price: "199,99 $ / mois",
     icon: Zap,
     color: "from-blue-500 to-blue-600",
-    features: ["Scrapings illimités", "Analytics avancés", "Support prioritaire"]
+    features: [
+      "Scrapings illimités",
+      "8 scrapers en cache",
+      "Analytics avancés",
+      "Alertes de prix",
+      "Support prioritaire",
+    ],
+    highlighted: true,
   },
-  { 
-    id: "premium", 
-    name: "Premium", 
-    description: "Toutes les fonctionnalités", 
-    price: "À venir",
+  {
+    id: "ultime",
+    name: "Ultime",
+    description: "Solution complète pour les équipes et entreprises exigeantes",
+    price: "274,99 $ / mois",
     icon: Crown,
     color: "from-purple-500 to-purple-600",
-    features: ["Tout du Standard", "API access", "Support 24/7", "Gestion d'équipe"]
+    features: [
+      "Tout du plan Pro",
+      "Scrapers en cache illimités",
+      "API access",
+      "Support 24/7 dédié",
+      "SLA garanti 99.9%",
+      "Gestion d'équipe",
+    ]
   },
 ]
 
@@ -44,7 +64,10 @@ export default function CreateAccountPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState("free")
+  const [selectedPlan, setSelectedPlan] = useState("standard")
+  const [promoCode, setPromoCode] = useState("")
+  const [promoCodeValid, setPromoCodeValid] = useState<boolean | null>(null)
+  const [validatingPromo, setValidatingPromo] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [accountExists, setAccountExists] = useState(false)
@@ -53,17 +76,26 @@ export default function CreateAccountPage() {
   const { register, user, isLoading } = useAuth()
   const router = useRouter()
 
-  // Rediriger automatiquement vers login après inscription réussie (email à confirmer)
+  // Quand un code promo est validé, forcer le plan Ultime
   useEffect(() => {
-    if (registrationSuccess && successMessage) {
-      // Rediriger vers login après 3 secondes pour laisser le temps de lire le message
-      const timer = setTimeout(() => {
-        router.push("/login?message=check_email")
-      }, 3000)
-
-      return () => clearTimeout(timer)
+    if (promoCodeValid === true) {
+      setSelectedPlan("ultime")
     }
-  }, [registrationSuccess, successMessage, router])
+  }, [promoCodeValid])
+
+  // Rediriger immédiatement vers login après inscription réussie
+  useEffect(() => {
+    if (registrationSuccess) {
+      // Avec code promo → pas de paiement, juste confirmer l'email
+      if (promoCodeValid) {
+        router.push("/login?message=check_email_promo")
+      } else if (selectedPlan !== "standard") {
+        router.push("/login?message=confirm_email_then_pay")
+      } else {
+        router.push("/login?message=check_email")
+      }
+    }
+  }, [registrationSuccess, router, selectedPlan, promoCodeValid])
 
   // Rediriger vers login si le compte existe déjà
   useEffect(() => {
@@ -95,18 +127,30 @@ export default function CreateAccountPage() {
     setError(null)
     setSuccessMessage(null)
 
+    // Stocker le code promo AVANT le register pour qu'il soit disponible après confirmation
+    const hasValidPromo = !!(promoCode.trim() && promoCodeValid)
+    if (hasValidPromo) {
+      sessionStorage.setItem("pending_promo_code", promoCode.trim())
+      // Stocker aussi le plan choisi pour le retrouver après confirmation email
+      sessionStorage.setItem("pending_promo_plan", selectedPlan)
+    }
+
     try {
+      // Si code promo valide → ne PAS stocker de pending_plan (pas de paiement Stripe)
+      // Si pas de promo → stocker le pending_plan pour déclencher le paiement Stripe
+      const planForRegister = hasValidPromo ? 'standard' : selectedPlan
+      
       const { error } = await register({
         name,
         email,
         password,
-        plan: selectedPlan,
+        plan: planForRegister, // 'standard' si promo (pas de pending_plan), sinon le plan choisi
       })
 
       if (error) {
         // Gérer différents formats d'erreur
         let errorMessage = "Erreur lors de la création du compte"
-        
+
         if (typeof error === 'string') {
           errorMessage = error
         } else if (error?.message) {
@@ -121,26 +165,43 @@ export default function CreateAccountPage() {
           errorMessage = "Un compte existe déjà avec cet email. Redirection vers la page de connexion..."
         }
 
-        // Cas de confirmation email requise
+        // Cas de confirmation email requise - c'est un succès, pas une erreur
         if (error?.code === 'EMAIL_CONFIRMATION_REQUIRED') {
-          setSuccessMessage("Compte créé. Vérifiez votre email et confirmez pour activer votre compte.")
+          // Marquer comme succès pour déclencher la redirection vers login
+          setRegistrationSuccess(true)
           setLoading(false)
           return
         }
-        
+
+        // Cas où l'email de confirmation a été renvoyé (compte existant non confirmé)
+        if (error?.code === 'EMAIL_CONFIRMATION_RESENT') {
+          setSuccessMessage("Nous avons renvoyé l'email de confirmation. Vérifiez votre boîte de réception (et les spams).")
+          setRegistrationSuccess(true)
+          setLoading(false)
+          return
+        }
+
         setError(errorMessage)
-        setLoading(false) // S'assurer que loading est mis à false en cas d'erreur
-      } else {
-        // Succès : marquer comme réussi et afficher l'instruction email
-        setSuccessMessage("Compte créé. Vérifiez votre email et confirmez pour activer votre compte.")
-        setRegistrationSuccess(true)
-            setLoading(false)
+        setLoading(false)
+        return
       }
+
+      // Afficher le message approprié
+      if (hasValidPromo) {
+        setSuccessMessage("Compte créé avec le code promo ! Vérifiez votre email et confirmez pour activer votre plan Ultime gratuit.")
+      } else if (selectedPlan !== "standard") {
+        setSuccessMessage("Compte créé ! Vérifiez votre email et confirmez pour continuer vers le paiement.")
+      } else {
+        setSuccessMessage("Compte créé. Vérifiez votre email et confirmez pour activer votre compte.")
+      }
+
+      setRegistrationSuccess(true)
+      setLoading(false)
     } catch (err: any) {
       // Gérer les erreurs inattendues
       console.error('Error in handleSubmit:', err)
       setError(err.message || "Une erreur est survenue. Veuillez réessayer.")
-      setLoading(false) // S'assurer que loading est mis à false
+      setLoading(false)
     }
   }
 
@@ -178,16 +239,14 @@ export default function CreateAccountPage() {
               </div>
             )}
             {error && (
-              <div className={`rounded-lg p-3 ${
-                accountExists 
-                  ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900" 
+              <div className={`rounded-lg p-3 ${accountExists
+                  ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900"
                   : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900"
-              }`}>
-                <p className={`text-sm ${
-                  accountExists 
-                    ? "text-blue-800 dark:text-blue-300" 
-                    : "text-red-800 dark:text-red-300"
                 }`}>
+                <p className={`text-sm ${accountExists
+                    ? "text-blue-800 dark:text-blue-300"
+                    : "text-red-800 dark:text-red-300"
+                  }`}>
                   {error}
                 </p>
                 {accountExists && (
@@ -303,10 +362,75 @@ export default function CreateAccountPage() {
             </div>
 
             {/* Sélection d'abonnement */}
-            <div>
+            <div className="space-y-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
                 Plan d'abonnement
               </label>
+
+              {/* Code promo - espace dédié sous le plan */}
+              <div className="rounded-lg p-4 bg-gray-50 dark:bg-[#1A1A1F] border border-gray-200 dark:border-[#2B2B30]">
+                <label
+                  htmlFor="promoCode"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
+                  Code promo (optionnel)
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Avez-vous un code promo ? Entrez-le pour bénéficier d&apos;un plan gratuit à vie.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    id="promoCode"
+                    name="promoCode"
+                    type="text"
+                    value={promoCode}
+                    onChange={(e) => {
+                      setPromoCode(e.target.value.toUpperCase())
+                      setPromoCodeValid(null)
+                    }}
+                    onBlur={async () => {
+                      if (promoCode.trim()) {
+                        setValidatingPromo(true)
+                        try {
+                          const response = await fetch("/api/promo-codes/validate", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ code: promoCode.trim() }),
+                          })
+                          const data = await response.json()
+                          setPromoCodeValid(data.valid)
+                          if (!data.valid) {
+                            setError(data.error || "Code promo invalide")
+                          } else {
+                            setError(null)
+                          }
+                        } catch (err) {
+                          setPromoCodeValid(false)
+                          setError("Erreur lors de la validation du code promo")
+                        } finally {
+                          setValidatingPromo(false)
+                        }
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="PROMO2024-XXXXXX"
+                  />
+                  {validatingPromo && (
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400 self-center" />
+                  )}
+                  {promoCodeValid === true && (
+                    <span className="text-green-500 self-center text-lg">✓</span>
+                  )}
+                  {promoCodeValid === false && promoCode.trim() && (
+                    <span className="text-red-500 self-center text-lg">✗</span>
+                  )}
+                </div>
+                {promoCodeValid === true && (
+                  <p className="text-sm text-green-600 dark:text-green-400 mt-2 font-medium">
+                    Code promo valide ! Plan Ultime gratuit à vie. Aucun paiement requis.
+                  </p>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {PLANS.map((plan) => {
                   const Icon = plan.icon
@@ -316,11 +440,12 @@ export default function CreateAccountPage() {
                       key={plan.id}
                       type="button"
                       onClick={() => setSelectedPlan(plan.id)}
-                      className={`relative p-6 rounded-xl border-2 transition-all duration-200 transform hover:scale-105 ${
-                        isSelected
+                      className={`relative p-6 rounded-xl border-2 transition-all duration-200 transform hover:scale-105 ${isSelected
                           ? `border-blue-500 bg-gradient-to-br ${plan.color} shadow-lg`
-                          : "border-gray-200 dark:border-[#2B2B30] hover:border-gray-300 dark:hover:border-[#3B3B40] bg-white dark:bg-[#0F0F12]"
-                      }`}
+                          : plan.highlighted
+                            ? "border-blue-300 dark:border-blue-700 hover:border-blue-400 dark:hover:border-blue-600 bg-white dark:bg-[#0F0F12]"
+                            : "border-gray-200 dark:border-[#2B2B30] hover:border-gray-300 dark:hover:border-[#3B3B40] bg-white dark:bg-[#0F0F12]"
+                        }`}
                     >
                       {isSelected && (
                         <div className="absolute top-2 right-2">
@@ -332,33 +457,26 @@ export default function CreateAccountPage() {
                         </div>
                       )}
                       <div className="text-center">
-                        <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 ${
-                          isSelected 
-                            ? 'bg-white/20 text-white' 
+                        <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 ${isSelected
+                            ? 'bg-white/20 text-white'
                             : 'bg-gray-100 dark:bg-[#1F1F23] text-gray-600 dark:text-gray-400'
-                        }`}>
+                          }`}>
                           <Icon className="h-6 w-6" />
                         </div>
-                        <div className={`font-bold text-lg mb-1 ${
-                          isSelected ? 'text-white' : 'text-gray-900 dark:text-white'
-                        }`}>
+                        <div className={`font-bold text-lg mb-1 ${isSelected ? 'text-white' : 'text-gray-900 dark:text-white'
+                          }`}>
                           {plan.name}
                         </div>
-                        <div className={`text-sm mb-3 ${
-                          isSelected ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'
-                        }`}>
+                        <div className={`text-sm mb-3 ${isSelected ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'
+                          }`}>
                           {plan.description}
                         </div>
-                        {plan.price && (
-                          <div className={`text-xs font-semibold mb-2 ${
-                            isSelected ? 'text-white/80' : 'text-gray-500 dark:text-gray-500'
+                        <div className={`text-xs font-semibold mb-2 ${isSelected ? 'text-white/80' : 'text-gray-500 dark:text-gray-500'
                           }`}>
-                            {plan.price}
-                          </div>
-                        )}
-                        <ul className={`text-xs space-y-1 text-left mt-3 ${
-                          isSelected ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'
-                        }`}>
+                          {plan.price}
+                        </div>
+                        <ul className={`text-xs space-y-1 text-left mt-3 ${isSelected ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'
+                          }`}>
                           {plan.features.map((feature, idx) => (
                             <li key={idx} className="flex items-start gap-1">
                               <span className={isSelected ? 'text-white' : 'text-blue-600 dark:text-blue-400'}>•</span>

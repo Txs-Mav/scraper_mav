@@ -10,7 +10,16 @@ export async function DELETE(request: Request) {
       ? authHeader.slice(7)
       : null
 
-    const { password } = await request.json()
+    let password: string | undefined
+    try {
+      const body = await request.json()
+      password = body?.password
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid request body - JSON expected with password field' },
+        { status: 400 }
+      )
+    }
 
     if (!password) {
       return NextResponse.json(
@@ -49,7 +58,53 @@ export async function DELETE(request: Request) {
 
     // TODO: Annuler les abonnements Stripe actifs si applicable
 
-    // Supprimer les données applicatives (service role, RLS bypass)
+    // Supprimer les données applicatives dans l'ordre (FK constraints)
+    // 0. alert_changes référence scraper_alerts, scraper_alerts référence scraper_cache
+    try {
+      await serviceSupabase.from('alert_changes').delete().eq('user_id', user.id)
+      await serviceSupabase.from('scraper_alerts').delete().eq('user_id', user.id)
+    } catch { /* tables peuvent ne pas exister */ }
+
+    // 1. Tables qui référencent scraper_cache ET users
+    await serviceSupabase
+      .from('scraper_shares')
+      .delete()
+      .or(`owner_user_id.eq.${user.id},target_user_id.eq.${user.id}`)
+    await serviceSupabase
+      .from('scraping_results')
+      .delete()
+      .eq('user_id', user.id)
+
+    // 2. scraper_cache (référence users)
+    await serviceSupabase.from('scraper_cache').delete().eq('user_id', user.id)
+
+    // 3. scraper_config si la table existe
+    try {
+      await serviceSupabase.from('scraper_config').delete().eq('user_id', user.id)
+    } catch {
+      /* table peut ne pas exister */
+    }
+
+    // 4. Organizations : retirer l'utilisateur des orgs, puis supprimer les orgs dont il est owner
+    await serviceSupabase.from('organization_members').delete().eq('user_id', user.id)
+    await serviceSupabase.from('org_invitations').delete().eq('accepted_by', user.id)
+    const { data: ownedOrgs } = await serviceSupabase
+      .from('organizations')
+      .select('id')
+      .eq('owner_id', user.id)
+    if (ownedOrgs?.length) {
+      for (const org of ownedOrgs) {
+        await serviceSupabase.from('organization_members').delete().eq('org_id', org.id)
+        await serviceSupabase.from('org_invitations').delete().eq('org_id', org.id)
+      }
+      await serviceSupabase.from('organizations').delete().eq('owner_id', user.id)
+    }
+
+    // 5. employees, user_roles
+    await serviceSupabase.from('employees').delete().or(`main_account_id.eq.${user.id},employee_id.eq.${user.id}`)
+    await serviceSupabase.from('user_roles').delete().eq('user_id', user.id)
+
+    // 6. Tables principales
     const deletes = await Promise.allSettled([
       serviceSupabase.from('scrapings').delete().eq('user_id', user.id),
       serviceSupabase.from('user_settings').delete().eq('user_id', user.id),
@@ -83,11 +138,10 @@ export async function DELETE(request: Request) {
     await supabase.auth.signOut()
 
     return NextResponse.json({ success: true, deletes })
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    )
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    console.error('[DELETE /api/users/delete]', error)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 

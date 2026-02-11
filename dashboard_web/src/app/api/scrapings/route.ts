@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import { PLAN_FEATURES } from '@/lib/plan-restrictions'
 
 export async function GET(request: Request) {
   try {
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
 
     // Si non connecté, retourner un tableau vide (les scrapings locaux sont gérés côté client)
     if (!user) {
-      return NextResponse.json({ scrapings: [], count: 0, limit: 10, isLocal: true })
+      return NextResponse.json({ scrapings: [], count: 0, limit: 6, isLocal: true })
     }
 
     const supabase = await createClient()
@@ -52,8 +53,9 @@ export async function GET(request: Request) {
       )
     }
 
-    // Déterminer la limite selon le plan
-    const limit = user.subscription_plan === 'free' ? 10 : Infinity
+    // Déterminer la limite : standard/non confirmé = 6, pro/ultime confirmé = illimité
+    const effectiveSource = user.subscription_source || (user.promo_code_id ? 'promo' as const : null)
+    const limit = PLAN_FEATURES.scrapingLimit(user.subscription_plan, effectiveSource)
 
     const scrapings = (data || []).map(scraping => ({
       ...scraping,
@@ -92,16 +94,18 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Vérifier la limite pour plan gratuit
-    if (user.subscription_plan === 'free') {
+    // Vérifier la limite pour plan standard / non confirmé
+    const effectiveSource = user.subscription_source || (user.promo_code_id ? 'promo' as const : null)
+    const limit = PLAN_FEATURES.scrapingLimit(user.subscription_plan, effectiveSource)
+    if (limit !== Infinity) {
       const { count } = await supabase
         .from('scrapings')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', user.id)
 
-      if ((count || 0) >= 10) {
+      if ((count || 0) >= limit) {
         return NextResponse.json(
-          { error: 'Limite de 10 scrapings atteinte. Passez au plan Standard ou Premium pour des scrapings illimités.' },
+          { error: 'Limite de 6 scrapings atteinte. Passez au plan Pro ou Ultime pour des scrapings illimités.' },
           { status: 403 }
         )
       }

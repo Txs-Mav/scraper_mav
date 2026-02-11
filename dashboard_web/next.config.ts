@@ -17,6 +17,8 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Timeout étendu pour les routes qui déclenchent le scraping Python (alertes cron)
+  serverExternalPackages: ['child_process'],
 };
 
 export default nextConfig;

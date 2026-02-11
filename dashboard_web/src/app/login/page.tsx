@@ -4,7 +4,8 @@ import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
-import { Loader2, Eye, EyeOff } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import { Loader2, Eye, EyeOff, Mail } from "lucide-react"
 import Image from "next/image"
 
 function LoginContent() {
@@ -15,15 +16,22 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [loginSuccess, setLoginSuccess] = useState(false)
   const [infoMessage, setInfoMessage] = useState<string | null>(null)
+  const [showResendButton, setShowResendButton] = useState(false)
+  const [resendingEmail, setResendingEmail] = useState(false)
   const { login, user, isLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const supabase = createClient()
 
   // Vérifier les paramètres d'URL pour afficher des messages informatifs
   useEffect(() => {
     const message = searchParams.get("message")
     if (message === "check_email") {
-      setInfoMessage("Compte créé avec succès ! Vérifiez votre email et cliquez sur le lien de confirmation, puis reconnectez-vous.")
+      setInfoMessage("Compte créé avec succès ! Vérifiez votre email et cliquez sur le lien de confirmation pour activer votre compte.")
+    } else if (message === "check_email_promo") {
+      setInfoMessage("Compte créé avec le code promo ! Vérifiez votre email et confirmez. Votre plan Ultime sera activé automatiquement, aucun paiement requis.")
+    } else if (message === "confirm_email_then_pay") {
+      setInfoMessage("Compte créé avec succès ! Vérifiez votre email et cliquez sur le lien de confirmation. Vous serez ensuite redirigé vers le paiement pour activer votre plan.")
     } else if (message === "confirmed") {
       setInfoMessage("Email confirmé avec succès ! Vous pouvez maintenant vous connecter.")
     } else if (message === "password_reset") {
@@ -54,25 +62,69 @@ function LoginContent() {
     setError(null)
     setLoading(true)
     setLoginSuccess(false)
+    setShowResendButton(false)
+
+    const TIMEOUT_MS = 10000
 
     try {
-      const { error } = await login(email, password)
+      const loginWithTimeout = Promise.race([
+        login(email, password),
+        new Promise<{ error: { message: string; code?: string } }>((_, reject) =>
+          setTimeout(() => reject(new Error("La connexion a pris trop de temps. Ce compte a peut-être été supprimé.")), TIMEOUT_MS)
+        ),
+      ])
+
+      const { error } = await loginWithTimeout
 
       if (error) {
-        // Afficher le message d'erreur spécifique
         const errorMessage = error.message || "Erreur lors de la connexion"
         setError(errorMessage)
+        
+        // Si l'email n'est pas confirmé, afficher le bouton de renvoi
+        if (error.code === 'EMAIL_NOT_CONFIRMED' || errorMessage.includes('confirmer votre email')) {
+          setShowResendButton(true)
+        }
         return
       } else {
-        // Succès : marquer réussi et rediriger immédiatement
         setLoginSuccess(true)
         router.push("/dashboard")
       }
-    } catch (err: any) {
-      setError(err.message || "Une erreur est survenue")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Une erreur est survenue"
+      setError(message)
     } finally {
-      // Toujours arrêter le spinner, même si la navigation prend du temps
       setLoading(false)
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      setError("Veuillez entrer votre adresse email.")
+      return
+    }
+
+    setResendingEmail(true)
+    setError(null)
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`
+        }
+      })
+
+      if (error) {
+        setError(error.message || "Erreur lors de l'envoi de l'email.")
+      } else {
+        setInfoMessage("Email de confirmation renvoyé ! Vérifiez votre boîte de réception (et les spams).")
+        setShowResendButton(false)
+      }
+    } catch (err) {
+      setError("Une erreur est survenue lors de l'envoi de l'email.")
+    } finally {
+      setResendingEmail(false)
     }
   }
 
@@ -111,6 +163,26 @@ function LoginContent() {
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 rounded-lg p-3">
               <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
+              {showResendButton && (
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  disabled={resendingEmail}
+                  className="mt-2 flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                >
+                  {resendingEmail ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Envoi en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="h-4 w-4" />
+                      Renvoyer l&apos;email de confirmation
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
 

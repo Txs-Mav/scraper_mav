@@ -1,7 +1,6 @@
 "use client"
 
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
-import { BarChart2, TrendingUp } from "lucide-react"
 
 interface Product {
   name: string
@@ -25,10 +24,14 @@ interface VisualizationsProps {
   detailleurs: Retailer[]
 }
 
+// Limite pour filtrer les prix aberrants (IDs ou valeurs incorrectes)
+const MAX_REASONABLE_PRICE = 500000 // 500k$ max raisonnable pour un véhicule
+
 export default function Visualizations({ produits, detailleurs }: VisualizationsProps) {
   // Préparer les données pour le scatter plot (prix référence vs marché)
+  // Filtrer les prix aberrants (> 500k$ sont probablement des IDs ou erreurs)
   const scatterData = produits
-    .filter(p => p.prix > 0 && p.prixMoyenMarche > 0)
+    .filter(p => p.prix > 0 && p.prix < MAX_REASONABLE_PRICE && p.prixMoyenMarche > 0 && p.prixMoyenMarche < MAX_REASONABLE_PRICE)
     .map(p => ({
       x: p.prix,
       y: p.prixMoyenMarche,
@@ -37,7 +40,10 @@ export default function Visualizations({ produits, detailleurs }: Visualizations
     }))
 
   // Préparer les données pour le graphique d'écart moyen
-  const ecartData = detailleurs.map(d => ({
+  // Filtrer les détaillants avec prix moyen raisonnable
+  const ecartData = detailleurs
+    .filter(d => d.prixMoyen > 0 && d.prixMoyen < MAX_REASONABLE_PRICE)
+    .map(d => ({
     site: d.site.length > 20 ? d.site.substring(0, 20) + '...' : d.site,
     ecartMoyen: d.agressivite, // Utiliser l'agressivité comme proxy de l'écart
     couleur: d.agressivite > 0 ? '#10B981' : d.agressivite < 0 ? '#EF4444' : '#6B7280'
@@ -109,7 +115,7 @@ export default function Visualizations({ produits, detailleurs }: Visualizations
           Écart Moyen des Prix par Détaillant
         </h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          Comparaison avec le site de référence (rouge = plus cher, vert = moins cher, gris = égal)
+          Comparaison avec la moyenne du marché (rouge = plus cher, vert = moins cher, gris = égal)
         </p>
         <ResponsiveContainer width="100%" height={400}>
           <BarChart data={ecartData}>
@@ -144,15 +150,15 @@ export default function Visualizations({ produits, detailleurs }: Visualizations
         <div className="mt-4 flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-red-500 rounded"></div>
-            <span>Plus cher que la référence</span>
+            <span>Plus cher que le marché</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-green-500 rounded"></div>
-            <span>Moins cher que la référence</span>
+            <span>Moins cher que le marché</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-gray-500 rounded"></div>
-            <span>Égal à la référence</span>
+            <span>Égal au marché</span>
           </div>
         </div>
       </div>

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import { canAccessAnalytics } from '@/lib/plan-restrictions'
 import {
   calculatePricePositioning,
   calculateProductAnalysis,
@@ -20,45 +19,52 @@ export async function GET() {
   try {
     let products: Product[] = []
     let metadata: ScrapeMetadata = {}
+    let dataAsOf: string | null = null
+    let totalScrapes = 0
+    let scrapesParJour: Array<{ date: string; count: number }> = []
     
-    // PRIORITÉ 1: Essayer de charger depuis Supabase si utilisateur connecté
+    // Charger depuis Supabase (utilisateur connecté requis)
     const user = await getCurrentUser()
-    if (user) {
-      try {
-        const supabase = await createClient()
-        
-        // Récupérer le dernier scraping de l'utilisateur
-        const { data: scrapings, error } = await supabase
-          .from('scrapings')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-        
-        if (!error && scrapings && scrapings.length > 0) {
-          const latestScraping = scrapings[0]
-          products = latestScraping.products || []
-          metadata = latestScraping.metadata || {}
-        }
-      } catch (e) {
-        console.warn('Error loading from Supabase, fallback to local:', e)
-      }
+    if (!user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
-    
-    // PRIORITÉ 2: Fallback sur fichier local si pas de données Supabase
-    if (products.length === 0) {
-      const filePath = path.join(process.cwd(), '..', 'scraped_data.json')
-      
-      if (fs.existsSync(filePath)) {
-        try {
-          const fileContents = fs.readFileSync(filePath, 'utf-8')
-          const data = JSON.parse(fileContents)
-          products = data.products || []
-          metadata = data.metadata || {}
-        } catch (e) {
-          console.warn('Error reading scraped_data.json:', e)
+    // Analytics réservé aux plans Pro et Ultime
+    const effectiveSource = user.subscription_source || (user.promo_code_id ? 'promo' as const : null)
+    if (!canAccessAnalytics(user.subscription_plan ?? 'standard', effectiveSource)) {
+      return NextResponse.json(
+        { error: 'Accès réservé aux plans Pro et Ultime' },
+        { status: 403 }
+      )
+    }
+    try {
+      const supabase = await createClient()
+      const { data: scrapings, error } = await supabase
+        .from('scrapings')
+        .select('products, metadata, reference_url, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (!error && scrapings && scrapings.length > 0) {
+        const latestScraping = scrapings[0]
+        products = latestScraping.products || []
+        metadata = {
+          ...(latestScraping.metadata || {}),
+          reference_url: latestScraping.reference_url || latestScraping.metadata?.reference_url,
         }
+        dataAsOf = latestScraping.created_at || null
       }
+
+      const { data: scrapeDates, error: datesError } = await supabase
+        .from('scrapings')
+        .select('created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+      if (!datesError && scrapeDates) {
+        totalScrapes = scrapeDates.length
+        scrapesParJour = calculateScrapesPerDay(scrapeDates)
+      }
+    } catch (e) {
+      console.warn('Error loading from Supabase:', e)
     }
     
     // Si pas de produits, retourner des analytics vides au lieu d'erreur
@@ -88,7 +94,8 @@ export async function GET() {
     }
     
     // Identifier le site de référence
-    let referenceSite = metadata.reference_url || 
+    const referenceSite = metadata.reference_url ||
+      // fallback: si absent, utiliser le premier produit mais la normalisation se fera ensuite
       (products.length > 0 ? products[0].sourceSite : null)
     
     // Extraire le domaine du site de référence
@@ -101,7 +108,7 @@ export async function GET() {
         } else {
           referenceDomain = new URL(referenceSite).hostname
         }
-      } catch (e) {
+      } catch {
         // Si ce n'est pas une URL valide, utiliser la valeur telle quelle
         referenceDomain = referenceSite
       }
@@ -117,28 +124,29 @@ export async function GET() {
           } else {
             referenceDomain = new URL(firstProductSite).hostname
           }
-        } catch (e) {
+        } catch {
           referenceDomain = firstProductSite
         }
       }
     }
     
-    // Calculer les scrapes par jour depuis les logs
-    const scrapesParJour = calculateScrapesPerDay()
-    
     // Calculer toutes les métriques
     const analytics: AnalyticsData = {
       positionnement: calculatePricePositioning(products, referenceDomain),
-      produits: calculateProductAnalysis(products),
+      produits: calculateProductAnalysis(products, referenceDomain),
       evolutionPrix: calculatePriceEvolution(products),
-      opportunites: calculateOpportunities(products),
+      opportunites: calculateOpportunities(products, referenceDomain),
       detailleurs: calculateRetailerAnalysis(products),
       alertes: calculateAlerts(products, referenceDomain),
-      stats: calculateStats(products, scrapesParJour)
+      stats: calculateStats(products, scrapesParJour, totalScrapes)
     }
-    
-    return NextResponse.json({ analytics })
-  } catch (error: any) {
+
+    return NextResponse.json({
+      analytics,
+      data_as_of: dataAsOf,
+      generated_at: new Date().toISOString(),
+    })
+  } catch (error: unknown) {
     console.error('Error calculating analytics:', error)
     // En cas d'erreur, retourner des analytics vides au lieu d'erreur
     const emptyAnalytics: AnalyticsData = {
@@ -167,51 +175,22 @@ export async function GET() {
 }
 
 /**
- * Calcule le nombre de scrapes par jour depuis les fichiers de logs
+ * Calcule le nombre de scrapes par jour depuis les lignes Supabase d'un utilisateur.
  */
-function calculateScrapesPerDay(): Array<{ date: string; count: number }> {
-  try {
-    const logsDir = path.join(process.cwd(), '..', 'scraper_logs')
-    
-    if (!fs.existsSync(logsDir)) {
-      return []
-    }
-    
-    // Lire tous les fichiers .lock pour obtenir les timestamps
-    const files = fs.readdirSync(logsDir)
-    const lockFiles = files.filter(f => f.endsWith('.lock'))
-    
-    // Grouper par jour
-    const scrapesByDay: Record<string, number> = {}
-    
-    lockFiles.forEach(file => {
-      try {
-        const lockPath = path.join(logsDir, file)
-        const lockContent = fs.readFileSync(lockPath, 'utf-8')
-        const lockData = JSON.parse(lockContent)
-        
-        if (lockData.startTime) {
-          const date = new Date(lockData.startTime)
-          const dateKey = date.toISOString().split('T')[0] // Format YYYY-MM-DD
-          
-          if (!scrapesByDay[dateKey]) {
-            scrapesByDay[dateKey] = 0
-          }
-          scrapesByDay[dateKey]++
-        }
-      } catch (e) {
-        // Ignorer les fichiers invalides
-        console.warn(`Error reading lock file ${file}:`, e)
-      }
-    })
-    
-    // Convertir en tableau et trier par date
-    return Object.entries(scrapesByDay)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-  } catch (error) {
-    console.error('Error calculating scrapes per day:', error)
-    return []
+function calculateScrapesPerDay(
+  scrapeRows: Array<{ created_at: string }>
+): Array<{ date: string; count: number }> {
+  const scrapesByDay: Record<string, number> = {}
+
+  for (const row of scrapeRows) {
+    if (!row.created_at) continue
+    const dateKey = row.created_at.split('T')[0]
+    if (!scrapesByDay[dateKey]) scrapesByDay[dateKey] = 0
+    scrapesByDay[dateKey]++
   }
+
+  return Object.entries(scrapesByDay)
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 

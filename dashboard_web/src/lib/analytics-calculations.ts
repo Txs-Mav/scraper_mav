@@ -16,6 +16,130 @@ export interface Product {
   disponibilite?: string
 }
 
+function normalizeSiteKey(site?: string): string {
+  if (!site) return 'unknown'
+  try {
+    const value = site.startsWith('http') ? site : `https://${site}`
+    return new URL(value).hostname.replace(/^www\./, '').toLowerCase()
+  } catch {
+    return site.replace(/^www\./, '').toLowerCase()
+  }
+}
+
+// ─── Normalisation unifiée des produits ──────────────────────────────
+// Doit correspondre à la logique Python dans scraper_ai/main.py
+
+/**
+ * Retire les accents (é→e, è→e, etc.)
+ */
+function stripAccents(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+/**
+ * Normalisation profonde : minuscules, sans accents, sans ponctuation,
+ * espaces insérés entre lettres et chiffres collés (ninja500 → ninja 500).
+ */
+export function deepNormalize(text: string): string {
+  if (!text) return ''
+  let t = text.toLowerCase().trim()
+  t = stripAccents(t)
+  // Insérer espace entre lettres/chiffres collés
+  t = t.replace(/([a-z])(\d)/g, '$1 $2')
+  t = t.replace(/(\d)([a-z])/g, '$1 $2')
+  // Retirer tout sauf lettres, chiffres, espaces
+  t = t.replace(/[^a-z0-9\s]/g, ' ')
+  // Unifier espaces
+  t = t.replace(/\s+/g, ' ').trim()
+  return t
+}
+
+const KNOWN_BRANDS = [
+  'kawasaki', 'honda', 'yamaha', 'suzuki', 'ktm', 'husqvarna',
+  'triumph', 'cfmoto', 'cf moto', 'aprilia', 'vespa', 'piaggio', 'ducati',
+  'bmw', 'harley-davidson', 'harley davidson', 'indian', 'royal enfield',
+  'can-am', 'can am', 'polaris', 'arctic cat', 'sea-doo', 'sea doo',
+  'ski-doo', 'ski doo', 'brp', 'segway', 'kymco', 'adly', 'beta',
+  'cub cadet', 'john deere', 'gas gas', 'gasgas', 'sherco', 'benelli',
+  'mv agusta', 'moto guzzi', 'zero', 'energica', 'sur-ron', 'surron',
+].sort((a, b) => b.length - a.length)
+
+const NORMALIZED_BRANDS = KNOWN_BRANDS.map(b => [deepNormalize(b), b] as const)
+
+const BRAND_ALIASES: Record<string, string> = {
+  'cf moto': 'cfmoto',
+  'harley davidson': 'harley davidson',
+  'can am': 'can am',
+  'sea doo': 'sea doo',
+  'ski doo': 'ski doo',
+  'gas gas': 'gasgas',
+  'sur ron': 'surron',
+}
+
+/**
+ * Génère une clé normalisée (marque, modele) pour un produit.
+ * Identique à la logique Python `normalize_product_key` mais retourne un string unique.
+ */
+export function normalizeProductGroupKey(p: Product): string {
+  let marque = deepNormalize(
+    (p.marque || '')
+      .replace(/^(manufacturier|fabricant|marque|brand)\s*:\s*/i, '')
+  )
+  let modele = deepNormalize(
+    (p.modele || '')
+      .replace(/^(modèle|modele|model)\s*:\s*/i, '')
+  )
+
+  if (!marque || !modele) {
+    const nameNorm = deepNormalize(p.name || '')
+    if (nameNorm) {
+      let detectedBrand = ''
+      let rest = nameNorm
+
+      for (const [normBrand] of NORMALIZED_BRANDS) {
+        if (nameNorm.startsWith(normBrand + ' ') || nameNorm === normBrand) {
+          detectedBrand = normBrand
+          rest = nameNorm.slice(normBrand.length).trim()
+          break
+        }
+        const idx = nameNorm.indexOf(normBrand)
+        if (idx >= 0) {
+          detectedBrand = normBrand
+          rest = (nameNorm.slice(0, idx) + ' ' + nameNorm.slice(idx + normBrand.length)).replace(/\s+/g, ' ').trim()
+          break
+        }
+      }
+
+      if (detectedBrand) {
+        if (!marque) marque = detectedBrand
+        if (!modele) {
+          // Retirer l'année
+          rest = rest.replace(/\b(20[12]\d)\b/g, '').replace(/\s+/g, ' ').trim()
+          modele = rest
+        }
+      } else if (!modele) {
+        modele = nameNorm.replace(/\b(20[12]\d)\b/g, '').replace(/\s+/g, ' ').trim()
+      }
+    }
+  }
+
+  marque = BRAND_ALIASES[marque] ?? marque
+
+  // Nettoyer les phrases parasites de localisation/concession dans le modèle
+  const DEALER_NOISE_PATTERNS = [
+    /\b(?:en\s+vente|disponible|neuf|usage|usag[ée])\s+(?:a|à|chez|au)\b.*/i,
+    /\b(?:mvm\s*motosport|morin\s*sports?|moto\s*thibault|moto\s*ducharme)\b.*/i,
+    /\b(?:shawinigan|trois\s*[-\s]*rivi[eè]res|montr[ée]al|qu[ée]bec|laval|longueuil|sherbrooke|drummondville|victoriaville|b[ée]cancour)\b.*/i,
+    /\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*/i,
+  ]
+  for (const pattern of DEALER_NOISE_PATTERNS) {
+    modele = modele.replace(pattern, '').trim()
+  }
+
+  // Clé unique: "marque|modele"
+  return `${marque}|${modele}`
+}
+
 export interface ScrapeMetadata {
   reference_url?: string
   reference_products_count?: number
@@ -89,13 +213,13 @@ export function calculatePricePositioning(
       ecartPourcentage: 0,
       ecartValeur: 0,
       classement: 1,
-      totalDetailleurs: 1,
-      message: 'Aucune donnée disponible'
+      totalDetailleurs: 0,
+      message: 'Aucune donnée disponible - effectuez un scraping pour voir les analyses.'
     }
   }
 
-  // Filtrer les produits avec prix valides
-  const validProducts = products.filter(p => p.prix > 0)
+  // Filtrer les produits avec prix valides (prix > 0 et < 500k pour éviter les IDs/erreurs)
+  const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
 
   if (!validProducts.length) {
     return {
@@ -104,14 +228,14 @@ export function calculatePricePositioning(
       ecartValeur: 0,
       classement: 1,
       totalDetailleurs: 1,
-      message: 'Aucun produit avec prix valide'
+      message: 'Aucun produit avec prix valide détecté.'
     }
   }
 
   // Grouper les produits par site
   const productsBySite: Record<string, Product[]> = {}
   validProducts.forEach(p => {
-    const site = p.sourceSite || 'unknown'
+    const site = normalizeSiteKey(p.sourceSite || p.sourceUrl)
     if (!productsBySite[site]) {
       productsBySite[site] = []
     }
@@ -126,10 +250,11 @@ export function calculatePricePositioning(
   })
 
   // Identifier le site de référence
-  const referencePrixMoyen = prixMoyenParSite[referenceSite] || prixMoyenParSite[Object.keys(prixMoyenParSite)[0]]
+  const normalizedReference = normalizeSiteKey(referenceSite)
+  const referencePrixMoyen = prixMoyenParSite[normalizedReference] || prixMoyenParSite[Object.keys(prixMoyenParSite)[0]]
 
   // Calculer la moyenne du marché (tous les sites sauf référence)
-  const autresSites = Object.entries(prixMoyenParSite).filter(([site]) => site !== referenceSite)
+  const autresSites = Object.entries(prixMoyenParSite).filter(([site]) => site !== normalizedReference)
   const prixMoyenMarche = autresSites.length > 0
     ? autresSites.reduce((sum, [, prix]) => sum + prix, 0) / autresSites.length
     : referencePrixMoyen
@@ -142,8 +267,9 @@ export function calculatePricePositioning(
 
   // Trier les sites par prix moyen (du moins cher au plus cher)
   const sitesTries = Object.entries(prixMoyenParSite).sort(([, a], [, b]) => a - b)
-  const classement = sitesTries.findIndex(([site]) => site === referenceSite) + 1
-  const totalDetailleurs = sitesTries.length
+  const indexTrouve = sitesTries.findIndex(([site]) => site === normalizedReference)
+  const classement = indexTrouve >= 0 ? indexTrouve + 1 : 1  // Si non trouvé, défaut à 1
+  const totalDetailleurs = Math.max(sitesTries.length, 1)  // Au minimum 1
 
   // Déterminer la position
   let position: 'lowest' | 'average' | 'above'
@@ -174,23 +300,30 @@ export function calculatePricePositioning(
  * Calcule l'analyse par produit
  */
 export function calculateProductAnalysis(
-  products: Product[]
+  products: Product[],
+  referenceSite: string
 ): AnalyticsData['produits'] {
   if (!products.length) return []
 
-  // Grouper les produits par nom (produits identiques)
-  const productsByName: Record<string, Product[]> = {}
-  products.forEach(p => {
-    const key = p.name || `${p.marque} ${p.modele}`
-    if (!productsByName[key]) {
-      productsByName[key] = []
+  // Filtrer les produits avec prix valides (pas d'IDs ou valeurs aberrantes)
+  const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
+  if (!validProducts.length) return []
+
+  // Grouper les produits par clé normalisée (marque + modèle)
+  const productsByKey: Record<string, { name: string; products: Product[] }> = {}
+  validProducts.forEach(p => {
+    const key = normalizeProductGroupKey(p)
+    if (!productsByKey[key]) {
+      productsByKey[key] = { name: p.name || `${p.marque} ${p.modele}`, products: [] }
     }
-    productsByName[key].push(p)
+    productsByKey[key].products.push(p)
   })
 
   // Calculer pour chaque produit
-  return Object.entries(productsByName).map(([name, prods]) => {
-    const validProds = prods.filter(p => p.prix > 0)
+  return Object.entries(productsByKey).map(([, group]) => {
+    const name = group.name
+    const prods = group.products
+    const validProds = prods.filter(p => p.prix > 0 && p.prix < 500000)
     if (!validProds.length) {
       return {
         name,
@@ -206,8 +339,12 @@ export function calculateProductAnalysis(
     // Prix moyen du produit sur tous les sites
     const prixMoyenMarche = validProds.reduce((sum, p) => sum + p.prix, 0) / validProds.length
 
-    // Prix de référence (premier produit ou celui avec prixReference)
-    const referenceProduct = validProds.find(p => p.prixReference) || validProds[0]
+    const normalizedReference = normalizeSiteKey(referenceSite)
+    // Prix de référence: produit du site de référence, sinon fallback existant
+    const referenceProduct =
+      validProds.find(p => normalizeSiteKey(p.sourceSite || p.sourceUrl) === normalizedReference) ||
+      validProds.find(p => p.prixReference) ||
+      validProds[0]
     const prix = referenceProduct.prix
 
     const ecartPourcentage = prixMoyenMarche > 0
@@ -233,30 +370,40 @@ export function calculateProductAnalysis(
  * Calcule les opportunités
  */
 export function calculateOpportunities(
-  products: Product[]
+  products: Product[],
+  referenceSite: string
 ): AnalyticsData['opportunites'] {
   const opportunites: AnalyticsData['opportunites'] = []
 
-  // Grouper par produit
-  const productsByName: Record<string, Product[]> = {}
-  products.forEach(p => {
-    const key = p.name || `${p.marque} ${p.modele}`
-    if (!productsByName[key]) {
-      productsByName[key] = []
+  // Filtrer les produits avec prix valides
+  const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
+  if (!validProducts.length) return []
+
+  // Grouper par produit (clé normalisée)
+  const productsByKey: Record<string, { name: string; products: Product[] }> = {}
+  validProducts.forEach(p => {
+    const key = normalizeProductGroupKey(p)
+    if (!productsByKey[key]) {
+      productsByKey[key] = { name: p.name || `${p.marque} ${p.modele}`, products: [] }
     }
-    productsByName[key].push(p)
+    productsByKey[key].products.push(p)
   })
 
-  Object.entries(productsByName).forEach(([name, prods]) => {
-    const validProds = prods.filter(p => p.prix > 0)
+  Object.entries(productsByKey).forEach(([, group]) => {
+    const name = group.name
+    const prods = group.products
+    const validProds = prods.filter(p => p.prix > 0 && p.prix < 500000)
     if (validProds.length < 2) return // Besoin d'au moins 2 sites pour comparer
 
     const prixMoyenMarche = validProds.reduce((sum, p) => sum + p.prix, 0) / validProds.length
-    const referenceProduct = validProds[0]
+    const normalizedReference = normalizeSiteKey(referenceSite)
+    const referenceProduct =
+      validProds.find(p => normalizeSiteKey(p.sourceSite || p.sourceUrl) === normalizedReference) ||
+      validProds[0]
     const prixReference = referenceProduct.prix
     const ecartPourcentage = prixMoyenMarche > 0
       ? ((prixReference - prixMoyenMarche) / prixMoyenMarche) * 100
-    : 0
+      : 0
 
     // Opportunité d'augmentation : prix < moyenne mais proche
     if (prixReference < prixMoyenMarche && Math.abs(ecartPourcentage) < 10) {
@@ -304,10 +451,14 @@ export function calculateRetailerAnalysis(
 ): AnalyticsData['detailleurs'] {
   if (!products.length) return []
 
+  // Filtrer les produits avec prix valides
+  const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
+  if (!validProducts.length) return []
+
   // Grouper par site
   const productsBySite: Record<string, Product[]> = {}
-  products.forEach(p => {
-    const site = p.sourceSite || 'unknown'
+  validProducts.forEach(p => {
+    const site = normalizeSiteKey(p.sourceSite || p.sourceUrl)
     if (!productsBySite[site]) {
       productsBySite[site] = []
     }
@@ -315,7 +466,7 @@ export function calculateRetailerAnalysis(
   })
 
   return Object.entries(productsBySite).map(([site, prods]) => {
-    const validProds = prods.filter(p => p.prix > 0)
+    const validProds = prods.filter(p => p.prix > 0 && p.prix < 500000)
     const prixMoyen = validProds.length > 0
       ? validProds.reduce((sum, p) => sum + p.prix, 0) / validProds.length
       : 0
@@ -354,24 +505,27 @@ export function calculateAlerts(
 ): AnalyticsData['alertes'] {
   const alertes: AnalyticsData['alertes'] = []
 
-  // Grouper par produit
-  const productsByName: Record<string, Product[]> = {}
+  // Grouper par produit (clé normalisée)
+  const productsByKey: Record<string, Product[]> = {}
   products.forEach(p => {
-    const key = p.name || `${p.marque} ${p.modele}`
-    if (!productsByName[key]) {
-      productsByName[key] = []
+    const key = normalizeProductGroupKey(p)
+    if (!productsByKey[key]) {
+      productsByKey[key] = []
     }
-    productsByName[key].push(p)
+    productsByKey[key].push(p)
   })
 
+  const normalizedReference = normalizeSiteKey(referenceSite)
   // Compter les produits non compétitifs
   let produitsNonCompetitifs = 0
-  Object.values(productsByName).forEach(prods => {
+  Object.values(productsByKey).forEach(prods => {
     const validProds = prods.filter(p => p.prix > 0)
     if (validProds.length < 2) return
 
     const prixMoyenMarche = validProds.reduce((sum, p) => sum + p.prix, 0) / validProds.length
-    const referenceProduct = validProds.find(p => p.sourceSite === referenceSite) || validProds[0]
+    const referenceProduct =
+      validProds.find(p => normalizeSiteKey(p.sourceSite || p.sourceUrl) === normalizedReference) ||
+      validProds[0]
     if (referenceProduct.prix > prixMoyenMarche * 1.1) {
       produitsNonCompetitifs++
     }
@@ -406,9 +560,11 @@ export function calculateAlerts(
  */
 export function calculateStats(
   products: Product[],
-  scrapesParJour: Array<{ date: string; count: number }>
+  scrapesParJour: Array<{ date: string; count: number }>,
+  totalScrapes?: number
 ): AnalyticsData['stats'] {
-  const validProducts = products.filter(p => p.prix > 0)
+  // Filtrer les prix valides (exclure les IDs et valeurs aberrantes)
+  const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
   const prixMoyen = validProducts.length > 0
     ? validProducts.reduce((sum, p) => sum + p.prix, 0) / validProducts.length
     : 0
@@ -420,7 +576,7 @@ export function calculateStats(
   return {
     prixMoyen,
     heuresEconomisees,
-    nombreScrapes: scrapesParJour.reduce((sum, d) => sum + d.count, 0),
+    nombreScrapes: totalScrapes ?? scrapesParJour.reduce((sum, d) => sum + d.count, 0),
     scrapesParJour
   }
 }
@@ -430,8 +586,9 @@ export function calculateStats(
  * Note: Nécessite des données historiques qui ne sont pas encore disponibles
  */
 export function calculatePriceEvolution(
-  products: Product[]
+  _products: Product[]
 ): AnalyticsData['evolutionPrix'] {
+  void _products
   // Pour l'instant, retourner des données vides car on n'a pas d'historique
   // Cette fonction sera implémentée quand on aura des données temporelles
   return []

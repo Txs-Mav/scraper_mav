@@ -5,10 +5,12 @@ import Image from "next/image"
 import { Info, X } from "lucide-react"
 import BlocTemplate from "./ui/bloc-template"
 import { createPortal } from "react-dom"
+import { deepNormalize } from "@/lib/analytics-calculations"
 
 type Product = {
   name: string
   modele?: string
+  marque?: string
   image?: string
   prix?: number
   prixReference?: number | null
@@ -20,6 +22,7 @@ type Product = {
 type PriceComparisonTableProps = {
   products: Product[]
   competitorsUrls?: string[]
+  ignoreColors?: boolean
 }
 
 function hostnameFromUrl(url: string) {
@@ -29,6 +32,101 @@ function hostnameFromUrl(url: string) {
   } catch {
     return url
   }
+}
+
+// Extraire la marque depuis "Manufacturier :CFMOTO" → "CFMOTO"
+function extractMarque(marqueField: string | undefined): string {
+  if (!marqueField) return ""
+  return marqueField.replace(/^Manufacturier\s*:\s*/i, "").trim()
+}
+
+// Extraire le modèle depuis "Modèle :CFORCE 800 TOURING" → "CFORCE 800 TOURING"
+function extractModele(modeleField: string | undefined): string {
+  if (!modeleField) return ""
+  return modeleField.replace(/^Modèle\s*:\s*/i, "").trim()
+}
+
+// Liste de couleurs à ignorer (doit correspondre au backend Python)
+const COLOR_KEYWORDS_NORMALIZED = new Set([
+  'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
+  'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
+  'brillant', 'mat', 'metallise', 'metallique',
+  'perle', 'nacre', 'satin', 'chrome', 'carbone',
+  'fonce', 'clair', 'fluo', 'neon',
+  'combat', 'lime', 'sauge', 'cristal', 'obsidian', 'ebony', 'ivory',
+  'petard', 'sommet', 'grisatre',
+  'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
+  'gray', 'grey', 'silver', 'gold', 'brown',
+  'matte', 'glossy', 'metallic', 'pearl', 'carbon',
+  'dark', 'light', 'neon', 'bright',
+  'etincelle', 'velocite',
+])
+
+function removeColors(text: string): string {
+  if (!text) return ''
+  const normalized = deepNormalize(text)
+  return normalized.split(' ')
+    .filter(word => !COLOR_KEYWORDS_NORMALIZED.has(word))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Générer le nom complet du produit : Marque + Modèle
+function getProductDisplayName(product: Product): string {
+  const marque = extractMarque(product.marque)
+  const modele = extractModele(product.modele)
+
+  const genericNames = ["aperçu", "spécifications", "promotion", "specifications", "overview"]
+  const isGenericName = genericNames.includes((product.name || "").toLowerCase())
+
+  if (!isGenericName && product.name && !product.name.startsWith("Manufacturier")) {
+    return product.name
+  }
+
+  if (marque && modele) return `${marque} ${modele}`
+  if (modele) return modele
+  if (marque) return marque
+  return product.name || "Produit"
+}
+
+/**
+ * Génère une clé de comparaison pour un produit.
+ * Utilise deepNormalize pour aligner avec le backend Python.
+ * Quand ignoreColors=true : retire aussi les couleurs.
+ */
+function cleanDealerNoise(text: string): string {
+  const patterns = [
+    /\b(?:en\s+vente|disponible|neuf|usage|usag[ée])\s+(?:a|à|chez|au)\b.*/i,
+    /\b(?:mvm\s*motosport|morin\s*sports?|moto\s*thibault|moto\s*ducharme)\b.*/i,
+    /\b(?:shawinigan|trois\s*[-\s]*rivi[eè]res|montr[ée]al|qu[ée]bec|laval|longueuil|sherbrooke|drummondville|victoriaville|b[ée]cancour)\b.*/i,
+    /\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*/i,
+  ]
+  let cleaned = text
+  for (const pattern of patterns) {
+    cleaned = cleaned.replace(pattern, '').trim()
+  }
+  return cleaned
+}
+
+function getProductComparisonKey(product: Product, ignoreColors: boolean): string {
+  let marque = deepNormalize(extractMarque(product.marque))
+  let modele = deepNormalize(extractModele(product.modele))
+  
+  // Nettoyer les phrases parasites de concession/localisation
+  modele = cleanDealerNoise(modele)
+  
+  if (marque && modele) {
+    const finalMarque = ignoreColors ? removeColors(marque) : marque
+    const finalModele = ignoreColors ? removeColors(modele) : modele
+    return `${finalMarque}|${finalModele}`
+  }
+  
+  // Fallback : nom complet normalisé (deepNormalize aligne avec Python)
+  const displayName = getProductDisplayName(product)
+  let key = deepNormalize(displayName)
+  key = cleanDealerNoise(key)
+  return ignoreColors ? removeColors(key) : key
 }
 
 function PriceCell({ price, delta }: { price: number | null; delta: number | null }) {
@@ -51,7 +149,7 @@ function PriceCell({ price, delta }: { price: number | null; delta: number | nul
   )
 }
 
-export default function PriceComparisonTable({ products, competitorsUrls = [] }: PriceComparisonTableProps) {
+export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false }: PriceComparisonTableProps) {
   const [showExample, setShowExample] = useState(false)
   const [loadingExample, setLoadingExample] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -93,16 +191,82 @@ export default function PriceComparisonTable({ products, competitorsUrls = [] }:
   ]
 
   const tableData = useMemo(() => {
-    return products.map(p => {
-      const reference = p.prixReference ?? p.prix ?? null
+    // ── Regrouper les produits comparés par clé normalisée ──
+    // Chaque produit concurrent a prixReference (prix du site de référence) et prix (prix du concurrent).
+    // On regroupe pour créer UNE ligne par produit avec :
+    //   - le prix de référence
+    //   - le prix de chaque concurrent (par site)
+    const groups = new Map<string, {
+      displayName: string
+      image?: string
+      modele?: string
+      marque?: string
+      reference: number | null
+      competitorPrices: Record<string, number>
+    }>()
+
+    let refOnlyIndex = 0
+    for (const p of products) {
+      const baseKey = getProductComparisonKey(p, ignoreColors)
+      const hasComparison = p.prixReference !== null && p.prixReference !== undefined
+
+      if (hasComparison) {
+        // Produit comparé (concurrent avec prix de référence)
+        const key = baseKey
+        if (!groups.has(key)) {
+          groups.set(key, {
+            displayName: getProductDisplayName(p),
+            image: p.image,
+            modele: p.modele,
+            marque: p.marque,
+            reference: p.prixReference ?? null,
+            competitorPrices: {},
+          })
+        }
+        const group = groups.get(key)!
+        const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
+        if (siteLabel && p.prix != null) {
+          if (!group.competitorPrices[siteLabel] || !ignoreColors) {
+            group.competitorPrices[siteLabel] = p.prix
+          }
+        }
+        if (group.reference === null && p.prixReference != null) {
+          group.reference = p.prixReference
+        }
+      } else {
+        // Produit de référence seul (pas de concurrent) : une ligne par produit
+        const refPrice = p.prix != null && p.prix > 0 ? p.prix : null
+        if (refPrice === null) continue
+        const key = `${baseKey}__ref_${refOnlyIndex++}`
+        groups.set(key, {
+          displayName: getProductDisplayName(p),
+          image: p.image,
+          modele: p.modele,
+          marque: p.marque,
+          reference: refPrice,
+          competitorPrices: {},
+        })
+      }
+    }
+
+    return Array.from(groups.values()).map(g => {
       const prices = competitors.map(c => {
-        const price = p.competitors?.[c.label] ?? null
-        const delta = reference !== null && price !== null ? price - reference : null
+        const price = g.competitorPrices[c.label] ?? null
+        const delta = g.reference !== null && price !== null ? price - g.reference : null
         return { dealer: c.label, price, delta }
       })
-      return { ...p, reference, prices }
+
+      return {
+        name: g.displayName,
+        displayName: g.displayName,
+        image: g.image,
+        modele: g.modele,
+        marque: g.marque,
+        reference: g.reference,
+        prices,
+      }
     })
-  }, [products, competitors])
+  }, [products, competitors, ignoreColors])
 
   const exampleData = useMemo(() => {
     return exampleProducts.map(p => {
@@ -137,7 +301,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [] }:
                 <th className="sticky left-0 bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
                   Image
                 </th>
-                <th className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                <th className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
                   Produit
                 </th>
                 <th className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
@@ -172,10 +336,12 @@ export default function PriceComparisonTable({ products, competitorsUrls = [] }:
                       )}
                     </div>
                   </td>
-                  <td className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2">
+                  <td className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 min-w-[280px]">
                     <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{p.name}</span>
-                      {p.modele && <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{p.modele}</span>}
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
+                        {p.displayName || p.name}
+                      </span>
+                      {p.modele && <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-normal">Modèle: {extractModele(p.modele)}</span>}
                     </div>
                   </td>
                   <td className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
@@ -200,7 +366,10 @@ export default function PriceComparisonTable({ products, competitorsUrls = [] }:
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Comparatif des prix</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Tous les produits scrappés, par concessionnaire</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Tous les produits scrappés, par concessionnaire
+            {ignoreColors && <span className="ml-2 text-xs text-blue-500">(couleurs ignorées)</span>}
+          </p>
         </div>
         <button
           type="button"
@@ -222,7 +391,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [] }:
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
           <div className="bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white px-4 py-3 rounded-xl shadow-lg border border-gray-100 dark:border-[#1F1F23] flex items-center gap-3">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-            <span className="text-sm font-medium">Chargement de l’exemple…</span>
+            <span className="text-sm font-medium">Chargement de l&apos;exemple…</span>
           </div>
         </div>
       )}
@@ -260,4 +429,3 @@ export default function PriceComparisonTable({ products, competitorsUrls = [] }:
     </BlocTemplate>
   )
 }
-

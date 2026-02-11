@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
-import { getLocalScrapingsCount, isLocalScrapingsLimitReached } from "@/lib/local-storage"
+import { getLocalScrapingsCount } from "@/lib/local-storage"
+import { PLAN_FEATURES } from "@/lib/plan-restrictions"
 
 interface ScrapingLimit {
   current: number
@@ -43,7 +44,11 @@ export function useScrapingLimit(): ScrapingLimit {
     return () => clearInterval(interval)
   }, [user])
 
-  const limit = user?.subscription_plan === 'free' ? 10 : user ? Infinity : 10
+  // Plan standard (gratuit) ou non confirmé = 6 scrapings max
+  // Plans pro/ultime confirmés (payés ou code promo) = illimités
+  // Fallback : si subscription_source est null mais promo_code_id est défini → promo
+  const effectiveSource = user?.subscription_source || (user?.promo_code_id ? 'promo' : null)
+  const limit = PLAN_FEATURES.scrapingLimit(user?.subscription_plan, effectiveSource)
   const isAtLimit = count >= limit
   const isNearLimit = limit !== Infinity && count >= limit * 0.8
 
