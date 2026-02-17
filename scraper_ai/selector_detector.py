@@ -62,6 +62,10 @@ SELECTOR_DETECTION_SCHEMA = {
                 "availability": {
                     "type": "string",
                     "description": "Sélecteur CSS pour la disponibilité (optionnel)"
+                },
+                "condition": {
+                    "type": "string",
+                    "description": "Sélecteur CSS pour l'état/condition du véhicule: neuf, usagé, occasion, démonstrateur (optionnel, souvent un badge ou label)"
                 }
             },
             "required": ["product_container", "name", "price", "image", "link"]
@@ -226,7 +230,7 @@ URL de base: {base_url}
 
 ## CONTEXTE
 Ce site vend des véhicules (motos, motoneiges, quads, etc.).
-On veut extraire: nom, prix, image, lien vers la page détail, marque, modèle, année.
+On veut extraire: nom, prix, image, lien vers la page détail, marque, modèle, année, et ÉTAT/CONDITION (neuf, usagé/occasion, démonstrateur).
 
 ## RÈGLES IMPORTANTES
 
@@ -247,7 +251,12 @@ On veut extraire: nom, prix, image, lien vers la page détail, marque, modèle, 
    - Cherche img avec src ou data-src
    - Préfère les images principales (pas les thumbnails)
 
-5. **Pagination**:
+5. **Condition/État du véhicule**:
+   - Cherche les badges, labels, ou textes indiquant: "Neuf", "Usagé", "Occasion", "Démonstrateur", "Used", "New", "Demo"
+   - Souvent dans des badges ([class*="badge"]), labels, ou spans avec des classes comme "condition", "etat", "status", "type"
+   - Aussi dans les breadcrumbs ou catégories (ex: "Inventaire neuf", "Véhicules d'occasion")
+
+6. **Pagination**:
    - Identifie le type: URL params (?page=2), bouton next, scroll infini
    - Si bouton next, donne le sélecteur
 
@@ -295,7 +304,8 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
                 "model": "[class*='model'], [class*='modele']",
                 "year": "[class*='year'], [class*='annee'], [class*='year']",
                 "mileage": "[class*='mileage'], [class*='kilometrage'], [class*='km']",
-                "availability": "[class*='stock'], [class*='disponib'], [class*='avail']"
+                "availability": "[class*='stock'], [class*='disponib'], [class*='avail']",
+                "condition": "[class*='condition'], [class*='etat'], [class*='badge'], [class*='status'], [class*='type']"
             },
             "pagination": {
                 "type": "url_params",
@@ -347,7 +357,7 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
             base_url: URL de base pour résoudre les liens relatifs
 
         Returns:
-            Liste de produits extraits
+            Liste de produits extraits avec etat et sourceCategorie détectés
         """
         from urllib.parse import urljoin
 
@@ -395,6 +405,13 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
                             year = self._parse_year(year_text)
                             if year:
                                 product['annee'] = year
+                        elif field == 'condition':
+                            # Pour l'état/condition, mapper vers etat
+                            text = element.get_text(strip=True).lower()
+                            if text:
+                                etat = self._parse_condition(text)
+                                if etat:
+                                    product['etat'] = etat
                         else:
                             # Pour les autres champs, prendre le texte
                             text = element.get_text(strip=True)
@@ -411,12 +428,115 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
                 except Exception:
                     continue
 
+            # ── Détection de l'état depuis l'URL du produit ──
+            # L'URL du produit contient souvent l'état (neuf, usage, occasion)
+            if not product.get('etat'):
+                product_url = product.get('sourceUrl', '')
+                etat_from_url = self._detect_etat_from_url(product_url)
+                if etat_from_url:
+                    product['etat'] = etat_from_url
+
+            # ── Détection de l'état depuis le texte du container ──
+            if not product.get('etat'):
+                container_text = container.get_text(separator=' ', strip=True).lower()
+                etat_from_text = self._detect_etat_from_text(container_text)
+                if etat_from_text:
+                    product['etat'] = etat_from_text
+
+            # ── Détection du sourceCategorie depuis l'URL du produit ──
+            if not product.get('sourceCategorie'):
+                product_url = product.get('sourceUrl', '')
+                source_cat = self._detect_source_categorie_from_url(product_url)
+                if source_cat:
+                    product['sourceCategorie'] = source_cat
+
             # Ajouter le produit s'il a au moins un nom ou un prix
             if product.get('name') or product.get('prix'):
                 product['sourceSite'] = base_url
                 products.append(product)
 
         return products
+
+    def _parse_condition(self, text: str) -> Optional[str]:
+        """Parse un texte de condition en valeur normalisée (neuf, occasion, demonstrateur)"""
+        if not text:
+            return None
+        text = text.lower().strip()
+        
+        if any(x in text for x in ['usagé', 'usag', 'occasion', 'used', 'pre-owned', 'pré-possédé', 'pre-possede', 'seconde main']):
+            return 'occasion'
+        elif any(x in text for x in ['démonstrateur', 'demonstrateur', 'démo', 'demo']):
+            return 'demonstrateur'
+        elif any(x in text for x in ['neuf', 'new', 'nouveau']):
+            return 'neuf'
+        return None
+
+    def _detect_etat_from_url(self, url: str) -> Optional[str]:
+        """Détecte l'état du produit depuis son URL
+        
+        Les sites de concessionnaires encodent souvent l'état dans l'URL:
+        - /usage/ ou /used/ ou /occasion/ → occasion
+        - /neuf/ ou /new/ → neuf
+        - /demo/ → demonstrateur
+        """
+        if not url:
+            return None
+        url_lower = url.lower()
+        
+        # Patterns URL pour occasion/usagé
+        if any(x in url_lower for x in ['/usage/', '/used/', '/occasion/', '/pre-owned/',
+                                          '/usag', '/d-occasion/', '/pre-possede/',
+                                          '-usage-', '-used-', '-occasion-',
+                                          'vehicules-occasion', 'vehicule-occasion',
+                                          'inventaire-usage']):
+            return 'occasion'
+        
+        # Patterns URL pour démonstrateur
+        if any(x in url_lower for x in ['/demo/', '/demonstrat/', '-demo-', '-demonstr-',
+                                          'demonstrateur']):
+            return 'demonstrateur'
+        
+        # Patterns URL pour neuf
+        if any(x in url_lower for x in ['/neuf/', '/new/', '-neuf-', '-new-',
+                                          'inventaire-neuf']):
+            return 'neuf'
+        
+        return None
+
+    def _detect_etat_from_text(self, text: str) -> Optional[str]:
+        """Détecte l'état depuis le texte visible du container produit"""
+        if not text:
+            return None
+        
+        import re
+        # Chercher des mots-clés d'état encadrés par des espaces ou limites de mots
+        # pour éviter les faux positifs (ex: "neuf" dans "neufly")
+        if re.search(r'\b(usagé|usag[eé]|occasion|used|pre-owned|pré-possédé)\b', text):
+            return 'occasion'
+        if re.search(r'\b(démonstrateur|demonstrateur|démo|demo unit)\b', text):
+            return 'demonstrateur'
+        if re.search(r'\b(neuf|brand new)\b', text):
+            return 'neuf'
+        
+        return None
+
+    def _detect_source_categorie_from_url(self, url: str) -> Optional[str]:
+        """Détecte le sourceCategorie depuis l'URL du produit"""
+        if not url:
+            return None
+        url_lower = url.lower()
+        
+        if any(x in url_lower for x in ['occasion', 'used', 'pre-owned', 'usag', 'd-occasion',
+                                          'pre-possede', 'seconde-main']):
+            return 'vehicules_occasion'
+        elif any(x in url_lower for x in ['catalogue', 'catalog', 'showroom', 'gamme',
+                                            '/models/', '/modeles/']):
+            return 'catalogue'
+        elif any(x in url_lower for x in ['inventaire', 'inventory', 'stock', 'en-stock',
+                                            'a-vendre', 'for-sale']):
+            return 'inventaire'
+        
+        return None
 
     def _parse_price(self, price_text: str) -> Optional[float]:
         """Parse un texte de prix en nombre

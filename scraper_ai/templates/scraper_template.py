@@ -1778,12 +1778,36 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
     # Champs requis
     product['sourceUrl'] = url
     product['sourceSite'] = base_url
-    # Détection basée sur URL si possible
-    product['sourceCategorie'] = 'inventaire'
-    if any(x in url.lower() for x in ['occasion', 'used', 'usagé']):
+    
+    # Détection de sourceCategorie basée sur l'URL
+    url_lower = url.lower()
+    if any(x in url_lower for x in ['occasion', 'used', 'usagé', 'usag', 'pre-owned', 'pre-possede', 'd-occasion', 'seconde-main']):
         product['sourceCategorie'] = 'vehicules_occasion'
-    elif any(x in url.lower() for x in ['catalogue', 'catalog']):
+    elif any(x in url_lower for x in ['catalogue', 'catalog', 'showroom', 'gamme', '/models/', '/modeles/']):
         product['sourceCategorie'] = 'catalogue'
+    elif any(x in url_lower for x in ['inventaire', 'inventory', 'stock', 'en-stock', 'a-vendre', 'for-sale']):
+        product['sourceCategorie'] = 'inventaire'
+    else:
+        product['sourceCategorie'] = 'inventaire'  # Par défaut
+    
+    # Détection de l'état du produit (neuf, occasion, demonstrateur)
+    etat = None
+    # Signal 1: URL patterns
+    if any(x in url_lower for x in ['occasion', 'used', 'pre-owned', 'usag', 'd-occasion', 'pre-possede']):
+        etat = 'occasion'
+    elif any(x in url_lower for x in ['neuf', '/new/', '-new-', '/new-']):
+        etat = 'neuf'
+    elif any(x in url_lower for x in ['demo', 'demonstrat', 'demonstr']):
+        etat = 'demonstrateur'
+    # Signal 2: Déduire depuis sourceCategorie
+    if not etat:
+        if product['sourceCategorie'] == 'vehicules_occasion':
+            etat = 'occasion'
+        elif product['sourceCategorie'] == 'catalogue':
+            etat = 'neuf'
+        else:
+            etat = 'neuf'  # Inventaire par défaut = neuf
+    product['etat'] = etat
 
     product['disponibilite'] = 'en_stock'  # Par défaut
     # Détection basique de disponibilité (sans description)

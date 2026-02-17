@@ -1,8 +1,9 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/types/user'
+import type { Session } from '@supabase/supabase-js'
 
 interface AuthContextType {
   user: User | null
@@ -20,101 +21,140 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const supabase = createClient()
+  const isInitialized = useRef(false)
 
-  const refreshUser = async () => {
+  // Charger les données utilisateur depuis la table users via fetch direct
+  const loadUserFromTable = useCallback(async (userId: string, accessToken?: string): Promise<User | null> => {
+    console.log('[Auth] Loading user from table for id:', userId)
     try {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
-
-      if (!authUser) {
-        setUser(null)
-        setIsLoading(false)
-        return
+      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?id=eq.${userId}&select=*`
+      const headers: HeadersInit = {
+        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        'Content-Type': 'application/json',
       }
 
-      // Récupérer les données utilisateur depuis la table users
-      const { data: userData, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`
+      }
 
-      if (error) {
-        // Log l'erreur pour diagnostic (RLS, etc.)
-        console.error('Error fetching user from users table:', error)
-        console.error('Error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        })
-        setUser(null)
-      } else if (!userData) {
-        console.warn('User not found in users table for auth user:', authUser.id)
-        setUser(null)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+      const response = await fetch(url, { headers, signal: controller.signal })
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        console.error('[Auth] Fetch error:', response.status, response.statusText)
+        return null
+      }
+
+      const data = await response.json()
+      console.log('[Auth] Fetch result:', data)
+
+      if (!data || data.length === 0) {
+        console.warn('[Auth] User not found in users table for id:', userId)
+        return null
+      }
+
+      const userData = data[0]
+      console.log('[Auth] User loaded successfully:', userData.name)
+      return userData as User
+    } catch (error: unknown) {
+      // Ne jamais lancer d'exception - retourner null pour que isLoading s'arrête toujours
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.warn('[Auth] Request timed out in loadUserFromTable')
       } else {
-        setUser(userData as User)
+        console.error('[Auth] Error in loadUserFromTable:', error)
+      }
+      return null
+    }
+  }, [])
+
+  // Gérer le changement de session
+  const handleSessionChange = useCallback(async (session: Session | null) => {
+    console.log('[Auth] handleSessionChange:', session ? 'has session' : 'no session')
+
+    try {
+      if (session?.user) {
+        const userData = await loadUserFromTable(session.user.id, session.access_token)
+        
+        // Si session existe mais utilisateur pas dans notre table => déconnecter
+        if (!userData) {
+          console.log('[Auth] Session exists but user not in table, signing out')
+          await supabase.auth.signOut()
+          setUser(null)
+        } else {
+          setUser(userData)
+        }
+      } else {
+        setUser(null)
       }
     } catch (error) {
-      console.error('Error refreshing user:', error)
+      console.error('[Auth] Error in handleSessionChange:', error)
+      setUser(null)
+    } finally {
+      // TOUJOURS arrêter le chargement, même si erreur
+      setIsLoading(false)
+    }
+  }, [loadUserFromTable])
+
+  // Fonction refreshUser pour les appels manuels
+  const refreshUser = useCallback(async () => {
+    console.log('[Auth] refreshUser() called')
+    try {
+      // Utiliser getSession au lieu de getUser pour éviter les problèmes de blocage
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (session?.user) {
+        const userData = await loadUserFromTable(session.user.id, session.access_token)
+        setUser(userData)
+      } else {
+        setUser(null)
+      }
+    } catch (error) {
+      console.error('[Auth] Error in refreshUser:', error)
       setUser(null)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [supabase, loadUserFromTable])
 
   useEffect(() => {
-    let isMounted = true
+    // Éviter la double initialisation en mode Strict
+    if (isInitialized.current) return
+    isInitialized.current = true
 
-    // Vérifier la session immédiatement au chargement
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (!isMounted) return
-        
-        if (session) {
-          await refreshUser()
-        } else {
-          setUser(null)
-          setIsLoading(false)
-        }
-      } catch (error) {
-        console.error('[Auth] Error initializing:', error)
-        if (isMounted) {
-          setUser(null)
-          setIsLoading(false)
-        }
-      }
-    }
-
-    initializeAuth()
+    console.log('[Auth] Setting up auth listener...')
 
     // Écouter les changements d'authentification
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isMounted) return
-      
-      console.log('[Auth] Event:', event)
-      
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        await refreshUser()
+      console.log('[Auth] Event:', event, 'Session:', session ? 'exists' : 'null')
+
+      if (event === 'INITIAL_SESSION') {
+        // Gérer la session initiale
+        await handleSessionChange(session)
+
+      } else if (event === 'SIGNED_IN') {
+        await handleSessionChange(session)
+
         // Proposer la migration des scrapings locaux
-        if (event === 'SIGNED_IN') {
-          try {
-            const { getLocalScrapingsCount } = await import('@/lib/local-storage')
-            const localCount = getLocalScrapingsCount()
-            if (localCount > 0) {
-              window.dispatchEvent(new CustomEvent('local-scrapings-available', { 
-                detail: { count: localCount } 
-              }))
-            }
-          } catch (error) {
-            console.error('Error checking local scrapings:', error)
+        try {
+          const { getLocalScrapingsCount } = await import('@/lib/local-storage')
+          const localCount = getLocalScrapingsCount()
+          if (localCount > 0) {
+            window.dispatchEvent(new CustomEvent('local-scrapings-available', {
+              detail: { count: localCount }
+            }))
           }
+        } catch (error) {
+          console.error('Error checking local scrapings:', error)
         }
+
+      } else if (event === 'TOKEN_REFRESHED') {
+        await handleSessionChange(session)
+
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setIsLoading(false)
@@ -122,10 +162,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
-      isMounted = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, [supabase, handleSessionChange])
 
   const login = async (email: string, password: string) => {
     try {
@@ -135,17 +174,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (error) {
-        // Supabase retourne "Invalid login credentials" pour les deux cas :
-        // - Email n'existe pas
-        // - Mot de passe incorrect
-        // Pour des raisons de sécurité, on ne peut pas distinguer les deux
-        // Mais on peut améliorer le message
         let errorMessage = "Email ou mot de passe incorrect"
         let errorCode = 'INVALID_CREDENTIALS'
-        
-        if (error.message?.includes('Invalid login credentials') || 
-            error.message?.includes('Invalid email or password')) {
-          // Message générique car Supabase ne distingue pas les deux cas
+
+        if (error.message?.includes('Invalid login credentials') ||
+          error.message?.includes('Invalid email or password')) {
           errorMessage = "L'email ou le mot de passe est incorrect. Veuillez vérifier vos identifiants."
         } else if (error.message?.includes('Email not confirmed')) {
           errorMessage = "Veuillez confirmer votre email avant de vous connecter"
@@ -153,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           errorMessage = error.message || "Erreur lors de la connexion"
         }
-        
+
         return { error: { message: errorMessage, code: errorCode, status: error.status } }
       }
 
@@ -161,13 +194,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: { message: 'Échec de la connexion. Veuillez réessayer.' } }
       }
 
-      // Rafraîchir l'utilisateur depuis la table users
-      await refreshUser()
+      // Vérifier que l'utilisateur existe dans notre table (compte supprimé = absent)
+      const userData = await loadUserFromTable(data.user.id, data.session.access_token)
+      if (!userData) {
+        await supabase.auth.signOut()
+        return {
+          error: {
+            message: "Ce compte n'existe pas ou a été supprimé.",
+            code: 'ACCOUNT_NOT_FOUND',
+          },
+        }
+      }
 
-      // Vérifier que l'utilisateur a bien été chargé
-      // Note: On ne peut pas vérifier directement ici car setUser() est asynchrone
-      // La vérification se fera dans login/page.tsx avec useEffect
-
+      setUser(userData)
       return { error: null }
     } catch (error: any) {
       console.error('Error in login:', error)
@@ -192,48 +231,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     plan?: string
   }) => {
     try {
-      // Créer le compte via Supabase Auth.
-      // Le trigger handle_new_user() en base crée users + subscriptions.
+      // Stocker le plan payant comme pending_plan s'il n'est pas standard
+      const pendingPlan = data.plan && data.plan !== 'standard' ? data.plan : null
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: {
             name: data.name,
-            subscription_plan: data.plan || 'free'
-          }
+            subscription_plan: 'standard', // Toujours créer avec standard
+            pending_plan: pendingPlan // Plan payant en attente de paiement
+          },
+          // Rediriger vers l'origine actuelle (localhost ou prod) après confirmation email
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined
         }
       })
 
       if (authError) {
-        // Vérifier si l'erreur indique que le compte existe déjà
-        const isAccountExists = 
-          authError.message?.includes('already registered') || 
+        const isAccountExists =
+          authError.message?.includes('already registered') ||
           authError.message?.includes('already exists') ||
           authError.message?.includes('User already registered') ||
-          authError.message?.includes('email address is already registered') ||
-          authError.message?.includes('User already registered')
+          authError.message?.includes('email address is already registered')
 
         if (isAccountExists) {
-          // Compte existe déjà : retourner erreur spécifique avec code
-          return { 
-            error: { 
-              message: "Un compte existe déjà avec cet email. Veuillez vous connecter.", 
+          // L'email existe dans auth.users - essayer de renvoyer l'email de confirmation
+          // Si l'utilisateur n'a pas confirmé son email, ça fonctionnera
+          console.log('[Auth] Email already exists, trying to resend confirmation...')
+          
+          try {
+            const { error: resendError } = await supabase.auth.resend({
+              type: 'signup',
+              email: data.email,
+              options: {
+                emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined
+              }
+            })
+
+            if (!resendError) {
+              // Email de confirmation renvoyé avec succès
+              console.log('[Auth] Confirmation email resent successfully')
+              return {
+                error: {
+                  message: "Un compte existe avec cet email mais n'a pas été confirmé. Nous avons renvoyé l'email de confirmation.",
+                  code: 'EMAIL_CONFIRMATION_RESENT',
+                }
+              }
+            }
+
+            // Le resend a échoué - l'utilisateur est probablement déjà confirmé
+            console.log('[Auth] Resend failed, user is likely confirmed:', resendError.message)
+          } catch (resendErr) {
+            console.error('[Auth] Error trying to resend:', resendErr)
+          }
+
+          // Fallback: le compte existe et est confirmé
+          return {
+            error: {
+              message: "Un compte existe déjà avec cet email. Veuillez vous connecter.",
               code: 'ACCOUNT_EXISTS',
-              status: authError.status 
-            } 
+              status: authError.status
+            }
           }
         }
 
-        // Autres erreurs
         let errorMessage = authError.message || "Erreur lors de la création du compte"
-        
+
         if (authError.message?.includes('Password')) {
           errorMessage = "Le mot de passe doit contenir au moins 6 caractères."
         } else if (authError.message?.includes('Invalid email')) {
           errorMessage = "L'adresse email n'est pas valide."
         }
-        
+
         return { error: { message: errorMessage, code: authError.status } }
       }
 
@@ -257,15 +327,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!existingUser) {
-        // Le trigger n'a pas encore écrit la ligne (email non confirmé ou délai de propagation).
-        // On informe l'utilisateur de vérifier/valider son email.
         return { error: { message: 'Compte créé. Vérifiez votre email et confirmez pour activer votre compte.', code: 'EMAIL_CONFIRMATION_REQUIRED' } }
       }
 
-      await refreshUser()
+      setUser(existingUser as User)
       return { error: null }
     } catch (error: any) {
-      // Gérer les erreurs inattendues
       console.error('Error in register:', error)
       return { error: { message: error.message || 'Une erreur inattendue est survenue. Veuillez réessayer.' } }
     }
@@ -297,4 +364,3 @@ export function useAuth() {
   }
   return context
 }
-

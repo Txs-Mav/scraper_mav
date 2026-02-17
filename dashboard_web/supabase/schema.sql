@@ -63,9 +63,28 @@ CREATE TABLE IF NOT EXISTS scraper_cache (
   cache_key TEXT NOT NULL,
   scraper_code TEXT NOT NULL,
   metadata JSONB DEFAULT '{}',
+  selectors JSONB DEFAULT '{}',
+  product_urls JSONB DEFAULT '[]',
+  expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '7 days'),
+  template_version TEXT DEFAULT '1.0',
+  last_product_count INTEGER DEFAULT 0,
+  last_run_at TIMESTAMP WITH TIME ZONE,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'expired', 'error', 'pending')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id, cache_key)
+);
+
+-- Table scraper_shares (partage de scrapers entre utilisateurs)
+CREATE TABLE IF NOT EXISTS scraper_shares (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  scraper_cache_id UUID NOT NULL REFERENCES scraper_cache(id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  permission TEXT NOT NULL DEFAULT 'read' CHECK (permission IN ('read', 'write', 'admin')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(scraper_cache_id, target_user_id)
 );
 
 -- Table organizations

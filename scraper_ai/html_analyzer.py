@@ -91,7 +91,7 @@ class HTMLAnalyzer:
         Si la version ne correspond pas, le cache est considéré comme invalide et sera régénéré.
         """
         cache_key = self._get_cache_key(url)
-        
+
         # PRIORITÉ 1: Essayer Supabase si utilisateur connecté
         if self.user_id:
             try:
@@ -99,7 +99,7 @@ class HTMLAnalyzer:
                 if scraper_data:
                     scraper_code = scraper_data.get('scraper_code', '')
                     metadata = scraper_data.get('metadata', {})
-                    
+
                     # Vérifier la version du prompt
                     cached_version = metadata.get('prompt_version', '1.0')
                     if cached_version != PROMPT_VERSION:
@@ -109,16 +109,17 @@ class HTMLAnalyzer:
                         # Supprimer de Supabase
                         self._delete_from_supabase(cache_key)
                         return None
-                    
+
                     # Supprimer le fichier local s'il existe (priorité Supabase)
                     cache_path = self._get_cache_path(url)
                     if cache_path.exists():
                         try:
                             cache_path.unlink()
-                            print(f"🗑️  Fichier local supprimé (données dans Supabase)")
+                            print(
+                                f"🗑️  Fichier local supprimé (données dans Supabase)")
                         except Exception as e:
                             print(f"⚠️  Erreur suppression fichier local: {e}")
-                    
+
                     # Reconstruire le format de données attendu
                     cached_data = {
                         'scraperCode': scraper_code,
@@ -132,13 +133,14 @@ class HTMLAnalyzer:
                         },
                         'metadata': metadata
                     }
-                    
-                    print(f"✅ Scraper chargé depuis Supabase (cache_key: {cache_key})")
+
+                    print(
+                        f"✅ Scraper chargé depuis Supabase (cache_key: {cache_key})")
                     print(f"   Version prompt: {cached_version}")
                     return cached_data
             except Exception as e:
                 print(f"⚠️ Erreur Supabase: {e}, fallback sur cache local")
-        
+
         # PRIORITÉ 2: Fallback sur cache local
         cache_path = self._get_cache_path(url)
         if cache_path.exists():
@@ -254,7 +256,7 @@ class HTMLAnalyzer:
         try:
             api_url = os.environ.get('NEXTJS_API_URL', 'http://localhost:3000')
             save_url = f"{api_url}/api/scraper-ai/cache/save"
-            
+
             response = requests.post(
                 save_url,
                 json={
@@ -266,29 +268,30 @@ class HTMLAnalyzer:
                 },
                 timeout=10
             )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 if result.get('success'):
                     return result.get('cache_key', cache_key)
                 else:
-                    raise Exception(f"Supabase API error: {result.get('error', 'Unknown error')}")
+                    raise Exception(
+                        f"Supabase API error: {result.get('error', 'Unknown error')}")
             else:
                 raise Exception(f"Supabase API error: {response.status_code}")
-                
+
         except requests.exceptions.Timeout:
             raise Exception("Timeout: Supabase ne répond pas")
         except requests.exceptions.ConnectionError:
             raise Exception("Connexion impossible: Supabase inaccessible")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Erreur réseau: {e}")
-    
+
     def _load_from_supabase(self, cache_key: str) -> Optional[Dict]:
         """Charge un scraper depuis Supabase via l'API"""
         try:
             api_url = os.environ.get('NEXTJS_API_URL', 'http://localhost:3000')
             load_url = f"{api_url}/api/scraper-ai/cache/load"
-            
+
             response = requests.get(
                 load_url,
                 params={
@@ -297,7 +300,7 @@ class HTMLAnalyzer:
                 },
                 timeout=10
             )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 if result.get('found'):
@@ -309,20 +312,20 @@ class HTMLAnalyzer:
                 return None
             else:
                 raise Exception(f"Supabase API error: {response.status_code}")
-                
+
         except requests.exceptions.Timeout:
             raise Exception("Timeout: Supabase ne répond pas")
         except requests.exceptions.ConnectionError:
             raise Exception("Connexion impossible: Supabase inaccessible")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Erreur réseau: {e}")
-    
+
     def _delete_from_supabase(self, cache_key: str) -> bool:
         """Supprime un scraper de Supabase via l'API"""
         try:
             api_url = os.environ.get('NEXTJS_API_URL', 'http://localhost:3000')
             delete_url = f"{api_url}/api/scraper-ai/cache"
-            
+
             response = requests.delete(
                 delete_url,
                 params={
@@ -331,38 +334,65 @@ class HTMLAnalyzer:
                 },
                 timeout=10
             )
-            
+
             return response.status_code == 200
         except Exception as e:
             print(f"⚠️ Erreur suppression Supabase: {e}")
             return False
-    
+
     def _enforce_local_cache_limit(self):
         """Applique la limite de 10 scrapers locaux pour utilisateurs non connectés"""
         try:
             # Lister tous les fichiers .py dans le cache
             cache_files = list(self.cache_dir.glob("*_scraper.py"))
-            
+
             if len(cache_files) >= 10:
                 # Trier par date de modification (plus ancien en premier)
                 cache_files.sort(key=lambda f: f.stat().st_mtime)
-                
+
                 # Supprimer le plus ancien
                 oldest_file = cache_files[0]
                 oldest_file.unlink()
-                print(f"🗑️  Scraper local supprimé (limite 10 atteinte): {oldest_file.name}")
+                print(
+                    f"🗑️  Scraper local supprimé (limite 10 atteinte): {oldest_file.name}")
         except Exception as e:
             print(f"⚠️ Erreur lors de l'application de la limite: {e}")
 
-    def _fetch_html(self, url: str) -> str:
-        """Récupère le contenu HTML d'une URL"""
-        try:
-            response = self.session.get(url, timeout=30)
-            response.raise_for_status()
-            return response.text
-        except Exception as e:
-            print(f"⚠️ Erreur lors de la récupération de {url}: {e}")
-            return ""
+    def _fetch_html(self, url: str, max_retries: int = 3) -> str:
+        """Récupère le contenu HTML d'une URL avec retry pour erreurs transitoires.
+
+        Args:
+            url: URL à récupérer
+            max_retries: Nombre maximum de tentatives (défaut: 3)
+        """
+        import time as _time
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                response = self.session.get(url, timeout=30)
+                response.raise_for_status()
+                return response.text
+            except Exception as e:
+                last_error = e
+                error_str = str(e).lower()
+                is_transient = any(kw in error_str for kw in [
+                    'nameresolution', 'name resolution', 'nodename nor servname',
+                    'timeout', 'timed out', 'connectionerror', 'connection refused',
+                    'connectionreset', 'remotedisconnected', 'max retries exceeded',
+                    'newconnectionerror', '502', '503', '504',
+                ])
+                if attempt < max_retries - 1 and is_transient:
+                    wait_time = 2 ** attempt * 2  # 2s, 4s, 8s
+                    print(
+                        f"⚠️ Tentative {attempt + 1}/{max_retries} échouée pour {url}: {e}")
+                    print(f"   🔄 Retry dans {wait_time}s...")
+                    _time.sleep(wait_time)
+                else:
+                    break
+
+        print(f"⚠️ Erreur lors de la récupération de {url}: {last_error}")
+        return ""
 
     def _extract_links(self, html_content: str, base_url: str) -> List[str]:
         """Extrait tous les liens d'une page HTML"""

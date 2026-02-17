@@ -29,6 +29,7 @@ interface Product {
   sourceUrl?: string
   sourceSite?: string
   sourceCategorie?: string
+  etat?: string // neuf, occasion, demonstrateur
   attributes?: Record<string, any>
   prixReference?: number | null
   differencePrix?: number | null
@@ -56,6 +57,18 @@ const disponibiliteLabels: Record<string, string> = {
   non_disponible: "Non disponible"
 }
 
+const etatLabels: Record<string, string> = {
+  neuf: "Neuf",
+  occasion: "Usagé",
+  demonstrateur: "Démonstrateur"
+}
+
+const sourceCategorieLabels: Record<string, string> = {
+  inventaire: "Inventaire",
+  catalogue: "Catalogue",
+  vehicules_occasion: "Inventaire usagé"
+}
+
 export default function ScraperDashboard({ initialData }: ScraperDashboardProps) {
   const { user } = useAuth()
   const scrapingLimit = useScrapingLimit()
@@ -72,6 +85,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [selectedDisponibilite, setSelectedDisponibilite] = useState<string>("all")
   const [selectedSite, setSelectedSite] = useState<string>("all")
   const [selectedProduct, setSelectedProduct] = useState<string>("all")
+  const [selectedEtat, setSelectedEtat] = useState<string>("all")
   const [priceDifferenceFilter, setPriceDifferenceFilter] = useState<number | null>(null)
   const [sortBy, setSortBy] = useState<"prix" | "annee" | "name" | "marque" | "site">("name")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
@@ -145,18 +159,44 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     return () => window.removeEventListener('local-scrapings-available', handleLocalScrapings as EventListener)
   }, [user])
 
-  // Charger les données
+  // Charger les données avec retry automatique
   useEffect(() => {
+    let cancelled = false
+
+    const fetchProducts = async (retries = 2, delayMs = 2000): Promise<Response> => {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const response = await fetch('/api/products')
+          if (response.ok) return response
+          // Erreur serveur (5xx) : retenter
+          if (response.status >= 500 && attempt < retries) {
+            await new Promise(r => setTimeout(r, delayMs * (attempt + 1)))
+            continue
+          }
+          return response
+        } catch (err) {
+          if (attempt < retries) {
+            await new Promise(r => setTimeout(r, delayMs * (attempt + 1)))
+            continue
+          }
+          throw err
+        }
+      }
+      return fetch('/api/products') // fallback final
+    }
+
     const loadData = async () => {
       try {
         setLoading(true)
+        setError(null)
         if (initialData) {
           setProducts(initialData.products || [])
           setLoading(false)
           return
         }
 
-        const response = await fetch('/api/products')
+        const response = await fetchProducts()
+        if (cancelled) return
         if (!response.ok) {
           throw new Error('Failed to load products')
         }
@@ -165,17 +205,14 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
 
         // Identifier le site de référence depuis metadata
         if (data.metadata?.reference_url) {
-          // Extraire le domaine pour l'affichage (ex: "https://www.example.com/fr/" -> "example.com")
           try {
             const url = new URL(data.metadata.reference_url)
             const domain = url.hostname.replace('www.', '')
             setReferenceSite(domain)
           } catch {
-            // Fallback sur l'URL complète si parsing échoue
             setReferenceSite(data.metadata.reference_url)
           }
         } else {
-          // Fallback: chercher dans les produits (ancien comportement)
           const refProduct = data.products?.find((p: Product) => p.siteReference)
           if (refProduct) {
             setReferenceSite(refProduct.siteReference)
@@ -192,14 +229,19 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           }
         } catch { /* non critique */ }
       } catch (err: any) {
-        setError(err.message || 'Erreur lors du chargement des données')
-        console.error(err)
+        if (!cancelled) {
+          setError(err.message || 'Erreur lors du chargement des données')
+          console.error(err)
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
 
     loadData()
+    return () => { cancelled = true }
   }, [initialData, refreshKey])
 
   const handleMigrateScrapings = async () => {
@@ -220,7 +262,14 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     }
   }
 
+  const [scrapeNotification, setScrapeNotification] = useState<{
+    message: string
+    type: 'success' | 'warning'
+  } | null>(null)
+  const justCompletedScrapingRef = useRef(false)
+
   const handleScrapeComplete = () => {
+    justCompletedScrapingRef.current = true
     setRefreshKey(prev => prev + 1)
   }
 
@@ -293,6 +342,11 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const uniqueDisponibilites = useMemo(() => {
     const dispo = new Set(products.map(p => p.disponibilite).filter(Boolean))
     return Array.from(dispo).sort()
+  }, [products])
+
+  const uniqueEtats = useMemo(() => {
+    const etats = new Set(products.map(p => p.etat || p.sourceCategorie).filter(Boolean))
+    return Array.from(etats).sort()
   }, [products])
 
   // Helper pour extraire le domaine d'une URL
@@ -368,14 +422,51 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
 
   // Basculer automatiquement selon les produits disponibles
   useEffect(() => {
-    // Si on est sur "reference" mais il y a des produits comparés, suggérer l'onglet "compared"
-    // Si on est sur "compared" mais pas de produits comparés, basculer vers "reference"
-    if (activeTab === "compared" && productsBySite.compared.length === 0 && productsBySite.reference.length > 0) {
-      setActiveTab("reference")
-    } else if (activeTab === "reference" && productsBySite.reference.length === 0 && productsBySite.compared.length > 0) {
-      setActiveTab("compared")
+    const { compared, reference, allCompetitors } = productsBySite
+
+    // POST-SCRAPING: Basculer vers l'onglet le plus pertinent et afficher une notification
+    if (justCompletedScrapingRef.current && (reference.length > 0 || allCompetitors.length > 0)) {
+      justCompletedScrapingRef.current = false
+
+      // Construire la notification de résumé
+      const parts: string[] = []
+      if (reference.length > 0) parts.push(`${reference.length} produits de référence`)
+      if (allCompetitors.length > 0) parts.push(`${allCompetitors.length} produits concurrents`)
+      if (compared.length > 0) parts.push(`${compared.length} correspondances`)
+
+      const totalProducts = reference.length + allCompetitors.length
+      const hasComparisons = compared.length > 0
+      const hasCompetitors = allCompetitors.length > 0
+
+      if (totalProducts > 0) {
+        setScrapeNotification({
+          message: `${totalProducts} produits extraits : ${parts.join(', ')}`,
+          type: hasComparisons || !hasCompetitors ? 'success' : 'warning'
+        })
+        // Auto-dismiss après 10 secondes
+        setTimeout(() => setScrapeNotification(null), 10_000)
+      }
+
+      // Basculer vers le meilleur onglet
+      if (hasComparisons) {
+        setActiveTab("compared")
+      } else if (hasCompetitors) {
+        setActiveTab("allCompetitors")
+      } else {
+        setActiveTab("reference")
+      }
+      return
     }
-  }, [activeTab, productsBySite.compared.length, productsBySite.reference.length])
+
+    // NAVIGATION NORMALE: corriger l'onglet si vide
+    if (activeTab === "compared" && compared.length === 0 && reference.length > 0) {
+      setActiveTab("reference")
+    } else if (activeTab === "reference" && reference.length === 0 && compared.length > 0) {
+      setActiveTab("compared")
+    } else if (activeTab === "reference" && reference.length === 0 && allCompetitors.length > 0) {
+      setActiveTab("allCompetitors")
+    }
+  }, [activeTab, productsBySite])
 
   // Filtrer et trier les produits selon l'onglet actif
   const filteredProducts = useMemo(() => {
@@ -433,6 +524,14 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       filtered = filtered.filter(p => p.disponibilite === selectedDisponibilite)
     }
 
+    // Filtre état (neuf/occasion/demonstrateur ou sourceCategorie)
+    if (selectedEtat !== "all") {
+      filtered = filtered.filter(p => {
+        const productEtat = p.etat || p.sourceCategorie || ''
+        return productEtat === selectedEtat
+      })
+    }
+
     // Filtre différence de prix
     if (priceDifferenceFilter !== null) {
       filtered = filtered.filter(p => {
@@ -486,7 +585,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     })
 
     return filtered
-  }, [products, searchQuery, selectedCategory, selectedMarque, selectedDisponibilite, priceDifferenceFilter, sortBy, sortOrder, activeTab, productsBySite])
+  }, [products, searchQuery, selectedCategory, selectedMarque, selectedDisponibilite, selectedEtat, priceDifferenceFilter, sortBy, sortOrder, activeTab, productsBySite])
 
   // Vérifier si au moins un filtre est actif
   const hasActiveFilters = useMemo(() => {
@@ -497,9 +596,10 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       selectedCategory !== "all" ||
       selectedProduct !== "all" ||
       selectedDisponibilite !== "all" ||
+      selectedEtat !== "all" ||
       priceDifferenceFilter !== null
     )
-  }, [searchQuery, selectedSite, selectedMarque, selectedCategory, selectedProduct, selectedDisponibilite, priceDifferenceFilter])
+  }, [searchQuery, selectedSite, selectedMarque, selectedCategory, selectedProduct, selectedDisponibilite, selectedEtat, priceDifferenceFilter])
 
   // Réinitialiser automatiquement les filtres si aucun produit n'est affiché et qu'au moins un filtre est actif
   useEffect(() => {
@@ -515,6 +615,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     setSelectedCategory("all")
     setSelectedProduct("all")
     setSelectedDisponibilite("all")
+    setSelectedEtat("all")
     setPriceDifferenceFilter(null)
     setSortBy("prix")
     setSortOrder("asc")
@@ -665,6 +766,23 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           )
         })}
       </div>
+
+      {/* Notification post-scraping */}
+      {scrapeNotification && (
+        <div className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 ${scrapeNotification.type === 'success'
+            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+            : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+          }`}>
+          <span>{scrapeNotification.message}</span>
+          <button
+            type="button"
+            onClick={() => setScrapeNotification(null)}
+            className="ml-2 opacity-60 hover:opacity-100 transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Grille principale */}
       <div className="space-y-4">
@@ -835,6 +953,31 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 </div>
               </div>
 
+              {/* Champ de recherche */}
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Recherche</p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Nom, marque, modèle, description..."
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      aria-label="Effacer la recherche"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Site</p>
@@ -899,6 +1042,40 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                       {uniqueProductsNames.map(n => (
                         <option key={n} value={n}>
                           {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">État</p>
+                  <div className="rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] px-3 py-2 shadow-[0_6px_20px_-16px_rgba(0,0,0,0.4)]">
+                    <select
+                      value={selectedEtat}
+                      onChange={e => setSelectedEtat(e.target.value)}
+                      className="w-full bg-transparent text-sm text-gray-900 dark:text-white focus:outline-none"
+                    >
+                      <option value="all">Tous les états</option>
+                      {uniqueEtats.map(e => (
+                        <option key={e} value={e}>
+                          {etatLabels[e] || sourceCategorieLabels[e] || e}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Disponibilité</p>
+                  <div className="rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] px-3 py-2 shadow-[0_6px_20px_-16px_rgba(0,0,0,0.4)]">
+                    <select
+                      value={selectedDisponibilite}
+                      onChange={e => setSelectedDisponibilite(e.target.value)}
+                      className="w-full bg-transparent text-sm text-gray-900 dark:text-white focus:outline-none"
+                    >
+                      <option value="all">Toutes</option>
+                      {uniqueDisponibilites.map(d => (
+                        <option key={d} value={d}>
+                          {disponibiliteLabels[d] || d}
                         </option>
                       ))}
                     </select>
@@ -970,39 +1147,36 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
               <button
                 type="button"
                 onClick={() => setActiveTab("reference")}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                  activeTab === "reference"
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === "reference"
                     ? "bg-amber-500 text-white shadow-[0_8px_20px_-8px_rgba(245,158,11,0.5)]"
                     : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
-                }`}
+                  }`}
               >
                 <Star className="h-4 w-4" />
                 Référence
                 <span className="ml-1 text-xs opacity-80">({productsBySite.reference.length})</span>
               </button>
-              
+
               <button
                 type="button"
                 onClick={() => setActiveTab("allCompetitors")}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                  activeTab === "allCompetitors"
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === "allCompetitors"
                     ? "bg-blue-500 text-white shadow-[0_8px_20px_-8px_rgba(59,130,246,0.5)]"
                     : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
-                }`}
+                  }`}
               >
                 <Globe className="h-4 w-4" />
                 Tous les concurrents
                 <span className="ml-1 text-xs opacity-80">({productsBySite.allCompetitors.length})</span>
               </button>
-              
+
               <button
                 type="button"
                 onClick={() => setActiveTab("compared")}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                  activeTab === "compared"
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === "compared"
                     ? "bg-emerald-500 text-white shadow-[0_8px_20px_-8px_rgba(16,185,129,0.5)]"
                     : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
-                }`}
+                  }`}
               >
                 <ArrowRightLeft className="h-4 w-4" />
                 Comparés
@@ -1012,7 +1186,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
               {Object.keys(productsBySite.otherSites).length > 0 && (
                 <div className="w-px h-8 bg-gray-200 dark:bg-[#1F1F23]" />
               )}
-              
+
               {Object.entries(productsBySite.otherSites).map(([siteUrl, siteProducts]) => {
                 const siteName = extractDomain(siteUrl)
                 return (
@@ -1020,11 +1194,10 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                     key={siteUrl}
                     type="button"
                     onClick={() => setActiveTab(`site-${siteUrl}`)}
-                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                      activeTab === `site-${siteUrl}`
+                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === `site-${siteUrl}`
                         ? "bg-purple-500 text-white shadow-[0_8px_20px_-8px_rgba(168,85,247,0.5)]"
                         : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
-                    }`}
+                      }`}
                   >
                     {siteName}
                     <span className="ml-1 text-xs opacity-80">({siteProducts.length})</span>
@@ -1032,7 +1205,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 )
               })}
             </div>
-            
+
             <div className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-[#1F1F23]">
               {activeTab === "reference" && "Tous les produits du site de référence"}
               {activeTab === "allCompetitors" && "Tous les produits de tous les concurrents combinés"}
@@ -1042,13 +1215,9 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           </div>
         </BlocTemplate>
 
-        {/* Tableau comparatif : produits comparés si présents, sinon produits de référence */}
+        {/* Tableau comparatif : utilise filteredProducts pour respecter onglets et filtres catalogue */}
         <PriceComparisonTable
-          products={
-            productsBySite.compared.length > 0
-              ? productsBySite.compared
-              : productsBySite.reference
-          }
+          products={filteredProducts}
           competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))}
           ignoreColors={ignoreColors}
         />

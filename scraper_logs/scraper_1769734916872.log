@@ -1,0 +1,236 @@
+
+======================================================================
+🚀 SCRAPER AI v4.2 - SCRAPING INTELLIGENT
+======================================================================
+⭐ Site de référence: https://www.morinsports.com/fr/
+📦 Concurrents à comparer: 0
+👤 User ID: 4ba57f68-4ab6-4989-9142-d0934f950a37
+📂 Catégories: ['inventaire', 'occasion']
+======================================================================
+
+
+==================================================
+📦 PHASE 1: VÉRIFICATION DU CACHE
+==================================================
+   🆕 https://www.morinsports.com/fr/... → NOUVEAU
+
+   📊 Résumé: 0 en cache, 1 à créer
+
+==================================================
+🔧 PHASE 2: CRÉATION DES SCRAPERS (séquentiel)
+==================================================
+   ⏱️  Estimation: ~45s (1 sites × ~45s)
+   💡 Traitement un par un pour éviter les limites API
+
+
+   [1/1] 🔄 Création du scraper pour https://www.morinsports.com/fr/...
+
+======================================================================
+🚀 SCRAPER INTELLIGENT v4.2
+======================================================================
+🌐 Site: https://www.morinsports.com/fr/
+👤 User ID: 4ba57f68-4ab6-4989-9142-d0934f950a37
+🔄 Force refresh: True
+
+==================================================
+📦 ÉTAPE 1: VÉRIFICATION DU CACHE
+==================================================
+⏭️  Cache ignoré (force_refresh=True, storage=True)
+
+==================================================
+🔍 ÉTAPE 2: EXPLORATION COMPLÈTE
+==================================================
+
+   🔍 Découverte des URLs de produits...
+   Catégories: ['inventaire', 'occasion']
+
+============================================================
+🔍 ÉTAPE 1: EXPLORATION ET EXTRACTION GEMINI
+============================================================
+🌐 Site: https://www.morinsports.com/fr
+
+📍 Découverte des URLs de produits...
+      🗺️ Recherche du sitemap...
+✅ Sitemap trouvé dans robots.txt: https://www.morinsports.com/sitemap-index.xml
+         ⚠️ Aucun sitemap trouvé
+      📑 Détection de la pagination...
+⚠️ Aucun pattern de pagination détecté, test des patterns standards...
+⚠️ Aucun pattern de pagination standard ne fonctionne
+         ⚠️ Aucune pagination détectée
+      🔗 Découverte depuis les liens...
+      📂 Exploration des pages listage (13 pages)...
+      ✅ 54 URLs uniques après déduplication
+      ✅ 54 URLs de produits valides après filtrage
+   ✅ 54 URLs de produits découvertes
+
+📥 Récupération du HTML des pages de produits...
+      📊 Échantillonnage: récupération de 20 pages sur 54 URLs découvertes
+      ℹ️  Le scraper généré scrapera ensuite toutes les 54 URLs
+      Récupération 1/20: https://www.morinsports.com/fr/neuf/vtt/inventaire...
+         ⚠️ HTML vide ou trop court
+      Récupération 2/20: https://www.morinsports.com/fr/usage/motocyclette...
+         ⚠️ HTML vide ou trop court
+      Récupération 3/20: https://www.morinsports.com/fr/usage/motoneige...
+         ⚠️ HTML vide ou trop court
+      Récupération 4/20: https://www.morinsports.com/fr/neuf/motoneige/arctic-cat...
+         ⚠️ HTML vide ou trop court
+      Récupération 5/20: https://www.morinsports.com/fr/inventaire-neuf...
+         ⚠️ HTML vide ou trop court
+      Récupération 6/20: https://www.morinsports.com/fr/neuf/motomarine...
+         ⚠️ HTML vide ou trop court
+      Récupération 7/20: https://www.morinsports.com/fr/neuf/motoneige/inventaire/arctic-cat-2026-pantera...
+         ✅ 266054 caractères
+      Récupération 8/20: https://www.morinsports.com/fr/neuf/motomarine/kawasaki...
+         ✅ 184649 caractères
+      Récupération 9/20: https://www.morinsports.com/fr/neuf/vtt/inventaire/kawasaki-bruteforce-750-eps-s...
+         ✅ 219936 caractères
+      Récupération 10/20: https://www.morinsports.com/fr/usage/motoneige/inventaire/arctic-cat-zr8000rr-20...
+         ✅ 302022 caractères
+      Récupération 11/20: https://www.morinsports.com/fr/usage/motocyclette/inventaire/ktm-duke-200-abs-20...
+         ✅ 268757 caractères
+      Récupération 12/20: https://www.morinsports.com/fr/usage/motocyclette/inventaire/ktm-duke-390-2021-a...
+         ✅ 277074 caractères
+      Récupération 13/20: https://www.morinsports.com/fr/usage/motocyclette/inventaire/triumph-scrambler-2...
+         ✅ 297834 caractères
+      Récupération 14/20: https://www.morinsports.com/fr/usage/motoneige/inventaire/arctic-cat-riot-x-2022...
+         ✅ 307699 caractères
+      Récupération 15/20: https://www.morinsports.com/fr/usage/motoneige/inventaire/arctic-cat-zr-858-atac...
+         ✅ 268658 caractères
+      Récupération 16/20: https://www.morinsports.com/fr/usage/motoneige/inventaire/ski-doo-summit-x-850-2...
+         ✅ 306138 caractères
+      Récupération 17/20: https://www.morinsports.com/fr/usage/motoneige/inventaire/arctic-cat-zr8000-2019...
+         ✅ 294164 caractères
+      Récupération 18/20: https://www.morinsports.com/fr/usage/motoneige/inventaire/arctic-cat-riot-8000-1...
+         ✅ 307412 caractères
+      Récupération 19/20: https://www.morinsports.com/fr/usage/motoneige/inventaire/arctic-cat-riot-858-es...
+         ✅ 268630 caractères
+      Récupération 20/20: https://www.morinsports.com/fr/neuf/motoneige/arctic-cat/zr-r-xc-de-sentier-et-u...
+         ✅ 329796 caractères
+   ✅ 14 pages HTML récupérées
+
+🤖 Extraction des infos produits via Gemini...
+
+❌ ERREUR lors de l'appel Gemini:
+   Erreur: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. ', 'status': 'RESOURCE_EXHAUSTED'}}
+   Type: ClientError
+────────────────────────────────────────────────────────────
+
+         ⚠️ Erreur lors de l'extraction Gemini: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. ', 'status': 'RESOURCE_EXHAUSTED'}}
+   ✅ 0 produits extraits
+
+🎯 Détection automatique des sélecteurs CSS...
+   ⚠️  Sélecteurs manquants, utilisation du fallback de détection...
+   ✅ Sélecteur 'name' détecté: h1
+   ✅ Sélecteur 'prix' détecté: [class*="price"]
+   ⚠️  Sélecteur 'image' non trouvé, utilisation du fallback: img
+   ✅ 4 sélecteurs détectés
+
+   ✅ 54 URLs découvertes (filtré de 54)
+      ✅ https://www.morinsports.com/fr/neuf/vtt/inventaire...
+      ✅ https://www.morinsports.com/fr/usage/motocyclette...
+      ✅ https://www.morinsports.com/fr/usage/motoneige...
+      ✅ https://www.morinsports.com/fr/neuf/motoneige/arctic-cat...
+      ✅ https://www.morinsports.com/fr/inventaire-neuf...
+
+🎯 Détection des sélecteurs CSS...
+
+🎯 DÉTECTION DES SÉLECTEURS CSS
+   Site: https://www.morinsports.com/fr
+   Échantillons: 5 pages
+
+❌ ERREUR lors de l'appel Gemini:
+   Erreur: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}
+   Type: ClientError
+────────────────────────────────────────────────────────────
+
+   ❌ Erreur détection: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}
+✅ Scraper sauvegardé dans Supabase (cache_key: c530c0e60b2bf564200b4c4efe7c1c1c)
+
+==================================================
+📥 ÉTAPE 3: EXTRACTION DES PRODUITS
+==================================================
+   URLs à traiter: 54
+
+✅ 0 produits extraits
+⚠️  Erreur API (400): {"error":"reference_url is required"}
+
+======================================================================
+✅ SCRAPING TERMINÉ!
+======================================================================
+📦 Produits extraits: 0
+⏱️  Temps total: 16.4s
+📊 Cache: miss
+   [1/1] ✅ Scraper créé: 0 produits extraits
+
+==================================================
+⚡ PHASE 3: EXTRACTION DES DONNÉES (parallèle)
+==================================================
+   100% des sites ont maintenant un scraper en cache
+   🚀 Extraction parallèle de 1 sites...
+
+
+======================================================================
+🚀 SCRAPER INTELLIGENT v4.2
+======================================================================
+🌐 Site: https://www.morinsports.com/fr/
+👤 User ID: 4ba57f68-4ab6-4989-9142-d0934f950a37
+🔄 Force refresh: False
+
+==================================================
+📦 ÉTAPE 1: VÉRIFICATION DU CACHE
+==================================================
+✅ CACHE VALIDE trouvé!
+   Expire: 2026-02-06T01:02:11.328+00:00
+   Sélecteurs: 10 détectés
+   URLs produits: 54 en cache
+
+==================================================
+📥 ÉTAPE 3: EXTRACTION DES PRODUITS
+==================================================
+   URLs à traiter: 54
+
+✅ 0 produits extraits
+⚠️  Erreur API (400): {"error":"reference_url is required"}
+
+======================================================================
+✅ SCRAPING TERMINÉ!
+======================================================================
+📦 Produits extraits: 0
+⏱️  Temps total: 2.0s
+📊 Cache: hit
+   ✅ https://www.morinsports.com/fr/...: 0 produits ⭐
+
+⏱️  Scraping terminé en 18.8s
+
+============================================================
+⚠️  ATTENTION: Aucun produit trouvé sur le site de référence!
+============================================================
+🌐 Site: https://www.morinsports.com/fr/
+
+💡 Causes possibles:
+   1. Le site nécessite JavaScript (Selenium)
+   2. Les sélecteurs CSS détectés sont incorrects
+   3. La structure du site a changé
+
+🔧 Solutions:
+   - Utilisez '--force-refresh' pour régénérer le scraper
+   - Vérifiez manuellement si le site affiche des produits
+============================================================
+
+
+============================================================
+📦 EXTRACTION DU SITE DE RÉFÉRENCE
+============================================================
+✅ 0 produits extraits du site de référence
+☁️  Sauvegardé dans Supabase (ID: 0b553eb0-1638-4495-ba17-f31214bae189)
+
+======================================================================
+✅ SCRAPING TERMINÉ!
+======================================================================
+⭐ Site de référence: https://www.morinsports.com/fr/
+📦 Produits de référence: 0
+📦 Produits extraits: 0
+⏱️  Temps total: 18.8s
+☁️  Données dans: Supabase Cloud
+
+⚠️  Aucun produit extrait.

@@ -5,6 +5,11 @@ import { Package, Truck, Tag, CheckCircle, XCircle } from "lucide-react"
 interface Product {
   name: string
   prix: number
+  prixMoyenMarche: number
+  ecartPourcentage: number
+  competitif: boolean
+  hasCompetitor: boolean
+  categorie: string
   disponibilite?: string
   sourceUrl?: string
   sourceSite?: string

@@ -7,6 +7,7 @@ interface Opportunity {
   produit: string
   recommandation: string
   impactPotentiel: number
+  categorie?: string
 }
 
 interface OpportunitiesProps {
@@ -86,6 +87,11 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                   </div>
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     {opp.produit}
+                    {opp.categorie && (
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                        {opp.categorie}
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     {opp.recommandation}

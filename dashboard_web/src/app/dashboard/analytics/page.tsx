@@ -8,14 +8,16 @@ import ProductCategoryAnalysis from "@/components/analytics/product-analysis"
 import PriceEvolutionChart from "@/components/analytics/price-evolution"
 import OpportunitiesDetection from "@/components/analytics/opportunities"
 import RetailerAnalysis from "@/components/analytics/retailer-analysis"
+import CategoryAnalysis from "@/components/analytics/category-analysis"
 import AlertsAndInsights from "@/components/analytics/alerts-insights"
 import ExplanatoryFactors from "@/components/analytics/explanatory-factors"
 import ActionableRecommendations from "@/components/analytics/recommendations"
 import Visualizations from "@/components/analytics/visualizations"
-import { Loader2, Lock, RefreshCw, RotateCcw, Calendar, Package, Store, TrendingUp } from "lucide-react"
+import { Loader2, Lock, RefreshCw, RotateCcw, Calendar, Package, Store, TrendingUp, Printer } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import BlocTemplate from "@/components/ui/bloc-template"
 import { canAccessAnalytics } from "@/lib/plan-restrictions"
+import { printCurrentPage } from "@/lib/export-utils"
 
 interface AnalyticsData {
   positionnement: {
@@ -32,8 +34,10 @@ interface AnalyticsData {
     prixMoyenMarche: number
     ecartPourcentage: number
     competitif: boolean
+    hasCompetitor: boolean
     categorie: string
     sourceSite?: string
+    disponibilite?: string
   }>
   evolutionPrix: Array<{
     date: string
@@ -46,6 +50,7 @@ interface AnalyticsData {
     produit: string
     recommandation: string
     impactPotentiel: number
+    categorie?: string
   }>
   detailleurs: Array<{
     site: string
@@ -53,6 +58,28 @@ interface AnalyticsData {
     agressivite: number
     frequencePromotions: number
     nombreProduits: number
+    produitsComparables: number
+    categorieStats: Array<{
+      categorie: string
+      prixMoyen: number
+      agressivite: number
+      nombreProduits: number
+    }>
+  }>
+  categories: Array<{
+    categorie: string
+    nombreProduits: number
+    prixMoyenReference: number
+    prixMoyenConcurrents: number
+    ecartMoyenPourcentage: number
+    competitifs: number
+    nonCompetitifs: number
+    detailParDetaillant: Array<{
+      site: string
+      prixMoyen: number
+      ecartPourcentage: number
+      nombreProduits: number
+    }>
   }>
   alertes: Array<{
     type: 'concurrent' | 'ecart' | 'nouveau'
@@ -92,6 +119,7 @@ export default function AnalyticsPage() {
     evolutionPrix: [],
     opportunites: [],
     detailleurs: [],
+    categories: [],
     alertes: [],
     stats: {
       prixMoyen: 0,
@@ -108,37 +136,37 @@ export default function AnalyticsPage() {
 
   // Fonction de chargement des analytics
   const loadAnalytics = useCallback(async (isRefresh = false) => {
-      try {
+    try {
       setError(null)
       if (isRefresh) {
         setRefreshing(true)
       } else {
         setLoading(true)
       }
-      
-        const response = await fetch('/api/analytics')
-        const data = await response.json()
 
-        if (!response.ok) {
-          throw new Error(data?.error || "Impossible de charger les analyses")
-        }
-        
-        if (data.analytics) {
-          setAnalytics(data.analytics)
-        } else {
-          setAnalytics(getEmptyAnalytics())
-        }
+      const response = await fetch('/api/analytics')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Impossible de charger les analyses")
+      }
+
+      if (data.analytics) {
+        setAnalytics(data.analytics)
+      } else {
+        setAnalytics(getEmptyAnalytics())
+      }
       setDataAsOf(data?.data_as_of ? new Date(data.data_as_of) : null)
       setLastUpdated(new Date())
-      } catch (err: unknown) {
-        console.error('Error loading analytics:', err)
-        const message = err instanceof Error ? err.message : "Erreur lors du chargement des analyses"
-        setError(message)
-        setAnalytics(getEmptyAnalytics())
-      } finally {
-        setLoading(false)
+    } catch (err: unknown) {
+      console.error('Error loading analytics:', err)
+      const message = err instanceof Error ? err.message : "Erreur lors du chargement des analyses"
+      setError(message)
+      setAnalytics(getEmptyAnalytics())
+    } finally {
+      setLoading(false)
       setRefreshing(false)
-      }
+    }
   }, [])
 
   // Fonction de réinitialisation (efface les données de la page Analyse)
@@ -146,19 +174,19 @@ export default function AnalyticsPage() {
     if (!confirm('Effacer les données de la page Analyse ? Cette action est irréversible.')) {
       return
     }
-    
+
     try {
       setRefreshing(true)
       const response = await fetch('/api/analytics/reset', {
         method: 'POST'
       })
-      
+
       if (!response.ok) {
         const data = await response.json()
         alert(data.error || 'Erreur lors de la réinitialisation')
         return
       }
-      
+
       // Mettre à jour l'interface avec des données vides
       setAnalytics(getEmptyAnalytics())
       setLastUpdated(new Date())
@@ -224,14 +252,22 @@ export default function AnalyticsPage() {
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8">
+      <div id="analytics-print-area" className="container mx-auto px-4 py-8">
         {/* Header avec titre et actions */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white leading-tight">
-          Analyse de Prix
-        </h1>
-          
+            Analyse de Prix
+          </h1>
+
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => printCurrentPage("Analyse de Prix")}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1F1F23] border border-gray-200 dark:border-[#2B2B30] rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2B2B30] transition-colors"
+              title="Imprimer la page d'analyse"
+            >
+              <Printer className="h-4 w-4" />
+              <span>Imprimer</span>
+            </button>
             <button
               onClick={() => loadAnalytics(true)}
               disabled={refreshing}
@@ -270,7 +306,7 @@ export default function AnalyticsPage() {
               </p>
             </div>
           </div>
-          
+
           <div className="bg-white dark:bg-[#0F0F12] rounded-2xl border border-gray-200 dark:border-[#1F1F23] p-5 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
               <Store className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
@@ -282,7 +318,7 @@ export default function AnalyticsPage() {
               </p>
             </div>
           </div>
-          
+
           <div className="bg-white dark:bg-[#0F0F12] rounded-2xl border border-gray-200 dark:border-[#1F1F23] p-5 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20">
               <TrendingUp className="h-6 w-6 text-amber-600 dark:text-amber-400" />
@@ -294,7 +330,7 @@ export default function AnalyticsPage() {
               </p>
             </div>
           </div>
-          
+
           <div className="bg-white dark:bg-[#0F0F12] rounded-2xl border border-gray-200 dark:border-[#1F1F23] p-5 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20">
               <RefreshCw className="h-6 w-6 text-rose-600 dark:text-rose-400" />
@@ -335,7 +371,7 @@ export default function AnalyticsPage() {
           </BlocTemplate>
 
           <BlocTemplate className="hover-elevate">
-            <PriceEvolutionChart 
+            <PriceEvolutionChart
               evolutionPrix={displayAnalytics.evolutionPrix}
               scrapesParJour={displayAnalytics.stats.scrapesParJour}
             />
@@ -347,6 +383,10 @@ export default function AnalyticsPage() {
 
           <BlocTemplate className="hover-elevate">
             <RetailerAnalysis detailleurs={displayAnalytics.detailleurs} />
+          </BlocTemplate>
+
+          <BlocTemplate className="hover-elevate">
+            <CategoryAnalysis categories={displayAnalytics.categories} />
           </BlocTemplate>
 
           <BlocTemplate className="hover-elevate">
@@ -362,7 +402,7 @@ export default function AnalyticsPage() {
           </BlocTemplate>
 
           <BlocTemplate className="hover-elevate">
-            <Visualizations 
+            <Visualizations
               produits={displayAnalytics.produits}
               detailleurs={displayAnalytics.detailleurs}
             />

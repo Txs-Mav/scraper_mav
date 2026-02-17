@@ -12,31 +12,12 @@ import BlocTemplate from "@/components/ui/bloc-template"
 export default function ProfilePage() {
   const { user, isLoading, isMainAccount } = useAuth()
   const router = useRouter()
-  const [orgName, setOrgName] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login")
     }
   }, [user, isLoading, router])
-
-  useEffect(() => {
-    const loadOrg = async () => {
-      if (!user) return
-      try {
-        const res = await fetch("/api/organization")
-        const data = await res.json()
-        if (res.ok && data.org?.name) {
-          setOrgName(data.org.name)
-        } else {
-          setOrgName(null)
-        }
-      } catch {
-        setOrgName(null)
-      }
-    }
-    loadOrg()
-  }, [user])
 
   if (isLoading) {
     return (
@@ -64,9 +45,9 @@ export default function ProfilePage() {
 
   const displayRole =
     user?.role === "owner"
-      ? `Owner${orgName ? " • " + orgName : ""}`
+      ? "Owner"
       : user?.role === "member"
-      ? `Membre${orgName ? " • " + orgName : ""}`
+      ? "Membre"
       : "Utilisateur"
 
   return (

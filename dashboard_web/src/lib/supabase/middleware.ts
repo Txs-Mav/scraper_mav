@@ -1,6 +1,12 @@
 /**
  * Client Supabase pour le middleware
- * Gère la persistance de session via cookies
+ * Gère la persistance de session via cookies et les redirections d'authentification
+ * 
+ * Comportements :
+ * - Utilisateur connecté + quitte et revient → Dashboard (session persistante 30 jours)
+ * - Pas de session → Landing page (/)
+ * - Utilisateur connecté + visite /login ou /create-account → Redirigé vers /dashboard
+ * - Utilisateur non connecté + visite /dashboard/* → Redirigé vers /login
  */
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
@@ -46,15 +52,30 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Routes nécessitant une authentification obligatoire
-  const protectedRoutes = ['/dashboard/settings', '/dashboard/profile', '/dashboard/subscription']
-  const requiresAuth = protectedRoutes.some(route => request.nextUrl.pathname.startsWith(route))
+  const pathname = request.nextUrl.pathname
 
-  if (!user && requiresAuth) {
+  // Routes d'authentification (login, création de compte, etc.)
+  const authRoutes = ['/login', '/create-account', '/forgot-password']
+  const isAuthRoute = authRoutes.some(route => pathname === route || pathname.startsWith(route))
+
+  // Routes protégées nécessitant une authentification
+  const isProtectedRoute = pathname.startsWith('/dashboard')
+
+  // Routes publiques (callback auth, reset password, etc.)
+  const publicRoutes = ['/auth/callback', '/reset-password', '/auth/email-confirmed']
+  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
+
+  // Note: On ne redirige PAS les utilisateurs connectés depuis les routes auth
+  // Le client-side gère ce cas et déconnecte si l'user n'existe pas dans notre table users
+  // Cela permet de gérer les cas où l'user est supprimé de notre table mais pas de auth.users
+
+  // Utilisateur non connecté visitant une route protégée → Rediriger vers login
+  if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
+  // 3. Routes publiques et landing page → Laisser passer
   return supabaseResponse
 }

@@ -1,5 +1,6 @@
 """
 Configuration pour le scraper AI
+Supporte à la fois Google AI API (dev) et Vertex AI (production)
 """
 import os
 from pathlib import Path
@@ -7,15 +8,43 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuration Gemini
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY environment variable is required")
+# =============================================================================
+# CONFIGURATION AI PROVIDER
+# =============================================================================
+# Utiliser "vertex" pour Vertex AI (production) ou "genai" pour Google AI API (dev)
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "vertex")
 
-# Modèles Gemini
+# Configuration Vertex AI (Production - Recommandé)
+GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
+GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")  # global = meilleure dispo
+# Le fichier de credentials est optionnel si on utilise les Application Default Credentials
+GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+
+# Configuration Google AI API (Dev - Optionnel, fallback)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Validation de la configuration
+if AI_PROVIDER == "vertex":
+    if not GCP_PROJECT_ID:
+        raise ValueError(
+            "GCP_PROJECT_ID est requis pour Vertex AI. "
+            "Définissez-le dans votre fichier .env ou utilisez AI_PROVIDER=genai pour le dev."
+        )
+elif AI_PROVIDER == "genai":
+    if not GEMINI_API_KEY:
+        raise ValueError(
+            "GEMINI_API_KEY est requis pour Google AI API. "
+            "Définissez-le dans votre fichier .env ou utilisez AI_PROVIDER=vertex pour la production."
+        )
+else:
+    raise ValueError(f"AI_PROVIDER invalide: {AI_PROVIDER}. Utilisez 'vertex' ou 'genai'.")
+
+# =============================================================================
+# MODÈLES GEMINI
+# =============================================================================
 # Pour l'analyse HTML et génération de scraper
-MODEL_ANALYSIS = "gemini-2.0-flash-exp"
-MODEL_EXTRACTION = "gemini-flash-latest"  # Pour l'extraction si nécessaire
+MODEL_ANALYSIS = "gemini-2.0-flash-001"  # Version stable pour Vertex AI
+MODEL_EXTRACTION = "gemini-1.5-flash-002"  # Pour l'extraction si nécessaire
 
 # Version du prompt - Incrémenter cette valeur quand le prompt change
 # Cela invalidera automatiquement tous les scrapers en cache
@@ -30,7 +59,10 @@ MODEL_EXTRACTION = "gemini-flash-latest"  # Pour l'extraction si nécessaire
 # Version 3.1: Correction erreur syntaxe avec '::attr(' dans le code généré
 # Version 3.2: Correction erreur syntaxe avec 'page d\'accueil' - utilisation guillemets doubles
 # Version 3.3: Génération de fichiers Python directement dans le cache
-PROMPT_VERSION = "3.3"
+# Version 4.0: Architecture intelligente avec sélecteurs dynamiques et cache Supabase
+# Version 4.1: Correction extraction prix multiples concaténés (ancien + nouveau prix)
+# Version 4.2: Découpage intelligent des prix collés (ex: 113308995 → 8995)
+PROMPT_VERSION = "4.2"
 
 # Dossier de cache pour les scrapers générés
 CACHE_DIR = Path(__file__).parent.parent / "scraper_cache"
@@ -85,6 +117,11 @@ EXTRACTION_SCHEMA = {
                         "enum": ["inventaire", "catalogue", "vehicules_occasion"],
                         "description": "Catégorie indiquant si le véhicule est dans l'inventaire, le catalogue ou les véhicules d'occasion"
                     },
+                    "etat": {
+                        "type": "string",
+                        "enum": ["neuf", "occasion", "demonstrateur"],
+                        "description": "État/condition du véhicule: neuf (inventaire neuf ou catalogue), occasion (usagé/pre-owned), demonstrateur (démo)"
+                    },
                     "attributes": {
                         "type": "object",
                         "properties": {
@@ -95,7 +132,7 @@ EXTRACTION_SCHEMA = {
                         }
                     }
                 },
-                "required": ["category", "marque", "modele", "prix", "disponibilite", "sourceCategorie"]
+                "required": ["category", "marque", "modele", "prix", "disponibilite", "sourceCategorie", "etat"]
             }
         }
     },

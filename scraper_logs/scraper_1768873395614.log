@@ -1,0 +1,12 @@
+
+======================================================================
+❌ AUTHENTIFICATION REQUISE
+======================================================================
+Vous devez être connecté pour utiliser le scraper.
+
+Solutions:
+  1. Lancez le scraping depuis le dashboard (recommandé)
+  2. Utilisez --user-id UUID avec votre ID utilisateur
+  3. Définissez la variable d'environnement SCRAPER_USER_ID
+======================================================================
+

@@ -50,31 +50,64 @@ export async function POST(request: Request) {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
 
+        // Récupérer le customer Stripe pour obtenir l'email
+        const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer
+        const customerEmail = customer.email
+
         // Trouver l'utilisateur par stripe_customer_id
-        const { data: user } = await supabase
+        let { data: user } = await supabase
           .from('users')
           .select('id')
           .eq('stripe_customer_id', customerId)
           .single()
 
+        // Si pas trouvé par customer_id, chercher par email
+        if (!user && customerEmail) {
+          const { data: userByEmail } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', customerEmail)
+            .single()
+
+          if (userByEmail) {
+            user = userByEmail
+            // Mettre à jour le stripe_customer_id
+            await supabase
+              .from('users')
+              .update({ stripe_customer_id: customerId })
+              .eq('id', user.id)
+          }
+        }
+
         if (user) {
           // Déterminer le plan depuis le prix
           const priceId = subscription.items.data[0]?.price.id
-          let plan = 'free'
-          // TODO: Mapper les price IDs Stripe aux plans
-          if (priceId?.includes('standard')) plan = 'standard'
-          if (priceId?.includes('premium')) plan = 'premium'
+          let plan = 'standard' // Plan par défaut (gratuit)
 
-          // Mettre à jour l'abonnement
+          // Mapper les price IDs Stripe aux plans
+          const proPriceId = process.env.STRIPE_PRICE_ID_PRO
+          const ultimePriceId = process.env.STRIPE_PRICE_ID_ULTIME
+
+          if (priceId === proPriceId) {
+            plan = 'pro'
+          } else if (priceId === ultimePriceId) {
+            plan = 'ultime'
+          }
+
+          // Mettre à jour l'abonnement et nettoyer le pending_plan
           await supabase
             .from('users')
-            .update({ subscription_plan: plan })
+            .update({
+              subscription_plan: plan,
+              subscription_source: 'stripe',
+              pending_plan: null, // Nettoyer le plan en attente après paiement réussi
+            })
             .eq('id', user.id)
 
           const startedAt = 'current_period_start' in subscription && typeof subscription.current_period_start === 'number'
             ? new Date(subscription.current_period_start * 1000).toISOString()
             : new Date().toISOString()
-          
+
           const expiresAt = 'current_period_end' in subscription && typeof subscription.current_period_end === 'number'
             ? new Date(subscription.current_period_end * 1000).toISOString()
             : null
@@ -105,9 +138,10 @@ export async function POST(request: Request) {
           .single()
 
         if (user) {
+          // Revenir au plan standard (gratuit) quand l'abonnement Stripe est annulé
           await supabase
             .from('users')
-            .update({ subscription_plan: 'free' })
+            .update({ subscription_plan: 'standard', subscription_source: null })
             .eq('id', user.id)
 
           await supabase

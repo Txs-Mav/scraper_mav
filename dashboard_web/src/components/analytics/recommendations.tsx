@@ -7,6 +7,7 @@ interface Opportunity {
   produit: string
   recommandation: string
   impactPotentiel: number
+  categorie?: string
 }
 
 interface RecommendationsProps {

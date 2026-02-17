@@ -24,16 +24,32 @@ export async function GET() {
         console.error('Error loading from Supabase:', error)
         // Fallback sur local
       } else if (data) {
-        const scrapers = data.map(item => ({
-          cacheKey: item.cache_key,
-          url: item.site_url,
-          siteName: item.metadata?.site_name || 'N/A',
-          structureType: item.metadata?.structure_type || 'N/A',
-          createdAt: item.created_at,
-          updatedAt: item.updated_at,
-          fileSize: item.scraper_code?.length || 0,
-          source: 'supabase'
-        }))
+        const scrapers = data.map(item => {
+          // Vérifier si le cache est expiré
+          const isExpired = item.expires_at && new Date(item.expires_at) < new Date()
+          const status = isExpired ? 'expired' : (item.status || 'active')
+          
+          return {
+            id: item.id,
+            cacheKey: item.cache_key,
+            url: item.site_url,
+            siteName: item.metadata?.site_name || 'N/A',
+            structureType: item.metadata?.structure_type || 'N/A',
+            selectors: item.selectors || {},
+            productUrls: item.product_urls || [],
+            productUrlsCount: (item.product_urls || []).length,
+            expiresAt: item.expires_at,
+            status: status,
+            isExpired: isExpired,
+            templateVersion: item.template_version || '1.0',
+            lastProductCount: item.last_product_count || 0,
+            lastRunAt: item.last_run_at,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
+            fileSize: item.scraper_code?.length || 0,
+            source: 'supabase'
+          }
+        })
         
         return NextResponse.json({ scrapers })
       }

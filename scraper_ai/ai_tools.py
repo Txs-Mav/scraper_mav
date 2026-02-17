@@ -46,34 +46,83 @@ class AITools:
         self.discovered_urls: List[str] = []
         self.visited_urls: set = set()
 
-    def get(self, url: str, use_selenium: bool = False) -> str:
+    def get(self, url: str, use_selenium: bool = False, max_retries: int = 1,
+            skip_visited_check: bool = False) -> str:
         """
-        Fetch raw HTML from a URL.
+        Fetch raw HTML from a URL with retry and exponential backoff.
 
         Args:
             url: URL à récupérer
             use_selenium: Si True, utilise Selenium pour le rendu JavaScript
+            max_retries: Nombre maximum de tentatives (1 = pas de retry, 3 = recommandé pour pages critiques)
+            skip_visited_check: Si True, ignore la vérification visited_urls (utile pour les retries et fallbacks)
 
         Returns:
             HTML brut de la page
         """
-        if url in self.visited_urls:
+        if not skip_visited_check and url in self.visited_urls:
             return ""
 
+        import time as _time
+
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                if use_selenium and SELENIUM_AVAILABLE and fetch_page_with_selenium:
+                    html = fetch_page_with_selenium(url)
+                else:
+                    response = self.session.get(url, timeout=30)
+                    response.raise_for_status()
+                    html = response.text
+
+                # Succès : marquer l'URL comme visitée seulement après succès
+                self.visited_urls.add(url)
+                return html
+
+            except Exception as e:
+                last_error = e
+                is_transient = self._is_transient_error(e)
+
+                if attempt < max_retries - 1 and is_transient:
+                    wait_time = 2 ** attempt * 2  # 2s, 4s, 8s...
+                    print(
+                        f"⚠️ Tentative {attempt + 1}/{max_retries} échouée pour {url}: {e}")
+                    print(
+                        f"   🔄 Erreur transitoire détectée, nouvelle tentative dans {wait_time}s...")
+                    _time.sleep(wait_time)
+                elif attempt < max_retries - 1:
+                    # Erreur non-transitoire (ex: 404, 403) → pas de retry
+                    print(f"⚠️ Erreur lors de la récupération de {url}: {e}")
+                    self.visited_urls.add(url)
+                    return ""
+
+        # Toutes les tentatives ont échoué
+        print(
+            f"❌ Échec après {max_retries} tentative(s) pour {url}: {last_error}")
         self.visited_urls.add(url)
+        return ""
 
-        try:
-            if use_selenium and SELENIUM_AVAILABLE and fetch_page_with_selenium:
-                html = fetch_page_with_selenium(url)
-            else:
-                response = self.session.get(url, timeout=30)
-                response.raise_for_status()
-                html = response.text
-
-            return html
-        except Exception as e:
-            print(f"⚠️ Erreur lors de la récupération de {url}: {e}")
-            return ""
+    @staticmethod
+    def _is_transient_error(error: Exception) -> bool:
+        """Détermine si une erreur est transitoire (justifie un retry)."""
+        error_str = str(error).lower()
+        transient_indicators = [
+            'nameresolutionerror', 'name resolution',       # DNS transitoire
+            'nodename nor servname',                         # DNS macOS
+            'temporary failure in name resolution',          # DNS Linux
+            'connectionerror', 'connection refused',         # Connexion refusée
+            'connectionreseterror', 'connection reset',      # Reset connexion
+            'timeout', 'timed out', 'read timed out',       # Timeouts
+            'remotedisconnected', 'remote disconnected',     # Déconnexion serveur
+            'brokenpipeerror', 'broken pipe',                # Pipe cassé
+            'connectionabortederror',                        # Connexion avortée
+            'max retries exceeded',                          # urllib3 retry exhaustion
+            'newconnectionerror',                            # Nouvelle connexion échouée
+            '502', '503', '504',                             # Erreurs serveur transitoires
+            'bad gateway', 'service unavailable',
+            'gateway timeout',
+        ]
+        return any(indicator in error_str for indicator in transient_indicators)
 
     def browser_get(self, url: str) -> str:
         """
@@ -214,11 +263,25 @@ class AITools:
 
         # ÉTAPE 1: Chercher dans robots.txt pour Sitemap: directives
         try:
+            import time as _time
             parsed = urlparse(url)
             robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-            response = self.session.get(robots_url, timeout=10)
-            if response.status_code == 200:
-                robots_content = response.text
+            robots_content = None
+            for attempt in range(3):
+                try:
+                    response = self.session.get(robots_url, timeout=10)
+                    if response.status_code == 200:
+                        robots_content = response.text
+                    break  # Succès ou erreur HTTP non-transitoire
+                except Exception as retry_err:
+                    if attempt < 2 and self._is_transient_error(retry_err):
+                        wait = 2 ** attempt * 2
+                        print(
+                            f"⚠️ robots.txt tentative {attempt + 1}/3 échouée, retry dans {wait}s...")
+                        _time.sleep(wait)
+                    else:
+                        raise
+            if robots_content:
                 # Extraire toutes les directives Sitemap:
                 sitemap_directives = re.findall(
                     r'[Ss]itemap:\s*(.+)', robots_content)
@@ -246,43 +309,85 @@ class AITools:
         # ÉTAPE 3: Essayer tous les sitemaps trouvés
         visited_sitemaps = set()
 
+        # Supporter les deux namespaces (http et https) car certains sites utilisent https
+        SITEMAP_NS_VARIANTS = [
+            'http://www.sitemaps.org/schemas/sitemap/0.9',
+            'https://www.sitemaps.org/schemas/sitemap/0.9',
+        ]
+
         def parse_sitemap(sitemap_url: str) -> List[str]:
             """Parse un sitemap et retourne ses URLs"""
-            if sitemap_url in visited_sitemaps:
+            sitemap_url = (sitemap_url or '').strip()
+            if not sitemap_url or sitemap_url in visited_sitemaps:
                 return []
             visited_sitemaps.add(sitemap_url)
 
             urls = []
             try:
                 response = self.session.get(sitemap_url, timeout=10)
-                if response.status_code == 200:
-                    content = response.text
+                if response.status_code != 200:
+                    return urls
+                content = response.text
 
-                    # Parser le XML
-                    try:
-                        root = ET.fromstring(content)
-                        ns = {
-                            'sitemap': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+                # Parser le XML
+                try:
+                    root = ET.fromstring(content)
 
-                        # Si c'est un sitemap index
-                        if root.tag.endswith('sitemapindex'):
-                            sitemaps = root.findall('.//sitemap:sitemap', ns)
-                            for sitemap in sitemaps:
-                                loc = sitemap.find('sitemap:loc', ns)
-                                if loc is not None:
-                                    # Récursivement récupérer les URLs de ce sitemap
-                                    urls.extend(parse_sitemap(loc.text))
-                        # Si c'est un sitemap normal
-                        elif root.tag.endswith('urlset'):
-                            url_elems = root.findall('.//sitemap:url', ns)
-                            for url_elem in url_elems:
-                                loc = url_elem.find('sitemap:loc', ns)
-                                if loc is not None:
-                                    urls.append(loc.text)
-                    except ET.ParseError:
-                        # Si le parsing XML échoue, essayer de trouver les URLs avec regex
-                        found_urls = re.findall(r'<loc>(.*?)</loc>', content)
-                        urls.extend(found_urls)
+                    # Détecter le namespace utilisé dans le document
+                    actual_ns = None
+                    for ns_variant in SITEMAP_NS_VARIANTS:
+                        if ns_variant in root.tag or ns_variant in content[:500]:
+                            actual_ns = ns_variant
+                            break
+
+                    def find_elements(parent, tag_name):
+                        """Cherche des éléments avec différents namespaces"""
+                        # Essayer chaque variante de namespace
+                        for ns_uri in SITEMAP_NS_VARIANTS:
+                            ns = {'sitemap': ns_uri}
+                            elems = parent.findall(
+                                f'.//sitemap:{tag_name}', ns)
+                            if elems:
+                                return elems, ns_uri
+                            # Essayer avec namespace par défaut
+                            elems = parent.findall(
+                                f'.//{{{ns_uri}}}{tag_name}')
+                            if elems:
+                                return elems, ns_uri
+                        # Essayer sans namespace
+                        elems = parent.findall(f'.//{tag_name}')
+                        return elems, None
+
+                    # Si c'est un sitemap index (avec ou sans namespace dans le tag)
+                    if root.tag.endswith('sitemapindex'):
+                        sitemaps, found_ns = find_elements(root, 'sitemap')
+                        for sitemap in sitemaps:
+                            # Chercher <loc> dans chaque <sitemap>
+                            loc = None
+                            if found_ns:
+                                loc = sitemap.find(f'{{{found_ns}}}loc')
+                            if loc is None:
+                                loc = sitemap.find('loc')
+                            if loc is not None and loc.text:
+                                child_url = loc.text.strip()
+                                urls.extend(parse_sitemap(child_url))
+                    # Si c'est un sitemap normal (urlset)
+                    elif root.tag.endswith('urlset'):
+                        url_elems, found_ns = find_elements(root, 'url')
+                        for url_elem in url_elems:
+                            loc = None
+                            if found_ns:
+                                loc = url_elem.find(f'{{{found_ns}}}loc')
+                            if loc is None:
+                                loc = url_elem.find('loc')
+                            if loc is not None and loc.text:
+                                urls.append(loc.text.strip())
+                except ET.ParseError:
+                    # Si le parsing XML échoue, essayer de trouver les URLs avec regex
+                    found_urls = re.findall(
+                        r'<loc>\s*(.*?)\s*</loc>', content, re.DOTALL)
+                    urls.extend(u.strip()
+                                for u in found_urls if u and u.strip())
             except Exception as e:
                 print(f"⚠️ Erreur lors du parsing de {sitemap_url}: {e}")
 
@@ -1020,6 +1125,9 @@ class AITools:
         """
         Extract price from text.
 
+        Gère les cas où il y a plusieurs prix (prix barré + prix actuel)
+        en extrayant le DERNIER prix (qui est généralement le prix actuel affiché)
+
         Args:
             text: Texte contenant un prix
 
@@ -1029,24 +1137,35 @@ class AITools:
         if not text:
             return None
 
-        # Patterns pour prix: $123.45, 123,45€, 1234.56, etc.
+        # Patterns pour extraire les prix (dans l'ordre d'apparition)
         patterns = [
-            r'\$?\s*(\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?)',  # $1,234.56
-            r'(\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?)\s*€',   # 1,234.56€
-            # 1234.56 ou 1234,56
-            r'(\d+(?:[.,]\d{2})?)',
+            r'\$\s*([\d,\s]+(?:\.\d{1,2})?)',  # $1,234.56
+            r'([\d,\s]+(?:\.\d{1,2})?)\s*\$',  # 1,234.56$
+            r'€\s*([\d,\s]+(?:,\d{1,2})?)',    # €1 234,56
+            r'([\d,\s]+(?:,\d{1,2})?)\s*€',   # 1 234,56€
+            # Nombre avec séparateurs
+            r'(\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d{1,2})?)',
         ]
 
+        all_prices = []
+
         for pattern in patterns:
-            match = re.search(pattern, text.replace(' ', ''))
-            if match:
-                price_str = match.group(1).replace(',', '').replace(' ', '')
+            for match in re.finditer(pattern, text):
+                price_str = match.group(1).replace(
+                    ',', '').replace(' ', '').replace('\u00a0', '')
                 try:
-                    return float(price_str)
+                    price = float(price_str)
+                    if 100 < price < 1000000:  # Prix raisonnable
+                        all_prices.append((match.start(), price))
                 except ValueError:
                     continue
 
-        return None
+        if not all_prices:
+            return None
+
+        # Trier par position et retourner le DERNIER prix (prix actuel)
+        all_prices.sort(key=lambda x: x[0])
+        return all_prices[-1][1]
 
     def get_text_content(self, html: str, selector: Optional[str] = None) -> str:
         """

@@ -1,0 +1,27 @@
+# =============================================================================
+# Dépendances Scraper AI
+# =============================================================================
+
+# Vertex AI (Production)
+google-cloud-aiplatform>=1.38.0
+
+# Google AI API (Dev - optionnel)
+google-generativeai>=0.3.0
+
+# Parsing HTML
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# HTTP Client
+httpx>=0.25.0
+requests>=2.31.0
+
+# Browser automation
+playwright>=1.40.0
+
+# Utilitaires
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+
+# Supabase (pour le cache)
+supabase>=2.0.0

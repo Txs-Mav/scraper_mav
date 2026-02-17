@@ -24,12 +24,13 @@ class ExplorationAgent:
         self.gemini_client = GeminiClient()
         self.ai_tools = None
 
-    def explore_and_extract(self, url: str, initial_html: Optional[str] = None) -> Dict[str, Any]:
+    def explore_and_extract(self, url: str, initial_html: Optional[str] = None, inventory_only: bool = False) -> Dict[str, Any]:
         """Explore le site et extrait les infos produits via Gemini
 
         Args:
             url: URL de base du site
             initial_html: HTML initial de la page d'accueil (optionnel)
+            inventory_only: Si True, exclut les pages catalogue/showroom
 
         Returns:
             Dictionnaire avec:
@@ -49,7 +50,8 @@ class ExplorationAgent:
 
         # 1. DÉCOUVRIR TOUTES LES URLs DE PRODUITS
         print(f"📍 Découverte des URLs de produits...")
-        product_urls = self._discover_product_urls(url, initial_html)
+        product_urls = self._discover_product_urls(
+            url, initial_html, inventory_only=inventory_only)
         print(f"   ✅ {len(product_urls)} URLs de produits découvertes\n")
 
         # 2. RÉCUPÉRER LE HTML DE CHAQUE URL PRODUIT
@@ -81,15 +83,20 @@ class ExplorationAgent:
             'site_structure': site_structure
         }
 
-    def _discover_product_urls(self, url: str, initial_html: Optional[str] = None) -> List[str]:
+    def _discover_product_urls(self, url: str, initial_html: Optional[str] = None, inventory_only: bool = False) -> List[str]:
         """Découvre toutes les URLs de produits (sitemap, pagination, navigation)"""
+        self._inventory_only = inventory_only
         tools = self.ai_tools
 
         # Récupérer HTML initial si non fourni
+        # Utilise max_retries=3 pour résister aux erreurs DNS/réseau transitoires
+        # Utilise skip_visited_check=True pour le fallback Selenium (sinon l'URL
+        # est déjà marquée comme visitée après le premier essai)
         if not initial_html:
-            initial_html = tools.get(url, use_selenium=False)
+            initial_html = tools.get(url, use_selenium=False, max_retries=3)
             if not initial_html or len(initial_html) < 1000:
-                initial_html = tools.browser_get(url)
+                initial_html = tools.get(url, use_selenium=True, max_retries=2,
+                                         skip_visited_check=True)
 
         all_product_urls = []
 
@@ -99,7 +106,8 @@ class ExplorationAgent:
         if sitemap_urls:
             print(
                 f"         ✅ {len(sitemap_urls)} URLs trouvées dans le sitemap")
-            all_product_urls.extend(sitemap_urls[:500])  # Limite de sécurité
+            # Limite de sécurité (augmentée pour inventaires complets)
+            all_product_urls.extend(sitemap_urls[:1000])
         else:
             print(f"         ⚠️ Aucun sitemap trouvé")
 
@@ -112,8 +120,8 @@ class ExplorationAgent:
             # Parcourir les pages de pagination
             page = 1
             consecutive_empty = 0
-            max_pages = 100
-            max_urls = 500
+            max_pages = 200
+            max_urls = 1000  # Augmenté pour inventaires complets
 
             while page <= max_pages and len(all_product_urls) < max_urls:
                 try:
@@ -150,14 +158,15 @@ class ExplorationAgent:
             print(f"         ⚠️ Aucune pagination détectée")
 
         # 3. Découvrir depuis les liens de la page d'accueil
-        if len(all_product_urls) < 50:
+        if len(all_product_urls) < 100:
             print(f"      🔗 Découverte depuis les liens...")
             discovered_urls = tools.discover_product_urls(initial_html, url)
             all_product_urls.extend(discovered_urls)
 
-        # 4. Si peu d'URLs, explorer les pages de listage (ex: /usage/motocyclette/inventaire/)
+        # 4. Explorer les pages de listage (ex: /usage/motocyclette/inventaire/)
         #    pour découvrir les fiches produit (ex: .../triumph-scrambler-2022-a-vendre-ins00023/)
-        if len(all_product_urls) < 50:
+        #    IMPORTANT: Toujours explorer pour s'assurer d'avoir TOUS les produits
+        if len(all_product_urls) < 100:
             candidate_listing_urls = self._get_listing_page_candidates(
                 all_product_urls, url
             )
@@ -172,7 +181,7 @@ class ExplorationAgent:
                             extra = tools.discover_product_urls(
                                 listing_html, listing_url)
                             all_product_urls.extend(extra)
-                            if len(all_product_urls) >= 500:
+                            if len(all_product_urls) >= 1000:
                                 break
                     except Exception as e:
                         print(
@@ -197,16 +206,33 @@ class ExplorationAgent:
 
         # ------------------------------------------------------------
         # Filtrage adaptatif (PRODUCTION):
-        # - Si on détecte suffisamment d'URLs "inventaire-likely", on devient strict (inventaire seulement)
-        # - Sinon, on garde un fallback pour les sites où "catalogue/showroom" représente les fiches produits
+        # Si inventory_only=True ET le site a des URLs d'inventaire → exclure catalogue
+        # Si inventory_only=False → mode inclusif (inventaire + catalogue + occasion)
         # ------------------------------------------------------------
-        inventory_likely = [u for u in unique_urls if self._looks_like_inventory_url(u)]
-        inventory_only_mode = len(inventory_likely) >= 10  # seuil conservateur
-        print(
-            f"      🧭 Mode filtrage: "
-            f"{'inventaire strict' if inventory_only_mode else 'adaptatif (fallback si nécessaire)'} "
-            f"(inventaire-likely: {len(inventory_likely)}/{len(unique_urls)})"
-        )
+        inventory_likely = [
+            u for u in unique_urls if self._looks_like_inventory_url(u)]
+
+        # Le mode est contrôlé par le paramètre utilisateur + auto-détection
+        INVENTORY_THRESHOLD = 5
+        has_enough_inventory = len(inventory_likely) >= INVENTORY_THRESHOLD
+        inventory_only_mode = getattr(
+            self, '_inventory_only', False) and has_enough_inventory
+
+        if getattr(self, '_inventory_only', False) and not has_enough_inventory:
+            print(
+                f"      ⚠️ Mode inventaire demandé mais seulement {len(inventory_likely)} URLs d'inventaire détectées"
+                f" (< seuil {INVENTORY_THRESHOLD}) → fallback mode inclusif"
+            )
+        elif inventory_only_mode:
+            print(
+                f"      🎯 Mode INVENTAIRE: {len(inventory_likely)} URLs d'inventaire détectées"
+                f" → exclusion des pages catalogue/showroom"
+            )
+        else:
+            print(
+                f"      🧭 Mode INCLUSIF: inventaire + catalogue + occasion"
+                f" (inventaire-likely: {len(inventory_likely)}/{len(unique_urls)})"
+            )
 
         # Filtrer les URLs invalides (pages non-produits)
         filtered_urls = []
@@ -241,7 +267,7 @@ class ExplorationAgent:
         product_id_patterns = [
             r'ins\d{3,}',      # ins00023, ins12345 (Morin Sports)
             r'inv\d{3,}',      # inv02011 (autres concessionnaires)
-            r'[/-][tu]\d{4,}', # /t96538/, /u00380/ (RPM, certains sites)
+            r'[/-][tu]\d{4,}',  # /t96538/, /u00380/ (RPM, certains sites)
             r'vin[-_]?([a-hj-npr-z0-9]{8,})',  # VIN explicite
             r'\b[a-hj-npr-z0-9]{17}\b',        # VIN 17 caractères
             r'stock[-_ ]?\d{3,}',              # stock 12345
@@ -249,7 +275,8 @@ class ExplorationAgent:
             r'ref[-_]?\d+',                    # ref123, ref_456
             r'p\d{4,}',                        # p12345 (ID produit)
         ]
-        has_product_id = any(re.search(pattern, url_lower) for pattern in product_id_patterns)
+        has_product_id = any(re.search(pattern, url_lower)
+                             for pattern in product_id_patterns)
         if has_product_id:
             return True
 
@@ -262,7 +289,8 @@ class ExplorationAgent:
 
         # Dernier segment "détail" (contient souvent année/id)
         last_segment = url_lower.rstrip('/').split('/')[-1]
-        looks_like_detail = any(ch.isdigit() for ch in last_segment) and len(last_segment) > 10
+        looks_like_detail = any(ch.isdigit()
+                                for ch in last_segment) and len(last_segment) > 10
 
         return has_inventory_marker and looks_like_detail
 
@@ -320,59 +348,65 @@ class ExplorationAgent:
         # Format type Morin Sports: /usage/motocyclette/inventaire/triumph-scrambler-2022-a-vendre-ins00023/
         # Ces patterns indiquent une VRAIE fiche produit, pas une page de listing
         import re
-        
+
         # Patterns d'identifiants de produit (très fiables)
         product_id_patterns = [
             r'ins\d{3,}',      # ins00023, ins12345 (Morin Sports)
             r'inv\d{3,}',      # inv02011 (autres concessionnaires)
-            r'[/-][tu]\d{4,}', # /t96538/, /u00380/ (RPM, certains sites)
+            r'[/-][tu]\d{4,}',  # /t96538/, /u00380/ (RPM, certains sites)
             r'p\d{4,}',        # p12345 (ID produit)
             r'sku[-_]?\d+',    # sku123, sku-456
             r'ref[-_]?\d+',    # ref123, ref_456
         ]
-        
+
         # Vérifier si l'URL contient un ID produit (très fiable pour détail)
-        has_product_id = any(re.search(pattern, url_lower) for pattern in product_id_patterns)
-        
+        has_product_id = any(re.search(pattern, url_lower)
+                             for pattern in product_id_patterns)
+
         # Patterns qui indiquent une page de détail (avec nom de produit dans l'URL)
         # Ex: /triumph-scrambler-2022-a-vendre-ins00023/
         detail_indicators = [
             'a-vendre', 'for-sale', 'a-vendre-', '-a-vendre',
             'fiche-', 'detail-', 'details-',
         ]
-        has_detail_indicator = any(ind in url_lower for ind in detail_indicators)
-        
+        has_detail_indicator = any(
+            ind in url_lower for ind in detail_indicators)
+
         # Patterns qui indiquent une page de LISTING (à éviter pour extraction directe)
         # Ces URLs sont OK pour découvrir plus de produits mais pas pour extraction
         listing_only_patterns = [
             r'/inventaire/?$',           # Se termine par /inventaire/ ou /inventaire
             r'/inventory/?$',
             r'/neuf/?$',
-            r'/usage/?$', 
+            r'/usage/?$',
             r'/used/?$',
             r'/new/?$',
             r'\?page=',                  # Pagination
             r'\?make=',                  # Filtres
             r'\?category=',
         ]
-        is_listing_page = any(re.search(pattern, url_lower) for pattern in listing_only_patterns)
+        is_listing_page = any(re.search(pattern, url_lower)
+                              for pattern in listing_only_patterns)
 
         # Si c'est une page de listing sans ID produit, c'est pas une page de détail
         if is_listing_page and not has_product_id:
             return False
-        
+
         # INDIQUEURS pour pages d'INVENTAIRE (mais pas suffisant seuls)
         inventory_indicators = [
-            'inventaire', 'inventory', 'vendre', 
+            'inventaire', 'inventory', 'vendre',
             'stock', 'en-stock', 'disponible',
         ]
         has_inventory_indicator = any(
             indicator in url_lower for indicator in inventory_indicators)
 
         # Signal "catalogue-like" (adaptatif)
-        catalogue_keywords = ['catalogue', 'catalog', 'showroom', 'modele', 'model', 'gamme', 'range']
-        has_catalogue_keyword = any(kw in url_lower for kw in catalogue_keywords)
-        showroom_pattern = r'/neuf/[^/]+/[^/]+/[^/]+/?$'  # pattern courant, pas universel
+        catalogue_keywords = ['catalogue', 'catalog',
+                              'showroom', 'modele', 'model', 'gamme', 'range']
+        has_catalogue_keyword = any(
+            kw in url_lower for kw in catalogue_keywords)
+        # pattern courant, pas universel
+        showroom_pattern = r'/neuf/[^/]+/[^/]+/[^/]+/?$'
         looks_like_showroom = bool(re.search(showroom_pattern, url_lower))
         is_catalogue_like = (
             (has_catalogue_keyword or looks_like_showroom)
@@ -402,7 +436,7 @@ class ExplorationAgent:
         # - Plus de segments que les pages listing
         url_parts = url.strip('/').split('/')
         last_segment = url_parts[-1] if url_parts else ''
-        
+
         # Critère strict: le dernier segment doit contenir des infos produit
         # (pas juste "inventaire" ou un filtre)
         has_product_in_last_segment = (
@@ -413,7 +447,7 @@ class ExplorationAgent:
             # A une certaine longueur (nom de modèle)
             len(last_segment) > 10
         )
-        
+
         # LOGIQUE FINALE:
         # - Si ID produit trouvé → TOUJOURS accepter (très fiable)
         # - Si indicateur de détail → accepter si a aussi indicateur produit
@@ -424,7 +458,7 @@ class ExplorationAgent:
             return True
         if has_product_in_last_segment and has_product_indicator:
             return True
-            
+
         return False
 
     def _get_listing_page_candidates(
@@ -577,7 +611,8 @@ Exemple: {{"name": "h1", "prix": "span.number", "price": "span.number", "image":
                 if 'detected_selectors' in result:
                     detected_selectors.update(result['detected_selectors'])
             else:
-                print(f"         ⚠️ Réponse Gemini inattendue (type: {type(result).__name__})")
+                print(
+                    f"         ⚠️ Réponse Gemini inattendue (type: {type(result).__name__})")
 
         except Exception as e:
             print(f"         ⚠️ Erreur lors de l'extraction Gemini: {e}")

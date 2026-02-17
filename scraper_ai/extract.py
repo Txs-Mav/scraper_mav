@@ -51,24 +51,82 @@ def clean_html(html: str) -> str:
 
 
 def extract_price(text: str) -> Optional[float]:
-    """Extrait un prix depuis un texte"""
+    """Extrait un prix depuis un texte
+
+    Gère les cas où il y a plusieurs prix (prix barré + prix actuel)
+    en extrayant le DERNIER prix (qui est généralement le prix actuel affiché)
+    """
     if not text:
         return None
-    # Chercher des patterns de prix: $1234.56, 1234,56$, 1234.56 CAD, etc.
-    patterns = [
-        r'\$[\s]*([\d,]+\.?\d*)',
-        r'([\d,]+\.?\d*)[\s]*\$',
-        r'([\d,]+\.?\d*)[\s]*(?:CAD|USD|EUR|€)',
-        r'([\d,]+\.?\d*)',
+
+    # Chercher tous les patterns de prix dans le texte (dans l'ordre d'apparition)
+    price_patterns = [
+        r'\$\s*([\d\s,]+(?:\.\d{2})?)',  # $1234.56 ou $1,234.56
+        r'([\d\s,]+(?:\.\d{2})?)\s*\$',  # 1234.56$ ou 1,234.56$
+        r'([\d\s,]+(?:,\d{2})?)\s*(?:CAD|USD|EUR|€)',  # 1234,56 CAD
+        r'(\d{1,3}(?:[\s,]\d{3})*(?:[.,]\d{2})?)',  # Nombre avec séparateurs
     ]
-    for pattern in patterns:
-        match = re.search(pattern, text.replace(',', ''))
-        if match:
-            try:
-                return float(match.group(1).replace(',', ''))
-            except:
-                continue
-    return None
+
+    all_prices = []
+
+    for pattern in price_patterns:
+        for match in re.finditer(pattern, text):
+            price = _clean_price_string(match.group(
+                1) if match.lastindex else match.group(0))
+            # Prix raisonnable (100$ à 10M$)
+            if price and 100 < price < 10000000:
+                all_prices.append((match.start(), price))
+
+    # Si aucun prix trouvé avec les patterns, essayer l'extraction simple
+    if not all_prices:
+        current_pos = 0
+        for part in text.split():
+            cleaned = re.sub(r'[^\d.,]', '', part)
+            if cleaned:
+                price = _clean_price_string(cleaned)
+                if price and 100 < price < 10000000:
+                    all_prices.append((current_pos, price))
+            current_pos += len(part) + 1
+
+    if not all_prices:
+        return None
+
+    # Trier par position et retourner le DERNIER prix (prix actuel)
+    all_prices.sort(key=lambda x: x[0])
+    return all_prices[-1][1]
+
+
+def _clean_price_string(price_str: str) -> Optional[float]:
+    """Nettoie une chaîne de prix et la convertit en float"""
+    if not price_str:
+        return None
+
+    # Supprimer les espaces
+    cleaned = price_str.replace(' ', '').replace('\u00a0', '')
+
+    # Supprimer les caractères non numériques sauf . et ,
+    cleaned = re.sub(r'[^\d.,]', '', cleaned)
+
+    if not cleaned:
+        return None
+
+    # Gérer les formats français (1 234,56) et anglais (1,234.56)
+    if ',' in cleaned and '.' in cleaned:
+        if cleaned.rindex(',') > cleaned.rindex('.'):
+            cleaned = cleaned.replace('.', '').replace(',', '.')
+        else:
+            cleaned = cleaned.replace(',', '')
+    elif ',' in cleaned:
+        parts = cleaned.split(',')
+        if len(parts) == 2 and len(parts[1]) == 2:
+            cleaned = cleaned.replace(',', '.')
+        else:
+            cleaned = cleaned.replace(',', '')
+
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
 
 
 def extract_year(text: str) -> Optional[int]:

@@ -1,9 +1,26 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 
 export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const user_id = searchParams.get('user_id')
+    const cache_key = searchParams.get('cache_key')
+
+    // Vérifier l'authentification
+    // Si user_id est fourni (appel depuis Python), l'utiliser directement
+    // Sinon, vérifier via getCurrentUser() (appel depuis le frontend)
+    let userId: string | null = null
+    let isPythonCall = false
+
+    if (user_id) {
+      // Appel depuis le script Python - utiliser user_id fourni
+      userId = user_id
+      isPythonCall = true
+    } else {
+      // Appel depuis le frontend - vérifier via session
     const user = await getCurrentUser()
     if (!user) {
       return NextResponse.json(
@@ -11,17 +28,7 @@ export async function GET(request: Request) {
         { status: 401 }
       )
     }
-
-    const { searchParams } = new URL(request.url)
-    const user_id = searchParams.get('user_id')
-    const cache_key = searchParams.get('cache_key')
-
-    // Vérifier que user_id correspond à l'utilisateur authentifié
-    if (user_id !== user.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized: user_id mismatch' },
-        { status: 403 }
-      )
+      userId = user.id
     }
 
     if (!cache_key) {
@@ -31,12 +38,22 @@ export async function GET(request: Request) {
       )
     }
 
-    const supabase = await createClient()
+    // Pour les appels Python, utiliser le service role pour bypasser RLS
+    // Pour les appels frontend, utiliser le client avec session
+    let supabase
+    if (isPythonCall && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      supabase = createServiceClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      )
+    } else {
+      supabase = await createClient()
+    }
 
     const { data, error } = await supabase
       .from('scraper_cache')
-      .select('scraper_code, metadata')
-      .eq('user_id', user_id)
+      .select('id, scraper_code, selectors, product_urls, metadata, expires_at, status, template_version, last_product_count, last_run_at')
+      .eq('user_id', userId)
       .eq('cache_key', cache_key)
       .single()
 
@@ -54,10 +71,23 @@ export async function GET(request: Request) {
       )
     }
 
+    // Vérifier si le cache est expiré
+    const isExpired = data.expires_at && new Date(data.expires_at) < new Date()
+    const status = isExpired ? 'expired' : (data.status || 'active')
+
     return NextResponse.json({
       found: true,
+      id: data.id,
       scraper_code: data.scraper_code,
-      metadata: data.metadata || {}
+      selectors: data.selectors || {},
+      product_urls: data.product_urls || [],
+      metadata: data.metadata || {},
+      expires_at: data.expires_at,
+      status: status,
+      template_version: data.template_version,
+      last_product_count: data.last_product_count,
+      last_run_at: data.last_run_at,
+      is_expired: isExpired
     })
   } catch (error: any) {
     console.error('Error loading scraper cache:', error)
@@ -67,4 +97,3 @@ export async function GET(request: Request) {
     )
   }
 }
-

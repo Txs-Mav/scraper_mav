@@ -7,6 +7,7 @@ import {
   calculateProductAnalysis,
   calculateOpportunities,
   calculateRetailerAnalysis,
+  calculateCategoryAnalysis,
   calculateAlerts,
   calculateStats,
   calculatePriceEvolution,
@@ -82,6 +83,7 @@ export async function GET() {
         evolutionPrix: [],
         opportunites: [],
         detailleurs: [],
+        categories: [],
         alertes: [],
         stats: {
           prixMoyen: 0,
@@ -136,7 +138,8 @@ export async function GET() {
       produits: calculateProductAnalysis(products, referenceDomain),
       evolutionPrix: calculatePriceEvolution(products),
       opportunites: calculateOpportunities(products, referenceDomain),
-      detailleurs: calculateRetailerAnalysis(products),
+      detailleurs: calculateRetailerAnalysis(products, referenceDomain),
+      categories: calculateCategoryAnalysis(products, referenceDomain),
       alertes: calculateAlerts(products, referenceDomain),
       stats: calculateStats(products, scrapesParJour, totalScrapes)
     }
@@ -148,7 +151,6 @@ export async function GET() {
     })
   } catch (error: unknown) {
     console.error('Error calculating analytics:', error)
-    // En cas d'erreur, retourner des analytics vides au lieu d'erreur
     const emptyAnalytics: AnalyticsData = {
       positionnement: {
         position: 'average',
@@ -162,6 +164,7 @@ export async function GET() {
       evolutionPrix: [],
       opportunites: [],
       detailleurs: [],
+      categories: [],
       alertes: [],
       stats: {
         prixMoyen: 0,

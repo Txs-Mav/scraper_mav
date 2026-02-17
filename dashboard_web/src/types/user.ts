@@ -7,10 +7,14 @@ export interface User {
     name: string
     email: string
     role: 'main' | 'employee' | 'user' | 'owner' | 'member'
-    subscription_plan?: 'free' | 'standard' | 'premium'
+    subscription_plan?: 'standard' | 'pro' | 'ultime'
+    /** Source de l'abonnement : stripe = payé, promo = code promo. Si null, plan non confirmé. */
+    subscription_source?: 'stripe' | 'promo' | null
     stripe_customer_id?: string | null
     avatar_url?: string | null
     main_account_id?: string | null // Pour les employés
+    promo_code_id?: string | null
+    pending_plan?: 'pro' | 'ultime' | null // Plan payant en attente de paiement
     created_at: string
     updated_at: string
 }
@@ -28,7 +32,7 @@ export interface Employee {
 export interface Subscription {
     id: string
     user_id: string
-    plan: 'free' | 'standard' | 'premium'
+    plan: 'standard' | 'pro' | 'ultime'
     status: 'active' | 'cancelled' | 'expired'
     started_at: string
     expires_at?: string | null

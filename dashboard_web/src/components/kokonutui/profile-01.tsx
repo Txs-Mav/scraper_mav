@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { LogOut, Settings, CreditCard, LogIn, MoveUpRight } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -37,42 +37,19 @@ export default function Profile01({
 }: Partial<Profile01Props> = defaultProfile) {
   const { user, logout, isMainAccount } = useAuth()
   const router = useRouter()
-  const [orgName, setOrgName] = useState<string | null>(null)
-
-  useEffect(() => {
-    const loadOrg = async () => {
-      if (!user) return
-      try {
-        const res = await fetch("/api/organization")
-        const data = await res.json()
-        if (res.ok && data.org?.name) {
-          setOrgName(data.org.name)
-        } else {
-          setOrgName(null)
-        }
-      } catch {
-        setOrgName(null)
-      }
-    }
-    loadOrg()
-  }, [user])
 
   const subscriptionLabels: Record<string, string> = {
-    free: "Gratuit",
-    standard: "Standard",
-    premium: "Premium",
+    standard: "Gratuit",
+    pro: "Pro",
+    ultime: "Ultime",
   }
 
   const displayName = user?.name || name
   const displayRole = useMemo(() => {
-    if (user?.role === "owner" || user?.role === "main") {
-      return `Owner${orgName ? " • " + orgName : ""}`
-    }
-    if (user?.role === "member") {
-      return `Membre${orgName ? " • " + orgName : ""}`
-    }
+    if (user?.role === "owner" || user?.role === "main") return "Owner"
+    if (user?.role === "member") return "Membre"
     return "Utilisateur"
-  }, [user?.role, orgName])
+  }, [user?.role])
   const displayAvatar = user?.avatar_url || avatar
   const displaySubscription = user?.subscription_plan
     ? subscriptionLabels[user.subscription_plan] || user.subscription_plan
@@ -90,7 +67,7 @@ export default function Profile01({
               {
                 label: "Subscription",
                 value: displaySubscription,
-                href: "/dashboard/subscription",
+                href: "/dashboard/payments",
                 icon: <CreditCard className="w-4 h-4" />,
                 external: false,
               },

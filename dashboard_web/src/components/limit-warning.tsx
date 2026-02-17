@@ -7,7 +7,7 @@ interface LimitWarningProps {
   type: 'scrapings' | 'analytics'
   current: number
   limit: number
-  plan?: 'free' | 'standard' | 'premium' | null
+  plan?: 'standard' | 'pro' | 'ultime' | null
   isAuthenticated?: boolean
 }
 
@@ -25,8 +25,8 @@ export default function LimitWarning({ type, current, limit, plan, isAuthenticat
       if (!isAuthenticated) {
         return "Connectez-vous pour accéder aux analytics"
       }
-      if (plan === 'free') {
-        return "Passez au plan Standard ou Premium pour accéder aux analytics"
+      if (plan === 'standard') {
+        return "Passez au plan Pro ou Ultime pour accéder aux analytics"
       }
       return null
     }
@@ -36,12 +36,12 @@ export default function LimitWarning({ type, current, limit, plan, isAuthenticat
         if (!isAuthenticated) {
           return `Limite de ${limit} scrapings atteinte. Connectez-vous pour plus de scrapings.`
         }
-        if (plan === 'free') {
-          return `Limite de ${limit} scrapings atteinte. Passez au plan Standard ou Premium pour des scrapings illimités.`
+        if (plan === 'standard') {
+          return `Limite de ${limit} scrapings atteinte. Passez au plan Pro ou Ultime pour des scrapings illimités.`
         }
       }
       if (isNearLimit) {
-        return `Vous avez utilisé ${current}/${limit} scrapings. ${!isAuthenticated ? 'Connectez-vous' : plan === 'free' ? 'Passez au plan Standard ou Premium' : ''} pour plus de scrapings.`
+        return `Vous avez utilisé ${current}/${limit} scrapings. ${!isAuthenticated ? 'Connectez-vous' : plan === 'standard' ? 'Passez au plan Pro ou Ultime' : ''} pour plus de scrapings.`
       }
     }
 
@@ -88,7 +88,7 @@ export default function LimitWarning({ type, current, limit, plan, isAuthenticat
               </p>
             </div>
           )}
-          {((!isAuthenticated && type === 'analytics') || (plan === 'free' && type === 'analytics')) && (
+          {((!isAuthenticated && type === 'analytics') || (plan === 'standard' && type === 'analytics')) && (
             <div className="mt-3">
               {!isAuthenticated ? (
                 <Link
@@ -100,11 +100,11 @@ export default function LimitWarning({ type, current, limit, plan, isAuthenticat
                 </Link>
               ) : (
                 <Link
-                  href="/dashboard/subscription"
+                  href="/dashboard/payments"
                   className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                 >
                   <TrendingUp className="h-4 w-4" />
-                  Passer au plan Standard
+                  Passer au plan Pro
                 </Link>
               )}
             </div>

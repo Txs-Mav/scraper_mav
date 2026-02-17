@@ -504,10 +504,15 @@ export default function SettingsPage() {
   // Handler pour Stripe Checkout
   const handleStripeCheckout = async (plan: string) => {
     try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({
+          plan,
+          cancel_url: `${baseUrl}/dashboard/settings?payment=canceled`,
+          success_url: `${baseUrl}/dashboard/settings?payment=success`,
+        }),
       })
 
       // Vérifier si la réponse est du JSON
@@ -830,12 +835,18 @@ export default function SettingsPage() {
             </div>
             <CreditCard className="h-8 w-8 text-blue-600 dark:text-blue-400" />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => handleStripeCheckout("price_standard")}
+              onClick={() => router.push("/dashboard/payments")}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Upgrade
+              Voir les plans et mettre à niveau
+            </button>
+            <button
+              onClick={() => handleStripeCheckout("price_standard")}
+              className="px-4 py-2 bg-gray-100 dark:bg-[#1F1F23] text-gray-900 dark:text-white rounded-lg hover:bg-gray-200 dark:hover:bg-[#2B2B30] transition-colors"
+            >
+              Upgrade (Stripe)
             </button>
             <button
               onClick={handleStripePortal}
@@ -844,6 +855,9 @@ export default function SettingsPage() {
               Gérer l'abonnement (Stripe Portal)
             </button>
           </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            La page <strong>Paiements</strong> (menu principal) permet de choisir un plan Pro ou Ultime. Tous les comptes, y compris Gratuit, peuvent y accéder.
+          </p>
         </div>
       </SectionCard>
 

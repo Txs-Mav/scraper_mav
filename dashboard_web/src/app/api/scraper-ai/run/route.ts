@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { spawn } from 'child_process'
 import path from 'path'
+import { getCurrentUser } from '@/lib/supabase/helpers'
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { url, referenceUrl, forceRefresh } = body
+    const { url, referenceUrl, forceRefresh, categories } = body
 
     if (!url) {
       return NextResponse.json(
@@ -13,6 +14,18 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+
+    // Récupérer l'utilisateur connecté (OBLIGATOIRE)
+    const user = await getCurrentUser()
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentification requise. Vous devez être connecté pour utiliser le scraper.' },
+        { status: 401 }
+      )
+    }
+    
+    const userId = user.id
 
     // Utiliser scraper_ai.main pour exécuter le scraper
     const scraperAiModule = 'scraper_ai.main'
@@ -29,19 +42,31 @@ export async function POST(request: Request) {
       args.push('--force-refresh')
     }
     
+    // Ajouter l'user ID pour le cache Supabase (toujours présent car auth obligatoire)
+    args.push('--user-id', userId)
+    
+    // Ajouter les catégories si spécifiées
+    if (categories && Array.isArray(categories) && categories.length > 0) {
+      args.push('--categories', categories.join(','))
+    }
+    
     args.push(url)
 
     console.log(`[ScraperAI] Running scraper for: ${url}`)
     console.log(`[ScraperAI] Command: ${pythonCmd} ${args.join(' ')}`)
     console.log(`[ScraperAI] Working directory: ${path.join(process.cwd(), '..')}`)
+    console.log(`[ScraperAI] User ID: ${userId || 'anonymous'}`)
+    console.log(`[ScraperAI] Categories: ${categories || 'default (inventaire, occasion)'}`)
     console.log(`[ScraperAI] GEMINI_API_KEY present: ${!!process.env.GEMINI_API_KEY}`)
 
     return new Promise<Response>((resolve) => {
-      // S'assurer que GEMINI_API_KEY est bien passée au processus Python
+      // S'assurer que les variables d'environnement sont bien passées au processus Python
       const env = { 
         ...process.env, 
         PYTHONUNBUFFERED: '1',
-        GEMINI_API_KEY: process.env.GEMINI_API_KEY || ''
+        GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+        NEXTJS_API_URL: `http://localhost:${process.env.PORT || 3000}`,
+        SCRAPER_USER_ID: userId || ''
       }
       
       console.log(`[ScraperAI] Starting Python process with env keys: ${Object.keys(env).filter(k => k.includes('GEMINI') || k.includes('PYTHON')).join(', ')}`)

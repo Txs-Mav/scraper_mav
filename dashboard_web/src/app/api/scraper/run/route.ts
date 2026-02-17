@@ -2,11 +2,35 @@ import { NextResponse } from 'next/server'
 import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
+import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: Request) {
   try {
+    // Récupérer l'utilisateur connecté
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      console.error('[ScraperAI] ❌ Utilisateur non authentifié')
+      return NextResponse.json(
+        { error: 'Authentication required', message: 'Vous devez être connecté pour lancer un scraping' },
+        { status: 401 }
+      )
+    }
+
+    const userId = user.id
+    console.log(`[ScraperAI] ✅ Utilisateur authentifié: ${userId}`)
+
     const body = await request.json()
-    const { referenceUrl, urls, forceRefresh } = body
+    const { referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly } = body
+
+    // Log détaillé de ce qui est reçu du frontend
+    console.log(`[ScraperAI] 📥 Body reçu:`)
+    console.log(`[ScraperAI]   - referenceUrl: ${referenceUrl}`)
+    console.log(`[ScraperAI]   - urls reçues (${(urls || []).length}):`, JSON.stringify(urls || []))
+    console.log(`[ScraperAI]   - forceRefresh: ${forceRefresh}`)
+    console.log(`[ScraperAI]   - ignoreColors: ${ignoreColors}`)
+    console.log(`[ScraperAI]   - inventoryOnly: ${inventoryOnly}`)
 
     if (!referenceUrl) {
       return NextResponse.json(
@@ -16,13 +40,13 @@ export async function POST(request: Request) {
     }
 
     // Filtrer les URLs vides et s'assurer que le site de référence est dans la liste
-    // Permettre le scraping avec seulement le site de référence (pas besoin de concurrents)
     let allUrls = (urls || []).filter((url: string) => url && url.trim() !== '')
     if (!allUrls.includes(referenceUrl)) {
       allUrls.unshift(referenceUrl)
     }
 
-    // Si aucune URL valide (même pas le site de référence), erreur
+    console.log(`[ScraperAI] 📊 URLs après filtrage (${allUrls.length}):`, JSON.stringify(allUrls))
+
     if (allUrls.length === 0) {
       return NextResponse.json(
         { error: 'At least one valid URL is required' },
@@ -30,12 +54,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // Utiliser scraper_ai (agent IA automatique)
-    // L'agent IA vérifie automatiquement le cache et génère un scraper si nécessaire
+    // Construire la commande avec l'user-id
     const scraperModule = 'scraper_ai.main'
-
-    // Construire la commande
     const args = ['-m', scraperModule]
+
+    // IMPORTANT: Ajouter l'ID utilisateur pour l'authentification
+    args.push('--user-id', userId)
 
     // Ajouter l'option --reference pour la comparaison de prix
     if (referenceUrl) {
@@ -47,58 +71,51 @@ export async function POST(request: Request) {
       args.push('--force-refresh')
     }
 
+    // Ajouter l'option --ignore-colors si demandé (permet plus de matchs)
+    if (ignoreColors) {
+      args.push('--ignore-colors')
+    }
+
+    // Ajouter l'option --inventory-only si activé (exclut les pages catalogue)
+    if (inventoryOnly) {
+      args.push('--inventory-only')
+    }
+
     // Ajouter toutes les URLs à scraper
     args.push(...allUrls)
 
-    console.log(`[ScraperAI] Module: ${scraperModule}`)
-    console.log(`[ScraperAI] URLs to scrape: ${allUrls.length}`)
-    console.log(`[ScraperAI] Reference URL: ${referenceUrl}`)
-    console.log(`[ScraperAI] Force refresh: ${forceRefresh || false}`)
-    console.log(`[ScraperAI] Full command: python3 ${args.join(' ')}`)
-    console.log(`[ScraperAI] L'agent IA va automatiquement analyser les sites et générer des scrapers si nécessaire`)
+    console.log(`[ScraperAI] 📋 Configuration:`)
+    console.log(`[ScraperAI]   - Module: ${scraperModule}`)
+    console.log(`[ScraperAI]   - User ID: ${userId}`)
+    console.log(`[ScraperAI]   - URLs: ${allUrls.length} site(s)`)
+    console.log(`[ScraperAI]   - Référence: ${referenceUrl}`)
+    console.log(`[ScraperAI]   - Force refresh: ${forceRefresh || false}`)
+    console.log(`[ScraperAI]   - Ignorer couleurs: ${ignoreColors || false}`)
+    console.log(`[ScraperAI]   - Inventaire seulement: ${inventoryOnly || false}`)
+    console.log(`[ScraperAI] 🚀 Commande: python3 ${args.join(' ')}`)
 
-    // Lancer le scraping en arrière-plan avec nohup ou spawn détaché
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
-
-    // Utiliser un script shell avec nohup pour lancer Python complètement détaché
-    // Cela évite de bloquer Next.js car le script shell se termine immédiatement
     const logsDir = path.join(process.cwd(), '..', 'scraper_logs')
     const timestamp = Date.now()
     const lockFile = path.join(logsDir, `scraper_${timestamp}.lock`)
     const logFile = path.join(logsDir, `scraper_${timestamp}.log`)
     const scriptFile = path.join(logsDir, `scraper_${timestamp}.sh`)
 
-    // Créer le dossier de logs s'il n'existe pas
+    // Créer le dossier de logs
     try {
       if (!fs.existsSync(logsDir)) {
         fs.mkdirSync(logsDir, { recursive: true })
       }
     } catch (e) {
-      console.error(`[ScraperAI] Erreur création dossier logs:`, e)
+      console.error(`[ScraperAI] ❌ Erreur création dossier logs:`, e)
     }
 
-    // Créer le script shell qui lance Python avec nohup
-    // Échapper les arguments pour éviter les problèmes de shell
+    // Échapper les arguments pour le shell
     const escapedArgs = args.map(arg => {
-      // Échapper les guillemets et caractères spéciaux pour le shell
       const escaped = arg.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
       return `"${escaped}"`
     }).join(' ')
 
-
-    console.log(`[ScraperAI] Escaped args: ${escapedArgs}`)
-    console.log(`LETS SEE`)
-    // Préparer les données JSON pour le fichier de lock
-    // Le PID sera ajouté par le script shell
-    const lockDataTemplate = {
-      pid: 0, // Sera remplacé
-      startTime: timestamp,
-      urls: allUrls,
-      referenceUrl: referenceUrl
-    }
-
-    // Créer le script shell qui lance Python avec nohup
-    // Échapper le JSON pour le shell
     const urlsJson = JSON.stringify(allUrls).replace(/\\/g, '\\\\').replace(/\$/g, '\\$')
     const refUrlEscaped = referenceUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
 
@@ -107,17 +124,16 @@ export async function POST(request: Request) {
 cd "${path.join(process.cwd(), '..').replace(/"/g, '\\"')}"
 nohup ${pythonCmd} ${escapedArgs} > "${logFile.replace(/"/g, '\\"')}" 2>&1 &
 PYTHON_PID=$!
-# Attendre un peu pour s'assurer que le processus est lancé
 sleep 0.5
-# Vérifier que le processus existe toujours
 if kill -0 $PYTHON_PID 2>/dev/null; then
-  # Écrire le PID dans le fichier de lock
   cat > "${lockFile.replace(/"/g, '\\"')}" << LOCKEOF
 {
   "pid": $PYTHON_PID,
   "startTime": ${timestamp},
+  "userId": "${userId}",
   "urls": ${urlsJson},
-  "referenceUrl": "${refUrlEscaped}"
+  "referenceUrl": "${refUrlEscaped}",
+  "logFile": "${logFile.replace(/"/g, '\\"')}"
 }
 LOCKEOF
   echo $PYTHON_PID
@@ -128,15 +144,13 @@ fi
 `
 
     try {
-      // Écrire le script shell
       fs.writeFileSync(scriptFile, scriptContent, { mode: 0o755 })
 
-      // Exécuter le script shell (il se termine immédiatement après avoir lancé Python)
       const shellProcess = spawn('bash', [scriptFile], {
         cwd: path.join(process.cwd(), '..'),
         stdio: 'pipe',
         shell: false,
-        detached: false // Le script shell doit se terminer rapidement
+        detached: false
       })
 
       let scriptOutput = ''
@@ -145,75 +159,51 @@ fi
       })
 
       shellProcess.stderr?.on('data', (data) => {
-        console.error(`[ScraperAI Script Error] ${data.toString()}`)
+        console.error(`[ScraperAI] ⚠️ Script stderr: ${data.toString()}`)
       })
 
       shellProcess.on('close', (code) => {
-        // Nettoyer le script shell après exécution
         try {
           if (fs.existsSync(scriptFile)) {
             fs.unlinkSync(scriptFile)
           }
         } catch (e) {
-          // Ignorer les erreurs de suppression
+          // Ignorer
         }
 
         if (code === 0) {
-          // Le script s'est terminé avec succès, Python est lancé en arrière-plan
           const pid = scriptOutput.trim()
           if (pid && !isNaN(parseInt(pid))) {
             console.log(`[ScraperAI] ✅ Scraping lancé avec PID: ${pid}`)
-            // Vérifier que le lock file existe et contient le bon PID
-            try {
-              if (fs.existsSync(lockFile)) {
-                const lockData = JSON.parse(fs.readFileSync(lockFile, 'utf-8'))
-                if (lockData.pid) {
-                  console.log(`[ScraperAI] ✅ Lock file créé avec PID: ${lockData.pid}`)
-                }
-              }
-            } catch (e) {
-              console.warn(`[ScraperAI] ⚠️ Lock file non lisible:`, e)
-            }
-          } else {
-            console.warn(`[ScraperAI] ⚠️ PID non valide reçu: ${pid}`)
           }
         } else {
-          console.error(`[ScraperAI] ❌ Erreur lors du lancement du script (code ${code})`)
-          console.error(`[ScraperAI] Output: ${scriptOutput}`)
-          // Supprimer le lock file si le script a échoué
+          console.error(`[ScraperAI] ❌ Erreur script (code ${code}): ${scriptOutput}`)
           try {
             if (fs.existsSync(lockFile)) {
               fs.unlinkSync(lockFile)
             }
           } catch (e) {
-            // Ignorer les erreurs de suppression
+            // Ignorer
           }
         }
       })
 
-      console.log(`LETS SEE 2`)
-
-      // Ne pas attendre le script - retourner immédiatement
-      // Le script shell se terminera rapidement (environ 0.5s) et Python continuera en arrière-plan
-      // Next.js ne sera pas bloqué
     } catch (error: any) {
-      console.error(`[ScraperAI] Erreur création/exécution script:`, error)
-      // Nettoyer en cas d'erreur
+      console.error(`[ScraperAI] ❌ Erreur création/exécution script:`, error)
       try {
-        if (fs.existsSync(scriptFile)) {
-          fs.unlinkSync(scriptFile)
-        }
-        if (fs.existsSync(lockFile)) {
-          fs.unlinkSync(lockFile)
-        }
+        if (fs.existsSync(scriptFile)) fs.unlinkSync(scriptFile)
+        if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile)
       } catch (e) {
-        // Ignorer les erreurs de nettoyage
+        // Ignorer
       }
+      return NextResponse.json(
+        { error: 'Failed to start scraper', message: error.message },
+        { status: 500 }
+      )
     }
 
-    // Attendre un court délai pour que le script shell se termine et crée le lock file
-    // Le script shell se termine rapidement (~0.5s), donc 1 seconde devrait suffire
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // Attendre que le script shell se termine
+    await new Promise(resolve => setTimeout(resolve, 1500))
 
     // Lire le PID depuis le fichier de lock
     let pid: number | null = null
@@ -222,31 +212,86 @@ fi
         const lockData = JSON.parse(fs.readFileSync(lockFile, 'utf-8'))
         if (lockData.pid) {
           pid = lockData.pid
-          console.log(`[ScraperAI] ✅ PID lu depuis lock file: ${pid}`)
+          console.log(`[ScraperAI] ✅ Processus démarré avec PID: ${pid}`)
         }
       }
     } catch (e) {
-      console.warn(`[ScraperAI] ⚠️ Impossible de lire le PID depuis le lock file:`, e)
+      console.warn(`[ScraperAI] ⚠️ Lock file non lisible:`, e)
     }
 
-    console.log(`LETS SEE 3`)
-
-    // Retourner la réponse avec le PID si disponible
-    // Le script shell a lancé Python en arrière-plan avec nohup et s'est terminé
-    // Python continue à s'exécuter complètement indépendamment de Next.js
-    // Next.js n'est pas bloqué car le script shell s'est terminé rapidement
     return NextResponse.json({
       success: true,
-      message: `Scraping lancé pour ${allUrls.length} site(s). Le processus continue en arrière-plan.`,
+      message: `Scraping lancé pour ${allUrls.length} site(s)`,
       pid: pid,
       lockFile: lockFile,
       logFile: logFile,
-      note: 'Le processus Python est complètement détaché et fonctionne comme depuis le terminal'
+      timestamp: timestamp,
+      urls: allUrls,
+      referenceUrl: referenceUrl
     })
   } catch (error: any) {
-    console.error('Error running scraper:', error)
+    console.error('[ScraperAI] ❌ Erreur:', error)
     return NextResponse.json(
       { error: 'Failed to run scraper', message: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// API pour lire les logs en temps réel
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const logFile = searchParams.get('logFile')
+    const lastLine = parseInt(searchParams.get('lastLine') || '0')
+
+    if (!logFile) {
+      return NextResponse.json({ error: 'logFile parameter required' }, { status: 400 })
+    }
+
+    // Vérifier que le fichier existe
+    if (!fs.existsSync(logFile)) {
+      return NextResponse.json({
+        lines: [],
+        totalLines: 0,
+        isComplete: false,
+        error: 'Log file not found yet'
+      })
+    }
+
+    const content = fs.readFileSync(logFile, 'utf-8')
+    const allLines = content.split('\n')
+    const newLines = allLines.slice(lastLine)
+
+    // Vérifier si le scraping est VRAIMENT terminé
+    // On attend des patterns de FIN DÉFINITIVE qui n'apparaissent qu'une fois à la toute fin
+    const contentLower = content.toLowerCase()
+
+    // CONDITION DE FIN : Le message "📋 APERÇU" ou "... et X autres" qui n'apparaît QU'À LA TOUTE FIN
+    // Ces messages sont les DERNIERS à être écrits dans le log
+    const hasFinalApercu = content.includes('📋 APERÇU') && (content.includes('... et') || content.includes('RÉPARTITION PAR ÉTAT'))
+    const hasDataLocation = content.includes('☁️  Données dans:')
+    const hasSavedSuccess = content.includes('💾 Données sauvegardées dans:')
+
+    // Erreurs qui terminent le scraping
+    const hasFatalError =
+      contentLower.includes('erreur fatale') ||
+      contentLower.includes('erreur critique') ||
+      content.includes('AUTHENTIFICATION REQUISE') ||
+      content.includes('❌ Aucun site de référence configuré')
+
+    // Le scraping est complet seulement si on a l'aperçu final OU la localisation des données
+    const isComplete = hasFinalApercu || hasDataLocation || hasSavedSuccess || hasFatalError
+
+    return NextResponse.json({
+      lines: newLines,
+      totalLines: allLines.length,
+      isComplete: isComplete,
+      content: lastLine === 0 ? content : undefined
+    })
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: 'Failed to read log', message: error.message },
       { status: 500 }
     )
   }

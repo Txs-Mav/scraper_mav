@@ -35,17 +35,36 @@ export async function GET(request: Request) {
 
   // Vérifier si c'est une réinitialisation de mot de passe
   // On peut le détecter via le type dans l'URL ou via les métadonnées de la session
-  const isRecovery = type === 'recovery' || 
-                     (data?.session?.user?.app_metadata?.action === 'recovery') ||
-                     requestUrl.searchParams.has('type') && requestUrl.searchParams.get('type') === 'recovery'
+  const isRecovery = type === 'recovery' ||
+    (data?.session?.user?.app_metadata?.action === 'recovery') ||
+    requestUrl.searchParams.has('type') && requestUrl.searchParams.get('type') === 'recovery'
 
   // Si c'est une réinitialisation de mot de passe, rediriger vers la page de réinitialisation
   if (isRecovery) {
     return NextResponse.redirect(`${baseUrl}/reset-password?type=recovery`)
   }
 
-  // Sinon, c'est une confirmation d'email : afficher la page dédiée
-  return NextResponse.redirect(`${baseUrl}/auth/email-confirmed`)
+  // C'est une confirmation d'email - synchroniser le pending_plan si présent
+  const user = data?.session?.user
+  if (user) {
+    const pendingPlan = user.user_metadata?.pending_plan
+
+    if (pendingPlan) {
+      // Synchroniser le pending_plan vers la table users
+      await supabase
+        .from('users')
+        .update({ pending_plan: pendingPlan })
+        .eq('id', user.id)
+
+      // Ne PAS supprimer le pending_plan des métadonnées auth ici
+      // Le dashboard s'en chargera après avoir vérifié s'il y a un code promo
+    }
+  }
+
+  // Toujours rediriger vers le dashboard
+  // Le dashboard gère à la fois les codes promo ET les pending_plans
+  // Cela permet d'appliquer un code promo avant de rediriger vers le paiement
+  return NextResponse.redirect(`${baseUrl}/dashboard`)
 }
 
 

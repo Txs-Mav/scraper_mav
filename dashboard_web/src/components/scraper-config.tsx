@@ -1,15 +1,38 @@
 "use client"
 
-import { useState, useEffect, forwardRef, useImperativeHandle } from "react"
-import { Play, Plus, X, Loader2, Sparkles, ChevronDown, Star, Clock } from "lucide-react"
+import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, ChevronDown, Globe, Database, ChevronRight } from "lucide-react"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
-import LimitWarning from "./limit-warning"
 import { useAuth } from "@/contexts/auth-context"
 
-const DEFAULT_REFERENCE_URL = "https://www.exemple-reference.com/"
+const DEFAULT_REFERENCE_URL = ""
+
+type CachedScraper = {
+  url: string
+  site_name?: string
+  created_at?: string
+  updated_at?: string
+}
+
+type ScrapingStep = {
+  id: string
+  label: string
+  status: 'pending' | 'active' | 'completed' | 'error'
+}
+
+const SCRAPING_STEPS: Omit<ScrapingStep, 'status'>[] = [
+  { id: 'init', label: 'Initialisation' },
+  { id: 'analyze', label: 'Analyse' },
+  { id: 'scrape', label: 'Extraction' },
+  { id: 'save', label: 'Sauvegarde' },
+]
 
 export interface ScraperConfigHandle {
   runScrape: () => Promise<void>
+  saveConfig: () => Promise<void>
+  /** Retire une URL de la config (référence ou concurrent) quand un scraper est supprimé du cache */
+  removeUrlFromConfig: (urlOrDomain: string) => void
 }
 
 interface ScraperConfigProps {
@@ -19,25 +42,38 @@ interface ScraperConfigProps {
   onToggleConfig?: () => void
   hideHeader?: boolean
   showLaunchButton?: boolean
+  logsOnlyMode?: boolean  // Mode pour afficher uniquement les logs (utilisé pendant le scraping inline)
+  /** URLs supprimées du cache à retirer de la config (appliqué au montage / quand la liste change) */
+  pendingRemovedCacheUrls?: string[]
+  onAppliedRemovedCacheUrls?: () => void
+  /** Callback appelé quand l'URL de référence change */
+  onReferenceUrlChange?: (url: string, domain: string) => void
 }
 
 const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(function ScraperConfig(
-  { onScrapeStart, onScrapeComplete, showConfig: controlledShow, onToggleConfig, hideHeader = false, showLaunchButton = true }: ScraperConfigProps,
+  { onScrapeStart, onScrapeComplete, showConfig: controlledShow, onToggleConfig, hideHeader = false, showLaunchButton = true, logsOnlyMode = false, pendingRemovedCacheUrls = [], onAppliedRemovedCacheUrls, onReferenceUrlChange }: ScraperConfigProps,
   ref
 ) {
   const { user } = useAuth()
   const scrapingLimit = useScrapingLimit()
+  const router = useRouter()
   const [referenceUrl, setReferenceUrl] = useState(DEFAULT_REFERENCE_URL)
   const [urls, setUrls] = useState<string[]>([""])
   const [competitorEnabled, setCompetitorEnabled] = useState<boolean[]>([true])
   const [forceRefresh, setForceRefresh] = useState(false)
+  const [ignoreColors, setIgnoreColors] = useState(false) // Ignorer les couleurs pour le matching
+  const [inventoryOnly, setInventoryOnly] = useState(true) // Extraire seulement l'inventaire réel
   const [isScraping, setIsScraping] = useState(false)
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null)
-  const [showConfig, setShowConfig] = useState(false)
-  const [showMultipleUrls, setShowMultipleUrls] = useState(false)
+  const [showConfig, setShowConfig] = useState(true)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [urlsWithoutScraper, setUrlsWithoutScraper] = useState<string[]>([])
-  const [checkingScrapers, setCheckingScrapers] = useState(false)
+  const [scrapingSteps, setScrapingSteps] = useState<ScrapingStep[]>([])
+  const [currentLogFile, setCurrentLogFile] = useState<string | null>(null)
+  const [logContent, setLogContent] = useState<string[]>([])
+  const logPollingRef = useRef<NodeJS.Timeout | null>(null)
+  const [cachedScrapers, setCachedScrapers] = useState<CachedScraper[]>([])
+  const [showCachedScrapers, setShowCachedScrapers] = useState(false)
 
   const addUrl = () => {
     setUrls([...urls, ""])
@@ -64,12 +100,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const setReferenceFromCompetitor = (index: number) => {
     const target = urls[index]?.trim()
     if (!target) return
-    
-    const prevRef = referenceUrl.trim() || DEFAULT_REFERENCE_URL
+    const prevRef = referenceUrl.trim()
     const newUrls = [...urls]
-    // Remplacer l'URL à l'index par l'ancienne référence
     newUrls[index] = prevRef
-    // Définir la nouvelle référence
     setReferenceUrl(target)
     setUrls(newUrls)
   }
@@ -86,74 +119,61 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       return
     }
 
-    setCheckingScrapers(true)
     try {
       const response = await fetch('/api/scraper-ai/cache')
       const data = await response.json()
       const cachedUrls = new Set((data.scrapers || []).map((s: any) => s.url))
 
       const urlsWithout = allUrls.filter(url => {
-        // Normaliser l'URL pour la comparaison (enlever trailing slash, etc.)
         const normalized = url.replace(/\/$/, '').toLowerCase()
         return !Array.from(cachedUrls).some((cached) => {
           const normalizedCached = String(cached).replace(/\/$/, '').toLowerCase()
-          // Comparer les domaines
           try {
             const urlDomain = new URL(normalized).hostname.replace('www.', '')
             const cachedDomain = new URL(normalizedCached).hostname.replace('www.', '')
             return urlDomain === cachedDomain
           } catch {
-            return normalized === normalizedCached || normalized.startsWith(normalizedCached) || normalizedCached.startsWith(normalized)
+            return normalized === normalizedCached
           }
         })
       })
-
       setUrlsWithoutScraper(urlsWithout)
-    } catch (error) {
-      console.error('Error checking scrapers:', error)
+    } catch {
       setUrlsWithoutScraper([])
-    } finally {
-      setCheckingScrapers(false)
     }
   }
 
-  // Vérifier les scrapers quand les URLs changent
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      checkScrapersForUrls()
-    }, 500) // Debounce de 500ms
-
+    const timeoutId = setTimeout(() => checkScrapersForUrls(), 500)
     return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referenceUrl, urls.join(',')])
 
-  // Calculer l'estimation du temps
+  // Notifier le parent quand l'URL de référence change
+  useEffect(() => {
+    if (onReferenceUrlChange && referenceUrl.trim()) {
+      const domain = getDomain(referenceUrl)
+      onReferenceUrlChange(referenceUrl, domain)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referenceUrl]) // Pas besoin de onReferenceUrlChange dans les deps car on veut juste réagir aux changements d'URL
+
   const getTimeEstimate = () => {
     const activeUrls = urls.filter((url, idx) => competitorEnabled[idx] && url.trim() !== "")
     const otherUrls = activeUrls.filter(url => url.trim() !== "" && url.trim() !== referenceUrl.trim())
     const totalSites = referenceUrl.trim() ? 1 + otherUrls.length : otherUrls.length
-
-    // Temps estimé: ~30s par site avec scraper, ~3-5 min par site sans scraper (analyse + génération)
     const sitesWithScraper = totalSites - urlsWithoutScraper.length
     const sitesWithoutScraper = urlsWithoutScraper.length
-
-    const estimatedSeconds = (sitesWithScraper * 30) + (sitesWithoutScraper * 240) // 4 min pour sites sans scraper
-
-    if (estimatedSeconds < 60) {
-      return { text: `~${estimatedSeconds}s`, seconds: estimatedSeconds }
-    } else {
-      const minutes = Math.ceil(estimatedSeconds / 60)
-      return { text: `~${minutes} min`, seconds: estimatedSeconds }
-    }
+    const estimatedSeconds = (sitesWithScraper * 30) + (sitesWithoutScraper * 240)
+    return estimatedSeconds < 60
+      ? { text: `${estimatedSeconds}s`, seconds: estimatedSeconds }
+      : { text: `${Math.ceil(estimatedSeconds / 60)} min`, seconds: estimatedSeconds }
   }
 
-  // Timer pendant le scraping
   useEffect(() => {
     let interval: NodeJS.Timeout
     if (isScraping) {
-      interval = setInterval(() => {
-        setElapsedTime(prev => prev + 1)
-      }, 1000)
+      interval = setInterval(() => setElapsedTime(prev => prev + 1), 1000)
     } else {
       setElapsedTime(0)
     }
@@ -163,108 +183,238 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
+    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`
   }
 
+  const updateStepsFromLogs = useCallback((logs: string[]) => {
+    const content = logs.join('\n').toLowerCase()
+    setScrapingSteps(prev => {
+      const newSteps = [...prev]
+      // Patterns basés sur les vrais logs Python
+      const patterns: { step: string; patterns: string[]; completedPatterns?: string[] }[] = [
+        { step: 'init', patterns: ['scraper ai', 'site de référence', 'user id'], completedPatterns: ['phase 1', 'vérification'] },
+        { step: 'analyze', patterns: ['phase 1', 'phase 2', 'exploration', 'sitemap', 'urls découvertes'], completedPatterns: ['urls trouvées', 'scraper créé'] },
+        { step: 'scrape', patterns: ['phase 3', 'extraction', 'produits de'], completedPatterns: ['produits extraits'] },
+        { step: 'save', patterns: ['sauvegarde', 'supabase', 'cloud'], completedPatterns: ['scraping terminé', 'temps total'] },
+      ]
+      patterns.forEach(({ step, patterns: activePatterns, completedPatterns }) => {
+        const stepIndex = newSteps.findIndex(s => s.id === step)
+        if (stepIndex === -1) return
+        const isActive = activePatterns.some(p => content.includes(p))
+        const isCompleted = completedPatterns?.some(p => content.includes(p))
+        if (isCompleted && newSteps[stepIndex].status !== 'completed') {
+          newSteps[stepIndex] = { ...newSteps[stepIndex], status: 'completed' }
+        } else if (isActive && newSteps[stepIndex].status === 'pending') {
+          for (let i = 0; i < stepIndex; i++) {
+            if (newSteps[i].status !== 'completed') newSteps[i] = { ...newSteps[i], status: 'completed' }
+          }
+          newSteps[stepIndex] = { ...newSteps[stepIndex], status: 'active' }
+        }
+      })
+      // Détecter les erreurs critiques (mais pas les erreurs Gemini qu'on peut ignorer)
+      if (content.includes('erreur fatale') || content.includes('authentification requise')) {
+        const activeStep = newSteps.find(s => s.status === 'active')
+        if (activeStep) {
+          const idx = newSteps.findIndex(s => s.id === activeStep.id)
+          newSteps[idx] = { ...newSteps[idx], status: 'error' }
+        }
+      }
+      // Fin du scraping
+      if (content.includes('scraping terminé') || content.includes('temps total:')) {
+        newSteps.forEach((_, i) => {
+          if (newSteps[i].status !== 'error') newSteps[i] = { ...newSteps[i], status: 'completed' }
+        })
+      }
+      return newSteps
+    })
+  }, [])
+
+  const pollLogs = useCallback(async () => {
+    if (!currentLogFile) return
+    try {
+      const response = await fetch(`/api/scraper/run?logFile=${encodeURIComponent(currentLogFile)}&lastLine=${logContent.length}`)
+      const data = await response.json()
+      if (data.lines && data.lines.length > 0) {
+        setLogContent(prev => {
+          const newLogs = [...prev, ...data.lines.filter((l: string) => l.trim())]
+          updateStepsFromLogs(newLogs)
+          return newLogs
+        })
+      }
+      if (data.isComplete) {
+        if (logPollingRef.current) {
+          clearInterval(logPollingRef.current)
+          logPollingRef.current = null
+        }
+        setIsScraping(false)
+        if (data.content?.includes('❌')) {
+          setScrapeStatus('error')
+        } else {
+          setScrapeStatus('success')
+          onScrapeComplete?.()
+        }
+      }
+    } catch (error) {
+      console.error('Error polling logs:', error)
+    }
+  }, [currentLogFile, logContent.length, updateStepsFromLogs, onScrapeComplete])
+
+  useEffect(() => {
+    if (isScraping && currentLogFile) {
+      logPollingRef.current = setInterval(pollLogs, 2000)
+      pollLogs()
+    }
+    return () => {
+      if (logPollingRef.current) {
+        clearInterval(logPollingRef.current)
+        logPollingRef.current = null
+      }
+    }
+  }, [isScraping, currentLogFile, pollLogs])
+
   const handleScrape = async () => {
-    if (!referenceUrl.trim()) {
-      setReferenceUrl(DEFAULT_REFERENCE_URL)
-      alert("Veuillez définir un site de référence")
+    // Toujours utiliser l'état actuel de l'UI (pas la config sauvegardée)
+    let currentRefUrl = referenceUrl.trim()
+    let currentUrls = [...urls] // Copie pour éviter les mutations
+    let currentEnabled = [...competitorEnabled]
+
+    // Si pas de referenceUrl dans l'état, essayer de charger la config (fallback uniquement)
+    if (!currentRefUrl) {
+      try {
+        const response = await fetch("/api/scraper/config")
+        if (response.ok) {
+          const config = await response.json()
+          if (config.referenceUrl?.trim()) {
+            currentRefUrl = config.referenceUrl.trim()
+            setReferenceUrl(currentRefUrl)
+          }
+          // IMPORTANT: Ne fusionner les URLs de la config que si l'UI n'a AUCUNE URL valide
+          const hasValidUiUrls = currentUrls.some(u => u.trim() !== '')
+          if (!hasValidUiUrls && config.urls?.length > 0) {
+            currentUrls = config.urls
+            currentEnabled = config.urls.map(() => true)
+            setUrls(currentUrls)
+            setCompetitorEnabled(currentEnabled)
+          }
+        }
+      } catch (e) {
+        console.error('Erreur chargement config:', e)
+      }
+    }
+
+    // Toujours pas de referenceUrl? Afficher un message
+    if (!currentRefUrl) {
+      setLogContent(['❌ Aucun site de référence configuré.', '→ Cliquez sur "Configurer" pour définir les URLs à scraper.'])
+      setScrapeStatus('error')
       return
     }
 
-    // Vérifier la limite avant de lancer le scraping
     if (!scrapingLimit.canScrape) {
-      alert(`Limite de ${scrapingLimit.limit} scrapings atteinte. ${!user ? 'Connectez-vous' : user.subscription_plan === 'free' ? 'Passez au plan Standard ou Premium' : ''} pour plus de scrapings.`)
+      setLogContent([
+        '❌ Limite de scrapings atteinte.',
+        `Vous avez utilisé ${scrapingLimit.current}/${scrapingLimit.limit} scrapings.`,
+        '→ Passez au plan Pro ou Ultime pour des scrapings illimités.',
+        '→ Visitez la page Paiements pour mettre à niveau votre plan.'
+      ])
+      setScrapeStatus('error')
+      // Proposer de rediriger vers la page de paiements après 3 secondes
+      setTimeout(() => {
+        if (confirm('Voulez-vous être redirigé vers la page de paiements pour mettre à niveau votre plan ?')) {
+          router.push('/dashboard/payments')
+        }
+      }, 3000)
       return
     }
 
-    const otherUrls = urls.filter((url, idx) => competitorEnabled[idx] && url.trim() !== "" && url.trim() !== referenceUrl.trim())
-    const allUrls = [referenceUrl.trim(), ...otherUrls]
-    const totalSites = allUrls.length
+    // Filtrer les concurrents : activés, non-vides, et différents du site de référence
+    // IMPORTANT: Comparer par domaine (pas par URL exacte) pour éviter les doublons ref/trailing slash
+    const getDomainForCompare = (u: string) => {
+      try { return new URL(u.trim()).hostname.replace('www.', '').toLowerCase() } catch { return u.trim().toLowerCase() }
+    }
+    const refDomain = getDomainForCompare(currentRefUrl)
+    const otherUrls = currentUrls.filter((url, idx) => {
+      if (!currentEnabled[idx]) return false  // Utiliser currentEnabled (pas competitorEnabled)
+      const trimmed = url.trim()
+      if (!trimmed) return false
+      // Comparer par domaine, pas par URL exacte (évite les problèmes de trailing slash)
+      return getDomainForCompare(trimmed) !== refDomain
+    })
+    const allUrls = [currentRefUrl, ...otherUrls]
 
-    // Permettre le scraping avec seulement le site de référence
-    if (totalSites < 1) {
-      alert("Veuillez définir au moins un site à scraper")
+    // Log détaillé pour diagnostic
+    console.log('[handleScrape] État des URLs:')
+    console.log('  - currentUrls:', currentUrls)
+    console.log('  - competitorEnabled:', competitorEnabled)
+    console.log('  - referenceUrl:', currentRefUrl)
+    console.log('  - otherUrls (filtrés):', otherUrls)
+    console.log('  - allUrls (final):', allUrls)
+
+    if (allUrls.length < 1) {
+      setLogContent(['❌ Aucune URL valide à scraper.'])
+      setScrapeStatus('error')
       return
     }
 
     setIsScraping(true)
     setElapsedTime(0)
-    if (totalSites === 1) {
-      setScrapeStatus(`🚀 Extraction du site de référence...`)
-    } else {
-      setScrapeStatus(`🚀 Scraping de ${totalSites} sites en parallèle...`)
-    }
+    setLogContent([
+      `🚀 Démarrage du scraping...`,
+      `📍 Site de référence: ${getDomain(currentRefUrl)}`,
+      `📊 ${allUrls.length} site(s) à analyser (${otherUrls.length} concurrent${otherUrls.length > 1 ? 's' : ''})`,
+      ...otherUrls.map((u, i) => `   ${i + 1}. ${getDomain(u)}`)
+    ])
+    setCurrentLogFile(null)
+    setScrapeStatus(null)
+    setScrapingSteps(SCRAPING_STEPS.map((step, idx) => ({ ...step, status: idx === 0 ? 'active' : 'pending' })))
     onScrapeStart?.()
 
     try {
-      let response
-      try {
-        response = await fetch("/api/scraper/run", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            referenceUrl: referenceUrl.trim(),
-            urls: allUrls,
-            forceRefresh,
-            useAI: true,
-          }),
-        })
-      } catch (fetchError: any) {
-        // Erreur réseau (serveur non démarré, etc.)
-        if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
-          throw new Error('ERR_CONNECTION_REFUSED')
-        }
-        throw fetchError
-      }
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Erreur lors du scraping")
-      }
-
-      // L'API retourne maintenant immédiatement (scraping en arrière-plan)
-      const data = await response.json()
-      // Le scraping est lancé en arrière-plan
-      setScrapeStatus(`🚀 ${data.message || "Scraping lancé en arrière-plan. Le processus continue même si vous fermez cette page."}`)
-
+      // Sauvegarder la config AVANT le scrape pour que la prochaine session ait les bonnes URLs
       await saveConfig()
 
-      // Ne pas arrêter le statut immédiatement - le scraping continue en arrière-plan
-      setTimeout(() => {
-        setIsScraping(false)
-        setScrapeStatus(`⏳ Scraping en cours en arrière-plan. Vérifiez les résultats dans quelques minutes.`)
-      }, 3000)
-    } catch (error: any) {
-      // Détecter les erreurs de connexion spécifiques
-      if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError') || error.message === 'ERR_CONNECTION_REFUSED' || error.code === 'ERR_CONNECTION_REFUSED') {
-        setScrapeStatus(`❌ Serveur non démarré. Veuillez lancer "npm run dev" dans le dossier dashboard_web`)
-      } else {
-        setScrapeStatus(`❌ Erreur: ${error.message}`)
+      const response = await fetch("/api/scraper/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referenceUrl: currentRefUrl, urls: allUrls, forceRefresh, ignoreColors, inventoryOnly, useAI: true }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || errorData.error || "Erreur lors du scraping")
       }
+      const data = await response.json()
+      if (data.logFile) {
+        setCurrentLogFile(data.logFile)
+        setLogContent(prev => [...prev, `✅ Scraping lancé avec succès (${allUrls.length} sites)`, `📄 Fichier de logs: ${data.logFile.split('/').pop()}`])
+      } else {
+        setLogContent(prev => [...prev, `⚠️ Pas de fichier de logs retourné`])
+      }
+    } catch (error: any) {
+      console.error('Erreur scraping:', error)
+      setLogContent(prev => [...prev, `❌ Erreur: ${error.message}`])
+      setScrapeStatus('error')
       setIsScraping(false)
+      setScrapingSteps(prev => prev.map(s => s.status === 'active' ? { ...s, status: 'error' } : s))
     }
   }
 
   const saveConfig = async () => {
     try {
-      await fetch("/api/scraper/config", {
+      const configData = {
+        referenceUrl: referenceUrl.trim(),
+        urls: urls.map((u, i) => (competitorEnabled[i] ? u : "")).filter(url => url.trim() !== ""),
+        ignoreColors: ignoreColors,
+        inventoryOnly: inventoryOnly,
+      }
+      console.log('Saving config:', configData)
+      const response = await fetch("/api/scraper/config", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          referenceUrl: referenceUrl.trim() || DEFAULT_REFERENCE_URL,
-          urls: urls.map((u, i) => (competitorEnabled[i] ? u : "")).filter(url => url.trim() !== ""),
-          forceRefresh,
-          useAI: true,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(configData),
       })
-    } catch (error) {
-      console.error("Erreur lors de la sauvegarde de la configuration:", error)
+      const result = await response.json()
+      console.log('Save result:', result)
+    } catch (err) {
+      console.error('Error saving config:', err)
     }
   }
 
@@ -273,209 +423,255 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       const response = await fetch("/api/scraper/config")
       if (response.ok) {
         const config = await response.json()
-        if (config.referenceUrl && config.referenceUrl.trim() !== "") setReferenceUrl(config.referenceUrl)
-        else setReferenceUrl(DEFAULT_REFERENCE_URL)
-        if (config.urls && config.urls.length > 0) {
+        if (config.referenceUrl?.trim()) setReferenceUrl(config.referenceUrl)
+        if (config.urls?.length > 0) {
           setUrls(config.urls)
           setCompetitorEnabled(config.urls.map(() => true))
-          if (config.urls.length > 1) {
-            setShowMultipleUrls(true)
-          }
         }
-        if (config.forceRefresh !== undefined) {
-          setForceRefresh(config.forceRefresh)
+        if (typeof config.ignoreColors === 'boolean') {
+          setIgnoreColors(config.ignoreColors)
+        }
+        if (typeof config.inventoryOnly === 'boolean') {
+          setInventoryOnly(config.inventoryOnly)
         }
       }
+    } catch { }
+  }
+
+  const loadCachedScrapers = async () => {
+    try {
+      const response = await fetch('/api/scraper-ai/cache')
+      if (response.ok) {
+        const data = await response.json()
+        setCachedScrapers(data.scrapers || [])
+      }
     } catch (error) {
-      console.error("Erreur lors du chargement de la configuration:", error)
+      console.error('Error loading cached scrapers:', error)
     }
+  }
+
+  const selectCachedScraper = (scraper: CachedScraper, isReference: boolean = true) => {
+    if (isReference) {
+      setReferenceUrl(scraper.url)
+    } else {
+      // Ajouter comme concurrent
+      const emptyIndex = urls.findIndex(u => !u.trim())
+      if (emptyIndex !== -1) {
+        updateUrl(emptyIndex, scraper.url)
+      } else {
+        setUrls([...urls, scraper.url])
+        setCompetitorEnabled(prev => [...prev, true])
+      }
+    }
+    setShowCachedScrapers(false)
   }
 
   useEffect(() => {
     loadConfig()
+    loadCachedScrapers()
   }, [])
 
   const otherValidUrls = urls.filter((url, idx) => competitorEnabled[idx] && url.trim() !== "" && url.trim() !== referenceUrl.trim())
   const totalSitesToScrape = referenceUrl.trim() ? 1 + otherValidUrls.length : otherValidUrls.length
   const timeEstimate = getTimeEstimate()
-  // Si hideHeader est true (modale), toujours afficher le contenu
-  const isConfigOpen = hideHeader ? true : (controlledShow !== undefined ? controlledShow : showConfig)
-  const toggleConfig = () => {
-    if (onToggleConfig) onToggleConfig()
-    else setShowConfig(prev => !prev)
+  // Mode logs only = affiche seulement les logs, pas le formulaire (utilisé pour le scraping inline)
+  const isLogsOnlyMode = logsOnlyMode
+  const isConfigOpen = isLogsOnlyMode ? false : (hideHeader ? true : (controlledShow !== undefined ? controlledShow : showConfig))
+
+  const getDomain = (url: string) => {
+    try { return new URL(url).hostname.replace('www.', '') }
+    catch { return url }
   }
 
-  useImperativeHandle(ref, () => ({
-    runScrape: handleScrape
-  }))
+  const removeUrlFromConfig = useCallback((urlOrDomain: string) => {
+    const targetDomain = urlOrDomain.startsWith('http') ? getDomain(urlOrDomain) : urlOrDomain.replace(/^www\./, '')
+    if (!targetDomain) return
+    setReferenceUrl(prev => (prev.trim() && getDomain(prev) === targetDomain ? '' : prev))
+    setUrls(prev => {
+      const next = prev.filter(u => !u.trim() || getDomain(u) !== targetDomain)
+      return next.length ? next : ['']
+    })
+    setCompetitorEnabled(prev => {
+      const kept = prev.filter((_, i) => {
+        const u = urls[i]
+        return !u?.trim() || getDomain(u) !== targetDomain
+      })
+      return kept.length ? kept : [true]
+    })
+  }, [urls])
+
+  useEffect(() => {
+    if (pendingRemovedCacheUrls.length === 0) return
+    pendingRemovedCacheUrls.forEach(removeUrlFromConfig)
+    onAppliedRemovedCacheUrls?.()
+  }, [pendingRemovedCacheUrls, onAppliedRemovedCacheUrls, removeUrlFromConfig])
+
+  useImperativeHandle(ref, () => ({ runScrape: handleScrape, saveConfig, removeUrlFromConfig }), [handleScrape, removeUrlFromConfig])
+
+  // En mode logs-only, afficher seulement le terminal
+  const shouldShowLogsTerminal = isLogsOnlyMode || isScraping || scrapeStatus
 
   return (
-    <div className="bg-white dark:bg-[#0F0F12] rounded-xl p-6 border border-gray-200 dark:border-[#1F1F23]">
-      {/* Message d'avertissement pour URLs sans scraper */}
-      {urlsWithoutScraper.length > 0 && !isScraping && (
-        <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex items-start gap-3">
-            <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-900 dark:text-amber-200 mb-1">
-                ⏱️ Scraping plus long prévu
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
-                {urlsWithoutScraper.length} site{urlsWithoutScraper.length > 1 ? 's' : ''} sans scraper détecté{urlsWithoutScraper.length > 1 ? 's' : ''}.
-                L'agent IA devra analyser et générer un scraper, ce qui peut prendre 3-5 minutes par site.
-              </p>
-              <div className="text-xs text-amber-600 dark:text-amber-400 font-mono bg-amber-100 dark:bg-amber-900/30 px-2 py-1 rounded">
-                Sites concernés: {urlsWithoutScraper.slice(0, 2).map(url => {
-                  try {
-                    return new URL(url).hostname.replace('www.', '')
-                  } catch {
-                    return url
-                  }
-                }).join(', ')}
-                {urlsWithoutScraper.length > 2 && ` +${urlsWithoutScraper.length - 2} autre${urlsWithoutScraper.length > 3 ? 's' : ''}`}
-              </div>
-            </div>
+    <div className="space-y-6">
+      {/* Alerte temps estimé - Style minimal (masquer en mode logs only) */}
+      {!isLogsOnlyMode && urlsWithoutScraper.length > 0 && !isScraping && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
+          <Clock className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+              Première analyse requise
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+              {urlsWithoutScraper.length} site{urlsWithoutScraper.length > 1 ? 's' : ''} à analyser • ~3-5 min par site
+            </p>
           </div>
         </div>
       )}
 
-      {/* Indicateur de vérification en cours */}
-      {checkingScrapers && (
-        <div className="mb-4 p-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Vérification des scrapers en cache...
-        </div>
-      )}
-      {!hideHeader && (
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-violet-500" />
-            Scraper AI
-          </h2>
-          <button
-            onClick={toggleConfig}
-            className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          >
-            {isConfigOpen ? "Masquer" : "Afficher"}
-          </button>
-        </div>
-      )}
-
+      {/* Formulaire de configuration (masqué en mode logs-only) */}
       {isConfigOpen && (
-        <div className="space-y-5">
-          {/* Liste unifiée des sites */}
-          <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Scrapers en cache - Sélection visuelle */}
+          {cachedScrapers.length > 0 && (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowCachedScrapers(!showCachedScrapers)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100/50 dark:hover:bg-blue-950/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    Scrapers en cache ({cachedScrapers.length})
+                  </span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-blue-600 dark:text-blue-400 transition-transform ${showCachedScrapers ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showCachedScrapers && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113] overflow-hidden">
+                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+                    {cachedScrapers.map((scraper, index) => {
+                      const domain = getDomain(scraper.url)
+                      const isSelected = referenceUrl === scraper.url || urls.includes(scraper.url)
+                      return (
+                        <div
+                          key={index}
+                          className={`flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                        >
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold ${isSelected ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                            {domain.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              {scraper.site_name || domain}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                              {scraper.url}
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => selectCachedScraper(scraper, true)}
+                              disabled={referenceUrl === scraper.url}
+                              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${referenceUrl === scraper.url
+                                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 cursor-default'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-600 dark:hover:text-blue-400'
+                                }`}
+                            >
+                              {referenceUrl === scraper.url ? '★ Réf' : 'Référence'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => selectCachedScraper(scraper, false)}
+                              disabled={urls.includes(scraper.url)}
+                              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${urls.includes(scraper.url)
+                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-default'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                              + Concurrent
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Site de référence */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm font-medium text-gray-900 dark:text-white">Site de référence</span>
+            </div>
+            <div className="relative">
+              <input
+                type="url"
+                value={referenceUrl}
+                onChange={(e) => setReferenceUrl(e.target.value)}
+                placeholder="https://votre-site.com"
+                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-500 transition-all placeholder:text-gray-400"
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Les prix seront comparés à ce site
+            </p>
+          </div>
+
+          {/* Séparateur */}
+          <div className="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-gray-800 to-transparent" />
+
+          {/* Sites concurrents */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="block text-base font-bold text-gray-900 dark:text-white">
-                Sites à scraper
-              </label>
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-gray-400" />
+                <span className="text-sm font-medium text-gray-900 dark:text-white">Concurrents</span>
+                <span className="text-xs text-gray-400">optionnel</span>
+              </div>
               <button
                 onClick={addUrl}
-                className="inline-flex items-center gap-2 rounded-lg border-2 border-purple-400 dark:border-purple-500 bg-purple-50 dark:bg-purple-900/30 px-3 py-2 text-xs font-semibold text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-800/40 transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               >
-                <Plus className="w-4 h-4" />
-                Ajouter un site
+                <Plus className="w-3.5 h-3.5" />
+                Ajouter
               </button>
             </div>
 
-            {/* Site de référence */}
-            <div className={`p-4 rounded-xl border-2 transition-all ${
-              referenceUrl.trim() ? "bg-gradient-to-r from-orange-50 to-orange-100/80 dark:from-orange-900/40 dark:to-orange-800/30 border-orange-400 dark:border-orange-500" : "bg-gray-50 dark:bg-[#1A1A1F] border-gray-200 dark:border-[#2A2A30]"
-            }`}>
-              <div className="flex items-start gap-3">
-                <div className="flex items-center gap-3 mt-1">
-                  <input
-                    type="radio"
-                    name="reference-site"
-                    checked={true}
-                    readOnly
-                    className="h-4 w-4 text-orange-600 dark:text-orange-400 border-gray-300 dark:border-gray-600 focus:ring-orange-500 cursor-default"
-                  />
-                  <Star className={`w-5 h-5 ${referenceUrl.trim() ? "text-orange-600 dark:text-orange-400 fill-orange-600 dark:fill-orange-400" : "text-gray-400 dark:text-gray-500"}`} />
-                </div>
-                <div className="flex-1 space-y-2">
-                  <label className="block text-xs font-bold uppercase tracking-wide text-orange-700 dark:text-orange-300">
-                    SITE DE RÉFÉRENCE
-                  </label>
-                  <input
-                    type="url"
-                    value={referenceUrl}
-                    onChange={(e) => setReferenceUrl(e.target.value || DEFAULT_REFERENCE_URL)}
-                    placeholder="https://www.exemple-reference.com/"
-                    className="w-full px-4 py-3 border-2 border-orange-400 dark:border-orange-500 rounded-lg bg-white dark:bg-orange-950/40 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:focus:ring-orange-400 font-medium text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                  />
-                  <p className="text-xs font-medium text-orange-700 dark:text-orange-300">
-                    ⭐ Les prix des concurrents seront comparés à ce site
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Sites concurrents */}
             <div className="space-y-2">
               {urls.map((url, index) => {
-                const urlTrimmed = url.trim()
-                const refTrimmed = referenceUrl.trim()
-                const isReference = urlTrimmed === refTrimmed && urlTrimmed !== ""
-                
+                const isReference = url.trim() === referenceUrl.trim() && url.trim() !== ""
                 return (
-                  <div
-                    key={index}
-                    className={`p-4 rounded-xl border transition-colors ${
-                      isReference 
-                        ? "bg-orange-50/50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-600" 
-                        : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F0F12] hover:border-purple-300 dark:hover:border-purple-600"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="radio"
-                          name="reference-site"
-                          checked={isReference}
-                          onChange={() => urlTrimmed && setReferenceFromCompetitor(index)}
-                          disabled={!urlTrimmed}
-                          className="h-4 w-4 text-purple-600 dark:text-purple-400 border-gray-300 dark:border-gray-600 focus:ring-purple-500 dark:focus:ring-purple-400 disabled:opacity-40 disabled:cursor-not-allowed"
-                        />
-                        <label className="inline-flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={competitorEnabled[index] && !isReference}
-                            onChange={() => !isReference && toggleCompetitorEnabled(index)}
-                            disabled={isReference}
-                            className="rounded border-gray-300 dark:border-gray-600 text-purple-600 dark:text-purple-400 focus:ring-purple-500 dark:focus:ring-purple-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
-                          <span className={`text-xs font-semibold ${isReference ? "text-orange-700 dark:text-orange-300" : "text-gray-800 dark:text-gray-200"}`}>
-                            {isReference ? "Référence" : "Activer"}
-                          </span>
-                        </label>
-                      </div>
-                      <input
-                        type="url"
-                        value={url}
-                        onChange={(e) => updateUrl(index, e.target.value)}
-                        placeholder={`https://concurrent-${index + 1}.com/`}
-                        className={`flex-1 px-4 py-3 border rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 ${
-                          isReference 
-                            ? "border-orange-300 dark:border-orange-600 bg-orange-50 dark:bg-orange-950/40 focus:ring-orange-500 dark:focus:ring-orange-400" 
-                            : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-[#1A1A1F] focus:ring-purple-500 dark:focus:ring-purple-400"
+                  <div key={index} className="group flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={competitorEnabled[index] && !isReference}
+                      onChange={() => !isReference && toggleCompetitorEnabled(index)}
+                      disabled={isReference}
+                      className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500/20 disabled:opacity-30"
+                    />
+                    <input
+                      type="url"
+                      value={url}
+                      onChange={(e) => updateUrl(index, e.target.value)}
+                      placeholder={`https://concurrent-${index + 1}.com`}
+                      className={`flex-1 px-4 py-3 rounded-xl border bg-white dark:bg-[#111113] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400 ${isReference
+                        ? "border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400"
+                        : "border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white focus:border-blue-500"
                         }`}
-                      />
-                      {urls.length > 1 && !isReference && (
-                        <button
-                          onClick={() => removeUrl(index)}
-                          className="p-2 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                          aria-label="Supprimer ce site"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    {isReference && (
-                      <div className="mt-2 flex items-center gap-2 text-xs font-medium text-orange-700 dark:text-orange-300">
-                        <Star className="w-3 h-3 fill-orange-600 dark:fill-orange-400" />
-                        <span>Cette URL est définie comme référence (voir en haut)</span>
-                      </div>
+                    />
+                    {urls.length > 1 && !isReference && (
+                      <button
+                        onClick={() => removeUrl(index)}
+                        className="p-2 text-gray-400 hover:text-red-500 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                 )
@@ -483,98 +679,194 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
             </div>
           </div>
 
-          {/* Résumé avec estimation du temps */}
-          <div className="p-4 bg-gradient-to-r from-purple-50 to-purple-100/80 dark:from-purple-900/30 dark:to-purple-800/20 rounded-xl border border-purple-300 dark:border-purple-600">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-bold text-purple-800 dark:text-purple-200">
-                📊 Résumé
-              </span>
-              <span className="text-sm font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 bg-purple-200 dark:bg-purple-800/50 px-3 py-1 rounded-full">
-                <Clock className="w-4 h-4" />
-                {timeEstimate.text}
-              </span>
+          {/* Séparateur */}
+          <div className="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-gray-800 to-transparent" />
+
+          {/* Options de scraping - TOUJOURS VISIBLE */}
+          <div className="space-y-3">
+            <span className="text-sm font-medium text-gray-900 dark:text-white">Options</span>
+            
+            <div className="space-y-2 pl-1">
+              <div className="flex items-center gap-2 py-1">
+                <input
+                  type="checkbox"
+                  id="ignoreColors"
+                  checked={ignoreColors}
+                  onChange={(e) => setIgnoreColors(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-purple-600 focus:ring-purple-500 focus:ring-offset-0 dark:bg-gray-800"
+                />
+                <label htmlFor="ignoreColors" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                  <span>Ignorer les couleurs</span>
+                  <span className="ml-1 text-xs text-purple-500 dark:text-purple-400">(plus de matchs possibles)</span>
+                </label>
+              </div>
+              
+              <div className="flex items-center gap-2 py-1">
+                <input
+                  type="checkbox"
+                  id="inventoryOnly"
+                  checked={inventoryOnly}
+                  onChange={(e) => setInventoryOnly(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 dark:bg-gray-800"
+                />
+                <label htmlFor="inventoryOnly" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                  <span>Inventaire seulement</span>
+                  <span className="ml-1 text-xs text-emerald-500 dark:text-emerald-400">(exclut les pages catalogue)</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2 py-1">
+                <input
+                  type="checkbox"
+                  id="forceRefresh"
+                  checked={forceRefresh}
+                  onChange={(e) => setForceRefresh(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 dark:bg-gray-800"
+                />
+                <label htmlFor="forceRefresh" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                  Régénérer les scrapers (nouvelle extraction)
+                </label>
+              </div>
             </div>
-            <div className="space-y-1.5 text-xs">
-              {referenceUrl.trim() && (
-                <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300 font-semibold">
-                  <Star className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 fill-orange-600 dark:fill-orange-400" />
-                  <span className="truncate font-medium">{referenceUrl.trim()}</span>
-                  <span className="text-orange-800 dark:text-orange-200 bg-orange-200 dark:bg-orange-800/50 px-2 py-0.5 rounded text-[10px] font-bold">RÉFÉRENCE</span>
+          </div>
+
+          {/* Résumé minimal */}
+          {totalSitesToScrape > 0 && !isScraping && (
+            <>
+              <div className="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-gray-800 to-transparent" />
+              <div className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex -space-x-1">
+                    {[referenceUrl, ...otherValidUrls].slice(0, 3).map((url, i) => (
+                      <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium border-2 border-white dark:border-[#0f0f12] ${i === 0 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                        }`}>
+                        {getDomain(url).charAt(0).toUpperCase()}
+                      </div>
+                    ))}
+                    {totalSitesToScrape > 3 && (
+                      <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xs font-medium text-gray-500 border-2 border-white dark:border-[#0f0f12]">
+                        +{totalSitesToScrape - 3}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {totalSitesToScrape} site{totalSitesToScrape > 1 ? 's' : ''}
+                  </span>
                 </div>
-              )}
-              {otherValidUrls.map((url, i) => (
-                <div key={i} className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium">
-                  <span className="w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold bg-purple-200 dark:bg-purple-700 text-purple-800 dark:text-purple-200 rounded-full">{i + 1}</span>
-                  <span className="truncate">{url}</span>
+                <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                  <Clock className="w-4 h-4" />
+                  <span>~{timeEstimate.text}</span>
                 </div>
-              ))}
+              </div>
+            </>
+          )}
+
+        </div>
+      )}
+
+      {/* Terminal de logs - TOUJOURS AFFICHÉ en mode logs-only OU pendant le scraping */}
+      {shouldShowLogsTerminal && (
+        <div className="rounded-xl bg-[#0d1117] border border-gray-800 overflow-hidden">
+          {/* Header du terminal */}
+          <div className="flex items-center justify-between px-4 py-3 bg-[#161b22] border-b border-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-[#ff5f56]" />
+                <div className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
+                <div className="w-3 h-3 rounded-full bg-[#27ca40]" />
+              </div>
+              <span className="text-xs text-gray-400 font-mono">scraper.log</span>
             </div>
-            {totalSitesToScrape >= 2 && (
-              <p className="mt-3 text-xs text-purple-700 dark:text-purple-300 font-semibold">
-                ⚡ {totalSitesToScrape} sites scrapés en parallèle • Seuls les produits en commun seront affichés
-              </p>
+            <div className="flex items-center gap-2">
+              {isScraping && <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />}
+              <span className="text-xs font-mono text-gray-500">{formatTime(elapsedTime)}</span>
+            </div>
+          </div>
+
+          {/* Contenu des logs */}
+          <div className="p-4 max-h-48 overflow-y-auto font-mono text-xs space-y-1">
+            {logContent.length === 0 ? (
+              <div className="text-gray-500 animate-pulse">Démarrage du scraping...</div>
+            ) : (
+              logContent.slice(-15).map((line, i) => {
+                // Déterminer la couleur selon le contenu
+                let colorClass = 'text-gray-400'
+                if (line.includes('✅') || line.includes('succès') || line.includes('terminé')) {
+                  colorClass = 'text-emerald-400'
+                } else if (line.includes('❌') || line.includes('erreur') || line.includes('error')) {
+                  colorClass = 'text-red-400'
+                } else if (line.includes('⚠️') || line.includes('warning')) {
+                  colorClass = 'text-amber-400'
+                } else if (line.includes('🚀') || line.includes('→') || line.includes('analyse') || line.includes('Phase')) {
+                  colorClass = 'text-blue-400'
+                } else if (line.includes('📦') || line.includes('produit')) {
+                  colorClass = 'text-purple-400'
+                }
+                return (
+                  <div key={i} className={`${colorClass} leading-relaxed`}>
+                    <span className="text-gray-600 mr-2 select-none">{'>'}  </span>
+                    {line}
+                  </div>
+                )
+              })
             )}
-            {totalSitesToScrape === 1 && (
-              <p className="mt-3 text-xs text-purple-700 dark:text-purple-300 font-semibold">
-                ⚡ Extraction de tous les produits du site de référence
-              </p>
+            {isScraping && (
+              <div className="text-gray-600 animate-pulse">
+                <span className="mr-2 select-none">{'>'}</span>
+                <span className="inline-block w-2 h-3.5 bg-gray-500 animate-pulse" />
+              </div>
             )}
           </div>
 
-          {/* Statut avec timer */}
-          {scrapeStatus && (
-            <div className={`p-4 rounded-xl flex items-center justify-between ${scrapeStatus.includes("❌")
-              ? "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800"
-              : scrapeStatus.includes("✅")
-                ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800"
-                : "bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800"
-              }`}>
-              <span>{scrapeStatus}</span>
-              {isScraping && (
-                <span className="text-sm font-mono font-bold">
-                  {formatTime(elapsedTime)}
-                </span>
-              )}
+          {/* Barre de progression */}
+          {scrapingSteps.length > 0 && (
+            <div className="px-4 pb-4">
+              <div className="flex gap-1 mb-2">
+                {scrapingSteps.map((step) => (
+                  <div key={step.id} className="flex-1 h-1 rounded-full overflow-hidden bg-gray-800">
+                    <div className={`h-full transition-all duration-500 ${step.status === 'completed' ? 'w-full bg-emerald-500' :
+                      step.status === 'active' ? 'w-1/2 bg-blue-500 animate-pulse' :
+                        step.status === 'error' ? 'w-full bg-red-500' :
+                          'w-0'
+                      }`} />
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-600">
+                {scrapingSteps.map((step) => (
+                  <span key={step.id} className={`${step.status === 'completed' ? 'text-emerald-500' :
+                    step.status === 'active' ? 'text-blue-400' :
+                      step.status === 'error' ? 'text-red-400' : ''
+                    }`}>
+                    {step.label}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Bouton de lancement - Style vibrant (optionnel) */}
-          {showLaunchButton && (
-            <>
-              <button
-                onClick={handleScrape}
-                disabled={isScraping || totalSitesToScrape < 1}
-                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-700 hover:via-purple-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-lg shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-              >
-                {isScraping ? (
-                  <>
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    <span>Scraping en cours...</span>
-                    <span className="font-mono text-violet-200">{formatTime(elapsedTime)}</span>
-                  </>
+          {/* Message de fin */}
+          {!isScraping && scrapeStatus && (
+            <div className={`px-4 py-3 border-t ${scrapeStatus === 'error'
+              ? 'bg-red-950/30 border-red-900/50'
+              : 'bg-emerald-950/30 border-emerald-900/50'
+              }`}>
+              <div className="flex items-center gap-2">
+                {scrapeStatus === 'error' ? (
+                  <AlertCircle className="w-4 h-4 text-red-400" />
                 ) : (
-                  <>
-                    <Play className="w-6 h-6" />
-                    <span>Lancer le scraping</span>
-                    <span className="text-violet-200 text-sm">({totalSitesToScrape} site{totalSitesToScrape > 1 ? 's' : ''} • {timeEstimate.text})</span>
-                  </>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                 )}
-              </button>
-
-              {totalSitesToScrape < 1 && (
-                <p className="text-xs text-center text-amber-600 dark:text-amber-400 font-medium">
-                  ⚠️ Veuillez définir au moins un site à scraper
-                </p>
-              )}
-              {totalSitesToScrape === 1 && (
-                <p className="text-xs text-center text-blue-600 dark:text-blue-400 font-medium">
-                  ℹ️ Extraction du site de référence uniquement (sans comparaison)
-                </p>
-              )}
-            </>
+                <span className={`text-xs font-medium ${scrapeStatus === 'error' ? 'text-red-300' : 'text-emerald-300'
+                  }`}>
+                  {scrapeStatus === 'error' ? 'Scraping échoué' : 'Scraping terminé avec succès!'}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       )}
+
     </div>
   )
 })
