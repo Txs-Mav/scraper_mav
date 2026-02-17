@@ -37,14 +37,17 @@ export async function sendEmail({ to, subject, html, text, replyTo }: SendEmailO
     throw new Error('Resend non configuré. Définissez RESEND_API_KEY et RESEND_FROM_EMAIL dans .env.local')
   }
 
-  const { data, error } = await client.emails.send({
+  const emailPayload: Record<string, unknown> = {
     from: RESEND_FROM,
     to: Array.isArray(to) ? to : [to],
     subject,
-    html: html || text,
-    text,
-    replyTo,
-  })
+  }
+  if (html) emailPayload.html = html
+  else if (text) emailPayload.text = text
+  if (replyTo) emailPayload.replyTo = replyTo
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await client.emails.send(emailPayload as any)
 
   if (error) {
     console.error('[Resend] Erreur envoi email:', error)

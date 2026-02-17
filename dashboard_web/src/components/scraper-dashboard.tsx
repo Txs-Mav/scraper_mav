@@ -345,7 +345,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   }, [products])
 
   const uniqueEtats = useMemo(() => {
-    const etats = new Set(products.map(p => p.etat || p.sourceCategorie).filter(Boolean))
+    const etats = new Set(products.map(p => p.etat || p.sourceCategorie).filter((v): v is string => !!v))
     return Array.from(etats).sort()
   }, [products])
 

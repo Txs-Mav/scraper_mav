@@ -825,9 +825,9 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900 rounded-lg">
             <div>
               <p className="font-semibold text-blue-900 dark:text-blue-300">
-                {user?.subscription_plan === "free" ? "Gratuit" :
-                  user?.subscription_plan === "standard" ? "Standard" :
-                    user?.subscription_plan === "premium" ? "Premium" : "Gratuit"}
+                {user?.subscription_plan === "standard" ? "Standard" :
+                  user?.subscription_plan === "pro" ? "Pro" :
+                    user?.subscription_plan === "ultime" ? "Ultime" : "Standard"}
               </p>
               <p className="text-sm text-blue-700 dark:text-blue-400">
                 Limites d'usage à venir

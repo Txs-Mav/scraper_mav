@@ -168,7 +168,7 @@ export async function POST(request: Request) {
     let customerId: string | undefined
 
     if (user) {
-      customerId = user.stripe_customer_id
+      customerId = user.stripe_customer_id ?? undefined
     }
 
     if (!customerId) {
