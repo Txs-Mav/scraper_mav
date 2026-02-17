@@ -1,8 +1,0 @@
-{
-  "pid": 78000,
-  "startTime": 1769140775258,
-  "userId": "4ba57f68-4ab6-4989-9142-d0934f950a37",
-  "urls": ["https://www.mvmmotosport.com/fr/","https://test-sauvegarde.com"],
-  "referenceUrl": "https://www.mvmmotosport.com/fr/",
-  "logFile": "/Users/maverickmenard/Desktop/project/go_data/scraper_mav/scraper_logs/scraper_1769140775258.log"
-}
