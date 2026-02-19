@@ -220,31 +220,46 @@ class IntelligentScraper:
 
         products = self._extract_products(product_urls, selectors, url)
 
+        # =====================================================
+        # AUTO-HEAL: Si le taux de succès est trop bas (< 15%),
+        # les URLs en cache sont probablement périmées.
+        # Rafraîchir UNIQUEMENT les URLs (sitemap) — sans appeler Gemini.
+        # Les sélecteurs CSS du cache restent valides.
+        # =====================================================
+        success_rate = (len(products) / len(product_urls) * 100) if product_urls else 0
+        if cache_status == "hit" and product_urls and len(product_urls) >= 20 and success_rate < 15:
+            print(f"\n⚠️  Taux d'extraction très bas: {len(products)}/{len(product_urls)} ({success_rate:.0f}%)")
+            print(f"   🔄 Rafraîchissement des URLs (sélecteurs conservés, 0 appel AI)...")
+            refreshed_urls = self._refresh_urls_only(url, categories)
+            if refreshed_urls and len(refreshed_urls) > len(products) * 2:
+                print(f"   ✅ {len(refreshed_urls)} URLs actuelles → ré-extraction")
+                product_urls = refreshed_urls
+                products = self._extract_products(product_urls, selectors, url)
+                if self.storage:
+                    self.storage.update_scraper_urls(url, product_urls)
+                    self.storage.refresh_cache_expiry(url)
+                    print(f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
+
+        # Post-filtrage inventaire: exclure les produits catalogue si demandé
+        if getattr(self, '_inventory_only', False) and products:
+            pre_filter_count = len(products)
+            products = self._filter_inventory_only_products(products)
+            if pre_filter_count != len(products):
+                print(
+                    f"\n🎯 Post-filtre inventaire: {len(products)}/{pre_filter_count} produits conservés")
+
         print(f"\n✅ {len(products)} produits extraits")
 
         # =====================================================
         # PROTECTION CACHE: Invalider si 0 produits extraits
         # =====================================================
-        # Un scraper qui ne trouve aucun produit est probablement cassé.
-        # Supprimer le cache pour forcer une nouvelle détection au prochain essai.
-        if len(products) == 0 and cache_status in ("miss", "expired"):
-            if self.storage:
+        if len(products) == 0 and self.storage:
+            print(f"⚠️  0 produits extraits → invalidation du cache")
+            try:
+                self.storage.delete_scraper(url)
+            except Exception as e:
                 print(
-                    f"⚠️  0 produits extraits → invalidation du cache pour éviter de réutiliser un scraper cassé")
-                try:
-                    self.storage.delete_scraper(url)
-                except Exception as e:
-                    print(
-                        f"   ⚠️  Erreur lors de l'invalidation du cache: {e}")
-        elif len(products) == 0 and cache_status == "hit":
-            # Le cache existait déjà mais n'a rien extrait → invalider aussi
-            if self.storage:
-                print(f"⚠️  Cache existant mais 0 produits → invalidation du cache")
-                try:
-                    self.storage.delete_scraper(url)
-                except Exception as e:
-                    print(
-                        f"   ⚠️  Erreur lors de l'invalidation du cache: {e}")
+                    f"   ⚠️  Erreur lors de l'invalidation du cache: {e}")
 
         # =====================================================
         # ÉTAPE 4: SAUVEGARDE DES RÉSULTATS
@@ -397,6 +412,69 @@ class IntelligentScraper:
             print(f"   ❌ Erreur exploration: {e}")
             return []
 
+    def _refresh_urls_only(self, base_url: str, categories: List[str]) -> List[str]:
+        """Rafraîchit UNIQUEMENT les URLs sans appeler Gemini.
+
+        Utilise le sitemap + filtrage pour découvrir les URLs actuelles.
+        Les sélecteurs CSS du cache restent valides — aucun appel AI.
+        """
+        import re as _re
+        print(f"   🔄 Rafraîchissement des URLs (sans AI)...")
+        inventory_only = getattr(self, '_inventory_only', False)
+
+        try:
+            tools = self.exploration_agent.ai_tools
+
+            # 1. Sitemap
+            raw_urls = tools.get_sitemap_urls(base_url)
+            if not raw_urls:
+                print(f"      ⚠️  Aucun sitemap → abandon du rafraîchissement")
+                return []
+            print(f"      📋 {len(raw_urls)} URLs du sitemap")
+
+            # 2. Dedup basique
+            seen = {}
+            for u in raw_urls:
+                norm = tools.normalize_url_for_dedup(u)
+                if norm not in seen or len(u) < len(seen[norm]):
+                    seen[norm] = u
+
+            # 3. Dedup model+year (préserve les stock codes)
+            stock_pat = _re.compile(
+                r'(?:ins|inv|mj)\d{3,}'
+                r'|[/-][tu]\d{4,}'
+                r'|a-vendre-[a-z]\d{3,}'
+                r'|ms[-_]p?\d+[-_]\d+'
+                r'|stock[-_]?\d{3,}'
+                r'|sku[-_]?\d+'
+            )
+            final = {}
+            for u in seen.values():
+                if stock_pat.search(u.lower()):
+                    final[u] = u
+                else:
+                    key = tools.normalize_url_by_model_year(u)
+                    if key not in final:
+                        final[key] = u
+            unique = list(final.values())
+
+            # 4. Filtrage inventaire si demandé
+            if inventory_only:
+                agent = self.exploration_agent
+                unique = [
+                    u for u in unique
+                    if agent._looks_like_inventory_url(u)
+                    and agent._is_valid_product_url(u, inventory_only=True)
+                ]
+
+            result = self._filter_urls_by_category(unique, categories, base_url)
+            print(f"      ✅ {len(result)} URLs après filtrage (0 appel AI)")
+            return result
+
+        except Exception as e:
+            print(f"      ❌ Erreur rafraîchissement URLs: {e}")
+            return []
+
     def _filter_urls_by_category(
         self,
         urls: List[str],
@@ -477,8 +555,9 @@ class IntelligentScraper:
     ) -> List[Dict]:
         """Extrait les produits de toutes les URLs"""
         all_products = []
+        skipped_redirects = 0
+        skipped_empty = 0
 
-        # Utiliser le multithreading pour accélérer
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {
                 executor.submit(self._extract_from_url, url, selectors, base_url): url
@@ -493,10 +572,15 @@ class IntelligentScraper:
                         all_products.extend(products)
                         print(
                             f"      ✅ {len(products)} produits de {url[:50]}...")
+                    else:
+                        skipped_empty += 1
                 except Exception as e:
                     print(f"      ❌ Erreur {url[:50]}...: {e}")
 
-        # Dédupliquer les produits
+        if skipped_empty > 0:
+            pct = (skipped_empty / len(urls) * 100) if urls else 0
+            print(f"      ⚠️  {skipped_empty}/{len(urls)} URLs sans produit ({pct:.0f}%) — possibles redirections/pages supprimées")
+
         unique_products = self._deduplicate_products(all_products)
 
         return unique_products
@@ -518,9 +602,18 @@ class IntelligentScraper:
         - etat (neuf, occasion, demonstrateur)
         """
         try:
-            response = self.session.get(url, timeout=15)
+            response = self.session.get(url, timeout=15, allow_redirects=True)
             if response.status_code != 200:
                 return []
+
+            # Detect stale/sold products: if URL was redirected to a
+            # different path (e.g. listing page), the product no longer exists
+            if response.history:
+                from urllib.parse import urlparse
+                original_path = urlparse(url).path.rstrip('/')
+                final_path = urlparse(response.url).path.rstrip('/')
+                if original_path != final_path:
+                    return []
 
             html = response.text
 
@@ -539,7 +632,8 @@ class IntelligentScraper:
                 # Détecter l'état/condition du produit
                 self._detect_product_condition(
                     product_from_structured, url, html)
-                return [product_from_structured]
+                return self._tag_with_inventory_signals(
+                    [product_from_structured], html, url)
 
             # ============================================================
             # PRIORITÉ 2: Extraction via sélecteurs CSS (pages listing)
@@ -602,9 +696,10 @@ class IntelligentScraper:
                 product_from_structured['sourceUrl'] = url
                 self._detect_product_condition(
                     product_from_structured, url, html)
-                return [product_from_structured]
+                return self._tag_with_inventory_signals(
+                    [product_from_structured], html, url)
 
-            return products
+            return self._tag_with_inventory_signals(products, html, url)
 
         except Exception as e:
             return []
@@ -846,7 +941,7 @@ class IntelligentScraper:
         2. URL du produit (sourceUrl) - souvent le signal le plus fiable
         3. URL de la page courante (listing page)
         4. Contenu HTML de la page (badges, breadcrumbs, titre)
-        5. Kilométrage (si > 100km, probablement occasion)
+        5. Kilométrage (si > 0 km, probablement occasion; si 0 ou absent → neuf)
         6. Fallback: déduire depuis sourceCategorie
 
         Args:
@@ -946,7 +1041,7 @@ class IntelligentScraper:
                 elif re.search(r'\b(neuf|brand new)\b', all_page_text):
                     etat = 'neuf'
 
-            # Signal 3: Kilométrage comme indicateur
+            # Signal 3: Kilométrage comme indicateur (> 0 km = probablement usagé)
             if not etat:
                 km = product.get('kilometrage', 0) or 0
                 if isinstance(km, str):
@@ -954,7 +1049,7 @@ class IntelligentScraper:
                         km = int(re.sub(r'[^\d]', '', km))
                     except (ValueError, TypeError):
                         km = 0
-                if km > 100:
+                if km > 0:
                     etat = 'occasion'
 
             # Signal 4: Déduire depuis sourceCategorie
@@ -970,6 +1065,254 @@ class IntelligentScraper:
             product['etat'] = etat
 
         return product
+
+    def _extract_inventory_signals(self, html: str, url: str) -> dict:
+        """Extrait les signaux d'inventaire vs catalogue depuis le HTML et l'URL.
+
+        Analyse le contenu de la page pour déterminer si un produit est de l'inventaire
+        réel (unité physique chez le concessionnaire) ou du catalogue/brochure
+        (vitrine du fabricant).
+
+        Returns:
+            Dict avec des signaux booléens et valeurs extraites.
+        """
+        import re
+
+        signals = {
+            'has_stock_number': False,
+            'has_vin': False,
+            'has_mileage': False,
+            'mileage_value': 0,
+            'has_starting_at_price': False,
+            'url_has_inventory_marker': False,
+            'url_has_catalog_marker': False,
+        }
+
+        url_lower = (url or '').lower()
+
+        # ── Signaux URL ──
+        inventory_url_markers = [
+            'inventaire', 'inventory', 'a-vendre', 'for-sale',
+            'en-stock', 'in-stock', 'disponible',
+            '/occasion/', '/usage/', '/used/', '/pre-owned/',
+        ]
+        if any(m in url_lower for m in inventory_url_markers):
+            signals['url_has_inventory_marker'] = True
+
+        catalog_url_markers = [
+            'catalogue', 'catalog', 'showroom', 'w-get',
+            '/models/', '/modeles/', '/gamme/',
+        ]
+        if any(m in url_lower for m in catalog_url_markers):
+            signals['url_has_catalog_marker'] = True
+
+        # Code de stock dans l'URL
+        stock_url_patterns = [
+            r'ins\d{3,}', r'inv\d{3,}', r'[/-][tu]\d{4,}',
+            r'mj\d{2,}', r'ms[-_]p?\d+[-_]\d+',
+            r'stock[-_]?\d{3,}', r'sku[-_]?\d+', r'ref[-_]?\d+',
+            r'a-vendre-[a-z]\d{3,}',
+        ]
+        if any(re.search(p, url_lower) for p in stock_url_patterns):
+            signals['has_stock_number'] = True
+
+        # ── Signaux HTML ──
+        if html:
+            html_lower = html.lower() if isinstance(html, str) else ''
+
+            # Numéro de stock/inventaire dans le contenu
+            stock_content_patterns = [
+                r'#\s*inventaire\s*[:\s]',
+                r'inventaire\s*#?\s*:\s*\S+',
+                r'#\s*stock\s*[:\s]',
+                r'stock\s*#\s*[:\s]',
+                r'stock\s*number',
+                r'num[ée]ro\s+d[\'e ]\s*inventaire',
+                r'inventory\s*#',
+                r'no\.\s*(?:stock|inventaire)',
+                r'n[°o]\s*(?:stock|inventaire)',
+                r'vehicle\s*id\s*:',
+            ]
+            if any(re.search(p, html_lower) for p in stock_content_patterns):
+                signals['has_stock_number'] = True
+
+            # VIN/NIV dans le contenu
+            vin_content_patterns = [
+                r'(?:vin|niv)\s*[:\s]+\s*[A-HJ-NPR-Z0-9]{17}',
+            ]
+            if any(re.search(p, html, re.IGNORECASE) for p in vin_content_patterns):
+                signals['has_vin'] = True
+
+            # Kilométrage
+            mileage_patterns = [
+                r'(?:kilom[eé]trage|mileage)\s*[:\s]+\s*([\d\s,.\xa0]+)',
+                r'([\d\s,.\xa0]+)\s*km\b(?!\s*/)',
+            ]
+            for pattern in mileage_patterns:
+                match = re.search(pattern, html_lower)
+                if match:
+                    try:
+                        km_str = re.sub(r'[^\d]', '', match.group(1))
+                        if km_str:
+                            km = int(km_str)
+                            if 0 < km < 1_000_000:
+                                signals['has_mileage'] = True
+                                signals['mileage_value'] = km
+                                break
+                    except (ValueError, IndexError):
+                        pass
+
+            # "À partir de" / MSRP = signal catalogue
+            starting_at_patterns = [
+                r'[àa]\s+partir\s+de\s*[\s:]*\s*[\d$]',
+                r'starting\s+(?:at|from)\s*[\s:]*\s*[\d$]',
+                r'msrp\s*[\s:]*\s*[\d$]',
+                r'prix\s+de\s+d[ée]tail\s+sugg[ée]r[ée]',
+            ]
+            if any(re.search(p, html_lower) for p in starting_at_patterns):
+                signals['has_starting_at_price'] = True
+
+        return signals
+
+    def _extract_mileage_from_html(self, html: str) -> Optional[int]:
+        """Extrait le kilométrage depuis le contenu HTML via regex.
+
+        Cherche des patterns labellisés (haute fiabilité) comme:
+        - "Kilométrage : 3 600 km"
+        - "Mileage: 5,213 km"
+        - "Odomètre : 0 km"
+        - "Kilométrage : 0 km" (véhicule neuf)
+
+        Returns:
+            Valeur en km (int), 0 pour "0 km", ou None si non trouvé.
+        """
+        if not html:
+            return None
+        import re
+        html_lower = html.lower()
+
+        labeled_patterns = [
+            r'(?:kilom[eé]trage|mileage|odom[eè]tre|odometer)\s*[:\s]+\s*([\d\s,.\xa0]+)\s*(?:km|mi)?',
+            r'(?:km|mileage)\s*:\s*([\d\s,.\xa0]+)',
+        ]
+
+        for pattern in labeled_patterns:
+            match = re.search(pattern, html_lower)
+            if match:
+                try:
+                    km_str = re.sub(r'[^\d]', '', match.group(1))
+                    if not km_str:
+                        return 0
+                    km = int(km_str)
+                    if 0 <= km < 1_000_000:
+                        return km
+                except (ValueError, IndexError):
+                    pass
+
+        return None
+
+    def _tag_with_inventory_signals(self, products: List[Dict], html: str, url: str) -> List[Dict]:
+        """Tague les produits avec les signaux d'inventaire et extrait le kilométrage.
+
+        L'extraction du kilométrage se fait TOUJOURS (pas seulement en mode inventaire)
+        car le kilométrage sert aussi à déterminer l'état neuf/occasion.
+        Le tagage des signaux d'inventaire ne se fait qu'en mode inventaire seulement.
+        """
+        # TOUJOURS extraire le kilométrage du HTML (indépendant du mode inventaire)
+        mileage = self._extract_mileage_from_html(html)
+        if mileage is not None:
+            for p in products:
+                if p.get('kilometrage') is None:
+                    p['kilometrage'] = mileage
+
+        # Les signaux d'inventaire ne sont nécessaires que pour le post-filtre
+        if not getattr(self, '_inventory_only', False):
+            return products
+
+        signals = self._extract_inventory_signals(html, url)
+        for p in products:
+            p['_inventory_signals'] = signals
+        return products
+
+    def _filter_inventory_only_products(self, products: List[Dict]) -> List[Dict]:
+        """Filtre les produits pour ne garder que l'inventaire réel du concessionnaire.
+
+        Utilise une combinaison de signaux URL et contenu HTML pour distinguer
+        l'inventaire réel (unités sur le plancher) des pages catalogue/brochure.
+
+        Signaux d'inventaire (any → garder):
+        - Numéro de stock (dans URL ou page)
+        - VIN présent
+        - URL contient /inventaire/, a-vendre, /occasion/, etc.
+        - Kilométrage > 0 (véhicule usagé spécifique)
+
+        Signaux catalogue (any → exclure):
+        - URL contient w-get, /catalogue/, /showroom/
+        - "À partir de" / MSRP sans numéro de stock
+        """
+        import re
+
+        filtered = []
+        excluded = 0
+
+        for product in products:
+            signals = product.get('_inventory_signals', {})
+            is_inventory = False
+            is_catalog = False
+
+            # ── Signaux DÉFINITIFS d'inventaire (any → garder) ──
+            if signals.get('has_stock_number'):
+                is_inventory = True
+            elif signals.get('has_vin'):
+                is_inventory = True
+            elif signals.get('url_has_inventory_marker'):
+                is_inventory = True
+            else:
+                # Kilométrage > 0 = véhicule spécifique (usagé)
+                km = signals.get('mileage_value', 0)
+                if not km:
+                    km = product.get('kilometrage', 0) or 0
+                    if isinstance(km, str):
+                        try:
+                            km = int(re.sub(r'[^\d]', '', km))
+                        except (ValueError, TypeError):
+                            km = 0
+                if km > 0:
+                    is_inventory = True
+
+            # ── Signaux DÉFINITIFS de catalogue (any → exclure) ──
+            if not is_inventory:
+                if signals.get('url_has_catalog_marker'):
+                    is_catalog = True
+                elif (signals.get('has_starting_at_price')
+                      and not signals.get('has_stock_number')
+                      and not signals.get('has_vin')):
+                    is_catalog = True
+
+            # ── Décision ──
+            if is_inventory:
+                filtered.append(product)
+            elif is_catalog:
+                excluded += 1
+                if excluded <= 5:
+                    name = product.get('name', 'N/A')[:60]
+                    print(f"      🚫 Produit catalogue exclu: {name}")
+            else:
+                # Ambigu: inclure par défaut (le pré-filtre URL a déjà exclu les cas évidents)
+                filtered.append(product)
+
+            # Nettoyer le champ interne
+            product.pop('_inventory_signals', None)
+
+        if excluded > 5:
+            print(f"      🚫 ... et {excluded - 5} autres produits catalogue exclus")
+
+        if excluded > 0:
+            print(
+                f"      ✅ Filtre inventaire: {len(filtered)} produits conservés"
+                f" ({excluded} produits catalogue exclus)")
+
+        return filtered
 
     def _deduplicate_products(self, products: List[Dict]) -> List[Dict]:
         """Déduplique les produits basé sur le nom et le prix"""

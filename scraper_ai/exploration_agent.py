@@ -2,6 +2,7 @@
 Agent d'exploration qui utilise Gemini pour découvrir URLs et extraire infos produits
 Étape 1 du nouveau flux : Exploration + Extraction Gemini
 """
+import re
 import time
 from typing import Dict, List, Optional, Any, Tuple
 from urllib.parse import urlparse
@@ -195,11 +196,28 @@ class ExplorationAgent:
                 normalized_urls_dict[normalized] = url_item
 
         # Dédupliquer par modèle+année (ignorer les couleurs)
+        # IMPORTANT: Les URLs avec un code de stock unique (unité physique)
+        # ne doivent PAS être fusionnées — chaque code = un véhicule distinct
+        stock_code_pattern = re.compile(
+            r'(?:ins|inv|mj)\d{3,}'
+            r'|[/-][tu]\d{4,}'
+            r'|a-vendre-[a-z]\d{3,}'
+            r'|ms[-_]p?\d+[-_]\d+'
+            r'|stock[-_]?\d{3,}'
+            r'|sku[-_]?\d+'
+        )
         model_year_urls_dict = {}
         for url_item in normalized_urls_dict.values():
-            model_year_key = tools.normalize_url_by_model_year(url_item)
-            if model_year_key not in model_year_urls_dict:
-                model_year_urls_dict[model_year_key] = url_item
+            url_lower = url_item.lower()
+            stock_match = stock_code_pattern.search(url_lower)
+            if stock_match:
+                # URL avec code de stock unique → garder tel quel
+                model_year_urls_dict[url_item] = url_item
+            else:
+                # URL sans code de stock → dédup par modèle+année
+                model_year_key = tools.normalize_url_by_model_year(url_item)
+                if model_year_key not in model_year_urls_dict:
+                    model_year_urls_dict[model_year_key] = url_item
 
         unique_urls = list(model_year_urls_dict.values())
         print(f"      ✅ {len(unique_urls)} URLs uniques après déduplication")
@@ -213,10 +231,20 @@ class ExplorationAgent:
             u for u in unique_urls if self._looks_like_inventory_url(u)]
 
         # Le mode est contrôlé par le paramètre utilisateur + auto-détection
-        INVENTORY_THRESHOLD = 5
+        INVENTORY_THRESHOLD = 3
         has_enough_inventory = len(inventory_likely) >= INVENTORY_THRESHOLD
         inventory_only_mode = getattr(
             self, '_inventory_only', False) and has_enough_inventory
+
+        # Détecter les patterns d'inventaire spécifiques au site
+        if inventory_only_mode:
+            self._site_inventory_path_markers = self._detect_site_inventory_patterns(
+                inventory_likely)
+            if self._site_inventory_path_markers:
+                print(
+                    f"      🔑 Patterns d'inventaire du site détectés: {self._site_inventory_path_markers}")
+        else:
+            self._site_inventory_path_markers = set()
 
         if getattr(self, '_inventory_only', False) and not has_enough_inventory:
             print(
@@ -274,16 +302,26 @@ class ExplorationAgent:
             r'sku[-_]?\d+',                    # sku123, sku-456
             r'ref[-_]?\d+',                    # ref123, ref_456
             r'p\d{4,}',                        # p12345 (ID produit)
+            r'mj\d{2,}',                       # MVM ancien format: mj220, mj2207
+            r'ms[-_]p?\d+[-_]\d+',             # Mathias: ms-p25-0001a
+            r'a-vendre-[a-z]\d{3,}',           # MVM/PowerGo: a-vendre-k00228, a-vendre-c00597, etc.
         ]
         has_product_id = any(re.search(pattern, url_lower)
                              for pattern in product_id_patterns)
         if has_product_id:
             return True
 
-        # Indicateurs de vente / inventaire dans l'URL
+        # Indicateur de catalogue (manufacturer feed) → PAS inventaire
+        catalog_url_markers = ['w-get']
+        if any(m in url_lower for m in catalog_url_markers):
+            return False
+
+        # Indicateurs de vente / inventaire dans l'URL (inclut occasion = inventaire usagé)
         inventory_markers = [
             'inventaire', 'inventory', 'for-sale', 'a-vendre', 'stock', 'en-stock',
             'disponible', 'in-stock', 'instock',
+            'occasion', 'usage', 'used', 'pre-owned', 'usag',
+            'd-occasion', 'vehicules-occasion',
         ]
         has_inventory_marker = any(m in url_lower for m in inventory_markers)
 
@@ -357,6 +395,9 @@ class ExplorationAgent:
             r'p\d{4,}',        # p12345 (ID produit)
             r'sku[-_]?\d+',    # sku123, sku-456
             r'ref[-_]?\d+',    # ref123, ref_456
+            r'mj\d{2,}',      # MVM ancien format: mj220, mj2207
+            r'ms[-_]p?\d+[-_]\d+',  # Mathias: ms-p25-0001a
+            r'a-vendre-[a-z]\d{3,}',  # MVM/PowerGo: a-vendre-k00228, etc.
         ]
 
         # Vérifier si l'URL contient un ID produit (très fiable pour détail)
@@ -393,16 +434,19 @@ class ExplorationAgent:
             return False
 
         # INDIQUEURS pour pages d'INVENTAIRE (mais pas suffisant seuls)
+        # Inclut les marqueurs d'occasion car les véhicules usagés sont aussi de l'inventaire
         inventory_indicators = [
             'inventaire', 'inventory', 'vendre',
             'stock', 'en-stock', 'disponible',
+            'occasion', 'usage', 'used', 'pre-owned', 'usag',
         ]
         has_inventory_indicator = any(
             indicator in url_lower for indicator in inventory_indicators)
 
         # Signal "catalogue-like" (adaptatif)
         catalogue_keywords = ['catalogue', 'catalog',
-                              'showroom', 'modele', 'model', 'gamme', 'range']
+                              'showroom', 'modele', 'model', 'gamme', 'range',
+                              'w-get']
         has_catalogue_keyword = any(
             kw in url_lower for kw in catalogue_keywords)
         # pattern courant, pas universel
@@ -418,6 +462,17 @@ class ExplorationAgent:
         # Si le site a suffisamment d'inventaire détectable, on devient strict (inventaire seulement)
         if inventory_only and is_catalogue_like:
             return False
+
+        # Filtrage adaptatif par patterns de site: si le site utilise des marqueurs
+        # d'inventaire détectables (ex: /inventaire/), exclure les URLs qui n'ont
+        # aucun de ces marqueurs ET aucun code de stock
+        if inventory_only and not has_product_id and not has_detail_indicator:
+            site_markers = getattr(self, '_site_inventory_path_markers', set())
+            if site_markers:
+                url_path = urlparse(url).path.lower()
+                has_site_marker = any(marker in url_path for marker in site_markers)
+                if not has_site_marker and not has_inventory_indicator:
+                    return False
 
         # Mots-clés qui indiquent une page de produit (fallback)
         product_indicators = [
@@ -460,6 +515,37 @@ class ExplorationAgent:
             return True
 
         return False
+
+    def _detect_site_inventory_patterns(self, inventory_urls: List[str]) -> set:
+        """Détecte les marqueurs de chemin d'inventaire communs pour ce site spécifique.
+
+        Analyse les URLs identifiées comme inventaire pour trouver les segments de chemin
+        récurrents (ex: 'inventaire', 'occasion', 'usage'). Ces patterns servent ensuite
+        à exclure les URLs qui ne correspondent à aucun pattern d'inventaire du site.
+        """
+        from collections import Counter
+
+        inventory_keywords = {
+            'inventaire', 'inventory', 'occasion', 'usage', 'used',
+            'pre-owned', 'pre-possede', 'vehicules-occasion',
+        }
+
+        markers = Counter()
+        for url in inventory_urls:
+            parsed = urlparse(url)
+            path = (parsed.path or '').lower()
+            segments = [s for s in path.split('/') if s]
+            for seg in segments:
+                if seg in inventory_keywords:
+                    markers[seg] += 1
+                elif any(kw in seg for kw in inventory_keywords):
+                    markers[seg] += 1
+
+        if not markers:
+            return set()
+
+        threshold = max(len(inventory_urls) * 0.3, 2)
+        return {marker for marker, count in markers.items() if count >= threshold}
 
     def _get_listing_page_candidates(
         self, discovered_urls: List[str], base_url: str

@@ -189,10 +189,17 @@ def _is_significant_diff(diff_words: set) -> bool:
     Gère aussi les formes fusionnées: si un mot court (≤3 lettres) contient une lettre
     significative individuelle (r, x), il est considéré comme significatif.
     Ex: 'rl' contient 'r' → significatif.
+
+    Tout token numérique est significatif (tailles de roues, cylindrées, versions, etc.)
+    car les nombres dans les noms de produits indiquent toujours une variante distincte.
+    Ex: ELEKTRODE 20 ≠ ELEKTRODE 16 (taille de roue différente)
     """
     for w in diff_words:
         # Vérification directe dans le set
         if w in _NORMALIZED_SIGNIFICANT:
+            return True
+        # Tout nombre est significatif (taille, cylindrée, version, puissance)
+        if w.isdigit():
             return True
         # Pour les tokens courts et purement alpha (possibles résultats de fusion),
         # vérifier si une lettre individuelle est significative

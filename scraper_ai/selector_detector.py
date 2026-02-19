@@ -114,6 +114,44 @@ SELECTOR_DETECTION_SCHEMA = {
 }
 
 
+# ── Constants for CSS selector auto-discovery ──
+
+_PRICE_PATTERN = re.compile(
+    r'[\$€]\s*[\d\s,\.]+|[\d\s,\.]+\s*[\$€]|[\d\s,\.]+\s*(?:CAD|USD)',
+    re.IGNORECASE,
+)
+
+_PRICE_EXCLUDE_KEYWORDS = frozenset([
+    'old', 'was', 'msrp', 'list-price', 'regular', 'compare',
+    'original', 'crossed', 'line-through', 'strike', 'barr',
+    'strikethrough', 'previous', 'ancien',
+])
+
+_UTILITY_CLASS_PREFIXES = (
+    'js-', 'col-', 'text-', 'font-', 'bg-', 'border-', 'rounded-', 'shadow-',
+    'p-', 'px-', 'py-', 'pt-', 'pb-', 'pl-', 'pr-',
+    'm-', 'mx-', 'my-', 'mt-', 'mb-', 'ml-', 'mr-',
+    'w-', 'h-', 'min-w-', 'max-w-', 'min-h-', 'max-h-',
+    'space-', 'gap-', 'leading-', 'tracking-',
+    'opacity-', 'z-', 'overflow-', 'cursor-',
+    'transition-', 'duration-', 'ease-', 'animate-',
+    'items-', 'justify-', 'self-', 'order-',
+    'float-', 'sr-only', 'aspect-',
+)
+
+_SPEC_LABELS = {
+    'brand': ['make', 'marque', 'brand', 'manufacturer', 'manufacturier', 'fabricant'],
+    'model': ['model', 'modèle', 'modele'],
+    'year': ['year', 'année', 'annee'],
+    'mileage': ['mileage', 'kilométrage', 'kilometrage', 'km', 'odometer', 'odomètre'],
+}
+
+_LOGO_KEYWORDS = frozenset([
+    'logo', 'icon', 'favicon', 'sprite', 'placeholder',
+    'loading', 'spinner', 'avatar', 'badge', 'banner-ad',
+])
+
+
 class SelectorDetector:
     """Détecte les sélecteurs CSS d'un site via Gemini"""
 
@@ -157,6 +195,9 @@ class SelectorDetector:
             )
 
             if result:
+                # Valider les sélecteurs contre le vrai HTML
+                result = self._validate_and_fix_selectors(
+                    result, html_samples, html_samples_raw=html_samples)
                 print(f"   ✅ Sélecteurs détectés avec succès")
                 self._log_detected_selectors(result)
                 return result
@@ -335,13 +376,455 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
                 continue
 
             try:
-                # Essayer de trouver des éléments avec ce sélecteur
                 elements = soup.select(selector)
                 results[name] = len(elements) > 0
             except Exception:
                 results[name] = False
 
         return results
+
+    def _validate_and_fix_selectors(
+        self,
+        result: Dict,
+        html_samples_text,
+        html_samples_raw=None
+    ) -> Dict:
+        """Validate Gemini selectors against real HTML.
+
+        When a selector is invalid (hallucinated by the AI), auto-discovers
+        a replacement by scanning the HTML content for elements that match
+        the expected field type (price pattern, heading, spec labels, etc.).
+        Works on any site regardless of CMS.
+        """
+        selectors = result.get('selectors', {})
+        if not selectors:
+            return result
+
+        soup = self._get_validation_soup(html_samples_text, html_samples_raw)
+        if not soup:
+            return result
+
+        fixed = dict(selectors)
+        fixed_count = 0
+        discovered_elements = {}
+
+        invalid_fields = []
+        for field, selector in selectors.items():
+            if not selector:
+                continue
+            try:
+                found = soup.select(selector)
+            except Exception:
+                found = []
+            if not found:
+                invalid_fields.append(field)
+
+        if not invalid_fields:
+            return result
+
+        discover_map = {
+            'name': lambda: self._discover_name_element(soup),
+            'price': lambda: self._discover_price_element(soup),
+            'image': lambda: self._discover_image_element(soup),
+            'brand': lambda: self._discover_spec_element(
+                soup, 'brand', _SPEC_LABELS['brand']),
+            'model': lambda: self._discover_spec_element(
+                soup, 'model', _SPEC_LABELS['model']),
+            'year': lambda: self._discover_spec_element(
+                soup, 'year', _SPEC_LABELS['year']),
+            'mileage': lambda: self._discover_spec_element(
+                soup, 'mileage', _SPEC_LABELS['mileage']),
+        }
+
+        for field in invalid_fields:
+            if field == 'product_container':
+                continue
+
+            discover_fn = discover_map.get(field)
+            if not discover_fn:
+                continue
+
+            disc_result = discover_fn()
+            if disc_result is not None:
+                if isinstance(disc_result, tuple):
+                    element, compound = disc_result
+                    selector_str = compound or self._element_to_selector(element)
+                else:
+                    element = disc_result
+                    selector_str = self._element_to_selector(element)
+
+                if selector_str:
+                    try:
+                        if soup.select(selector_str):
+                            fixed[field] = selector_str
+                            fixed_count += 1
+                            discovered_elements[field] = element
+                            print(f"   🔧 Sélecteur '{field}' auto-découvert: "
+                                  f"{selectors[field]} → {selector_str}")
+                            continue
+                    except Exception:
+                        pass
+
+            print(f"   ⚠️  Sélecteur '{field}' invalide, auto-découverte échouée: "
+                  f"{selectors.get(field, '')}")
+
+        if 'product_container' in invalid_fields:
+            container_el = self._discover_container_element(
+                soup, discovered_elements)
+            if container_el:
+                selector_str = self._element_to_selector(container_el)
+                if selector_str:
+                    try:
+                        if soup.select(selector_str):
+                            fixed['product_container'] = selector_str
+                            fixed_count += 1
+                            print(f"   🔧 Sélecteur 'product_container' auto-découvert: "
+                                  f"{selectors.get('product_container', '')} → {selector_str}")
+                    except Exception:
+                        pass
+
+        if fixed_count > 0:
+            print(f"   🔧 {fixed_count} sélecteur(s) auto-découvert(s) par analyse HTML")
+
+        result['selectors'] = fixed
+        return result
+
+    def _get_validation_soup(self, html_samples_text, html_samples_raw=None):
+        """Extract a BeautifulSoup object from the first HTML sample."""
+        if isinstance(html_samples_raw, dict) and html_samples_raw:
+            return BeautifulSoup(
+                next(iter(html_samples_raw.values())), 'html.parser')
+
+        if isinstance(html_samples_text, dict) and html_samples_text:
+            return BeautifulSoup(
+                next(iter(html_samples_text.values())), 'html.parser')
+
+        if isinstance(html_samples_text, str) and html_samples_text:
+            sample = html_samples_text
+            if '=== URL:' in sample:
+                parts = sample.split('=== URL:')
+                if len(parts) > 1:
+                    chunk = parts[1]
+                    nl = chunk.find('\n')
+                    sample = chunk[nl + 1:] if nl >= 0 else chunk
+            return BeautifulSoup(sample, 'html.parser')
+
+        return None
+
+    # ── Auto-discovery methods ──
+
+    def _discover_name_element(self, soup):
+        """Find the product name element (usually h1 on detail pages)."""
+        h1 = soup.find('h1')
+        if h1:
+            text = h1.get_text(strip=True)
+            if 5 <= len(text) <= 200:
+                return h1
+
+        for tag in ('h2', 'h3'):
+            for heading in soup.find_all(tag):
+                text = heading.get_text(strip=True)
+                if not (5 <= len(text) <= 200):
+                    continue
+                in_chrome = any(
+                    hasattr(a, 'name') and a.name in ('nav', 'footer', 'aside')
+                    for a in heading.parents
+                )
+                if not in_chrome:
+                    return heading
+
+        return None
+
+    def _discover_price_element(self, soup):
+        """Find an element containing a monetary price by scanning text content."""
+        candidates = []
+
+        for text_node in soup.find_all(string=_PRICE_PATTERN):
+            parent = text_node.parent
+            if not parent or not hasattr(parent, 'name') or not parent.name:
+                continue
+
+            excluded = False
+            check = parent
+            for _ in range(8):
+                if not check or not hasattr(check, 'get'):
+                    break
+                cls_str = ' '.join(check.get('class', [])).lower()
+                style = (check.get('style') or '').lower()
+                if (any(kw in cls_str for kw in _PRICE_EXCLUDE_KEYWORDS)
+                        or 'line-through' in style):
+                    excluded = True
+                    break
+                check = getattr(check, 'parent', None)
+
+            if excluded:
+                continue
+
+            in_chrome = any(
+                hasattr(a, 'name') and a.name in ('footer', 'nav', 'aside', 'header')
+                for a in parent.parents
+            )
+            if in_chrome:
+                continue
+
+            score = 0
+            p_classes = ' '.join(parent.get('class', [])).lower()
+            if any(kw in p_classes for kw in ('price', 'prix', 'cost', 'amount', 'sale')):
+                score += 20
+            elif parent.get('class'):
+                score += 5
+
+            candidates.append((parent, score))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0]
+
+    def _discover_spec_element(self, soup, field: str, labels: List[str]):
+        """Find a spec value element (brand, model, year, mileage) by searching
+        for known labels and their associated value elements.
+
+        Returns (element, compound_selector) or None.  compound_selector is a
+        pre-built CSS selector when the element alone would be ambiguous (e.g.
+        multiple span.value inside different spec rows).
+        """
+
+        # Strategy 1: class attribute contains the label keyword
+        for label in labels:
+            for el in soup.select(f'[class*="{label}"]'):
+                value_el = el.select_one('.value, span:last-child')
+                target = value_el if value_el else el
+                text = target.get_text(strip=True)
+                clean = text
+                for lb in labels:
+                    clean = re.sub(
+                        r'(?i)\b' + re.escape(lb) + r'\b\s*:?\s*', '', clean
+                    ).strip()
+                if clean and self._validate_spec_content(field, clean):
+                    if value_el:
+                        v_tag = value_el.name
+                        v_cls = [c for c in value_el.get('class', [])
+                                 if not self._is_utility_class(c)
+                                 and re.match(r'^[a-zA-Z_-][a-zA-Z0-9_-]*$', c)]
+                        child = f'{v_tag}.{v_cls[0]}' if v_cls else v_tag
+                        compound = f'[class*="{label}"] {child}'
+                        return (target, compound)
+                    return (target, None)
+
+        # Strategy 2: itemprop / schema.org attributes
+        itemprop_map = {
+            'brand': ['brand', 'manufacturer'],
+            'model': ['model'],
+            'year': ['releaseDate', 'dateVehicleFirstRegistered',
+                     'modelDate', 'vehicleModelDate'],
+            'mileage': ['mileageFromOdometer'],
+        }
+        for prop in itemprop_map.get(field, []):
+            el = soup.find(attrs={'itemprop': prop})
+            if el:
+                text = el.get('content', '') or el.get_text(strip=True)
+                if text and self._validate_spec_content(field, text):
+                    return (el, None)
+
+        # Strategy 3: label-value pairs in DOM (dt/dd, td/td, span siblings)
+        for label in labels:
+            pattern = re.compile(r'\b' + re.escape(label) + r'\b', re.IGNORECASE)
+            for text_node in soup.find_all(string=pattern):
+                parent = text_node.parent
+                if not parent or not hasattr(parent, 'name'):
+                    continue
+
+                if parent.name == 'dt':
+                    dd = parent.find_next_sibling('dd')
+                    if dd and self._validate_spec_content(
+                            field, dd.get_text(strip=True)):
+                        return (dd, None)
+
+                if parent.name in ('th', 'td'):
+                    next_td = parent.find_next_sibling('td')
+                    if next_td and self._validate_spec_content(
+                            field, next_td.get_text(strip=True)):
+                        return (next_td, None)
+
+                if parent.name in ('span', 'strong', 'b', 'label', 'div', 'p'):
+                    for sib in parent.find_next_siblings():
+                        val = sib.get_text(strip=True)
+                        if val and self._validate_spec_content(field, val):
+                            return (sib, None)
+                        break
+
+                full = parent.get_text(strip=True)
+                if ':' in full:
+                    value = full.split(':', 1)[1].strip()
+                    if value and self._validate_spec_content(field, value):
+                        return (parent, None)
+
+        return None
+
+    def _discover_image_element(self, soup):
+        """Find the main product image by scoring img elements."""
+        candidates = []
+
+        for img in soup.find_all('img'):
+            src = (img.get('src', '') or img.get('data-src', '')
+                   or img.get('data-lazy-src', ''))
+            if not src:
+                continue
+
+            src_lower = src.lower()
+            cls_str = ' '.join(img.get('class', [])).lower()
+
+            if any(kw in src_lower or kw in cls_str for kw in _LOGO_KEYWORDS):
+                continue
+
+            try:
+                w = int(img.get('width', 0) or 0)
+                h = int(img.get('height', 0) or 0)
+                if (w and w < 80) or (h and h < 80):
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+            in_chrome = any(
+                hasattr(a, 'name') and a.name in ('nav', 'footer', 'aside', 'header')
+                for a in img.parents
+            )
+            if in_chrome:
+                continue
+
+            score = 0
+            if any(kw in cls_str for kw in
+                   ('product', 'vehicle', 'gallery', 'hero',
+                    'main', 'primary', 'featured')):
+                score += 20
+            if any(kw in src_lower for kw in
+                   ('product', 'vehicle', 'inventory', 'upload')):
+                score += 10
+            if img.parent and img.parent.name in ('picture', 'figure'):
+                score += 5
+            try:
+                if int(img.get('width', 0) or 0) >= 300:
+                    score += 10
+            except (ValueError, TypeError):
+                pass
+
+            candidates.append((img, score))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0]
+
+    def _discover_container_element(self, soup, found_elements: Dict):
+        """Find the most specific common ancestor of the discovered elements."""
+        elements = [el for el in found_elements.values() if el is not None]
+
+        if len(elements) >= 2:
+            def _ancestors(el):
+                chain = []
+                cur = el
+                while cur and hasattr(cur, 'name') and cur.name:
+                    chain.append(cur)
+                    cur = getattr(cur, 'parent', None)
+                return list(reversed(chain))
+
+            chains = [_ancestors(el) for el in elements]
+            common = None
+            for level in zip(*chains):
+                if all(node is level[0] for node in level):
+                    common = level[0]
+                else:
+                    break
+
+            if common and common.name not in ('html', 'body', '[document]'):
+                return common
+
+        if elements:
+            current = elements[0].parent
+            while current and hasattr(current, 'name') and current.name:
+                if current.name in ('article', 'section', 'main', 'div'):
+                    classes = current.get('class', [])
+                    meaningful = [c for c in classes
+                                  if not self._is_utility_class(c)]
+                    if meaningful or current.name in ('article', 'main'):
+                        return current
+                current = getattr(current, 'parent', None)
+
+        for tag in ('article', 'main', 'section'):
+            el = soup.find(tag)
+            if el:
+                return el
+
+        return None
+
+    def _element_to_selector(self, element) -> Optional[str]:
+        """Build a reusable CSS selector from a BeautifulSoup element."""
+        if not element or not hasattr(element, 'name') or not element.name:
+            return None
+
+        tag = element.name
+
+        el_id = element.get('id', '')
+        if el_id and re.match(r'^[a-zA-Z][a-zA-Z0-9_-]*$', el_id):
+            return f'#{el_id}'
+
+        itemprop = element.get('itemprop', '')
+        if itemprop:
+            return f'[itemprop="{itemprop}"]'
+
+        classes = element.get('class', [])
+        meaningful = [
+            c for c in classes
+            if not self._is_utility_class(c)
+            and re.match(r'^[a-zA-Z_-][a-zA-Z0-9_-]*$', c)
+        ]
+        if meaningful:
+            return f'{tag}.{".".join(meaningful[:2])}'
+
+        if tag in ('h1', 'h2', 'h3', 'article', 'main', 'section'):
+            return tag
+
+        parent = element.parent
+        if (parent and hasattr(parent, 'name')
+                and parent.name not in (None, 'html', 'body', '[document]')):
+            p_classes = parent.get('class', [])
+            p_meaningful = [
+                c for c in p_classes
+                if not self._is_utility_class(c)
+                and re.match(r'^[a-zA-Z_-][a-zA-Z0-9_-]*$', c)
+            ]
+            if p_meaningful:
+                return f'{parent.name}.{".".join(p_meaningful[:2])} {tag}'
+
+        return tag
+
+    @staticmethod
+    def _is_utility_class(cls: str) -> bool:
+        """Check if a CSS class is a utility/layout class (Tailwind, Bootstrap)."""
+        if len(cls) <= 1:
+            return True
+        return any(cls.startswith(p) for p in _UTILITY_CLASS_PREFIXES)
+
+    @staticmethod
+    def _validate_spec_content(field: str, text: str) -> bool:
+        """Validate that discovered text is plausible for the given spec field."""
+        if not text or not text.strip():
+            return False
+        text = text.strip()
+
+        if field == 'year':
+            return bool(re.search(r'\b20[0-3]\d\b', text)) and len(text) < 20
+        if field == 'brand':
+            return 1 < len(text) < 40 and not text.isdigit()
+        if field == 'model':
+            return 1 < len(text) < 60 and not text.isdigit()
+        if field == 'mileage':
+            return bool(re.search(r'\d', text)) and len(text) < 30
+
+        return len(text) > 0
 
     def extract_with_selectors(
         self,
@@ -370,17 +853,21 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
             return products
 
         containers = soup.select(container_selector)
+        is_detail_page = len(containers) == 1
 
         for container in containers:
             product = {}
 
-            # Extraire chaque champ
             for field, selector in selectors.items():
                 if field == 'product_container' or not selector:
                     continue
 
                 try:
                     element = container.select_one(selector)
+                    # Sur une page de détail, si le champ est introuvable
+                    # dans le container, chercher globalement (h1 souvent hors container)
+                    if not element and is_detail_page and field in ('name', 'price', 'image'):
+                        element = soup.select_one(selector)
                     if element:
                         if field == 'image':
                             # Pour les images, prendre src ou data-src

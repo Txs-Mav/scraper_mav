@@ -770,8 +770,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       {/* Notification post-scraping */}
       {scrapeNotification && (
         <div className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 ${scrapeNotification.type === 'success'
-            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-            : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+          ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+          : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
           }`}>
           <span>{scrapeNotification.message}</span>
           <button
@@ -847,8 +847,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           </div>
         </BlocTemplate>
 
-        {/* Zone basse : Scraper en cache + Catalogue filtré côte à côte */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* Zone basse : Scraper en cache + Catalogue filtré superposés */}
+        <div className="grid grid-cols-1 gap-4">
           <BlocTemplate className="shadow-none bg-transparent hover-elevate" innerClassName="bg-gray-50/80 dark:bg-[#0F0F12] p-4 border border-gray-100 dark:border-white/5 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.45)]">
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between mb-3">
               <div className="space-y-1">
@@ -1148,8 +1148,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 type="button"
                 onClick={() => setActiveTab("reference")}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === "reference"
-                    ? "bg-amber-500 text-white shadow-[0_8px_20px_-8px_rgba(245,158,11,0.5)]"
-                    : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
+                  ? "bg-amber-500 text-white shadow-[0_8px_20px_-8px_rgba(245,158,11,0.5)]"
+                  : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
                   }`}
               >
                 <Star className="h-4 w-4" />
@@ -1161,8 +1161,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 type="button"
                 onClick={() => setActiveTab("allCompetitors")}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === "allCompetitors"
-                    ? "bg-blue-500 text-white shadow-[0_8px_20px_-8px_rgba(59,130,246,0.5)]"
-                    : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
+                  ? "bg-blue-500 text-white shadow-[0_8px_20px_-8px_rgba(59,130,246,0.5)]"
+                  : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
                   }`}
               >
                 <Globe className="h-4 w-4" />
@@ -1174,8 +1174,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 type="button"
                 onClick={() => setActiveTab("compared")}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === "compared"
-                    ? "bg-emerald-500 text-white shadow-[0_8px_20px_-8px_rgba(16,185,129,0.5)]"
-                    : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
+                  ? "bg-emerald-500 text-white shadow-[0_8px_20px_-8px_rgba(16,185,129,0.5)]"
+                  : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
                   }`}
               >
                 <ArrowRightLeft className="h-4 w-4" />
@@ -1195,8 +1195,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                     type="button"
                     onClick={() => setActiveTab(`site-${siteUrl}`)}
                     className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === `site-${siteUrl}`
-                        ? "bg-purple-500 text-white shadow-[0_8px_20px_-8px_rgba(168,85,247,0.5)]"
-                        : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
+                      ? "bg-purple-500 text-white shadow-[0_8px_20px_-8px_rgba(168,85,247,0.5)]"
+                      : "border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f]"
                       }`}
                   >
                     {siteName}

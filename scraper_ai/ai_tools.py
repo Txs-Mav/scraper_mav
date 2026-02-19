@@ -1089,14 +1089,17 @@ class AITools:
         # Supprimer l'année du slug pour extraire le modèle
         product_without_year = re.sub(r'-\d{4}(?:-\d+)?$', '', product_slug)
 
-        # Liste des mots de couleur/variante à supprimer
+        # Liste des mots de COULEUR SEULEMENT (pas de sous-modèles!)
+        # Les sous-modèles (eps, se, lt, pro, etc.) NE doivent PAS être ici
+        # car ils représentent des variantes de produit significatives.
         color_variants = [
             'noir', 'blanc', 'vert', 'rouge', 'gris', 'bleu', 'jaune', 'orange',
             'carbon', 'carbonne', 'mat', 'brillant', 'metallic', 'metallique',
             'black', 'white', 'green', 'red', 'gray', 'grey', 'blue', 'yellow',
-            'lime', 'ebene', 'medium', 'greenblack', 'blackout', 'edition',
-            'eps', 'se', 'lt', 'sno', 'pro', 'alpha', 'riot', 'special',
-            'limited', 'edition', 'custom', 'premium'
+            'lime', 'ebene', 'medium', 'greenblack', 'blackout',
+            'nebuleux', 'nebuleuse', 'magma', 'lave', 'phantom', 'midnight',
+            'arctic', 'cosmic', 'storm', 'charcoal', 'titanium', 'platinum',
+            'graphite', 'pearl', 'satin', 'chrome', 'ivory', 'candy',
         ]
 
         # Extraire marque + modèle (avant les couleurs/variantes)
