@@ -428,12 +428,15 @@ export default function Home() {
               <span className="text-lg font-semibold">GO-DATA</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-gray-500 dark:text-gray-400">
-              <span className="hover:text-gray-900 dark:hover:text-white transition-colors">
-                Confidentialité — Données gérées par Supabase
-              </span>
-              <span className="hover:text-gray-900 dark:hover:text-white transition-colors">
-                Contact — <a href="mailto:gestion@go-data.co" className="underline hover:text-gray-900 dark:hover:text-white">gestion@go-data.co</a> · Maverick Menard · 819-448-2882
-              </span>
+              <Link href="/privacy" className="hover:text-gray-900 dark:hover:text-white transition-colors">
+                Confidentialité
+              </Link>
+              <Link href="/terms" className="hover:text-gray-900 dark:hover:text-white transition-colors">
+                Conditions
+              </Link>
+              <Link href="/contact" className="hover:text-gray-900 dark:hover:text-white transition-colors">
+                Contact
+              </Link>
             </div>
             <p className="text-sm text-gray-400 dark:text-gray-500">
               © {new Date().getFullYear()} Go-Data. Tous droits réservés.

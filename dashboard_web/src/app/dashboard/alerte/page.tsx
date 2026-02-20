@@ -540,10 +540,20 @@ export default function AlertePage() {
                       className="px-3 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white text-sm"
                     >
                       {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                        <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
                       ))}
                     </select>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(UTC)</span>
+                    <span className="text-gray-500 font-bold">:</span>
+                    <select
+                      value={scheduleMinute}
+                      onChange={(e) => setScheduleMinute(parseInt(e.target.value))}
+                      className="px-3 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white text-sm"
+                    >
+                      {[0, 15, 30, 45].map((m) => (
+                        <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(heure du serveur)</span>
                   </div>
                 </div>
 

@@ -5,7 +5,7 @@ import Image from "next/image"
 import { Info, X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle } from "lucide-react"
 import BlocTemplate from "./ui/bloc-template"
 import { createPortal } from "react-dom"
-import { deepNormalize, normalizeProductGroupKey } from "@/lib/analytics-calculations"
+import { deepNormalize } from "@/lib/analytics-calculations"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
 
 type Product = {
@@ -198,67 +198,33 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
   // Jeu de données exemple pour la modale
   const exampleProducts: Product[] = [
     {
-      name: "Yamaha MT-07 2025",
-      modele: "MT-07",
-      prixReference: 9499,
+      name: "Moto Trail 700",
+      modele: "2024",
+      prixReference: 12999,
       image: "",
       competitors: {
-        "Moto Performance": 9699,
-        "PowerSport Laval": 9299,
-        "Monette Sports": 9599,
+        "Concession Nova Motors": 13500,
+        "Garage Altitude": 12700,
       },
     },
     {
-      name: "Can-Am Outlander 700 2025",
-      modele: "Outlander 700",
-      prixReference: 12499,
+      name: "Quad Trekker",
+      modele: "XR",
+      prixReference: 9999,
       image: "",
       competitors: {
-        "Moto Performance": 12999,
-        "PowerSport Laval": 12199,
-        "Monette Sports": 12749,
-      },
-    },
-    {
-      name: "Ski-Doo MXZ 600R 2025",
-      modele: "MXZ 600R",
-      prixReference: 15299,
-      image: "",
-      competitors: {
-        "Moto Performance": 14899,
-        "PowerSport Laval": 15499,
-        "Monette Sports": 15199,
-      },
-    },
-    {
-      name: "Kawasaki KX250 2025",
-      modele: "KX250",
-      prixReference: 10199,
-      image: "",
-      competitors: {
-        "Moto Performance": 10399,
-        "PowerSport Laval": 9999,
-        "Monette Sports": 10199,
-      },
-    },
-    {
-      name: "Sea-Doo Spark Trixx 2025",
-      modele: "Spark Trixx",
-      prixReference: 8999,
-      image: "",
-      competitors: {
-        "Moto Performance": 9299,
-        "PowerSport Laval": 8799,
-        "Monette Sports": 9099,
+        "Concession Nova Motors": 10500,
+        "Garage Altitude": 9800,
       },
     },
   ]
 
   const tableData = useMemo(() => {
     // ── Regrouper les produits comparés par clé normalisée ──
-    // Aligné avec la page Analyse : mêmes véhicules, mêmes lignes.
-    // 1) Produits avec prixReference (concurrents matchés) → groupes par baseKey
-    // 2) Produits référence seuls → ajoutés seulement si baseKey pas déjà présent
+    // Chaque produit concurrent a prixReference (prix du site de référence) et prix (prix du concurrent).
+    // On regroupe pour créer UNE ligne par produit avec :
+    //   - le prix de référence
+    //   - le prix de chaque concurrent (par site)
     const groups = new Map<string, {
       displayName: string
       image?: string
@@ -271,16 +237,46 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       competitorPrices: Record<string, number>
     }>()
 
-    const productsWithComparison = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
-    const productsRefOnly = products.filter(p => p.prixReference == null || p.prixReference === undefined)
+    let refOnlyIndex = 0
+    for (const p of products) {
+      const baseKey = getProductComparisonKey(p, ignoreColors)
+      const hasComparison = p.prixReference !== null && p.prixReference !== undefined
 
-    // Clé alignée avec la page Analyse (normalizeProductGroupKey) pour garantir les mêmes regroupements
-    const getKey = (p: Product) => normalizeProductGroupKey(p as any)
-
-    // 1) Traiter d'abord les produits matchés (concurrents avec prix de référence)
-    for (const p of productsWithComparison) {
-      const key = getKey(p)
-      if (!groups.has(key)) {
+      if (hasComparison) {
+        // Produit comparé (concurrent avec prix de référence)
+        const key = baseKey
+        if (!groups.has(key)) {
+          groups.set(key, {
+            displayName: getProductDisplayName(p),
+            image: p.image,
+            modele: p.modele,
+            marque: p.marque,
+            etat: p.etat,
+            sourceCategorie: p.sourceCategorie,
+            competitorEtats: {},
+            reference: p.prixReference ?? null,
+            competitorPrices: {},
+          })
+        }
+        const group = groups.get(key)!
+        const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
+        if (siteLabel && p.prix != null) {
+          if (!group.competitorPrices[siteLabel] || !ignoreColors) {
+            group.competitorPrices[siteLabel] = p.prix
+          }
+          // Stocker l'état du produit concurrent
+          if (p.etat || p.sourceCategorie) {
+            group.competitorEtats[siteLabel] = p.etat || p.sourceCategorie || ''
+          }
+        }
+        if (group.reference === null && p.prixReference != null) {
+          group.reference = p.prixReference
+        }
+      } else {
+        // Produit de référence seul (pas de concurrent) : une ligne par produit
+        const refPrice = p.prix != null && p.prix > 0 ? p.prix : null
+        if (refPrice === null) continue
+        const key = `${baseKey}__ref_${refOnlyIndex++}`
         groups.set(key, {
           displayName: getProductDisplayName(p),
           image: p.image,
@@ -289,44 +285,10 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           etat: p.etat,
           sourceCategorie: p.sourceCategorie,
           competitorEtats: {},
-          reference: p.prixReference ?? null,
+          reference: refPrice,
           competitorPrices: {},
         })
       }
-      const group = groups.get(key)!
-      const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
-      if (siteLabel && p.prix != null) {
-        if (!group.competitorPrices[siteLabel] || !ignoreColors) {
-          group.competitorPrices[siteLabel] = p.prix
-        }
-        if (p.etat || p.sourceCategorie) {
-          group.competitorEtats[siteLabel] = p.etat || p.sourceCategorie || ''
-        }
-      }
-      if (group.reference === null && p.prixReference != null) {
-        group.reference = p.prixReference
-      }
-    }
-
-    // 2) Produits de référence seuls : ajouter uniquement si pas déjà dans un groupe (évite doublons)
-    let refOnlyIndex = 0
-    for (const p of productsRefOnly) {
-      const refPrice = p.prix != null && p.prix > 0 ? p.prix : null
-      if (refPrice === null) continue
-      const baseKey = getKey(p)
-      if (groups.has(baseKey)) continue // déjà traité via un concurrent matché
-      const key = `${baseKey}__ref_${refOnlyIndex++}`
-      groups.set(key, {
-        displayName: getProductDisplayName(p),
-        image: p.image,
-        modele: p.modele,
-        marque: p.marque,
-        etat: p.etat,
-        sourceCategorie: p.sourceCategorie,
-        competitorEtats: {},
-        reference: refPrice,
-        competitorPrices: {},
-      })
     }
 
     return Array.from(groups.values()).map(g => {
@@ -605,37 +567,27 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       {mounted &&
         showExample &&
         createPortal(
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center px-4" onClick={e => { if (e.target === e.currentTarget) setShowExample(false) }}>
-            <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-6xl w-full p-6 shadow-2xl border border-gray-200 dark:border-gray-800 max-h-[85vh] flex flex-col">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h4 className="text-xl font-bold text-gray-900 dark:text-white">Comparatif des prix</h4>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Voici un aperçu de ce que vous verrez après un scraping. Les écarts de prix sont calculés automatiquement.</p>
-                </div>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center px-4">
+            <div className="bg-white dark:bg-[#0F0F12] rounded-2xl max-w-6xl w-full p-6 shadow-[0_24px_60px_-32px_rgba(0,0,0,0.55)] border border-gray-100 dark:border-[#1F1F23]">
+              <div className="flex items-start justify-between mb-4">
+                <h4 className="text-xl md:text-2xl font-semibold text-gray-900 dark:text-white">Exemple de tableau</h4>
                 <button
                   type="button"
                   onClick={() => setShowExample(false)}
-                  aria-label="Fermer"
-                  className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"
+                  aria-label="Fermer la modale d'exemple"
+                  className="text-gray-500 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-5 w-5" strokeWidth={2.25} />
                 </button>
               </div>
-              <div className="flex flex-wrap items-center gap-3 mb-4 text-xs">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 font-medium">Vert = moins cher que vous</span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 font-medium">Rouge = plus cher que vous</span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400 font-medium">Gris = prix identique</span>
-              </div>
-              <div className="overflow-auto flex-1">
-                {renderTable(
-                  exampleData.map(p => ({
-                    ...p,
-                    prices: p.prices.map(pe => ({ ...pe })),
-                  })),
-                  "Exemple vide",
-                  exampleCompetitors
-                )}
-              </div>
+              {renderTable(
+                exampleData.map(p => ({
+                  ...p,
+                  prices: p.prices.map(pe => ({ ...pe })),
+                })),
+                "Exemple vide",
+                exampleCompetitors
+              )}
             </div>
           </div>,
           document.body
