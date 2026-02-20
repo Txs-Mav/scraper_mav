@@ -35,6 +35,7 @@ export async function GET() {
             url: item.site_url,
             siteName: item.metadata?.site_name || 'N/A',
             structureType: item.metadata?.structure_type || 'N/A',
+            inventoryOnly: item.metadata?.inventory_only === true,
             selectors: item.selectors || {},
             productUrls: item.product_urls || [],
             productUrlsCount: (item.product_urls || []).length,

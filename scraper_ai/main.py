@@ -721,7 +721,6 @@ Exemples:
                 f"\n   [{i}/{len(sites_without_cache)}] 🔄 Création du scraper pour {url[:50]}...")
             try:
                 scraper = IntelligentScraper(user_id=user_id)
-                # Appel avec force_refresh=True pour forcer la création
                 result = scraper.scrape(
                     url, force_refresh=True, categories=categories, inventory_only=inventory_only)
                 product_count = len(result.get('products', []))
@@ -756,7 +755,6 @@ Exemples:
         for url in all_sites:
             future = pool.submit(
                 scrape_site_wrapper,
-                # force_refresh=False car scrapers déjà créés
                 (url, user_id, False, categories, inventory_only)
             )
             futures[future] = url

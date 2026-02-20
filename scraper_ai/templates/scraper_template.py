@@ -157,6 +157,16 @@ def get_html(url: str, session: requests.Session, base_url: str) -> str:
         try:
             response = session.get(url, timeout=10)
             response.raise_for_status()
+
+            # Détecter les redirections (véhicule vendu → page listing)
+            final_url = response.url
+            if final_url != url:
+                original_path = urlparse(url).path.rstrip('/')
+                redirect_path = urlparse(final_url).path.rstrip('/')
+                # Si redirigé vers une page plus courte (listing au lieu de détail)
+                if len(redirect_path) < len(original_path) * 0.6:
+                    return ""
+
             html = response.text
 
             # Vérifier si HTML est valide

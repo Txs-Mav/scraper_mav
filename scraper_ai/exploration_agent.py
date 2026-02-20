@@ -475,10 +475,12 @@ class ExplorationAgent:
                     return False
 
         # Mots-clés qui indiquent une page de produit (fallback)
+        # Inclut modèles connus (ex: widescape = CFMoto) pour améliorer la découverte
         product_indicators = [
             'moto', 'motorcycle', 'motocyclette', 'vehicule', 'vehicle',
             'quad', 'atv', 'vtt', 'motoneige', 'snowmobile',
             'cote-a-cote', 'side-by-side', 'sxs', 'utv',
+            'cforce', 'widescape', 'outlander', 'mxz', 'spark',  # modèles courants
             'produit', 'product', 'detail', 'details', 'fiche'
         ]
 

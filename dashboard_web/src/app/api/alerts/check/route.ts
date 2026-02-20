@@ -28,19 +28,15 @@ interface Change {
 
 // ─── GET — Vercel Cron (toutes les heures) ──────────────────────────
 
-/**
- * GET /api/alerts/check
- * Appelé par Vercel Cron Jobs toutes les heures (schedule: "0 * * * *").
- * Vérifie le CRON_SECRET, puis traite les alertes programmées pour l'heure courante.
- */
 export async function GET(request: Request) {
-  // Sécurité : vérifier le CRON_SECRET (obligatoire en production)
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) {
     const authHeader = request.headers.get('authorization')
     if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
     }
+  } else if (process.env.NODE_ENV === 'production') {
+    console.warn('[Alert Check] CRON_SECRET non configuré — endpoint non sécurisé en production')
   }
 
   return runAlertCheck({ fromCron: true })
@@ -48,11 +44,6 @@ export async function GET(request: Request) {
 
 // ─── POST — Appel manuel depuis le dashboard ────────────────────────
 
-/**
- * POST /api/alerts/check
- * Appel manuel pour vérifier une alerte spécifique (ou toutes).
- * Body: { alert_id?: string }
- */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   return runAlertCheck({ alertId: body.alert_id, fromCron: false })
@@ -80,11 +71,9 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
       .eq('is_active', true)
 
     if (options.alertId) {
-      // Appel manuel : une seule alerte
       alertsQuery = alertsQuery.eq('id', options.alertId)
     } else if (options.fromCron) {
-      // Cron : uniquement les alertes programmées à l'heure actuelle
-      const currentHour = new Date().getHours()
+      const currentHour = new Date().getUTCHours()
       alertsQuery = alertsQuery.eq('schedule_hour', currentHour)
     }
 
@@ -98,7 +87,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
     if (!alerts?.length) {
       return NextResponse.json({
         success: true,
-        message: 'Aucune alerte à vérifier pour cette heure',
+        message: 'Aucune alerte à vérifier pour ce créneau',
         checked: 0,
         changes_detected: 0,
       })
@@ -106,7 +95,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
 
     console.log(`[Alert Check] ${alerts.length} alerte(s) à traiter`)
 
-    // ── Grouper les alertes par user_id (un seul scraping par utilisateur) ──
+    // ── Grouper les alertes par user_id ──
     const alertsByUser = new Map<string, typeof alerts>()
     for (const alert of alerts) {
       const uid = alert.user_id
@@ -116,10 +105,11 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
 
     let totalChecked = 0
     let totalChanges = 0
+    let totalSkipped = 0
 
     for (const [userId, userAlerts] of alertsByUser) {
       try {
-        // ── Étape 1 : Si cron, déclencher un nouveau scraping ──
+        // ── Étape 1 : Déclencher un nouveau scraping (cron uniquement) ──
         if (options.fromCron) {
           console.log(`[Alert Check] Déclenchement du scraping pour user ${userId}...`)
           const scrapingOk = await triggerUserScraping(userId, serviceSupabase)
@@ -140,7 +130,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
             // Récupérer les 2 derniers scrapings de l'utilisateur
             const { data: scrapings } = await serviceSupabase
               .from('scrapings')
-              .select('products, metadata, created_at')
+              .select('id, products, metadata, created_at')
               .eq('user_id', userId)
               .order('created_at', { ascending: false })
               .limit(2)
@@ -155,6 +145,22 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
               continue
             }
 
+            // ── DÉDUPLICATION : ne pas re-détecter les mêmes changements ──
+            // On vérifie que le scraping le plus récent est PLUS RÉCENT que le dernier check
+            const latestScrapingDate = new Date(scrapings[0].created_at)
+            if (alert.last_run_at) {
+              const lastRunDate = new Date(alert.last_run_at)
+              if (latestScrapingDate <= lastRunDate) {
+                console.log(
+                  `[Alert Check] Alerte ${alert.id}: pas de nouveau scraping depuis le dernier check ` +
+                  `(scraping: ${scrapings[0].created_at}, last_run: ${alert.last_run_at})`
+                )
+                totalSkipped++
+                totalChecked++
+                continue
+              }
+            }
+
             const currentProducts: Product[] = scrapings[0].products || []
             const previousProducts: Product[] = scrapings[1].products || []
 
@@ -167,10 +173,9 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
               `${previousSiteProducts.length} → ${currentSiteProducts.length} produits`
             )
 
-            // Si le scraping précédent n'a aucun produit pour ce site,
-            // c'est la première exécution — ne pas signaler tous les produits comme "nouveaux"
+            // Première exécution — pas de données précédentes pour ce site
             if (previousSiteProducts.length === 0) {
-              console.log(`[Alert Check] Alerte ${alert.id}: première exécution (pas de données précédentes pour ce site), skip`)
+              console.log(`[Alert Check] Alerte ${alert.id}: première exécution, pas de base de comparaison`)
               await serviceSupabase
                 .from('scraper_alerts')
                 .update({ last_run_at: new Date().toISOString() })
@@ -179,13 +184,38 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
               continue
             }
 
+            // ── PROTECTION scraping raté : si 0 produits courants mais N produits précédents,
+            // c'est probablement un scraping échoué — ne pas signaler tous comme "retirés" ──
+            if (currentSiteProducts.length === 0 && previousSiteProducts.length > 0) {
+              console.warn(
+                `[Alert Check] Alerte ${alert.id}: 0 produits courants mais ${previousSiteProducts.length} précédents — ` +
+                `scraping probablement échoué, skip pour éviter faux positifs`
+              )
+              await serviceSupabase
+                .from('scraper_alerts')
+                .update({ last_run_at: new Date().toISOString() })
+                .eq('id', alert.id)
+              totalChecked++
+              continue
+            }
+
+            // Protection supplémentaire : si le nombre de produits chute de >80%,
+            // c'est suspect (scraping partiel) — on prévient mais on continue
+            const dropRatio = previousSiteProducts.length > 0
+              ? currentSiteProducts.length / previousSiteProducts.length
+              : 1
+            if (dropRatio < 0.2 && previousSiteProducts.length > 5) {
+              console.warn(
+                `[Alert Check] Alerte ${alert.id}: chute suspecte de ${previousSiteProducts.length} → ${currentSiteProducts.length} produits (${Math.round(dropRatio * 100)}%)`
+              )
+            }
+
             // ── Détecter les changements ──
             const changes = detectChanges(previousSiteProducts, currentSiteProducts)
 
             if (changes.length > 0) {
               console.log(`[Alert Check] Alerte ${alert.id}: ${changes.length} changement(s) détecté(s)`)
 
-              // Sauvegarder les changements en DB
               const changesToInsert = changes.map(c => ({
                 alert_id: alert.id,
                 user_id: userId,
@@ -208,27 +238,14 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
 
               // ── Envoyer l'email de résumé ──
               if (alert.email_notification) {
-                const { data: userData } = await serviceSupabase
-                  .from('users')
-                  .select('email, name')
-                  .eq('id', userId)
-                  .single()
-
-                if (userData?.email) {
-                  try {
-                    await sendAlertEmail(
-                      userData.email,
-                      userData.name || 'Utilisateur',
-                      siteUrl,
-                      changes,
-                      currentSiteProducts.length,
-                      previousSiteProducts.length
-                    )
-                    console.log(`[Alert Check] Email envoyé à ${userData.email}`)
-                  } catch (emailErr) {
-                    console.error('[Alert Check] Erreur email:', emailErr)
-                  }
-                }
+                await sendAlertEmailSafe(
+                  userId,
+                  siteUrl,
+                  changes,
+                  currentSiteProducts.length,
+                  previousSiteProducts.length,
+                  serviceSupabase
+                )
               }
 
               totalChanges += changes.length
@@ -258,12 +275,15 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
       }
     }
 
-    console.log(`[Alert Check] Terminé: ${totalChecked} vérifié(s), ${totalChanges} changement(s)`)
+    console.log(
+      `[Alert Check] Terminé: ${totalChecked} vérifié(s), ${totalChanges} changement(s), ${totalSkipped} ignoré(s) (pas de nouveau scraping)`
+    )
 
     return NextResponse.json({
       success: true,
       checked: totalChecked,
       changes_detected: totalChanges,
+      skipped_no_new_data: totalSkipped,
     })
   } catch (error: any) {
     console.error('[Alert Check] Erreur fatale:', error)
@@ -271,19 +291,53 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
   }
 }
 
-// ─── Déclenchement du scraping Python ───────────────────────────────
+// ─── Envoi d'email sécurisé (ne crashe pas le flow si email échoue) ──
+
+async function sendAlertEmailSafe(
+  userId: string,
+  siteUrl: string,
+  changes: Change[],
+  currentCount: number,
+  previousCount: number,
+  serviceSupabase: any
+) {
+  try {
+    const { data: userData } = await serviceSupabase
+      .from('users')
+      .select('email, name')
+      .eq('id', userId)
+      .single()
+
+    if (!userData?.email) {
+      console.warn(`[Alert Check] User ${userId} n'a pas d'email, email non envoyé`)
+      return
+    }
+
+    await sendAlertEmail(
+      userData.email,
+      userData.name || 'Utilisateur',
+      siteUrl,
+      changes,
+      currentCount,
+      previousCount
+    )
+    console.log(`[Alert Check] Email envoyé à ${userData.email}`)
+  } catch (emailErr) {
+    console.error('[Alert Check] Erreur email (non bloquante):', emailErr)
+  }
+}
+
+// ─── Déclenchement du scraping ──────────────────────────────────────
 
 /**
- * Lance le scraping Python pour un utilisateur donné.
- * Récupère la config (reference_url, categories) depuis la DB,
- * puis spawn le process Python et attend la fin.
+ * Déclenche le scraping pour un utilisateur.
  *
- * Retourne true si le scraping a réussi, false sinon.
- * Si Python n'est pas disponible (ex: Vercel), retourne false silencieusement.
+ * Stratégie en 2 étapes :
+ * 1. Si SCRAPER_WEBHOOK_URL est configuré → appel HTTP (production Vercel)
+ * 2. Sinon → spawn Python local (développement / VPS)
  */
 async function triggerUserScraping(userId: string, serviceSupabase: any): Promise<boolean> {
   try {
-    // Récupérer la configuration du scraper de l'utilisateur
     const { data: config } = await serviceSupabase
       .from('scraper_config')
       .select('reference_url, competitor_urls, categories')
@@ -295,90 +349,142 @@ async function triggerUserScraping(userId: string, serviceSupabase: any): Promis
       return false
     }
 
-    const referenceUrl = config.reference_url
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
-    const args = [
-      '-m', 'scraper_ai.main',
-      '--reference', referenceUrl,
-      '--user-id', userId,
-    ]
-
-    if (config.categories?.length) {
-      args.push('--categories', config.categories.join(','))
+    // ── Stratégie 1 : Webhook HTTP (pour Vercel / production serverless) ──
+    const webhookUrl = process.env.SCRAPER_WEBHOOK_URL
+    if (webhookUrl) {
+      return triggerViaWebhook(webhookUrl, userId, config)
     }
 
-    args.push(referenceUrl)
-
-    const workingDir = path.join(process.cwd(), '..')
-
-    console.log(`[Alert Scrape] Commande: ${pythonCmd} ${args.join(' ')}`)
-    console.log(`[Alert Scrape] Répertoire: ${workingDir}`)
-
-    return new Promise<boolean>((resolve) => {
-      const proc = spawn(pythonCmd, args, {
-        cwd: workingDir,
-        stdio: 'pipe',
-        shell: false,
-        env: {
-          ...process.env,
-          PYTHONUNBUFFERED: '1',
-          GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-          NEXTJS_API_URL: process.env.NEXTJS_API_URL || `http://localhost:${process.env.PORT || 3000}`,
-          SCRAPER_USER_ID: userId,
-        },
-      })
-
-      let stdout = ''
-      let stderr = ''
-
-      proc.stdout?.on('data', (d) => {
-        const text = d.toString()
-        stdout += text
-        // Log uniquement les lignes importantes
-        if (text.includes('✅') || text.includes('❌') || text.includes('📈') || text.includes('ERROR')) {
-          console.log(`[Alert Scrape] ${text.trim()}`)
-        }
-      })
-
-      proc.stderr?.on('data', (d) => { stderr += d.toString() })
-
-      proc.on('close', (code) => {
-        if (code === 0) {
-          console.log(`[Alert Scrape] Scraping terminé avec succès pour user ${userId}`)
-          resolve(true)
-        } else {
-          console.error(`[Alert Scrape] Scraping échoué (code ${code}): ${stderr.slice(-500)}`)
-          resolve(false)
-        }
-      })
-
-      proc.on('error', (err) => {
-        // Python non disponible (Vercel) — ce n'est pas une erreur critique
-        console.warn(`[Alert Scrape] Python non disponible: ${err.message}`)
-        resolve(false)
-      })
-
-      // Timeout: 15 minutes max pour le scraping
-      setTimeout(() => {
-        if (!proc.killed) {
-          proc.kill()
-          console.warn(`[Alert Scrape] Timeout pour user ${userId}`)
-          resolve(false)
-        }
-      }, 15 * 60 * 1000)
-    })
+    // ── Stratégie 2 : Spawn Python local ──
+    return triggerViaLocalPython(userId, config)
   } catch (err: any) {
     console.error(`[Alert Scrape] Erreur:`, err.message)
     return false
   }
 }
 
+async function triggerViaWebhook(
+  webhookUrl: string,
+  userId: string,
+  config: { reference_url: string; competitor_urls?: string[]; categories?: string[] }
+): Promise<boolean> {
+  try {
+    console.log(`[Alert Scrape] Appel webhook: ${webhookUrl}`)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15 * 60 * 1000)
+
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.SCRAPER_WEBHOOK_SECRET
+          ? { Authorization: `Bearer ${process.env.SCRAPER_WEBHOOK_SECRET}` }
+          : {}),
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        reference_url: config.reference_url,
+        competitor_urls: config.competitor_urls || [],
+        categories: config.categories || [],
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeout)
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.error(`[Alert Scrape] Webhook erreur ${res.status}: ${text.slice(0, 200)}`)
+      return false
+    }
+
+    console.log(`[Alert Scrape] Webhook OK pour user ${userId}`)
+    return true
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.warn(`[Alert Scrape] Webhook timeout pour user ${userId}`)
+    } else {
+      console.error(`[Alert Scrape] Webhook erreur:`, err.message)
+    }
+    return false
+  }
+}
+
+async function triggerViaLocalPython(
+  userId: string,
+  config: { reference_url: string; competitor_urls?: string[]; categories?: string[] }
+): Promise<boolean> {
+  const referenceUrl = config.reference_url
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+  const args = [
+    '-m', 'scraper_ai.main',
+    '--reference', referenceUrl,
+    '--user-id', userId,
+  ]
+
+  if (config.categories?.length) {
+    args.push('--categories', config.categories.join(','))
+  }
+
+  const workingDir = path.join(process.cwd(), '..')
+
+  console.log(`[Alert Scrape] Commande: ${pythonCmd} ${args.join(' ')}`)
+  console.log(`[Alert Scrape] Répertoire: ${workingDir}`)
+
+  return new Promise<boolean>((resolve) => {
+    const proc = spawn(pythonCmd, args, {
+      cwd: workingDir,
+      stdio: 'pipe',
+      shell: false,
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+        GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+        NEXTJS_API_URL: process.env.NEXTJS_API_URL || `http://localhost:${process.env.PORT || 3000}`,
+        SCRAPER_USER_ID: userId,
+      },
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    proc.stdout?.on('data', (d) => {
+      const text = d.toString()
+      stdout += text
+      if (text.includes('✅') || text.includes('❌') || text.includes('📈') || text.includes('ERROR')) {
+        console.log(`[Alert Scrape] ${text.trim()}`)
+      }
+    })
+
+    proc.stderr?.on('data', (d) => { stderr += d.toString() })
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        console.log(`[Alert Scrape] Scraping terminé avec succès pour user ${userId}`)
+        resolve(true)
+      } else {
+        console.error(`[Alert Scrape] Scraping échoué (code ${code}): ${stderr.slice(-500)}`)
+        resolve(false)
+      }
+    })
+
+    proc.on('error', (err) => {
+      console.warn(`[Alert Scrape] Python non disponible: ${err.message}`)
+      resolve(false)
+    })
+
+    setTimeout(() => {
+      if (!proc.killed) {
+        proc.kill()
+        console.warn(`[Alert Scrape] Timeout pour user ${userId}`)
+        resolve(false)
+      }
+    }, 15 * 60 * 1000)
+  })
+}
+
 // ─── Filtrage des produits par site ─────────────────────────────────
 
-/**
- * Filtre les produits pour ne garder que ceux du site surveillé.
- * Compare les hostnames normalisés (sans www.).
- */
 function filterProductsBySite(products: Product[], siteUrl: string): Product[] {
   let targetHost = ''
   try {
@@ -389,6 +495,7 @@ function filterProductsBySite(products: Product[], siteUrl: string): Product[] {
 
   return products.filter(p => {
     const productSite = p.sourceSite || p.sourceUrl || ''
+    if (!productSite) return false
     try {
       const pHost = new URL(productSite).hostname.replace('www.', '').toLowerCase()
       return pHost === targetHost
@@ -400,23 +507,15 @@ function filterProductsBySite(products: Product[], siteUrl: string): Product[] {
 
 // ─── Normalisation des noms de produits ──────────────────────────────
 
-/**
- * Normalise un nom de produit pour le matching :
- * - minuscules, trim, espaces multiples → un seul
- * - retire les caractères spéciaux inutiles (guillemets, tirets redondants)
- */
 function normalizeProductName(name: string): string {
   return name
     .toLowerCase()
     .trim()
-    .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')   // espaces invisibles
-    .replace(/[""''«»]/g, '')                               // guillemets
-    .replace(/\s+/g, ' ')                                   // espaces multiples
+    .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
+    .replace(/[""''«»]/g, '')
+    .replace(/\s+/g, ' ')
 }
 
-/**
- * Génère une clé secondaire marque+modèle pour le fallback matching.
- */
 function productSecondaryKey(p: Product): string | null {
   const marque = (p.marque || '').toLowerCase().trim()
   const modele = (p.modele || '').toLowerCase().trim()
@@ -426,33 +525,19 @@ function productSecondaryKey(p: Product): string | null {
 
 // ─── Détection des changements ──────────────────────────────────────
 
-// Seuils pour éviter les faux positifs
-const MIN_PRICE_CHANGE_PCT = 1     // 1% minimum
-const MIN_PRICE_CHANGE_ABS = 2     // 2$ minimum
-const MIN_VALID_PRICE = 1          // ignorer les prix < 1$
+const MIN_PRICE_CHANGE_PCT = 1
+const MIN_PRICE_CHANGE_ABS = 2
+const MIN_VALID_PRICE = 1
 
-/**
- * Formate un prix de manière déterministe (sans dépendre de la locale du serveur).
- */
 function formatPrice(price: number): string {
   return `${price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} $`
 }
 
-/**
- * Compare deux listes de produits et détecte les changements significatifs :
- * - Hausse/baisse de prix (seuil > 1% ET > 2$)
- * - Nouveaux produits
- * - Produits retirés
- * - Changements de disponibilité
- *
- * Utilise un double matching : par nom normalisé puis par marque+modèle en fallback.
- */
 function detectChanges(previous: Product[], current: Product[]): Change[] {
   const changes: Change[] = []
 
-  // ── Indexer les produits précédents par nom normalisé ──
   const prevByName = new Map<string, Product>()
-  const prevByKey  = new Map<string, Product>()  // fallback marque+modèle
+  const prevByKey  = new Map<string, Product>()
   for (const p of previous) {
     if (!p.name) continue
     prevByName.set(normalizeProductName(p.name), p)
@@ -460,7 +545,6 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
     if (sk) prevByKey.set(sk, p)
   }
 
-  // ── Indexer les produits courants ──
   const currByName = new Map<string, Product>()
   const currByKey  = new Map<string, Product>()
   for (const p of current) {
@@ -470,15 +554,12 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
     if (sk) currByKey.set(sk, p)
   }
 
-  // ── Set pour marquer les produits précédents "matchés" ──
   const matchedPrevKeys = new Set<string>()
 
-  // ── Comparer chaque produit courant avec le précédent ──
   for (const [nameKey, curr] of currByName) {
     let prev = prevByName.get(nameKey)
     let prevMatchKey = nameKey
 
-    // Fallback: matching par marque+modèle si le nom exact n'est pas trouvé
     if (!prev) {
       const sk = productSecondaryKey(curr)
       if (sk) {
@@ -488,7 +569,6 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
     }
 
     if (!prev) {
-      // Nouveau produit — seulement si le prix est valide
       if (curr.prix && curr.prix >= MIN_VALID_PRICE) {
         changes.push({
           change_type: 'new_product',
@@ -504,7 +584,6 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
 
     matchedPrevKeys.add(prevMatchKey)
 
-    // ── Changement de prix ──
     if (
       prev.prix && curr.prix &&
       prev.prix >= MIN_VALID_PRICE && curr.prix >= MIN_VALID_PRICE &&
@@ -513,7 +592,6 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
       const diff = curr.prix - prev.prix
       const pct = (diff / prev.prix) * 100
 
-      // Véritable changement : dépasser DEUX seuils (relatif ET absolu)
       if (Math.abs(pct) >= MIN_PRICE_CHANGE_PCT && Math.abs(diff) >= MIN_PRICE_CHANGE_ABS) {
         changes.push({
           change_type: pct > 0 ? 'price_increase' : 'price_decrease',
@@ -531,7 +609,6 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
       }
     }
 
-    // ── Changement de disponibilité ──
     if (
       prev.disponibilite && curr.disponibilite &&
       prev.disponibilite.toLowerCase().trim() !== curr.disponibilite.toLowerCase().trim()
@@ -547,10 +624,8 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
     }
   }
 
-  // ── Produits retirés (présents avant, absents maintenant) ──
   for (const [nameKey, prev] of prevByName) {
     if (matchedPrevKeys.has(nameKey)) continue
-    // Vérifier aussi le fallback marque+modèle
     const sk = productSecondaryKey(prev)
     if (sk && currByKey.has(sk)) continue
 
@@ -571,10 +646,6 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
 
 // ─── Email d'alerte ─────────────────────────────────────────────────
 
-/**
- * Envoie un email de résumé des changements détectés.
- * Inclut : résumé chiffré, tableau des changements (max 20), lien vers le dashboard.
- */
 async function sendAlertEmail(
   email: string,
   name: string,
@@ -592,7 +663,6 @@ async function sendAlertEmail(
   let hostname = siteUrl
   try { hostname = new URL(siteUrl).hostname.replace('www.', '') } catch { /* ignore */ }
 
-  // Construire le tableau HTML (max 20 lignes)
   const changesHtml = changes.slice(0, 20).map(c => {
     const icon = c.change_type === 'price_increase' ? '📈' :
                  c.change_type === 'price_decrease' ? '📉' :
@@ -617,7 +687,6 @@ async function sendAlertEmail(
     </tr>`
   }).join('')
 
-  // Construire les badges de résumé
   const badges: string[] = []
   if (priceIncreases.length) badges.push(`<span style="color:#dc2626;">📈 ${priceIncreases.length} hausse${priceIncreases.length > 1 ? 's' : ''}</span>`)
   if (priceDecreases.length) badges.push(`<span style="color:#16a34a;">📉 ${priceDecreases.length} baisse${priceDecreases.length > 1 ? 's' : ''}</span>`)

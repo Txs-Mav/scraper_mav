@@ -4,17 +4,17 @@ import { getCurrentUser } from '@/lib/supabase/helpers'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 
 /**
- * API route pour sauvegarder un scraping depuis le scraper Python
- * Accepte soit l'authentification par cookie (dashboard) soit user_id dans le body (script Python)
+ * POST /api/scrapings/save
+ *
+ * Sauvegarde un scraping depuis le scraper Python ou le dashboard.
+ * TOUJOURS INSERT (jamais update) pour garder l'historique nécessaire
+ * aux alertes (comparaison entre 2 scrapings successifs).
+ * Nettoyage automatique : garde les 5 derniers par (user, reference_url).
  */
 export async function POST(request: Request) {
   try {
     const scrapingData = await request.json()
 
-    // ------------------------------------------------------------
-    // Compatibilité: certains appels (legacy) envoient site_url au lieu de reference_url
-    // ou mettent reference_url dans metadata.
-    // ------------------------------------------------------------
     if (!scrapingData.reference_url) {
       scrapingData.reference_url =
         scrapingData.site_url ||
@@ -23,24 +23,20 @@ export async function POST(request: Request) {
         (scrapingData.metadata as any)?.referenceUrl
     }
 
-    // Normaliser certaines clés optionnelles
     if (scrapingData.execution_time_seconds != null && scrapingData.scraping_time_seconds == null) {
       scrapingData.scraping_time_seconds = scrapingData.execution_time_seconds
     }
 
-    // PRIORITÉ 1: Authentification par cookie (appel depuis le dashboard)
+    // ── Authentification ──
     let userId: string | null = null
     const sessionUser = await getCurrentUser()
 
     if (sessionUser) {
       userId = sessionUser.id
-    }
-    // PRIORITÉ 2: user_id dans le body (appel depuis le script Python)
-    else if (scrapingData.user_id) {
+    } else if (scrapingData.user_id) {
       userId = scrapingData.user_id
     }
 
-    // Si pas d'authentification, retourner les données pour sauvegarde locale
     if (!userId) {
       return NextResponse.json({
         success: true,
@@ -57,11 +53,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // Utiliser le service role pour les appels depuis Python (pas de cookie)
+    // ── Client Supabase (service role pour appels Python, sinon session) ──
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-    // Si on a le service role key et pas de session (appel Python), utiliser le service client
     let supabase
     if (!sessionUser && serviceRoleKey) {
       supabase = createServiceClient(supabaseUrl, serviceRoleKey)
@@ -69,33 +64,27 @@ export async function POST(request: Request) {
       supabase = await createClient()
     }
 
-    // Récupérer les infos utilisateur pour vérifier le plan
+    // ── Vérifier la limite du plan (basée sur le nombre de SITES DISTINCTS) ──
     const { data: user } = await supabase
       .from('users')
-      .select('subscription_plan, subscription_source')
+      .select('subscription_plan, subscription_source, promo_code_id')
       .eq('id', userId)
       .single()
 
-    const isPaid = user?.subscription_source === 'stripe' || user?.subscription_source === 'promo'
+    const isPaid = user?.subscription_source === 'stripe' || user?.subscription_source === 'promo' || !!user?.promo_code_id
     const limit = isPaid ? Infinity : 6
 
-    // Vérifier la limite pour plan standard / non confirmé
     if (limit !== Infinity) {
-      const { count } = await supabase
+      // Compter les reference_urls DISTINCTES (pas le total de lignes)
+      const { data: distinctUrls } = await supabase
         .from('scrapings')
-        .select('id', { count: 'exact', head: true })
+        .select('reference_url')
         .eq('user_id', userId)
 
-      // Vérifier si on met à jour un scraping existant ou on en crée un nouveau
-      const { data: existingCheck } = await supabase
-        .from('scrapings')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('reference_url', scrapingData.reference_url)
-        .single()
+      const uniqueUrls = new Set((distinctUrls || []).map(s => s.reference_url))
 
-      // Si c'est un nouveau scraping et qu'on a atteint la limite
-      if (!existingCheck && (count || 0) >= limit) {
+      // Si c'est un nouveau site et qu'on a atteint la limite
+      if (!uniqueUrls.has(scrapingData.reference_url) && uniqueUrls.size >= limit) {
         return NextResponse.json(
           { error: 'Limite de 6 scrapings atteinte. Passez au plan Pro ou Ultime pour des scrapings illimités.' },
           { status: 403 }
@@ -103,64 +92,31 @@ export async function POST(request: Request) {
       }
     }
 
-    // Vérifier si un scraping existe déjà pour cette référence et cet utilisateur
-    const { data: existing } = await supabase
+    // ── TOUJOURS INSERT (jamais update) pour garder l'historique ──
+    const { data: result, error } = await supabase
       .from('scrapings')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('reference_url', scrapingData.reference_url)
+      .insert({
+        user_id: userId,
+        reference_url: scrapingData.reference_url,
+        competitor_urls: scrapingData.competitor_urls || [],
+        products: scrapingData.products || [],
+        metadata: scrapingData.metadata || {},
+        scraping_time_seconds: scrapingData.scraping_time_seconds,
+        mode: scrapingData.mode || (scrapingData.competitor_urls?.length ? 'comparison' : 'reference_only'),
+      })
+      .select()
       .single()
 
-    let result
+    if (error) {
+      console.error('[Scrapings Save] Insert error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
-    if (existing) {
-      // Mettre à jour le scraping existant
-      const { data, error } = await supabase
-        .from('scrapings')
-        .update({
-          competitor_urls: scrapingData.competitor_urls || [],
-          products: scrapingData.products || [],
-          metadata: scrapingData.metadata || {},
-          scraping_time_seconds: scrapingData.scraping_time_seconds,
-          mode: scrapingData.mode || (scrapingData.competitor_urls?.length ? 'comparison' : 'reference_only'),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id)
-        .select()
-        .single()
-
-      if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
-        )
-      }
-
-      result = data
-    } else {
-      // Créer un nouveau scraping
-      const { data, error } = await supabase
-        .from('scrapings')
-        .insert({
-          user_id: userId,
-          reference_url: scrapingData.reference_url,
-          competitor_urls: scrapingData.competitor_urls || [],
-          products: scrapingData.products || [],
-          metadata: scrapingData.metadata || {},
-          scraping_time_seconds: scrapingData.scraping_time_seconds,
-          mode: scrapingData.mode || (scrapingData.competitor_urls?.length ? 'comparison' : 'reference_only'),
-        })
-        .select()
-        .single()
-
-      if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
-        )
-      }
-
-      result = data
+    // ── Nettoyage : garder seulement les 5 derniers par (user, reference_url) ──
+    try {
+      await cleanupOldScrapings(supabase, userId, scrapingData.reference_url, 5)
+    } catch (cleanupErr) {
+      console.error('[Scrapings Save] Cleanup error (non-blocking):', cleanupErr)
     }
 
     return NextResponse.json({
@@ -168,6 +124,7 @@ export async function POST(request: Request) {
       scraping: result,
     })
   } catch (error: any) {
+    console.error('[Scrapings Save] Error:', error)
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -175,3 +132,33 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Supprime les scrapings les plus anciens pour un (user_id, reference_url),
+ * en gardant seulement les N plus récents.
+ */
+async function cleanupOldScrapings(
+  supabase: any,
+  userId: string,
+  referenceUrl: string,
+  keepCount: number
+) {
+  const { data: allScrapings } = await supabase
+    .from('scrapings')
+    .select('id, created_at')
+    .eq('user_id', userId)
+    .eq('reference_url', referenceUrl)
+    .order('created_at', { ascending: false })
+
+  if (!allScrapings || allScrapings.length <= keepCount) return
+
+  const idsToDelete = allScrapings.slice(keepCount).map((s: any) => s.id)
+
+  if (idsToDelete.length > 0) {
+    await supabase
+      .from('scrapings')
+      .delete()
+      .in('id', idsToDelete)
+
+    console.log(`[Scrapings Save] Nettoyage: ${idsToDelete.length} ancien(s) scraping(s) supprimé(s)`)
+  }
+}

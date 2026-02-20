@@ -206,7 +206,8 @@ class IntelligentScraper:
                         'site_name': self._extract_site_name(url),
                         'detection_result': detection_result,
                         'prompt_version': PROMPT_VERSION,
-                        'categories': categories
+                        'categories': categories,
+                        'inventory_only': getattr(self, '_inventory_only', False)
                     }
                 )
 
@@ -222,31 +223,55 @@ class IntelligentScraper:
 
         # =====================================================
         # AUTO-HEAL: Si le taux de succès est trop bas (< 15%),
-        # les URLs en cache sont probablement périmées.
-        # Rafraîchir UNIQUEMENT les URLs (sitemap) — sans appeler Gemini.
-        # Les sélecteurs CSS du cache restent valides.
+        # les URLs sont probablement périmées (véhicules vendus qui redirigent).
+        # Rafraîchir les URLs depuis la page listing (pas le sitemap).
+        # Les sélecteurs CSS restent valides — aucun appel AI.
+        # S'applique sur cache hit ET cache miss (première exécution).
         # =====================================================
         success_rate = (len(products) / len(product_urls) * 100) if product_urls else 0
-        if cache_status == "hit" and product_urls and len(product_urls) >= 20 and success_rate < 15:
+        if product_urls and len(product_urls) >= 20 and success_rate < 15:
             print(f"\n⚠️  Taux d'extraction très bas: {len(products)}/{len(product_urls)} ({success_rate:.0f}%)")
-            print(f"   🔄 Rafraîchissement des URLs (sélecteurs conservés, 0 appel AI)...")
-            refreshed_urls = self._refresh_urls_only(url, categories)
-            if refreshed_urls and len(refreshed_urls) > len(products) * 2:
-                print(f"   ✅ {len(refreshed_urls)} URLs actuelles → ré-extraction")
+            print(f"   🔄 Rafraîchissement des URLs depuis le listing (sélecteurs conservés, 0 appel AI)...")
+            refreshed_urls = self._refresh_urls_from_listing(url, categories)
+            if refreshed_urls and len(refreshed_urls) > len(products):
+                print(f"   ✅ {len(refreshed_urls)} URLs actuelles trouvées → ré-extraction")
                 product_urls = refreshed_urls
                 products = self._extract_products(product_urls, selectors, url)
                 if self.storage:
                     self.storage.update_scraper_urls(url, product_urls)
                     self.storage.refresh_cache_expiry(url)
                     print(f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
+            else:
+                # Fallback: essayer l'ancienne méthode (sitemap)
+                refreshed_urls = self._refresh_urls_only(url, categories)
+                if refreshed_urls and len(refreshed_urls) > len(products) * 2:
+                    print(f"   ✅ {len(refreshed_urls)} URLs (sitemap) → ré-extraction")
+                    product_urls = refreshed_urls
+                    products = self._extract_products(product_urls, selectors, url)
+                    if self.storage:
+                        self.storage.update_scraper_urls(url, product_urls)
+                        self.storage.refresh_cache_expiry(url)
+                        print(f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
 
         # Post-filtrage inventaire: exclure les produits catalogue si demandé
+        # Exception : si le site est entièrement catalogue (pas d'inventaire),
+        # on garde TOUS les produits (sites comme Morin Sports, Moto 4 Saisons, etc.)
         if getattr(self, '_inventory_only', False) and products:
             pre_filter_count = len(products)
-            products = self._filter_inventory_only_products(products)
-            if pre_filter_count != len(products):
+            filtered = self._filter_inventory_only_products(products)
+
+            # Si le filtre supprime >80% des produits, c'est un site catalogue-only
+            # → garder tous les produits au lieu de tout supprimer
+            if len(filtered) < pre_filter_count * 0.2 and pre_filter_count >= 3:
                 print(
-                    f"\n🎯 Post-filtre inventaire: {len(products)}/{pre_filter_count} produits conservés")
+                    f"\n🏪 Site catalogue détecté: le filtre inventaire aurait retiré "
+                    f"{pre_filter_count - len(filtered)}/{pre_filter_count} produits — "
+                    f"on garde TOUT (pas d'inventaire sur ce site)")
+            else:
+                products = filtered
+                if pre_filter_count != len(products):
+                    print(
+                        f"\n🎯 Post-filtre inventaire: {len(products)}/{pre_filter_count} produits conservés")
 
         print(f"\n✅ {len(products)} produits extraits")
 
@@ -410,6 +435,149 @@ class IntelligentScraper:
 
         except Exception as e:
             print(f"   ❌ Erreur exploration: {e}")
+            return []
+
+    def _refresh_urls_from_listing(self, base_url: str, categories: List[str]) -> List[str]:
+        """Découvre les URLs ACTUELLES en crawlant la page listing d'inventaire.
+
+        Contrairement au sitemap (qui contient des URLs périmées de véhicules vendus),
+        la page listing ne montre que les véhicules actuellement en vente.
+        Parcourt la pagination automatiquement.
+        """
+        import re as _re
+        try:
+            tools = self.exploration_agent.ai_tools
+            inventory_only = getattr(self, '_inventory_only', False)
+
+            parsed = urlparse(base_url)
+            base_domain = f"{parsed.scheme}://{parsed.netloc}"
+
+            # Identifier les pages listing d'inventaire courantes
+            listing_paths = [
+                '/inventaire/', '/inventory/', '/en-inventaire/',
+                '/inventaire-neuf/', '/inventaire-occasion/',
+                '/new-inventory/', '/used-inventory/',
+                '/a-vendre/', '/for-sale/',
+            ]
+
+            # Trouver le bon path en testant ceux qui existent
+            listing_url = None
+            session = tools._get_session() if hasattr(tools, '_get_session') else None
+            if not session:
+                import requests as _requests
+                session = _requests.Session()
+                session.headers.update({
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                })
+
+            # D'abord, chercher le path depuis le base_url
+            base_path = parsed.path.rstrip('/')
+            for lp in listing_paths:
+                test_url = f"{base_domain}{base_path}{lp}"
+                try:
+                    resp = session.get(test_url, timeout=8, allow_redirects=True)
+                    if resp.status_code == 200 and len(resp.text) > 5000:
+                        listing_url = test_url
+                        break
+                except Exception:
+                    continue
+
+            # Essayer aussi sans le base_path (ex: /fr/inventaire/ → /inventaire/)
+            if not listing_url:
+                for lp in listing_paths:
+                    test_url = f"{base_domain}{lp}"
+                    try:
+                        resp = session.get(test_url, timeout=8, allow_redirects=True)
+                        if resp.status_code == 200 and len(resp.text) > 5000:
+                            listing_url = test_url
+                            break
+                    except Exception:
+                        continue
+
+            if not listing_url:
+                print(f"      ⚠️  Aucune page listing trouvée → fallback sitemap")
+                return []
+
+            print(f"      📋 Page listing trouvée: {listing_url}")
+
+            # Crawler la pagination de la page listing
+            all_product_links = set()
+            max_pages = 30
+            page_num = 1
+
+            while page_num <= max_pages:
+                if page_num == 1:
+                    page_url = listing_url
+                else:
+                    # Patterns de pagination courants
+                    if '?' in listing_url:
+                        page_url = f"{listing_url}&paged={page_num}"
+                    else:
+                        page_url = f"{listing_url.rstrip('/')}?paged={page_num}"
+
+                try:
+                    resp = session.get(page_url, timeout=10)
+                    if resp.status_code != 200:
+                        break
+
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    links_on_page = set()
+
+                    for a_tag in soup.find_all('a', href=True):
+                        href = a_tag['href']
+                        full_url = urljoin(page_url, href)
+                        # Garder seulement les liens du même domaine
+                        if parsed.netloc not in full_url:
+                            continue
+                        # Garder les URLs qui ressemblent à des fiches produit
+                        url_lower = full_url.lower()
+                        if any(marker in url_lower for marker in [
+                            '/inventaire/', '/inventory/', '-a-vendre',
+                            '/occasion/', '/used/', '/pre-owned/',
+                            'a-vendre-', '-for-sale',
+                        ]):
+                            # Exclure les URLs de listing/catégorie
+                            if not url_lower.rstrip('/').endswith(('/inventaire', '/inventory',
+                                '/inventaire-neuf', '/inventaire-occasion',
+                                '/new-inventory', '/used-inventory')):
+                                links_on_page.add(full_url)
+
+                    if not links_on_page:
+                        break
+
+                    new_links = links_on_page - all_product_links
+                    all_product_links.update(links_on_page)
+
+                    # Si aucun nouveau lien → fin de la pagination
+                    if not new_links and page_num > 1:
+                        break
+
+                    page_num += 1
+                    time.sleep(0.3)
+
+                except Exception:
+                    break
+
+            print(f"      ✅ {len(all_product_links)} URLs actuelles depuis le listing ({page_num - 1} pages)")
+
+            if not all_product_links:
+                return []
+
+            # Déduplication et filtrage
+            unique_urls = list(all_product_links)
+            if inventory_only:
+                agent = self.exploration_agent
+                unique_urls = [
+                    u for u in unique_urls
+                    if agent._looks_like_inventory_url(u)
+                    or agent._is_valid_product_url(u, inventory_only=True)
+                ]
+
+            result = self._filter_urls_by_category(unique_urls, categories, base_url)
+            return result
+
+        except Exception as e:
+            print(f"      ❌ Erreur crawl listing: {e}")
             return []
 
     def _refresh_urls_only(self, base_url: str, categories: List[str]) -> List[str]:

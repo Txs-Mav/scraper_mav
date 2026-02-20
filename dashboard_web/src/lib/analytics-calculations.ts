@@ -227,6 +227,15 @@ interface MatchedProductGroup {
   allProducts: Product[]
 }
 
+/**
+ * Construit les groupes de produits matchés en se basant sur prixReference
+ * (le matching déjà effectué par le scraper Python) pour garantir la
+ * cohérence avec le Comparatif du dashboard.
+ *
+ * Seuls les produits avec prixReference (effectivement matchés) sont inclus.
+ * Le prix de référence (« Votre Prix ») provient de prixReference, pas
+ * d'une moyenne recalculée côté frontend.
+ */
 function buildMatchedProducts(
   products: Product[],
   referenceSite: string
@@ -234,32 +243,46 @@ function buildMatchedProducts(
   const normalizedReference = normalizeSiteKey(referenceSite)
   const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
 
+  // Indexer les produits du site de référence par clé pour enrichir les groupes
+  const refProductsByKey: Record<string, Product> = {}
+  for (const p of validProducts) {
+    const site = normalizeSiteKey(p.sourceSite || p.sourceUrl)
+    if (site === normalizedReference) {
+      const key = normalizeProductGroupKey(p)
+      if (!refProductsByKey[key]) refProductsByKey[key] = p
+    }
+  }
+
+  // Grouper les produits concurrents matchés (ceux avec prixReference)
   const groups: Record<string, MatchedProductGroup> = {}
 
   for (const p of validProducts) {
+    if (p.prixReference == null || p.prixReference <= 0) continue
+
     const key = normalizeProductGroupKey(p)
     if (!groups[key]) {
+      const refProduct = refProductsByKey[key]
+      // Créer un produit synthétique « référence » avec le prix prixReference
+      const syntheticRef: Product = refProduct
+        ? { ...refProduct, prix: p.prixReference }
+        : { name: p.name || '', prix: p.prixReference, category: p.category, sourceSite: referenceSite }
       groups[key] = {
         key,
-        name: p.name || `${p.marque || ''} ${p.modele || ''}`.trim(),
-        categorie: p.category || 'autre',
-        referenceProducts: [],
+        name: syntheticRef.name || `${p.marque || ''} ${p.modele || ''}`.trim(),
+        categorie: syntheticRef.category || p.category || 'autre',
+        referenceProducts: [syntheticRef],
         competitorProducts: [],
         competitorsBySite: {},
-        allProducts: [],
+        allProducts: [syntheticRef],
       }
     }
 
     const site = normalizeSiteKey(p.sourceSite || p.sourceUrl)
-    if (site === normalizedReference) {
-      groups[key].referenceProducts.push(p)
-    } else {
-      groups[key].competitorProducts.push(p)
-      if (!groups[key].competitorsBySite[site]) {
-        groups[key].competitorsBySite[site] = []
-      }
-      groups[key].competitorsBySite[site].push(p)
+    groups[key].competitorProducts.push(p)
+    if (!groups[key].competitorsBySite[site]) {
+      groups[key].competitorsBySite[site] = []
     }
+    groups[key].competitorsBySite[site].push(p)
     groups[key].allProducts.push(p)
   }
 

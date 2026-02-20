@@ -7,40 +7,36 @@ export async function GET(request: Request) {
   try {
     const user = await getCurrentUser()
 
-    // Si non connecté, retourner un tableau vide (les scrapings locaux sont gérés côté client)
     if (!user) {
-      return NextResponse.json({ scrapings: [], count: 0, limit: 6, isLocal: true })
+      return NextResponse.json({ scrapings: [], count: 0, site_count: 0, limit: 6, isLocal: true })
     }
 
     const supabase = await createClient()
 
-    // Si c'est un compte principal, récupérer aussi les scrapings des employés
     const { searchParams } = new URL(request.url)
     const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1)
     const pageSize = Math.max(Math.min(parseInt(searchParams.get('limit') || '50', 10), 200), 1)
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
 
-    // Ne sélectionner que les métadonnées (pas les products volumineux)
     let query = supabase
       .from('scrapings')
       .select('id, user_id, reference_url, competitor_urls, metadata, scraping_time_seconds, mode, created_at, updated_at', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, to)
 
+    let userFilter: string[] = [user.id]
+
     if (user.role === 'main') {
-      // Récupérer les IDs de tous les employés
       const { data: employees } = await supabase
         .from('employees')
         .select('employee_id')
         .eq('main_account_id', user.id)
 
       const employeeIds = employees?.map(e => e.employee_id) || []
-      const allUserIds = [user.id, ...employeeIds]
-
-      query = query.in('user_id', allUserIds)
+      userFilter = [user.id, ...employeeIds]
+      query = query.in('user_id', userFilter)
     } else {
-      // Employé : seulement ses propres scrapings
       query = query.eq('user_id', user.id)
     }
 
@@ -53,9 +49,27 @@ export async function GET(request: Request) {
       )
     }
 
-    // Déterminer la limite : standard/non confirmé = 6, pro/ultime confirmé = illimité
     const effectiveSource = user.subscription_source || (user.promo_code_id ? 'promo' as const : null)
     const limit = PLAN_FEATURES.scrapingLimit(user.subscription_plan, effectiveSource)
+
+    // Compter les SITES DISTINCTS (reference_urls uniques) pour la limite
+    let siteCount = 0
+    if (limit !== Infinity) {
+      let distinctQuery = supabase
+        .from('scrapings')
+        .select('reference_url')
+
+      if (userFilter.length > 1) {
+        distinctQuery = distinctQuery.in('user_id', userFilter)
+      } else {
+        distinctQuery = distinctQuery.eq('user_id', user.id)
+      }
+
+      const { data: allUrls } = await distinctQuery
+      siteCount = new Set((allUrls || []).map(s => s.reference_url)).size
+    } else {
+      siteCount = new Set((data || []).map(s => s.reference_url)).size
+    }
 
     const scrapings = (data || []).map(scraping => ({
       ...scraping,
@@ -64,7 +78,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       scrapings,
-      count: count || 0,
+      count: siteCount,
+      total_rows: count || 0,
       limit,
       page,
       pageSize,
@@ -83,7 +98,6 @@ export async function POST(request: Request) {
     const user = await getCurrentUser()
     const scrapingData = await request.json()
 
-    // Si non connecté, retourner les données pour sauvegarde locale
     if (!user) {
       return NextResponse.json({ 
         scraping: scrapingData,
@@ -94,16 +108,17 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Vérifier la limite pour plan standard / non confirmé
     const effectiveSource = user.subscription_source || (user.promo_code_id ? 'promo' as const : null)
     const limit = PLAN_FEATURES.scrapingLimit(user.subscription_plan, effectiveSource)
     if (limit !== Infinity) {
-      const { count } = await supabase
+      const { data: allUrls } = await supabase
         .from('scrapings')
-        .select('id', { count: 'exact', head: true })
+        .select('reference_url')
         .eq('user_id', user.id)
 
-      if ((count || 0) >= limit) {
+      const uniqueUrls = new Set((allUrls || []).map(s => s.reference_url))
+
+      if (!uniqueUrls.has(scrapingData.reference_url) && uniqueUrls.size >= limit) {
         return NextResponse.json(
           { error: 'Limite de 6 scrapings atteinte. Passez au plan Pro ou Ultime pour des scrapings illimités.' },
           { status: 403 }
@@ -140,4 +155,3 @@ export async function POST(request: Request) {
     )
   }
 }
-
