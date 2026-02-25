@@ -113,7 +113,7 @@ const COLOR_KEYWORDS = new Set([
 
 function removeColors(text: string): string {
   if (!text) return ''
-  const words = deepNormalize(text).split()
+  const words = deepNormalize(text).split(/\s+/)
   return words.filter(w => !COLOR_KEYWORDS.has(w)).join(' ').replace(/\s+/g, ' ').trim()
 }
 
