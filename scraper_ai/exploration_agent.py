@@ -108,7 +108,7 @@ class ExplorationAgent:
             print(
                 f"         ✅ {len(sitemap_urls)} URLs trouvées dans le sitemap")
             # Limite de sécurité (augmentée pour inventaires complets)
-            all_product_urls.extend(sitemap_urls[:1000])
+            all_product_urls.extend(sitemap_urls[:2000])
         else:
             print(f"         ⚠️ Aucun sitemap trouvé")
 
@@ -122,21 +122,33 @@ class ExplorationAgent:
             page = 1
             consecutive_empty = 0
             max_pages = 200
-            max_urls = 1000  # Augmenté pour inventaires complets
+            max_urls = 2000
+
+            use_selenium_for_pages = False
+            short_html_streak = 0
 
             while page <= max_pages and len(all_product_urls) < max_urls:
                 try:
                     page_url = tools.build_pagination_url(
                         url, pagination, page)
-                    page_html = tools.get(page_url, use_selenium=False)
+                    page_html = tools.get(page_url,
+                                          use_selenium=use_selenium_for_pages)
                     if not page_html or len(page_html) < 1000:
+                        if not use_selenium_for_pages:
+                            short_html_streak += 1
+                            if short_html_streak >= 3:
+                                print(f"         🔄 HTML trop court 3x → switch Selenium")
+                                use_selenium_for_pages = True
+                                short_html_streak = 0
+                                continue
                         consecutive_empty += 1
                         if consecutive_empty >= 3:
                             break
                         page += 1
                         continue
+                    else:
+                        short_html_streak = 0
 
-                    # Extraire URLs de produits de cette page
                     page_product_urls = tools.discover_product_urls(
                         page_html, page_url)
                     if page_product_urls:
@@ -148,7 +160,7 @@ class ExplorationAgent:
                             break
 
                     page += 1
-                    time.sleep(0.3)  # Rate limiting
+                    time.sleep(0.3)
                 except Exception as e:
                     print(f"         ⚠️ Erreur page {page}: {e}")
                     consecutive_empty += 1
@@ -157,9 +169,32 @@ class ExplorationAgent:
                     page += 1
         else:
             print(f"         ⚠️ Aucune pagination détectée")
+            # Vérifier si le site utilise infinite scroll / lazy loading
+            if initial_html and tools.detect_infinite_scroll(initial_html):
+                print(f"         🔄 Infinite scroll détecté → chargement avec Selenium...")
+                scroll_html = tools.scroll_and_collect(url)
+                if scroll_html and len(scroll_html) > len(initial_html or ''):
+                    scroll_urls = tools.discover_product_urls(scroll_html, url)
+                    if scroll_urls:
+                        all_product_urls.extend(scroll_urls)
+                        print(f"         ✅ +{len(scroll_urls)} URLs via infinite scroll")
+
+        # Estimer le nombre de VRAIS produits (pas le total brut du sitemap)
+        # Le sitemap peut contenir des pages blog/service/contact → gonfle le total
+        _product_markers = [
+            '/inventaire/', '/inventory/', '/product', '/produit',
+            '/moto', '/vehicle', '/vehicule', 'a-vendre', 'for-sale',
+            '/catalogue/', '/catalog/', '/occasion/', '/used/', '/pre-owned/',
+            '/motos/', '/motorcycles/', '/scooter', '/quad',
+        ]
+        product_url_estimate = sum(
+            1 for u in all_product_urls
+            if any(m in u.lower() for m in _product_markers)
+        )
+        print(f"      📊 Estimation: ~{product_url_estimate} URLs produit sur {len(all_product_urls)} URLs brutes")
 
         # 3. Découvrir depuis les liens de la page d'accueil
-        if len(all_product_urls) < 100:
+        if product_url_estimate < 200:
             print(f"      🔗 Découverte depuis les liens...")
             discovered_urls = tools.discover_product_urls(initial_html, url)
             all_product_urls.extend(discovered_urls)
@@ -167,14 +202,18 @@ class ExplorationAgent:
         # 4. Explorer les pages de listage (ex: /usage/motocyclette/inventaire/)
         #    pour découvrir les fiches produit (ex: .../triumph-scrambler-2022-a-vendre-ins00023/)
         #    IMPORTANT: Toujours explorer pour s'assurer d'avoir TOUS les produits
-        if len(all_product_urls) < 100:
+        if product_url_estimate < 200:
             candidate_listing_urls = self._get_listing_page_candidates(
                 all_product_urls, url
             )
+            if not candidate_listing_urls:
+                candidate_listing_urls = self._get_listing_page_candidates(
+                    tools.discover_product_urls(initial_html, url), url
+                )
             if candidate_listing_urls:
                 print(
                     f"      📂 Exploration des pages listage ({len(candidate_listing_urls)} pages)...")
-                for listing_url in candidate_listing_urls[:8]:  # max 8 pages
+                for listing_url in candidate_listing_urls[:8]:
                     try:
                         listing_html = tools.get(
                             listing_url, use_selenium=False)
@@ -182,7 +221,42 @@ class ExplorationAgent:
                             extra = tools.discover_product_urls(
                                 listing_html, listing_url)
                             all_product_urls.extend(extra)
-                            if len(all_product_urls) >= 1000:
+
+                            # Suivre la pagination sur cette page de listage
+                            listing_pagination = tools.detect_pagination(listing_html, listing_url)
+                            if listing_pagination:
+                                print(f"         📑 Pagination détectée sur {listing_url[:60]}...")
+                                lp_page = 2
+                                lp_consecutive_empty = 0
+                                while lp_page <= 50 and len(all_product_urls) < 2000:
+                                    try:
+                                        lp_url = tools.build_pagination_url(
+                                            listing_url, listing_pagination, lp_page)
+                                        lp_html = tools.get(lp_url, use_selenium=False)
+                                        if not lp_html or len(lp_html) < 1000:
+                                            lp_consecutive_empty += 1
+                                            if lp_consecutive_empty >= 3:
+                                                break
+                                            lp_page += 1
+                                            continue
+                                        lp_extra = tools.discover_product_urls(lp_html, lp_url)
+                                        if lp_extra:
+                                            all_product_urls.extend(lp_extra)
+                                            lp_consecutive_empty = 0
+                                            print(f"         📄 Page {lp_page}: +{len(lp_extra)} URLs")
+                                        else:
+                                            lp_consecutive_empty += 1
+                                            if lp_consecutive_empty >= 3:
+                                                break
+                                        lp_page += 1
+                                        time.sleep(0.3)
+                                    except Exception:
+                                        lp_consecutive_empty += 1
+                                        if lp_consecutive_empty >= 3:
+                                            break
+                                        lp_page += 1
+
+                            if len(all_product_urls) >= 2000:
                                 break
                     except Exception as e:
                         print(
@@ -203,6 +277,7 @@ class ExplorationAgent:
             r'|[/-][tu]\d{4,}'
             r'|a-vendre-[a-z]\d{3,}'
             r'|ms[-_]p?\d+[-_]\d+'
+            r'|ms[-_]w[-_]?get[-_]?\d+'
             r'|stock[-_]?\d{3,}'
             r'|sku[-_]?\d+'
         )
@@ -222,6 +297,10 @@ class ExplorationAgent:
         unique_urls = list(model_year_urls_dict.values())
         print(f"      ✅ {len(unique_urls)} URLs uniques après déduplication")
 
+        # Déduplication bilingue (FR/EN) : si le site a des versions FR et EN
+        # du même produit, ne garder qu'une seule version pour éviter le double-scraping
+        unique_urls = self._deduplicate_bilingual_urls(unique_urls)
+
         # ------------------------------------------------------------
         # Filtrage adaptatif (PRODUCTION):
         # Si inventory_only=True ET le site a des URLs d'inventaire → exclure catalogue
@@ -230,9 +309,18 @@ class ExplorationAgent:
         inventory_likely = [
             u for u in unique_urls if self._looks_like_inventory_url(u)]
 
-        # Le mode est contrôlé par le paramètre utilisateur + auto-détection
-        INVENTORY_THRESHOLD = 3
-        has_enough_inventory = len(inventory_likely) >= INVENTORY_THRESHOLD
+        # Activer le mode strict si le site a un nombre significatif
+        # d'URLs d'inventaire ET un pattern structurel clair.
+        # Seuil bas (50 URLs OU 15%) car même 200 URLs inventaire sur 1400
+        # indiquent clairement une séparation catalogue/inventaire.
+        INVENTORY_MIN_COUNT = 30
+        INVENTORY_MIN_RATIO = 0.10
+        total = len(unique_urls) or 1
+        inv_ratio = len(inventory_likely) / total
+        has_enough_inventory = (
+            len(inventory_likely) >= INVENTORY_MIN_COUNT
+            or (len(inventory_likely) >= 10 and inv_ratio >= INVENTORY_MIN_RATIO)
+        )
         inventory_only_mode = getattr(
             self, '_inventory_only', False) and has_enough_inventory
 
@@ -248,13 +336,13 @@ class ExplorationAgent:
 
         if getattr(self, '_inventory_only', False) and not has_enough_inventory:
             print(
-                f"      ⚠️ Mode inventaire demandé mais seulement {len(inventory_likely)} URLs d'inventaire détectées"
-                f" (< seuil {INVENTORY_THRESHOLD}) → fallback mode inclusif"
+                f"      ⚠️ Mode inventaire demandé mais pas assez d'URLs inventaire: {len(inventory_likely)}/{total}"
+                f" ({inv_ratio:.0%}) → fallback mode inclusif"
             )
         elif inventory_only_mode:
             print(
-                f"      🎯 Mode INVENTAIRE: {len(inventory_likely)} URLs d'inventaire détectées"
-                f" → exclusion des pages catalogue/showroom"
+                f"      🎯 Mode INVENTAIRE STRICT: {len(inventory_likely)}/{total}"
+                f" ({inv_ratio:.0%}) → exclusion des pages catalogue/showroom"
             )
         else:
             print(
@@ -278,7 +366,49 @@ class ExplorationAgent:
 
         print(
             f"      ✅ {len(filtered_urls)} URLs de produits valides après filtrage")
+
+        # Vérification: comparer avec le total affiché sur le site
+        if initial_html:
+            announced_total = self._extract_announced_total(initial_html)
+            if announced_total and announced_total > len(filtered_urls) * 2:
+                print(
+                    f"      ⚠️ Le site annonce ~{announced_total} produits mais"
+                    f" seulement {len(filtered_urls)} URLs trouvées"
+                    f" → tentative de re-crawl avec Selenium"
+                )
+                scroll_html = tools.scroll_and_collect(url)
+                if scroll_html:
+                    extra = tools.discover_product_urls(scroll_html, url)
+                    new_urls = [u for u in extra if u not in set(filtered_urls)]
+                    if new_urls:
+                        filtered_urls.extend(new_urls)
+                        print(f"      ✅ +{len(new_urls)} URLs supplémentaires via Selenium")
+
         return filtered_urls
+
+    def _extract_announced_total(self, html: str) -> int | None:
+        """Cherche un indicateur du nombre total de produits affiché sur le site.
+
+        Ex: "152 résultats", "Showing 1-20 of 152", "152 véhicules trouvés"
+        """
+        import re
+        if not html:
+            return None
+
+        patterns = [
+            r'(\d+)\s*(?:r[ée]sultats?|results?|produits?|items?|v[ée]hicules?|articles?)',
+            r'(?:showing|affichage)\s+\d+\s*[-–]\s*\d+\s+(?:of|de|sur)\s+(\d+)',
+            r'(?:total|found|trouv[ée]s?)\s*[:\s]*(\d+)',
+            r'(\d+)\s*(?:found|trouv[ée]s?)',
+        ]
+        html_lower = html.lower()
+        for pattern in patterns:
+            match = re.search(pattern, html_lower)
+            if match:
+                total = int(match.group(1))
+                if 10 < total < 50000:
+                    return total
+        return None
 
     def _looks_like_inventory_url(self, url: str) -> bool:
         """Heuristique: URL "inventaire-likely" (pour activer le mode strict).
@@ -396,7 +526,8 @@ class ExplorationAgent:
             r'sku[-_]?\d+',    # sku123, sku-456
             r'ref[-_]?\d+',    # ref123, ref_456
             r'mj\d{2,}',      # MVM ancien format: mj220, mj2207
-            r'ms[-_]p?\d+[-_]\d+',  # Mathias: ms-p25-0001a
+            r'ms[-_]p?\d+[-_]\d+',  # Mathias occasion: ms-p25-0001a
+            r'ms[-_]w[-_]?get[-_]?\d+',  # Mathias neuf: ms-w-get-171465
             r'a-vendre-[a-z]\d{3,}',  # MVM/PowerGo: a-vendre-k00228, etc.
         ]
 
@@ -445,8 +576,7 @@ class ExplorationAgent:
 
         # Signal "catalogue-like" (adaptatif)
         catalogue_keywords = ['catalogue', 'catalog',
-                              'showroom', 'modele', 'model', 'gamme', 'range',
-                              'w-get']
+                              'showroom', 'modele', 'model', 'gamme', 'range']
         has_catalogue_keyword = any(
             kw in url_lower for kw in catalogue_keywords)
         # pattern courant, pas universel
@@ -480,8 +610,12 @@ class ExplorationAgent:
             'moto', 'motorcycle', 'motocyclette', 'vehicule', 'vehicle',
             'quad', 'atv', 'vtt', 'motoneige', 'snowmobile',
             'cote-a-cote', 'side-by-side', 'sxs', 'utv',
-            'cforce', 'widescape', 'outlander', 'mxz', 'spark',  # modèles courants
-            'produit', 'product', 'detail', 'details', 'fiche'
+            'motocross', 'sportive', 'cruiser', 'touring', 'double-usage',
+            'enduro', 'supermoto', 'hors-route', 'routiere', 'scooter',
+            'motomarine', 'watercraft', 'pwc', 'ponton', 'pontoon',
+            'cforce', 'widescape', 'outlander', 'mxz', 'spark',
+            'produit', 'product', 'detail', 'details', 'fiche',
+            'inventaire', 'inventory', 'neuf', 'usage',
         ]
 
         has_product_indicator = has_inventory_indicator or any(
@@ -508,11 +642,17 @@ class ExplorationAgent:
         # LOGIQUE FINALE:
         # - Si ID produit trouvé → TOUJOURS accepter (très fiable)
         # - Si indicateur de détail → accepter si a aussi indicateur produit
-        # - Sinon → besoin d'avoir produit dans le dernier segment ET indicateur produit
+        # - Mode inventaire strict: exiger un product_id ou detail_indicator
+        #   (pas juste un indicateur produit — trop permissif pour les pages catalogue)
+        # - Mode inclusif: accepter si produit dans le dernier segment ET indicateur produit
         if has_product_id:
             return True
         if has_detail_indicator and has_product_indicator:
             return True
+
+        if inventory_only:
+            return False
+
         if has_product_in_last_segment and has_product_indicator:
             return True
 
@@ -549,6 +689,79 @@ class ExplorationAgent:
         threshold = max(len(inventory_urls) * 0.3, 2)
         return {marker for marker, count in markers.items() if count >= threshold}
 
+    def _deduplicate_bilingual_urls(self, urls: List[str]) -> List[str]:
+        """Fusionne les doublons bilingues FR/EN d'un même produit.
+
+        Détecte les sites bilingues (ex: /fr/neuf/... et /en/new/...) et
+        ne garde qu'une version par produit (préfère FR).
+        """
+        if not urls or len(urls) < 20:
+            return urls
+
+        # FR→EN translations (one direction only to avoid cancellation)
+        fr_to_en = [
+            ('/fr/', '/en/'),
+            ('/neuf/', '/new/'),
+            ('/usage/', '/used/'),
+            ('/motocyclette/', '/motorcycle/'),
+            ('/vtt/', '/atv/'),
+            ('/cote-a-cote/', '/side-by-side/'),
+            ('/ponton/', '/pontoon/'),
+            ('/motoneige/', '/snowmobile/'),
+            ('/inventaire/', '/inventory/'),
+            ('/3-roues/', '/3-wheel-motorcycle/'),
+            ('/moteur-hors-bord/', '/outboard-motor/'),
+        ]
+
+        fr_count = sum(1 for u in urls if '/fr/' in u.lower())
+        en_count = sum(1 for u in urls if '/en/' in u.lower())
+
+        if fr_count < 10 or en_count < 10:
+            return urls
+
+        bilingual_ratio = min(fr_count, en_count) / max(fr_count, en_count)
+        if bilingual_ratio < 0.4:
+            return urls
+
+        print(f"      🌐 Site bilingue détecté: {fr_count} FR + {en_count} EN")
+
+        url_set = set(u.lower() for u in urls)
+        url_map = {u.lower(): u for u in urls}
+        kept = set()
+        result = []
+
+        for u in urls:
+            u_lower = u.lower()
+            if u_lower in kept:
+                continue
+
+            is_fr = '/fr/' in u_lower
+            is_en = '/en/' in u_lower
+
+            alt = u_lower
+            if is_fr:
+                for fr_seg, en_seg in fr_to_en:
+                    alt = alt.replace(fr_seg, en_seg)
+            elif is_en:
+                for fr_seg, en_seg in fr_to_en:
+                    alt = alt.replace(en_seg, fr_seg)
+
+            if alt != u_lower and alt in url_set:
+                kept.add(u_lower)
+                kept.add(alt)
+                if is_fr:
+                    result.append(u)
+                else:
+                    result.append(url_map.get(alt, u))
+            else:
+                kept.add(u_lower)
+                result.append(u)
+
+        removed = len(urls) - len(result)
+        if removed > 0:
+            print(f"      ✅ {removed} doublons bilingues retirés → {len(result)} URLs")
+        return result
+
     def _get_listing_page_candidates(
         self, discovered_urls: List[str], base_url: str
     ) -> List[str]:
@@ -559,7 +772,23 @@ class ExplorationAgent:
         from urllib.parse import urlparse
         listing_segments = {
             'inventaire', 'motocyclette', 'motoneige', 'vtt', 'motomarine',
-            'neuf', 'usage', 'inventaire-neuf', 'inventaire-usage'
+            'neuf', 'usage', 'inventaire-neuf', 'inventaire-usage',
+            'motos', 'moto', 'motorcycles', 'motorcycle', 'motocyclettes',
+            'scooters', 'scooter', 'quads', 'quad',
+            'side-by-side', 'cote-a-cote', 'sxs',
+            'vehicles', 'vehicules', 'catalogue', 'catalog',
+            'inventory', 'new-inventory', 'used-inventory',
+            'pre-owned', 'occasion', 'used',
+            'en-stock', 'in-stock', 'disponible',
+        }
+        listing_path_markers = {
+            'inventaire', 'usage', 'neuf', 'inventory',
+            'motos', 'moto', 'motorcycles', 'motorcycle',
+            'motocyclette', 'motocyclettes',
+            'scooter', 'scooters', 'quad', 'quads',
+            'side-by-side', 'cote-a-cote', 'sxs',
+            'vehicles', 'vehicules', 'catalogue', 'catalog',
+            'pre-owned', 'occasion', 'used',
         }
         candidates = []
         seen = set()
@@ -573,15 +802,11 @@ class ExplorationAgent:
                 continue
             parts = path.split('/')
             last = (parts[-1] or '').lower()
-            # Page listage = chemin contient inventaire/usage/neuf et dernier segment
-            # est une catégorie (court) ou URL se termine par /inventaire/
             is_short_last = len(last) < 25 and not any(
                 c.isdigit() for c in last)
-            ends_with_listing = last in listing_segments or u.rstrip(
-                '/').endswith('/inventaire')
-            if ('inventaire' in path or 'usage' in path or 'neuf' in path) and (
-                is_short_last or ends_with_listing
-            ):
+            ends_with_listing = last in listing_segments
+            has_listing_marker = any(m in path for m in listing_path_markers)
+            if has_listing_marker and (is_short_last or ends_with_listing):
                 seen.add(u)
                 candidates.append(u)
         return candidates

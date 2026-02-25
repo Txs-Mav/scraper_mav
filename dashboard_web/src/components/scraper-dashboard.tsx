@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { getLocalScrapingsCount, migrateLocalScrapingsToSupabase } from "@/lib/local-storage"
 import LimitWarning from "./limit-warning"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
+import { KNOWN_BRANDS } from "@/lib/analytics-calculations"
 import PriceComparisonTable from "./price-comparison-table"
 
 interface Product {
@@ -57,6 +58,30 @@ const sourceCategorieLabels: Record<string, string> = {
   inventaire: "Inventaire", catalogue: "Catalogue", vehicules_occasion: "Inventaire usagé"
 }
 
+const BRANDS_LOWER = KNOWN_BRANDS.map(b => b.toLowerCase())
+
+function getEffectiveMarque(product: Product): string {
+  const raw = product.marque
+  if (raw) {
+    const cleaned = raw.replace(/^Manufacturier\s*:\s*/i, "").trim()
+    if (cleaned && cleaned.toLowerCase() !== "manufacturier") return cleaned
+  }
+  const nameLower = (product.name || "").toLowerCase()
+  for (let i = 0; i < BRANDS_LOWER.length; i++) {
+    const brand = BRANDS_LOWER[i]
+    const idx = nameLower.indexOf(brand)
+    if (idx !== -1) {
+      const after = nameLower[idx + brand.length]
+      if (idx === 0 || nameLower[idx - 1] === ' ') {
+        if (!after || after === ' ' || after === '-') {
+          return product.name!.substring(idx, idx + brand.length).toUpperCase()
+        }
+      }
+    }
+  }
+  return ""
+}
+
 export default function ScraperDashboard({ initialData }: ScraperDashboardProps) {
   const { user } = useAuth()
   const scrapingLimit = useScrapingLimit()
@@ -94,7 +119,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
   const inlineScraperRef = useRef<ScraperConfigHandle | null>(null)
 
-  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => { setMounted(true); setIsScrapingActive(false); setShouldStartScraping(false) }, [])
 
   useEffect(() => {
     if (shouldStartScraping && isScrapingActive) {
@@ -238,7 +263,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   }, [products])
 
   const uniqueMarques = useMemo(() => {
-    return Array.from(new Set(products.map(p => p.marque).filter(Boolean))).sort()
+    return Array.from(new Set(products.map(p => getEffectiveMarque(p)).filter(Boolean))).sort()
   }, [products])
 
   const uniqueSites = useMemo(() => {
@@ -319,9 +344,9 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     else if (activeTab.startsWith("site-")) filtered = productsBySite.grouped[activeTab.replace("site-", "")] || []
     else filtered = [...products]
 
-    if (searchQuery) { const q = searchQuery.toLowerCase(); filtered = filtered.filter(p => p.name?.toLowerCase().includes(q) || p.marque?.toLowerCase().includes(q) || p.modele?.toLowerCase().includes(q)) }
+    if (searchQuery) { const q = searchQuery.toLowerCase(); filtered = filtered.filter(p => p.name?.toLowerCase().includes(q) || getEffectiveMarque(p).toLowerCase().includes(q) || p.modele?.toLowerCase().includes(q)) }
     if (selectedSite !== "all") filtered = filtered.filter(p => extractDomain(p.sourceSite || "") === selectedSite)
-    if (selectedMarque !== "all") filtered = filtered.filter(p => p.marque === selectedMarque)
+    if (selectedMarque !== "all") filtered = filtered.filter(p => getEffectiveMarque(p) === selectedMarque)
     if (selectedCategory !== "all") filtered = filtered.filter(p => (p.category ?? p.categorie ?? "").trim() === selectedCategory)
     if (selectedProduct !== "all") filtered = filtered.filter(p => p.name === selectedProduct)
     if (selectedDisponibilite !== "all") filtered = filtered.filter(p => p.disponibilite === selectedDisponibilite)
@@ -329,26 +354,23 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     if (priceDifferenceFilter !== null) filtered = filtered.filter(p => p.differencePrix != null && p.differencePrix >= priceDifferenceFilter)
     if (activeTab === "compared") filtered = filtered.filter(p => p.prixReference != null)
 
-    const extractMarqueValue = (m: string | undefined) => m ? m.replace(/^Manufacturier\s*:\s*/i, "").trim().toLowerCase() : ""
     filtered.sort((a, b) => {
       let aVal: any, bVal: any
       if (sortBy === "prix") { aVal = a.prix || 0; bVal = b.prix || 0 }
       else if (sortBy === "annee") { aVal = a.annee || 0; bVal = b.annee || 0 }
-      else if (sortBy === "marque") { aVal = extractMarqueValue(a.marque); bVal = extractMarqueValue(b.marque) }
+      else if (sortBy === "marque") { aVal = getEffectiveMarque(a).toLowerCase(); bVal = getEffectiveMarque(b).toLowerCase() }
       else if (sortBy === "site") { aVal = (a.sourceSite || "").toLowerCase(); bVal = (b.sourceSite || "").toLowerCase() }
       else { aVal = a.name || ""; bVal = b.name || "" }
       return sortOrder === "asc" ? (aVal > bVal ? 1 : aVal < bVal ? -1 : 0) : (aVal < bVal ? 1 : aVal > bVal ? -1 : 0)
     })
     return filtered
-  }, [products, searchQuery, selectedCategory, selectedMarque, selectedDisponibilite, selectedEtat, priceDifferenceFilter, sortBy, sortOrder, activeTab, productsBySite])
+  }, [products, searchQuery, selectedSite, selectedCategory, selectedMarque, selectedProduct, selectedDisponibilite, selectedEtat, priceDifferenceFilter, sortBy, sortOrder, activeTab, productsBySite])
 
   const hasActiveFilters = useMemo(() => {
     return searchQuery !== "" || selectedSite !== "all" || selectedMarque !== "all" || selectedCategory !== "all" || selectedProduct !== "all" || selectedDisponibilite !== "all" || selectedEtat !== "all" || priceDifferenceFilter !== null
   }, [searchQuery, selectedSite, selectedMarque, selectedCategory, selectedProduct, selectedDisponibilite, selectedEtat, priceDifferenceFilter])
 
-  useEffect(() => {
-    if (filteredProducts.length === 0 && hasActiveFilters && products.length > 0) resetFilters()
-  }, [filteredProducts.length, hasActiveFilters, products.length])
+  // Pas d'auto-reset : laisser l'utilisateur voir "0 résultats" et ajuster ses filtres
 
   const resetFilters = () => {
     setSearchQuery(""); setSelectedSite("all"); setSelectedMarque("all"); setSelectedCategory("all")
@@ -454,13 +476,10 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       )}
 
-      {/* ── Scraping ── */}
+      {/* ── Extraction ── */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-6 hover:shadow-lg hover:shadow-gray-900/5 dark:hover:shadow-black/20 transition-shadow">
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Lancer un scraping</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Extrait et compare les produits de vos concurrents automatiquement.</p>
-          </div>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Lancer une extraction</h2>
           <div className="flex items-center gap-2">
             {scraperCacheCount > 0 && (
               <button type="button" onClick={() => setShowCacheModal(true)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] px-3.5 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition shadow-sm">
@@ -474,7 +493,17 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           </div>
         </div>
 
-        {isScrapingActive ? (
+        {!isScrapingActive && (
+          <button
+            type="button"
+            onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
+            className="group w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-xl font-semibold text-sm shadow-lg shadow-purple-600/25 hover:shadow-xl hover:shadow-purple-600/30 transition-all hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <Zap className="h-4 w-4 group-hover:scale-110 transition-transform" />
+            {"Lancer l'extraction"}
+          </button>
+        )}
+        {isScrapingActive && (
           <ScraperConfig
             ref={inlineScraperRef}
             onScrapeStart={() => setIsScrapingActive(true)}
@@ -482,15 +511,6 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
             hideHeader showLaunchButton={false} logsOnlyMode={true}
             onReferenceUrlChange={(_, domain) => setConfiguredReferenceSite(domain)}
           />
-        ) : (
-          <button
-            type="button"
-            onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
-            className="group w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 hover:from-blue-700 hover:via-blue-700 hover:to-purple-700 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-600/25 hover:shadow-xl hover:shadow-blue-600/30 transition-all hover:-translate-y-0.5 active:translate-y-0"
-          >
-            <Zap className="h-4 w-4 group-hover:scale-110 transition-transform" />
-            Lancer le scraping
-          </button>
         )}
       </div>
 

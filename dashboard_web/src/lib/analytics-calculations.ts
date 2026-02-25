@@ -44,10 +44,32 @@ export function deepNormalize(text: string): string {
   t = t.replace(/(\d)([a-z])/g, '$1 $2')
   t = t.replace(/[^a-z0-9\s]/g, ' ')
   t = t.replace(/\s+/g, ' ').trim()
-  return t
+
+  // Fusionner les lettres simples consecutives: "r l" -> "rl", "s x f" -> "sxf"
+  // Aligne avec le Python _deep_normalize() pour que les cles soient identiques
+  const words = t.split(' ')
+  const merged: string[] = []
+  let i = 0
+  while (i < words.length) {
+    if (words[i].length === 1 && /^[a-z]$/.test(words[i])) {
+      const letters = [words[i]]
+      let j = i + 1
+      while (j < words.length && words[j].length === 1 && /^[a-z]$/.test(words[j])) {
+        letters.push(words[j])
+        j++
+      }
+      merged.push(letters.length > 1 ? letters.join('') : words[i])
+      i = j
+    } else {
+      merged.push(words[i])
+      i++
+    }
+  }
+  return merged.join(' ')
 }
 
-const KNOWN_BRANDS = [
+export const KNOWN_BRANDS = [
+  // Powersports / Moto
   'kawasaki', 'honda', 'yamaha', 'suzuki', 'ktm', 'husqvarna',
   'triumph', 'cfmoto', 'cf moto', 'aprilia', 'vespa', 'piaggio', 'ducati',
   'bmw', 'harley-davidson', 'harley davidson', 'indian', 'royal enfield',
@@ -55,6 +77,13 @@ const KNOWN_BRANDS = [
   'ski-doo', 'ski doo', 'brp', 'segway', 'kymco', 'adly', 'beta',
   'cub cadet', 'john deere', 'gas gas', 'gasgas', 'sherco', 'benelli',
   'mv agusta', 'moto guzzi', 'zero', 'energica', 'sur-ron', 'surron',
+  // Auto
+  'ford', 'toyota', 'chevrolet', 'gmc', 'ram', 'jeep', 'dodge', 'chrysler',
+  'nissan', 'hyundai', 'kia', 'subaru', 'mazda', 'volkswagen', 'audi',
+  'mercedes-benz', 'mercedes benz', 'lexus', 'acura', 'infiniti',
+  'lincoln', 'buick', 'cadillac', 'tesla', 'mitsubishi', 'volvo',
+  'land rover', 'jaguar', 'porsche', 'mini', 'fiat', 'alfa romeo',
+  'genesis', 'rivian', 'lucid', 'polestar',
 ].sort((a, b) => b.length - a.length)
 
 const NORMALIZED_BRANDS = KNOWN_BRANDS.map(b => [deepNormalize(b), b] as const)
@@ -67,6 +96,25 @@ const BRAND_ALIASES: Record<string, string> = {
   'ski doo': 'ski doo',
   'gas gas': 'gasgas',
   'sur ron': 'surron',
+  'mercedes benz': 'mercedes benz',
+  'land rover': 'land rover',
+  'alfa romeo': 'alfa romeo',
+}
+
+const COLOR_KEYWORDS = new Set([
+  'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
+  'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
+  'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin', 'chrome', 'carbone',
+  'fonce', 'clair', 'fluo', 'neon', 'combat', 'lime', 'sauge', 'cristal', 'obsidian',
+  'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
+  'gray', 'grey', 'silver', 'gold', 'brown', 'matte', 'glossy', 'pearl', 'carbon',
+  'dark', 'light', 'bright', 'etincelle', 'velocite',
+].map(w => deepNormalize(w)))
+
+function removeColors(text: string): string {
+  if (!text) return ''
+  const words = deepNormalize(text).split()
+  return words.filter(w => !COLOR_KEYWORDS.has(w)).join(' ').replace(/\s+/g, ' ').trim()
 }
 
 export function normalizeProductGroupKey(p: Product): string {
@@ -113,15 +161,27 @@ export function normalizeProductGroupKey(p: Product): string {
 
   marque = BRAND_ALIASES[marque] ?? marque
 
+  // Exclure: localisation, concessionnaire, couleurs, préfixes catégorie (côte à côte, etc.)
   const DEALER_NOISE_PATTERNS = [
-    /\b(?:en\s+vente|disponible|neuf|usage|usag[ée])\s+(?:a|à|chez|au)\b.*/i,
-    /\b(?:mvm\s*motosport|morin\s*sports?|moto\s*thibault|moto\s*ducharme)\b.*/i,
-    /\b(?:shawinigan|trois\s*[-\s]*rivi[eè]res|montr[ée]al|qu[ée]bec|laval|longueuil|sherbrooke|drummondville|victoriaville|b[ée]cancour)\b.*/i,
+    /\b(?:en\s+vente|disponible|neuf|usage|usag[ée]|occasion)\s+(?:a|à|chez|au)\b.*/i,
+    /\bd['\u2019]?occasion\s+(?:a|à|chez|au)\b.*/i,
+    /\b(?:a|à)\s+vendre\s+(?:a|à|chez|au)\b.*/i,
     /\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*/i,
+    /\b\w+\s+(?:motosport|motorsport|powersports?)\s*$/i,
+    /\b(?:moto|motos|auto|autos)\s+\w+\s*$/i,
+    /\b\w+\s+(?:moto|motos|sport[s]?|auto[s]?|motors?|marine|performance|center|centre)\s*$/i,
   ]
   for (const pattern of DEALER_NOISE_PATTERNS) {
     modele = modele.replace(pattern, '').trim()
   }
+
+  // Préfixes catégorie (côte à côte, VTT, etc.) — varient selon les sites
+  modele = modele.replace(/^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+/i, '').trim()
+  modele = modele.replace(/^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+/i, '').trim()
+
+  // Couleurs
+  modele = removeColors(modele)
+  marque = removeColors(marque)
 
   return `${marque}|${modele}`
 }

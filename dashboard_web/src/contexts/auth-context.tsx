@@ -23,13 +23,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createClient()
   const isInitialized = useRef(false)
 
-  // Charger les données utilisateur depuis la table users via fetch direct
   const loadUserFromTable = useCallback(async (userId: string, accessToken?: string): Promise<User | null> => {
     console.log('[Auth] Loading user from table for id:', userId)
     try {
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?id=eq.${userId}&select=*`
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      if (!supabaseUrl || !anonKey) {
+        console.error('[Auth] Missing Supabase env vars')
+        return null
+      }
+
+      const url = `${supabaseUrl}/rest/v1/users?id=eq.${userId}&select=*`
       const headers: HeadersInit = {
-        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        'apikey': anonKey,
         'Content-Type': 'application/json',
       }
 
@@ -49,18 +55,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json()
-      console.log('[Auth] Fetch result:', data)
 
       if (!data || data.length === 0) {
         console.warn('[Auth] User not found in users table for id:', userId)
         return null
       }
 
-      const userData = data[0]
-      console.log('[Auth] User loaded successfully:', userData.name)
-      return userData as User
+      console.log('[Auth] User loaded successfully:', data[0].name)
+      return data[0] as User
     } catch (error: unknown) {
-      // Ne jamais lancer d'exception - retourner null pour que isLoading s'arrête toujours
       if (error instanceof Error && error.name === 'AbortError') {
         console.warn('[Auth] Request timed out in loadUserFromTable')
       } else {

@@ -15,6 +15,18 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'imagescdn.d2cmedia.ca',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'carimages.d2cmedia.ca',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
   // Timeout étendu pour les routes qui déclenchent le scraping Python (alertes cron)

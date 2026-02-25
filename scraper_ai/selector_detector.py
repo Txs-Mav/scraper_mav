@@ -219,7 +219,7 @@ class SelectorDetector:
                 break
 
             # Parser et nettoyer le HTML
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = BeautifulSoup(html, 'lxml')
 
             # Supprimer les scripts et styles
             for tag in soup(['script', 'style', 'noscript', 'svg', 'path']):
@@ -367,7 +367,7 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
         Returns:
             Dict {selector_name: is_valid}
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, 'lxml')
         results = {}
 
         for name, selector in selectors.items():
@@ -507,7 +507,7 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
                     chunk = parts[1]
                     nl = chunk.find('\n')
                     sample = chunk[nl + 1:] if nl >= 0 else chunk
-            return BeautifulSoup(sample, 'html.parser')
+            return BeautifulSoup(sample, 'lxml')
 
         return None
 
@@ -830,7 +830,8 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
         self,
         html: str,
         selectors: Dict[str, str],
-        base_url: str
+        base_url: str,
+        soup=None
     ) -> List[Dict]:
         """Extrait les produits en utilisant les sélecteurs détectés
 
@@ -838,13 +839,15 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
             html: HTML de la page
             selectors: Sélecteurs CSS
             base_url: URL de base pour résoudre les liens relatifs
+            soup: BeautifulSoup pré-parsé (optionnel, évite double-parsing)
 
         Returns:
             Liste de produits extraits avec etat et sourceCategorie détectés
         """
         from urllib.parse import urljoin
 
-        soup = BeautifulSoup(html, 'html.parser')
+        if soup is None:
+            soup = BeautifulSoup(html, 'lxml')
         products = []
 
         # Trouver tous les conteneurs de produits

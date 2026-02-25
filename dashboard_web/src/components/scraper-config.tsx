@@ -71,6 +71,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const [scrapingSteps, setScrapingSteps] = useState<ScrapingStep[]>([])
   const [currentLogFile, setCurrentLogFile] = useState<string | null>(null)
   const [logContent, setLogContent] = useState<string[]>([])
+  const [showLogs, setShowLogs] = useState(true)
   const logPollingRef = useRef<NodeJS.Timeout | null>(null)
   const [cachedScrapers, setCachedScrapers] = useState<CachedScraper[]>([])
   const [showCachedScrapers, setShowCachedScrapers] = useState(false)
@@ -163,11 +164,15 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     const otherUrls = activeUrls.filter(url => url.trim() !== "" && url.trim() !== referenceUrl.trim())
     const totalSites = referenceUrl.trim() ? 1 + otherUrls.length : otherUrls.length
     const sitesWithScraper = totalSites - urlsWithoutScraper.length
-    const sitesWithoutScraper = urlsWithoutScraper.length
-    const estimatedSeconds = (sitesWithScraper * 30) + (sitesWithoutScraper * 240)
-    return estimatedSeconds < 60
-      ? { text: `${estimatedSeconds}s`, seconds: estimatedSeconds }
-      : { text: `${Math.ceil(estimatedSeconds / 60)} min`, seconds: estimatedSeconds }
+    const newSites = urlsWithoutScraper.length
+    // Sites avec cache: ~30-60s (re-extraction), Nouveaux: ~3-8 min (exploration + extraction)
+    const minSeconds = (sitesWithScraper * 30) + (newSites * 180)
+    const maxSeconds = (sitesWithScraper * 90) + (newSites * 480)
+    const avgSeconds = Math.round((minSeconds + maxSeconds) / 2)
+    if (avgSeconds < 60) return { text: `~${avgSeconds}s`, seconds: avgSeconds }
+    const minMin = Math.max(1, Math.ceil(minSeconds / 60))
+    const maxMin = Math.ceil(maxSeconds / 60)
+    return { text: `${minMin}-${maxMin} min`, seconds: avgSeconds }
   }
 
   useEffect(() => {
@@ -194,7 +199,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       const patterns: { step: string; patterns: string[]; completedPatterns?: string[] }[] = [
         { step: 'init', patterns: ['scraper ai', 'site de référence', 'user id'], completedPatterns: ['phase 1', 'vérification'] },
         { step: 'analyze', patterns: ['phase 1', 'phase 2', 'exploration', 'sitemap', 'urls découvertes'], completedPatterns: ['urls trouvées', 'scraper créé'] },
-        { step: 'scrape', patterns: ['phase 3', 'extraction', 'produits de'], completedPatterns: ['produits extraits'] },
+        { step: 'scrape', patterns: ['phase 3', 'extraction', 'produits de', 'urls/s', 'workers parallèles'], completedPatterns: ['produits extraits'] },
         { step: 'save', patterns: ['sauvegarde', 'supabase', 'cloud'], completedPatterns: ['scraping terminé', 'temps total'] },
       ]
       patterns.forEach(({ step, patterns: activePatterns, completedPatterns }) => {
@@ -211,16 +216,30 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           newSteps[stepIndex] = { ...newSteps[stepIndex], status: 'active' }
         }
       })
-      // Détecter les erreurs critiques (mais pas les erreurs Gemini qu'on peut ignorer)
-      if (content.includes('erreur fatale') || content.includes('authentification requise')) {
+      // Détecter les erreurs critiques (crashes Python inclus)
+      const hasCrash =
+        content.includes('erreur fatale') ||
+        content.includes('authentification requise') ||
+        content.includes('traceback (most recent call last)') ||
+        content.includes('typeerror:') ||
+        content.includes('attributeerror:') ||
+        content.includes('keyerror:') ||
+        content.includes('importerror:')
+      if (hasCrash) {
         const activeStep = newSteps.find(s => s.status === 'active')
-        if (activeStep) {
-          const idx = newSteps.findIndex(s => s.id === activeStep.id)
-          newSteps[idx] = { ...newSteps[idx], status: 'error' }
+        const targetIdx = activeStep
+          ? newSteps.findIndex(s => s.id === activeStep.id)
+          : newSteps.findIndex(s => s.status !== 'completed')
+        if (targetIdx >= 0) {
+          newSteps[targetIdx] = { ...newSteps[targetIdx], status: 'error' }
         }
       }
-      // Fin du scraping
-      if (content.includes('scraping terminé') || content.includes('temps total:')) {
+      // Fin du scraping (uniquement le résumé FINAL, pas les résumés par site)
+      const isFinalEnd = (content.includes('scraping terminé') && content.includes('site de référence:'))
+        || content.includes('données dans:')
+        || content.includes('sauvegardé localement:')
+        || content.includes('backup local:')
+      if (isFinalEnd) {
         newSteps.forEach((_, i) => {
           if (newSteps[i].status !== 'error') newSteps[i] = { ...newSteps[i], status: 'completed' }
         })
@@ -240,6 +259,21 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           updateStepsFromLogs(newLogs)
           return newLogs
         })
+      } else {
+        // Aucun nouveau log : avancer la barre visuellement selon le temps écoulé
+        setScrapingSteps(prev => {
+          const newSteps = [...prev]
+          const allPending = newSteps.every(s => s.status === 'pending')
+          if (allPending && elapsedTime >= 10) {
+            newSteps[0] = { ...newSteps[0], status: 'active' }
+          }
+          const onlyInitActive = newSteps[0].status === 'active' && newSteps.slice(1).every(s => s.status === 'pending')
+          if (onlyInitActive && elapsedTime >= 45) {
+            newSteps[0] = { ...newSteps[0], status: 'completed' }
+            newSteps[1] = { ...newSteps[1], status: 'active' }
+          }
+          return newSteps
+        })
       }
       if (data.isComplete) {
         if (logPollingRef.current) {
@@ -247,7 +281,15 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           logPollingRef.current = null
         }
         setIsScraping(false)
-        if (data.content?.includes('❌')) {
+        // Erreur si le backend signale hasError, OU si le contenu contient des patterns d'erreur
+        const fullContent = data.content || ''
+        const isError = data.hasError ||
+          fullContent.includes('Traceback (most recent call last)') ||
+          fullContent.includes('TypeError:') ||
+          fullContent.includes('AttributeError:') ||
+          fullContent.includes('KeyError:') ||
+          fullContent.includes('AUTHENTIFICATION REQUISE')
+        if (isError) {
           setScrapeStatus('error')
         } else {
           setScrapeStatus('success')
@@ -508,8 +550,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
   useImperativeHandle(ref, () => ({ runScrape: handleScrape, saveConfig, removeUrlFromConfig }), [handleScrape, removeUrlFromConfig])
 
-  // En mode logs-only, afficher seulement le terminal
-  const shouldShowLogsTerminal = isLogsOnlyMode || isScraping || scrapeStatus
+  const shouldShowLogsTerminal = isScraping || scrapeStatus
 
   return (
     <div className="space-y-6">
@@ -710,8 +751,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 dark:bg-gray-800"
                 />
                 <label htmlFor="inventoryOnly" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                  <span>Inventaire seulement</span>
-                  <span className="ml-1 text-xs text-emerald-500 dark:text-emerald-400">(exclut les pages catalogue)</span>
+                  <span>Filtrer catalogue (site de ref.)</span>
+                  <span className="ml-1 text-xs text-emerald-500 dark:text-emerald-400">(concurrents : extraction complète)</span>
                 </label>
               </div>
 
@@ -766,101 +807,146 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
       {/* Terminal de logs - TOUJOURS AFFICHÉ en mode logs-only OU pendant le scraping */}
       {shouldShowLogsTerminal && (
-        <div className="rounded-xl bg-[#0d1117] border border-gray-800 overflow-hidden">
-          {/* Header du terminal */}
-          <div className="flex items-center justify-between px-4 py-3 bg-[#161b22] border-b border-gray-800">
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-[#ff5f56]" />
-                <div className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
-                <div className="w-3 h-3 rounded-full bg-[#27ca40]" />
-              </div>
-              <span className="text-xs text-gray-400 font-mono">scraper.log</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {isScraping && <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />}
-              <span className="text-xs font-mono text-gray-500">{formatTime(elapsedTime)}</span>
-            </div>
-          </div>
+        <div className="rounded-2xl bg-white/95 dark:bg-[#0F0F12] border border-gray-200/60 dark:border-white/[0.06] overflow-hidden shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.5)]">
 
-          {/* Contenu des logs */}
-          <div className="p-4 max-h-48 overflow-y-auto font-mono text-xs space-y-1">
-            {logContent.length === 0 ? (
-              <div className="text-gray-500 animate-pulse">Démarrage du scraping...</div>
-            ) : (
-              logContent.slice(-15).map((line, i) => {
-                // Déterminer la couleur selon le contenu
-                let colorClass = 'text-gray-400'
-                if (line.includes('✅') || line.includes('succès') || line.includes('terminé')) {
-                  colorClass = 'text-emerald-400'
-                } else if (line.includes('❌') || line.includes('erreur') || line.includes('error')) {
-                  colorClass = 'text-red-400'
-                } else if (line.includes('⚠️') || line.includes('warning')) {
-                  colorClass = 'text-amber-400'
-                } else if (line.includes('🚀') || line.includes('→') || line.includes('analyse') || line.includes('Phase')) {
-                  colorClass = 'text-blue-400'
-                } else if (line.includes('📦') || line.includes('produit')) {
-                  colorClass = 'text-purple-400'
-                }
-                return (
-                  <div key={i} className={`${colorClass} leading-relaxed`}>
-                    <span className="text-gray-600 mr-2 select-none">{'>'}  </span>
-                    {line}
+          {/* Progression - toujours visible */}
+          <div className="px-5 pt-5 pb-4">
+            {/* Header minimal */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                {isScraping ? (
+                  <div className="relative flex items-center justify-center w-8 h-8">
+                    <div className="absolute inset-0 rounded-full bg-blue-500/10 dark:bg-blue-400/10 animate-ping" />
+                    <Loader2 className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin relative z-10" />
                   </div>
-                )
-              })
-            )}
-            {isScraping && (
-              <div className="text-gray-600 animate-pulse">
-                <span className="mr-2 select-none">{'>'}</span>
-                <span className="inline-block w-2 h-3.5 bg-gray-500 animate-pulse" />
-              </div>
-            )}
-          </div>
-
-          {/* Barre de progression */}
-          {scrapingSteps.length > 0 && (
-            <div className="px-4 pb-4">
-              <div className="flex gap-1 mb-2">
-                {scrapingSteps.map((step) => (
-                  <div key={step.id} className="flex-1 h-1 rounded-full overflow-hidden bg-gray-800">
-                    <div className={`h-full transition-all duration-500 ${step.status === 'completed' ? 'w-full bg-emerald-500' :
-                      step.status === 'active' ? 'w-1/2 bg-blue-500 animate-pulse' :
-                        step.status === 'error' ? 'w-full bg-red-500' :
-                          'w-0'
-                      }`} />
+                ) : scrapeStatus === 'error' ? (
+                  <div className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
+                    <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400" />
                   </div>
-                ))}
-              </div>
-              <div className="flex justify-between text-[10px] text-gray-600">
-                {scrapingSteps.map((step) => (
-                  <span key={step.id} className={`${step.status === 'completed' ? 'text-emerald-500' :
-                    step.status === 'active' ? 'text-blue-400' :
-                      step.status === 'error' ? 'text-red-400' : ''
-                    }`}>
-                    {step.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Message de fin */}
-          {!isScraping && scrapeStatus && (
-            <div className={`px-4 py-3 border-t ${scrapeStatus === 'error'
-              ? 'bg-red-950/30 border-red-900/50'
-              : 'bg-emerald-950/30 border-emerald-900/50'
-              }`}>
-              <div className="flex items-center gap-2">
-                {scrapeStatus === 'error' ? (
-                  <AlertCircle className="w-4 h-4 text-red-400" />
+                ) : scrapeStatus === 'success' ? (
+                  <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                  </div>
                 ) : (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <div className="w-8 h-8 rounded-full bg-gray-50 dark:bg-white/5 flex items-center justify-center">
+                    <Database className="w-4 h-4 text-gray-400" />
+                  </div>
                 )}
-                <span className={`text-xs font-medium ${scrapeStatus === 'error' ? 'text-red-300' : 'text-emerald-300'
-                  }`}>
-                  {scrapeStatus === 'error' ? 'Scraping échoué' : 'Scraping terminé avec succès!'}
-                </span>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {isScraping ? 'Extraction en cours' : scrapeStatus === 'error' ? 'Erreur' : scrapeStatus === 'success' ? 'Terminé' : 'Extraction'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {formatTime(elapsedTime)}
+                  </p>
+                </div>
+              </div>
+              {logContent.length > 0 && (
+                <button
+                  onClick={() => setShowLogs(prev => !prev)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+                >
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${showLogs ? 'rotate-90' : ''}`} />
+                  Logs
+                </button>
+              )}
+            </div>
+
+            {/* Étapes de progression */}
+            {scrapingSteps.length > 0 && (
+              <div>
+                <div className="flex gap-1.5 mb-2.5">
+                  {scrapingSteps.map((step) => (
+                    <div key={step.id} className="flex-1 h-1.5 rounded-full overflow-hidden bg-gray-100 dark:bg-white/[0.06]">
+                      <div className={`h-full rounded-full transition-all duration-700 ease-out ${
+                        step.status === 'completed' ? 'w-full bg-emerald-500' :
+                        step.status === 'active' ? 'w-2/3 bg-blue-500 animate-pulse' :
+                        step.status === 'error' ? 'w-full bg-red-500' :
+                        'w-0'
+                      }`} />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between">
+                  {scrapingSteps.map((step) => (
+                    <span key={step.id} className={`text-[11px] font-medium transition-colors ${
+                      step.status === 'completed' ? 'text-emerald-600 dark:text-emerald-400' :
+                      step.status === 'active' ? 'text-blue-600 dark:text-blue-400' :
+                      step.status === 'error' ? 'text-red-500 dark:text-red-400' :
+                      'text-gray-400 dark:text-gray-600'
+                    }`}>
+                      {step.status === 'completed' && <span className="mr-0.5">✓</span>}
+                      {step.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Message de fin */}
+            {!isScraping && scrapeStatus && (
+              <div className={`mt-4 px-4 py-3 rounded-xl text-sm font-medium ${
+                scrapeStatus === 'error'
+                  ? 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/30'
+                  : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/30'
+              }`}>
+                {scrapeStatus === 'error'
+                  ? 'Une erreur est survenue — consultez les logs.'
+                  : 'Scraping terminé avec succès.'}
+              </div>
+            )}
+          </div>
+
+          {/* Logs dépliables */}
+          {showLogs && logContent.length > 0 && (
+            <div className="border-t border-gray-100 dark:border-white/[0.06]">
+              <div className="px-5 py-3 max-h-48 overflow-y-auto" ref={(el) => { if (el) el.scrollTop = el.scrollHeight }}>
+                <div className="space-y-0.5">
+                  {logContent
+                    .filter(line => {
+                      const t = line.trim()
+                      if (!t) return false
+                      if (t.includes('UserWarning') || t.includes('warning_logs') || t.includes('DeprecationWarning')) return false
+                      if (t.includes('site-packages/') || t.includes('show_deprecation_warning')) return false
+                      if (/^[=]{10,}$/.test(t)) return false
+                      if (t.startsWith('File "') || t.startsWith('File \'')) return false
+                      if (/^\w+\(/.test(t) && !t.includes(':')) return false
+                      if (/^\w+\.\w+\(/.test(t) && t.length < 120 && !t.includes('❌') && !t.includes('✅')) return false
+                      return true
+                    })
+                    .map(line => {
+                      let t = line.trim()
+                      t = t.replace(/^(📋\s*)?Trace complète de l'erreur\s*:?\s*/i, '')
+                      t = t.replace(/^Traceback \(most recent call last\)\s*:?\s*/, '')
+                      if (!t) return null
+                      return t
+                    })
+                    .filter((line): line is string => line !== null && line.length > 0)
+                    .slice(-15)
+                    .map((line, i) => {
+                      const isError = /Error[:\s]|❌/.test(line)
+                      const isSuccess = /produits extraits|SITE TERMINÉ|SCRAPING TERMINÉ|✅/.test(line)
+                      const isWarning = line.includes('⚠️')
+                      const isProgress = line.includes('📊') || /\d+\/\d+/.test(line)
+
+                      return (
+                        <div key={i} className={`text-[11px] leading-relaxed py-0.5 ${
+                          isError ? 'text-red-600 dark:text-red-400 font-medium' :
+                          isSuccess ? 'text-emerald-600 dark:text-emerald-400' :
+                          isWarning ? 'text-amber-600 dark:text-amber-400' :
+                          isProgress ? 'text-blue-600/80 dark:text-blue-400/80' :
+                          'text-gray-400 dark:text-gray-500'
+                        }`}>
+                          {line}
+                        </div>
+                      )
+                    })}
+                  {isScraping && (
+                    <div className="flex items-center gap-1.5 pt-1 text-xs text-gray-400">
+                      <span className="inline-block w-1 h-3 bg-blue-500/60 rounded-full animate-pulse" />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

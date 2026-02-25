@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState, useEffect, useCallback } from "react"
-import Image from "next/image"
 import { Info, X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle } from "lucide-react"
 import BlocTemplate from "./ui/bloc-template"
 import { createPortal } from "react-dom"
@@ -16,10 +15,12 @@ type Product = {
   prix?: number
   prixReference?: number | null
   sourceSite?: string
+  sourceUrl?: string
   siteReference?: string
   sourceCategorie?: string
   etat?: string
   competitors?: Record<string, number | null>
+  produitReference?: { sourceUrl?: string; name?: string; prix?: number }
 }
 
 type PriceComparisonTableProps = {
@@ -75,7 +76,37 @@ function removeColors(text: string): string {
     .trim()
 }
 
-// Générer le nom complet du produit : Marque + Modèle
+function cleanDisplayName(name: string): string {
+  if (!name) return name
+
+  const productSuffixes = new Set([
+    'edition', 'special', 'limited', 'pro', 'sport', 'touring',
+    'adventure', 'rally', 'trail', 'custom', 'classic', 'premium',
+    'standard', 'base', 'se', 'le', 'gt', 'abs', 'dct', 'es',
+    'bobber', 'scout', 'chief', 'pursuit', 'chieftain', 'roadmaster',
+    'challenger', 'springfield', 'vintage',
+  ])
+
+  const parts = name.split(' - ')
+  if (parts.length >= 2) {
+    const afterDash = parts[parts.length - 1].trim()
+    const afterWords = new Set(afterDash.toLowerCase().split(/\s+/))
+    const isProductSuffix = [...afterWords].some(w => productSuffixes.has(w))
+    const hasYear = /\b(19|20)\d{2}\b/.test(afterDash)
+    const isShortCode = afterDash.length <= 6 && /^[A-Za-z0-9]+$/.test(afterDash)
+    if (!isProductSuffix && !hasYear && !isShortCode && afterDash.length <= 50) {
+      name = parts.slice(0, -1).join(' - ').trim()
+    }
+  }
+
+  name = name.replace(/\s+d['\u2019]?occasion\s+[àa]\s+[\w\s.-]+$/i, '')
+  name = name.replace(/\s+[àa]\s+vendre\s+[àa]\s+[\w\s.-]+$/i, '')
+  name = name.replace(/\s+(?:neuf|usag[ée]+|usage|occasion)\s+[àa]\s+[\w\s.-]+$/i, '')
+  name = name.replace(/\s+(?:en\s+vente|disponible)\s+(?:[àa]|chez)\s+[\w\s.-]+$/i, '')
+
+  return name.trim()
+}
+
 function getProductDisplayName(product: Product): string {
   const marque = extractMarque(product.marque)
   const modele = extractModele(product.modele)
@@ -84,52 +115,48 @@ function getProductDisplayName(product: Product): string {
   const isGenericName = genericNames.includes((product.name || "").toLowerCase())
 
   if (!isGenericName && product.name && !product.name.startsWith("Manufacturier")) {
-    return product.name
+    return cleanDisplayName(product.name)
   }
 
   if (marque && modele) return `${marque} ${modele}`
   if (modele) return modele
   if (marque) return marque
-  return product.name || "Produit"
+  return cleanDisplayName(product.name || "Produit")
 }
 
 /**
  * Génère une clé de comparaison pour un produit.
- * Utilise deepNormalize pour aligner avec le backend Python.
- * Quand ignoreColors=true : retire aussi les couleurs.
+ * Exclut : couleur, concessionnaire, localisation, préfixes catégorie (côte à côte, etc.)
+ * Aligné avec le backend Python.
  */
-function cleanDealerNoise(text: string): string {
-  const patterns = [
-    /\b(?:en\s+vente|disponible|neuf|usage|usag[ée])\s+(?:a|à|chez|au)\b.*/i,
-    /\b(?:mvm\s*motosport|morin\s*sports?|moto\s*thibault|moto\s*ducharme)\b.*/i,
-    /\b(?:shawinigan|trois\s*[-\s]*rivi[eè]res|montr[ée]al|qu[ée]bec|laval|longueuil|sherbrooke|drummondville|victoriaville|b[ée]cancour)\b.*/i,
+function cleanForMatching(text: string): string {
+  const dealerPatterns = [
+    /\b(?:en\s+vente|disponible|neuf|usage|usag[ée]|occasion)\s+(?:a|à|chez|au)\b.*/i,
+    /\bd['\u2019]?occasion\s+(?:a|à|chez|au)\b.*/i,
+    /\b(?:a|à)\s+vendre\s+(?:a|à|chez|au)\b.*/i,
     /\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*/i,
+    /\b\w+\s+(?:motosport|motorsport|powersports?)\s*$/i,
+    /\b(?:moto|motos|auto|autos)\s+\w+\s*$/i,
+    /\b\w+\s+(?:moto|motos|sport[s]?|auto[s]?|motors?|marine|performance|center|centre)\s*$/i,
   ]
   let cleaned = text
-  for (const pattern of patterns) {
-    cleaned = cleaned.replace(pattern, '').trim()
-  }
-  return cleaned
+  for (const p of dealerPatterns) cleaned = cleaned.replace(p, '').trim()
+  cleaned = cleaned.replace(/^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+/i, '').trim()
+  cleaned = cleaned.replace(/^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+/i, '').trim()
+  return removeColors(cleaned)
 }
 
-function getProductComparisonKey(product: Product, ignoreColors: boolean): string {
+function getProductComparisonKey(product: Product, _ignoreColors?: boolean): string {
   let marque = deepNormalize(extractMarque(product.marque))
   let modele = deepNormalize(extractModele(product.modele))
 
-  // Nettoyer les phrases parasites de concession/localisation
-  modele = cleanDealerNoise(modele)
+  modele = cleanForMatching(modele)
+  marque = removeColors(marque)
 
-  if (marque && modele) {
-    const finalMarque = ignoreColors ? removeColors(marque) : marque
-    const finalModele = ignoreColors ? removeColors(modele) : modele
-    return `${finalMarque}|${finalModele}`
-  }
+  if (marque && modele) return `${marque}|${modele}`
 
-  // Fallback : nom complet normalisé (deepNormalize aligne avec Python)
   const displayName = getProductDisplayName(product)
-  let key = deepNormalize(displayName)
-  key = cleanDealerNoise(key)
-  return ignoreColors ? removeColors(key) : key
+  return cleanForMatching(deepNormalize(displayName))
 }
 
 const etatConfig: Record<string, { label: string; className: string }> = {
@@ -266,7 +293,9 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       marque?: string
       etat?: string
       sourceCategorie?: string
+      referenceUrl?: string
       competitorEtats: Record<string, string>
+      competitorUrls: Record<string, string>
       reference: number | null
       competitorPrices: Record<string, number>
     }>()
@@ -288,7 +317,9 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           marque: p.marque,
           etat: p.etat,
           sourceCategorie: p.sourceCategorie,
+          referenceUrl: p.produitReference?.sourceUrl,
           competitorEtats: {},
+          competitorUrls: {},
           reference: p.prixReference ?? null,
           competitorPrices: {},
         })
@@ -296,8 +327,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       const group = groups.get(key)!
       const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
       if (siteLabel && p.prix != null) {
-        if (!group.competitorPrices[siteLabel] || !ignoreColors) {
+        if (!group.competitorPrices[siteLabel]) {
           group.competitorPrices[siteLabel] = p.prix
+        }
+        if (p.sourceUrl && !group.competitorUrls[siteLabel]) {
+          group.competitorUrls[siteLabel] = p.sourceUrl
         }
         if (p.etat || p.sourceCategorie) {
           group.competitorEtats[siteLabel] = p.etat || p.sourceCategorie || ''
@@ -305,6 +339,9 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       }
       if (group.reference === null && p.prixReference != null) {
         group.reference = p.prixReference
+      }
+      if (!group.referenceUrl && p.produitReference?.sourceUrl) {
+        group.referenceUrl = p.produitReference.sourceUrl
       }
     }
 
@@ -323,7 +360,9 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         marque: p.marque,
         etat: p.etat,
         sourceCategorie: p.sourceCategorie,
+        referenceUrl: p.sourceUrl,
         competitorEtats: {},
+        competitorUrls: {},
         reference: refPrice,
         competitorPrices: {},
       })
@@ -334,7 +373,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         const price = g.competitorPrices[c.label] ?? null
         const delta = g.reference !== null && price !== null ? price - g.reference : null
         const competitorEtat = g.competitorEtats[c.label] || ''
-        return { dealer: c.label, price, delta, etat: competitorEtat }
+        const competitorUrl = g.competitorUrls[c.label] || ''
+        return { dealer: c.label, price, delta, etat: competitorEtat, url: competitorUrl }
       })
 
       return {
@@ -345,11 +385,12 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         marque: g.marque,
         etat: g.etat,
         sourceCategorie: g.sourceCategorie,
+        referenceUrl: g.referenceUrl,
         reference: g.reference,
         prices,
       }
     })
-  }, [products, competitors, ignoreColors])
+  }, [products, competitors])
 
   const exampleData = useMemo(() => {
     return exampleProducts.map(p => {
@@ -436,8 +477,9 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       marque?: string
       etat?: string
       sourceCategorie?: string
+      referenceUrl?: string
       reference: number | null
-      prices: { dealer: string; price: number | null; delta: number | null; etat?: string }[]
+      prices: { dealer: string; price: number | null; delta: number | null; etat?: string; url?: string }[]
     }>,
     emptyMessage?: string,
     overrideCompetitors?: { id: string; label: string }[]
@@ -481,7 +523,19 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   <td className="sticky left-0 bg-white dark:bg-[#0F0F12] px-3 py-2 align-middle">
                     <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-[#1F1F23] shadow-[0_8px_20px_-14px_rgba(0,0,0,0.4)]">
                       {p.image ? (
-                        <Image src={p.image} alt={p.name} width={48} height={48} className="object-cover w-full h-full" />
+                        <>
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            width={48}
+                            height={48}
+                            className="object-cover w-full h-full"
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                          />
+                          <div className="hidden w-full h-full flex items-center justify-center text-gray-400 text-[10px]">{p.marque?.slice(0, 3) || 'Img'}</div>
+                        </>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Img</div>
                       )}
@@ -490,21 +544,41 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   <td className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 min-w-[280px]">
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
-                          {p.displayName || p.name}
-                        </span>
+                        {p.referenceUrl ? (
+                          <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
+                            {p.displayName || p.name}
+                          </a>
+                        ) : (
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
+                            {p.displayName || p.name}
+                          </span>
+                        )}
                         <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
                       </div>
                       {p.modele && <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-normal">Modèle: {extractModele(p.modele)}</span>}
                     </div>
                   </td>
                   <td className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
-                    {p.reference !== null ? `${p.reference.toFixed(0)} $` : "—"}
+                    {p.reference !== null ? (
+                      p.referenceUrl ? (
+                        <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                          {p.reference.toFixed(0)} $
+                        </a>
+                      ) : (
+                        `${p.reference.toFixed(0)} $`
+                      )
+                    ) : "—"}
                   </td>
                   {p.prices.map(priceEntry => (
                     <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-gray-900 dark:text-gray-200">
                       <div className="flex flex-col items-end gap-0.5">
-                        <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
+                        {priceEntry.url && priceEntry.price !== null ? (
+                          <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                            <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
+                          </a>
+                        ) : (
+                          <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
+                        )}
                         {priceEntry.etat && priceEntry.price !== null && (
                           <EtatBadge etat={priceEntry.etat} />
                         )}
@@ -527,7 +601,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Comparatif des prix</h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Tous les produits scrappés, par concessionnaire
-            {ignoreColors && <span className="ml-2 text-xs text-blue-500">(couleurs ignorées)</span>}
+            <span className="ml-2 text-xs text-blue-500">(couleur, concessionnaire, localisation exclus)</span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

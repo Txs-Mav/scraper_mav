@@ -7,9 +7,16 @@ import json
 import time
 import os
 import sys
+import io
 from pathlib import Path
 from typing import List, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Forcer le flush immédiat de stdout/stderr (important quand redirigé vers un fichier)
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True, encoding='utf-8')
+if hasattr(sys.stderr, 'buffer'):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True, encoding='utf-8')
 
 # Ajouter le répertoire parent au PYTHONPATH pour les imports
 scraper_ai_path = Path(__file__).parent
@@ -137,6 +144,7 @@ def remove_colors_from_string(text: str) -> str:
 
 # Liste des marques connues pour identification (triée par longueur décroissante)
 KNOWN_BRANDS = sorted([
+    # Powersports / Moto
     'kawasaki', 'honda', 'yamaha', 'suzuki', 'ktm', 'husqvarna',
     'triumph', 'cfmoto', 'cf moto', 'aprilia', 'vespa', 'piaggio', 'ducati',
     'bmw', 'harley-davidson', 'harley davidson', 'indian', 'royal enfield',
@@ -144,68 +152,65 @@ KNOWN_BRANDS = sorted([
     'ski-doo', 'ski doo', 'brp', 'segway', 'kymco', 'adly', 'beta',
     'cub cadet', 'john deere', 'gas gas', 'gasgas', 'sherco', 'benelli',
     'mv agusta', 'moto guzzi', 'zero', 'energica', 'sur-ron', 'surron',
+    # Auto
+    'ford', 'toyota', 'chevrolet', 'gmc', 'ram', 'jeep', 'dodge', 'chrysler',
+    'nissan', 'hyundai', 'kia', 'subaru', 'mazda', 'volkswagen', 'audi',
+    'mercedes-benz', 'mercedes benz', 'lexus', 'acura', 'infiniti',
+    'lincoln', 'buick', 'cadillac', 'tesla', 'mitsubishi', 'volvo',
+    'land rover', 'jaguar', 'porsche', 'mini', 'fiat', 'alfa romeo',
+    'genesis', 'rivian', 'lucid', 'polestar',
 ], key=len, reverse=True)
 
 # Normaliser les marques pour le matching
 _NORMALIZED_BRANDS = [(_deep_normalize(b), b) for b in KNOWN_BRANDS]
 
-# Sous-modèles significatifs : ces mots ne doivent JAMAIS être ignorés lors du matching
-# par inclusion. Si un côté a "SE" et l'autre non, ce ne sont PAS les mêmes produits.
-SIGNIFICANT_SUBMODEL_WORDS = {
-    # Variantes de performance / édition
-    'se', 'r', 'rr', 'rs', 'x', 'xr', 'xc', 'xs', 'xd', 'xt', 'xmr', 'xtp',
-    'sx', 'sxf', 'exc', 'excf',
-    'factory', 'edition', 'special', 'limited', 'elite', 'premium', 'pro',
-    'sport', 'sports', 'adventure', 'adv',
-    # Variantes touring / utilitaire
-    'touring', 'tour', 'gt', 'gts', 'trail', 'rally',
-    'eps', 'dps', 'ess',  # Direction assistée (modèles différents)
-    'lt', 'st',  # Light Touring, Sport Touring
-    # Variantes taille / cylindrée
-    'plus', 'max', 'mini', 'lite', 'base',
-    # Variantes spécifiques motos/VTT
-    'enduro', 'supermoto', 'motard', 'scrambler', 'classic', 'heritage',
-    'custom', 'cruiser', 'naked', 'street',
-    # Combinaisons fusionnées de lettres (R L → rl, etc.)
-    # Toute combinaison incluant 'r' ou 'x' est significative
-    'rl', 'rx', 'xl', 'fl', 'fx',
-    # Tailles de cylindrée souvent dans le modèle
-    '125', '150', '200', '250', '300', '350', '390', '400', '450', '500',
-    '600', '650', '690', '700', '750', '790', '800', '850', '890', '900',
-    '950', '1000', '1090', '1190', '1200', '1250', '1290',
-}
-# Normaliser les sous-modèles
-_NORMALIZED_SIGNIFICANT = {_deep_normalize(
-    w) for w in SIGNIFICANT_SUBMODEL_WORDS if w}
+# ── Approche STRICTE pour le matching par inclusion (Level 3) ──
+# Au lieu de lister tous les trims significatifs (impossible à maintenir),
+# on liste les mots IGNORABLES (couleurs, bruit marketing, articles).
+# Tout mot de différence qui N'EST PAS ignorable = différence significative = rejet.
+# Cela couvre automatiquement TOUS les trims existants et futurs.
 
-# Lettres simples significatives (pour vérification des formes fusionnées)
-_SIGNIFICANT_SINGLE_LETTERS = {
-    w for w in _NORMALIZED_SIGNIFICANT if len(w) == 1}
+_IGNORABLE_COLORS = {_deep_normalize(c) for c in [
+    'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
+    'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
+    'kaki', 'sable', 'ivoire', 'creme',
+    'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin', 'chrome', 'carbone',
+    'fonce', 'clair', 'fluo', 'neon',
+    'ebene', 'graphite', 'anthracite', 'platine', 'titane', 'cuivre', 'acier',
+    'cobalt', 'ardoise', 'champagne', 'bonbon', 'diablo', 'etincelle', 'velocite',
+    'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
+    'gray', 'grey', 'silver', 'gold', 'brown',
+    'matte', 'glossy', 'metallic', 'pearl', 'carbon',
+    'dark', 'light', 'bright',
+    'ivory', 'charcoal', 'titanium', 'copper', 'steel', 'platinum',
+    'midnight', 'candy', 'nebuleux', 'nebuleuse',
+] if c}
+
+_IGNORABLE_NOISE = {_deep_normalize(w) for w in [
+    'demo', 'demonstrateur', 'new', 'neuf', 'used', 'usage', 'usagee',
+    'occasion', 'certified', 'certifie', 'preowned', 'pre', 'owned',
+    'camouflage', 'camo',
+] if w}
+
+_IGNORABLE_ARTICLES = {_deep_normalize(w) for w in [
+    'd', 'de', 'a', 'le', 'la', 'les', 'en', 'du', 'des', 'l',
+    'with', 'avec', 'and', 'et', 'the', 'for', 'pour', 'of',
+] if w}
+
+_IGNORABLE_DIFF_WORDS = _IGNORABLE_COLORS | _IGNORABLE_NOISE | _IGNORABLE_ARTICLES
 
 
 def _is_significant_diff(diff_words: set) -> bool:
-    """Vérifie si un ensemble de mots de différence contient un sous-modèle significatif.
+    """Approche stricte : tout mot de différence qui n'est pas explicitement
+    ignorable (couleur, bruit marketing, article) est considéré significatif.
 
-    Gère aussi les formes fusionnées: si un mot court (≤3 lettres) contient une lettre
-    significative individuelle (r, x), il est considéré comme significatif.
-    Ex: 'rl' contient 'r' → significatif.
-
-    Tout token numérique est significatif (tailles de roues, cylindrées, versions, etc.)
-    car les nombres dans les noms de produits indiquent toujours une variante distincte.
-    Ex: ELEKTRODE 20 ≠ ELEKTRODE 16 (taille de roue différente)
+    Cela couvre automatiquement tous les trims (SE, Touring, XLT, Sport, LX, EPS, etc.)
+    sans avoir besoin de les lister un par un.
     """
     for w in diff_words:
-        # Vérification directe dans le set
-        if w in _NORMALIZED_SIGNIFICANT:
-            return True
-        # Tout nombre est significatif (taille, cylindrée, version, puissance)
-        if w.isdigit():
-            return True
-        # Pour les tokens courts et purement alpha (possibles résultats de fusion),
-        # vérifier si une lettre individuelle est significative
-        if 1 < len(w) <= 3 and w.isalpha() and _SIGNIFICANT_SINGLE_LETTERS:
-            if any(c in _SIGNIFICANT_SINGLE_LETTERS for c in w):
-                return True
+        if w in _IGNORABLE_DIFF_WORDS:
+            continue
+        return True
     return False
 
 
@@ -223,18 +228,22 @@ _BRAND_ALIASES = {
     'gas gas': 'gasgas',
     'sur-ron': 'surron',
     'sur ron': 'surron',
+    'mercedes benz': 'mercedes benz',
+    'land rover': 'land rover',
+    'alfa romeo': 'alfa romeo',
 }
 
 
-def normalize_product_key(product: dict, ignore_colors: bool = False) -> Tuple[str, str, int]:
+def normalize_product_key(product: dict, ignore_colors: bool = False, _ignore_colors: bool = False) -> Tuple[str, str, int]:
     """Crée une clé normalisée pour identifier les produits (marque + modèle + année).
 
-    Normalisation profonde: sans accents, sans ponctuation, espaces collés entre 
-    lettres/chiffres séparés, comparaison de mots entiers pour les couleurs.
+    Exclut du matching : couleur, concessionnaire, localisation, préfixes catégorie.
+    Normalisation profonde: sans accents, sans ponctuation, espaces collés entre
+    lettres/chiffres séparés.
 
     Args:
         product: Dictionnaire du produit
-        ignore_colors: Si True, retire les couleurs du modèle pour le matching
+        _ignore_colors: Obsolète, conservé pour compatibilité API
     """
     import re
 
@@ -309,20 +318,34 @@ def normalize_product_key(product: dict, ignore_colors: bool = False) -> Tuple[s
     # Unifier les alias de marques
     marque = _BRAND_ALIASES.get(marque, marque)
 
-    # ── Nettoyage du modèle : retirer les phrases parasites de localisation/concession ──
-    # Patterns courants : "en vente a shawinigan mvm motosport", "neuf a trois-rivieres", etc.
+    # ── Nettoyage du modèle : retirer UNIQUEMENT localisation, concessionnaire, couleurs ──
+    # Seuls ces 3 éléments sont exclus pour que les produits soient correctement matchés
+    # (ex: "côte à côte 2026 CFMOTO UFORCE U10 PRO" ↔ "2026 CFMOTO UFORCE U10 PRO")
+
     _DEALER_NOISE_PATTERNS = [
-        r'\b(?:en\s+vente|disponible|neuf|usage|usag[ée])\s+(?:a|à|chez|au)\b.*$',
-        r'\b(?:mvm\s*motosport|morin\s*sports?|moto\s*thibault|moto\s*ducharme)\b.*$',
-        r'\b(?:shawinigan|trois\s*[-\s]*rivi[eè]res|montr[ée]al|qu[ée]bec|laval|longueuil|sherbrooke|drummondville|victoriaville|b[ée]cancour)\b.*$',
+        # Phrases structurelles (génériques — fonctionnent pour tout dealer/ville)
+        r'\b(?:en\s+vente|disponible|neuf|usage|usag[ée]|occasion)\s+(?:a|à|chez|au)\b.*$',
+        r"\bd['\u2019]?occasion\s+(?:a|à|chez|au)\b.*$",
+        r'\b(?:a|à)\s+vendre\s+(?:a|à|chez|au)\b.*$',
         r'\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*$',
+        # Suffixes dealer génériques (nom + mot business en fin de chaîne)
+        r'\b\w+\s+(?:motosport|motorsport|powersports?)\s*$',
+        r'\b(?:moto|motos|auto|autos)\s+\w+\s*$',
+        r'\b\w+\s+(?:moto|motos|sport[s]?|auto[s]?|motors?|marine|performance|center|centre)\s*$',
     ]
     for pattern in _DEALER_NOISE_PATTERNS:
         modele = re.sub(pattern, '', modele, flags=re.I).strip()
 
-    # Retirer les couleurs si demandé
-    if ignore_colors:
-        modele = remove_colors_from_string(modele)
+    # 2. Préfixes de catégorie (côte à côte, VTT, etc.) — varient selon les sites
+    _CATEGORY_PREFIX_PATTERNS = [
+        r'^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+',
+        r'^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+',
+    ]
+    for pattern in _CATEGORY_PREFIX_PATTERNS:
+        modele = re.sub(pattern, '', modele, flags=re.I).strip()
+
+    # 3. Couleurs — toujours exclues pour le matching
+    modele = remove_colors_from_string(modele)
 
     # Nettoyer les espaces finaux
     marque = re.sub(r'\s+', ' ', marque).strip()
@@ -369,8 +392,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
     print(f"📊 Référence: {reference_url} ({len(reference_products)} produits)")
     print(
         f"📊 Concurrent: {comparison_url} ({len(comparison_products)} produits)")
-    if ignore_colors:
-        print(f"🎨 Mode: Ignorer les couleurs (matching élargi)")
+    print(f"🎨 Matching: couleurs, concessionnaire et localisation exclus")
 
     # ── Index des produits de référence ──
     # Index 1 : clé complète (marque, modele, annee) — pour match exact
@@ -553,7 +575,7 @@ def scrape_site_wrapper(args: tuple) -> Tuple[str, dict]:
         print(f"❌ Erreur lors du scraping de {url}: {e}")
         print(f"📋 Trace complète de l'erreur:")
         traceback.print_exc()
-        return (url, {"companyInfo": {}, "products": []})
+        return (url, {"companyInfo": {}, "products": [], "_error": type(e).__name__})
 
 
 def main():
@@ -670,7 +692,7 @@ Exemples:
     print(f"📂 Catégories: {categories}")
     print(f"🎨 Ignorer couleurs: {'Oui' if ignore_colors else 'Non'}")
     print(
-        f"📦 Inventaire seulement: {'Oui (exclut catalogue/showroom)' if inventory_only else 'Non (inventaire + catalogue)'}")
+        f"📦 Inventaire seulement: référence={'Oui' if inventory_only else 'Non'}, concurrents=Non (extraction complète)")
     print(f"{'='*70}\n")
 
     start_time = time.time()
@@ -706,6 +728,7 @@ Exemples:
     # =====================================================
     # PHASE 2: CRÉATION DES SCRAPERS (SÉQUENTIEL)
     # =====================================================
+    phase2_results: dict = {}  # Résultats Phase 2 réutilisés en Phase 3 pour éviter double-scraping
     if sites_without_cache:
         print(f"\n{'='*50}")
         print(f"🔧 PHASE 2: CRÉATION DES SCRAPERS (séquentiel)")
@@ -717,20 +740,31 @@ Exemples:
         failed_sites: list = []  # Sites dont le scraper n'a rien extrait
 
         for i, url in enumerate(sites_without_cache, 1):
+            site_start = time.time()
+            # inventory_only s'applique UNIQUEMENT au site de référence
+            # Les concurrents doivent extraire TOUS les produits (1000-2000+)
+            site_inv_only = inventory_only if url == reference_url else False
             print(
-                f"\n   [{i}/{len(sites_without_cache)}] 🔄 Création du scraper pour {url[:50]}...")
+                f"\n   [{i}/{len(sites_without_cache)}] 🔄 Création du scraper pour {url[:50]}..."
+                f" {'(inventaire)' if site_inv_only else '(complet)'}")
             try:
                 scraper = IntelligentScraper(user_id=user_id)
                 result = scraper.scrape(
-                    url, force_refresh=True, categories=categories, inventory_only=inventory_only)
+                    url, force_refresh=True, categories=categories, inventory_only=site_inv_only)
                 product_count = len(result.get('products', []))
+                site_elapsed = time.time() - site_start
                 if product_count == 0:
                     print(
-                        f"   [{i}/{len(sites_without_cache)}] ⚠️  Scraper créé mais 0 produits - sera re-tenté en phase 3")
+                        f"   [{i}/{len(sites_without_cache)}] ⚠️  Scraper créé mais 0 produits ({site_elapsed:.0f}s) - sera re-tenté en phase 3")
                     failed_sites.append(url)
                 else:
                     print(
-                        f"   [{i}/{len(sites_without_cache)}] ✅ Scraper créé: {product_count} produits extraits")
+                        f"   [{i}/{len(sites_without_cache)}] ✅ Scraper créé: {product_count} produits extraits ({site_elapsed:.0f}s)")
+                    phase2_results[url] = {
+                        "companyInfo": {},
+                        "products": result.get('products', []),
+                        "metadata": result.get('metadata', {})
+                    }
             except Exception as e:
                 print(f"   [{i}/{len(sites_without_cache)}] ❌ Erreur: {e}")
                 failed_sites.append(url)
@@ -750,34 +784,51 @@ Exemples:
 
     results: Dict[str, dict] = {}
 
-    with ThreadPoolExecutor(max_workers=min(len(all_sites), 10)) as pool:
-        futures = {}
-        for url in all_sites:
-            future = pool.submit(
-                scrape_site_wrapper,
-                (url, user_id, False, categories, inventory_only)
-            )
-            futures[future] = url
+    # Utiliser directement les résultats de Phase 2 pour éviter le double-scraping
+    sites_needing_extraction = []
+    for url in all_sites:
+        if url in phase2_results:
+            results[url] = phase2_results[url]
+            product_count = len(phase2_results[url].get('products', []))
+            is_ref = " ⭐" if url == reference_url else ""
+            print(f"   ♻️  {url[:40]}...: {product_count} produits (Phase 2){is_ref}")
+        else:
+            sites_needing_extraction.append(url)
 
-        for future in as_completed(futures):
-            url = futures[future]
-            try:
-                result_url, result_data = future.result()
-                results[result_url] = result_data
-                product_count = len(result_data.get('products', []))
-                is_ref = " ⭐" if url == reference_url else ""
-                print(f"   ✅ {url[:40]}...: {product_count} produits{is_ref}")
-            except Exception as e:
-                print(f"   ❌ {url[:40]}...: Erreur - {e}")
-                results[url] = {"companyInfo": {}, "products": []}
+    if sites_needing_extraction:
+        with ThreadPoolExecutor(max_workers=min(len(sites_needing_extraction), 10)) as pool:
+            futures = {}
+            for url in sites_needing_extraction:
+                site_inv_only = inventory_only if url == reference_url else False
+                future = pool.submit(
+                    scrape_site_wrapper,
+                    (url, user_id, False, categories, site_inv_only)
+                )
+                futures[future] = url
+
+            for future in as_completed(futures):
+                url = futures[future]
+                try:
+                    result_url, result_data = future.result()
+                    results[result_url] = result_data
+                    product_count = len(result_data.get('products', []))
+                    is_ref = " ⭐" if url == reference_url else ""
+                    print(f"   ✅ {url[:40]}...: {product_count} produits{is_ref}")
+                except Exception as e:
+                    print(f"   ❌ {url[:40]}...: Erreur - {e}")
+                    results[url] = {"companyInfo": {}, "products": []}
 
     # =====================================================
     # PHASE 3b: RETRY DES SITES AVEC 0 PRODUITS
     # =====================================================
-    # Identifier TOUS les sites avec 0 produits (pas juste ceux en phase 2)
+    # Ne retrier que les sites avec 0 produits ET sans erreur de code
+    # Les bugs Python (AttributeError, TypeError, etc.) ne doivent pas déclencher
+    # un retry qui risque de corrompre un cache valide
+    code_errors = {'AttributeError', 'TypeError', 'NameError', 'KeyError', 'ImportError', 'SyntaxError'}
     sites_with_zero_products = [
         url for url in all_sites
         if len(results.get(url, {}).get('products', [])) == 0
+        and results.get(url, {}).get('_error', '') not in code_errors
     ]
 
     if sites_with_zero_products:
@@ -789,11 +840,12 @@ Exemples:
 
         for url in sites_with_zero_products:
             is_ref = " ⭐" if url == reference_url else ""
+            site_inv_only = inventory_only if url == reference_url else False
             print(f"   🔄 Retry: {url[:50]}...{is_ref}")
             try:
                 scraper = IntelligentScraper(user_id=user_id)
                 retry_result = scraper.scrape(
-                    url, force_refresh=True, categories=categories, inventory_only=inventory_only)
+                    url, force_refresh=True, categories=categories, inventory_only=site_inv_only)
                 retry_count = len(retry_result.get('products', []))
                 if retry_count > 0:
                     results[url] = retry_result
@@ -807,6 +859,17 @@ Exemples:
             # Pause entre retries pour éviter le rate limiting
             if url != sites_with_zero_products[-1]:
                 time.sleep(2)
+
+    # Signaler les sites ignorés à cause d'erreurs de code
+    code_error_sites = [
+        url for url in all_sites
+        if results.get(url, {}).get('_error', '') in code_errors
+    ]
+    if code_error_sites:
+        print(f"\n⚠️  {len(code_error_sites)} site(s) ignoré(s) pour retry (erreur de code):")
+        for url in code_error_sites:
+            err = results[url].get('_error', '')
+            print(f"   ❌ {url[:50]} → {err} (cache préservé)")
 
     elapsed_time = time.time() - start_time
     print(f"\n⏱️  Scraping terminé en {elapsed_time:.1f}s")
@@ -950,48 +1013,59 @@ Exemples:
     # PRIORITÉ 1: Sauvegarder dans Supabase via l'API (si user_id fourni)
     saved_to_supabase = False
     if user_id:
-        try:
-            import requests
-            api_url = os.environ.get('NEXTJS_API_URL', 'http://localhost:3000')
+        import requests
+        api_url = os.environ.get('NEXTJS_API_URL', 'http://localhost:3000')
 
-            scraping_payload = {
-                "user_id": user_id,
-                "reference_url": reference_url,
-                "competitor_urls": competitor_urls,
-                # IMPORTANT: inclure TOUS les produits (référence + matchés)
-                "products": all_products_to_save,
-                "metadata": final_data["metadata"],
-                "scraping_time_seconds": round(elapsed_time, 1),
-                "mode": "reference_only" if not competitor_urls else "comparison"
-            }
+        scraping_payload = {
+            "user_id": user_id,
+            "reference_url": reference_url,
+            "competitor_urls": competitor_urls,
+            "products": all_products_to_save,
+            "metadata": final_data["metadata"],
+            "scraping_time_seconds": round(elapsed_time, 1),
+            "mode": "reference_only" if not competitor_urls else "comparison"
+        }
 
-            response = requests.post(
-                f"{api_url}/api/scrapings/save",
-                json=scraping_payload,
-                timeout=30
-            )
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                timeout = 30 + (attempt - 1) * 15
+                print(f"   💾 Sauvegarde Supabase (tentative {attempt}/{max_retries}, timeout {timeout}s)...")
+                response = requests.post(
+                    f"{api_url}/api/scrapings/save",
+                    json=scraping_payload,
+                    timeout=timeout
+                )
 
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('success') and not result.get('isLocal'):
-                    saved_to_supabase = True
-                    print(
-                        f"☁️  Sauvegardé dans Supabase (ID: {result.get('scraping', {}).get('id', 'N/A')})")
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get('success') and not result.get('isLocal'):
+                        saved_to_supabase = True
+                        print(
+                            f"☁️  Sauvegardé dans Supabase (ID: {result.get('scraping', {}).get('id', 'N/A')})")
+                        break
+                    else:
+                        print(
+                            f"⚠️  Réponse API: {result.get('message', 'Sauvegarde locale uniquement')}")
                 else:
                     print(
-                        f"⚠️  Réponse API: {result.get('message', 'Sauvegarde locale uniquement')}")
-            else:
-                print(
-                    f"⚠️  Erreur API ({response.status_code}): {response.text[:200]}")
-        except Exception as e:
-            print(f"⚠️  Erreur sauvegarde Supabase: {e}")
+                        f"⚠️  Erreur API ({response.status_code}): {response.text[:200]}")
+            except Exception as e:
+                print(f"⚠️  Tentative {attempt}/{max_retries} échouée: {e}")
 
-    # FALLBACK: Sauvegarder localement seulement si Supabase a échoué
+            if attempt < max_retries:
+                wait = attempt * 5
+                print(f"   ⏳ Nouvelle tentative dans {wait}s...")
+                time.sleep(wait)
+
+    # TOUJOURS sauvegarder localement en backup (peu importe le résultat Supabase)
     output_file = Path(__file__).parent.parent / "scraped_data.json"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(final_data, f, indent=2, ensure_ascii=False)
     if not saved_to_supabase:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(final_data, f, indent=2, ensure_ascii=False)
         print(f"💾 Sauvegardé localement: {output_file}")
+    else:
+        print(f"💾 Backup local: {output_file}")
 
     # Résumé
     print(f"\n{'='*70}")

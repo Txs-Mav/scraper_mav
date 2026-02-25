@@ -526,6 +526,41 @@ def clean_text(text: str) -> str:
     return text
 
 
+def clean_product_name(name: str) -> str:
+    """Nettoie un nom de produit en retirant les suffixes dealer/ville courants.
+
+    Ex: "SURRON STORM BEE E 2023 d'occasion à Ste-Julienne - DB Moto"
+      → "SURRON STORM BEE E 2023"
+    """
+    if not name:
+        return name
+
+    # 1. Retirer " - Nom du dealer" en fin de chaîne
+    #    Garder si c'est un suffixe produit (Edition, Sport, Pro, etc.)
+    _product_suffixes = {{
+        'edition', 'special', 'limited', 'pro', 'sport', 'touring',
+        'adventure', 'rally', 'trail', 'custom', 'classic', 'premium',
+        'standard', 'base', 'se', 'le', 'gt', 'abs', 'dct', 'es',
+    }}
+    parts = name.rsplit(' - ', 1)
+    if len(parts) == 2:
+        after_dash = parts[1].strip()
+        after_words = set(after_dash.lower().split())
+        is_product_suffix = bool(after_words & _product_suffixes)
+        has_year = bool(re.search(r'\b(19|20)\d{{2}}\b', after_dash))
+        is_short_code = len(after_dash) <= 6 and re.match(r'^[A-Za-z0-9]+$', after_dash)
+        if not is_product_suffix and not has_year and not is_short_code and len(after_dash) <= 40:
+            name = parts[0].strip()
+
+    # 2. Retirer "d'occasion à [Ville]" et variantes
+    name = re.sub(r"\s+d['\u2019]?occasion\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+    name = re.sub(r"\s+[àa]\s+vendre\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+    name = re.sub(r"\s+(?:neuf|usag[ée]+|usage|occasion)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+    name = re.sub(r"\s+(?:en\s+vente|disponible)\s+(?:[àa]|chez)\s+[\w\s.-]+$", '', name, flags=re.I)
+
+    return name.strip()
+
+
 def is_in_header_nav_footer(elem) -> bool:
     """Vérifie si un élément est dans le header, nav ou footer"""
     if not elem:
@@ -711,9 +746,9 @@ def is_generic_name(name: str) -> bool:
         # Texte qui est juste un prix
         r'^\$?\d+[\s,.]?\d*\s*\$?$',
         # Texte qui est juste une date
-        r'^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$',
+        r'^\d{{1,2}}[/-]\d{{1,2}}[/-]\d{{2,4}}$',
         # Texte trop long (probablement une description, pas un nom)
-        r'.{150,}',  # Plus de 150 caractères = probablement une description
+        r'.{{150,}}',  # Plus de 150 caractères = probablement une description
     ]
 
     for pattern in generic_patterns:
@@ -1743,9 +1778,19 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
     name = product.get('name', '')
     if name:
         # Patterns communs améliorés
+        _ALL_BRANDS = (
+            'Kawasaki|Honda|Yamaha|Suzuki|Arctic Cat|Polaris|Can-Am|BRP|KTM|Ducati|BMW|'
+            'Harley-Davidson|Ski-Doo|Sea-Doo|CFMoto|Triumph|Husqvarna|Beta|Sherco|GasGas|'
+            'TM|Aprilia|Moto Guzzi|Vespa|Piaggio|Indian|Royal Enfield|Segway|Kymco|Benelli|'
+            'MV Agusta|Zero|Energica|Sur-Ron|'
+            'Ford|Toyota|Chevrolet|GMC|Ram|Jeep|Dodge|Chrysler|Nissan|Hyundai|Kia|Subaru|'
+            'Mazda|Volkswagen|Audi|Mercedes-Benz|Lexus|Acura|Infiniti|Lincoln|Buick|Cadillac|'
+            'Tesla|Mitsubishi|Volvo|Land Rover|Jaguar|Porsche|Mini|Fiat|Alfa Romeo|Genesis|'
+            'Rivian|Lucid|Polestar'
+        )
         brand_patterns = [
-            r'^(Kawasaki|Honda|Yamaha|Suzuki|Arctic Cat|Polaris|Can-Am|BRP|KTM|Ducati|BMW|Harley-Davidson|Ski-Doo|Sea-Doo|CFMoto|Triumph|Kawasaki|Husqvarna|Beta|Sherco|GasGas|TM|Aprilia|Moto Guzzi|Vespa|Piaggio)',
-            r'\b(Kawasaki|Honda|Yamaha|Suzuki|Arctic Cat|Polaris|Can-Am|BRP|KTM|Ducati|BMW|Harley-Davidson|Ski-Doo|Sea-Doo|CFMoto|Triumph|Kawasaki|Husqvarna|Beta|Sherco|GasGas|TM|Aprilia|Moto Guzzi|Vespa|Piaggio)\b'
+            r'^(' + _ALL_BRANDS + r')',
+            r'\b(' + _ALL_BRANDS + r')\b'
         ]
         for pattern in brand_patterns:
             match = re.search(pattern, name, re.I)
@@ -1754,10 +1799,7 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
                 # Modèle = reste du nom après la marque
                 model = name.replace(match.group(1), '').strip()
                 if model:
-                    # Prendre les premiers mots comme modèle
-                    model_words = model.split()
-                    product['modele'] = ' '.join(model_words[:3]) if len(
-                        model_words) > 3 else model[:50]
+                    product['modele'] = model[:80]
                 break
 
     # Extraire année (sans description)
@@ -1832,9 +1874,11 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
         product['prix'] = 0.0
 
     # ============================================================
-    # VALIDATION FINALE DU NOM DU PRODUIT
-    # Cette étape est CRITIQUE pour éviter les noms génériques
+    # NETTOYAGE ET VALIDATION FINALE DU NOM DU PRODUIT
     # ============================================================
+
+    if product.get('name'):
+        product['name'] = clean_product_name(product['name'])
 
     final_name = product.get('name', '')
 
@@ -2075,7 +2119,7 @@ def filter_valid_products(products: List[Dict]) -> List[Dict]:
 
     # Log pour débogage
     if rejected_count > 0:
-        print(f"   ⚠️ Filtré {rejected_count} produit(s) invalide(s)")
+        print(f"   ⚠️ Filtré {{rejected_count}} produit(s) invalide(s)")
 
     return valid_products
 
@@ -2179,15 +2223,15 @@ def scrape(base_url: str) -> Dict[str, Any]:
 
         # Patterns d'identifiants de produit (très fiables)
         product_id_patterns = [
-            r'ins\d{3,}',
-            r'inv\d{3,}',
-            r'[/-][tu]\d{4,}',
-            r'vin[-_]?([a-hj-npr-z0-9]{8,})',
-            r'\b[a-hj-npr-z0-9]{17}\b',
-            r'stock[-_ ]?\d{3,}',
+            r'ins\d{{3,}}',
+            r'inv\d{{3,}}',
+            r'[/-][tu]\d{{4,}}',
+            r'vin[-_]?([a-hj-npr-z0-9]{{8,}})',
+            r'\b[a-hj-npr-z0-9]{{17}}\b',
+            r'stock[-_ ]?\d{{3,}}',
             r'sku[-_]?\d+',
             r'ref[-_]?\d+',
-            r'p\d{4,}',
+            r'p\d{{4,}}',
         ]
         has_product_id = any(re.search(pattern, url_lower) for pattern in product_id_patterns)
 

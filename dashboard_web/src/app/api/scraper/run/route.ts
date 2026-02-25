@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     console.log(`[ScraperAI]   - Inventaire seulement: ${inventoryOnly || false}`)
     console.log(`[ScraperAI] 🚀 Commande: python3 ${args.join(' ')}`)
 
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+    const pythonCmd = process.platform === 'win32' ? 'python -u' : 'python3 -u'
     const logsDir = path.join(process.cwd(), '..', 'scraper_logs')
     const timestamp = Date.now()
     const lockFile = path.join(logsDir, `scraper_${timestamp}.lock`)
@@ -110,6 +110,31 @@ export async function POST(request: Request) {
       console.error(`[ScraperAI] ❌ Erreur création dossier logs:`, e)
     }
 
+    // Nettoyer les lock files orphelins (process mort ou > 6h)
+    try {
+      const lockFiles = fs.readdirSync(logsDir).filter(f => f.endsWith('.lock'))
+      for (const lf of lockFiles) {
+        const lockPath = path.join(logsDir, lf)
+        try {
+          const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'))
+          const ageMs = Date.now() - (lockData.startTime || 0)
+          const maxAgeMs = 6 * 60 * 60 * 1000
+          let processAlive = false
+          if (lockData.pid) {
+            try { process.kill(lockData.pid, 0); processAlive = true } catch { processAlive = false }
+          }
+          if (!processAlive || ageMs > maxAgeMs) {
+            fs.unlinkSync(lockPath)
+            console.log(`[ScraperAI] 🧹 Lock file orphelin supprimé: ${lf}`)
+          }
+        } catch {
+          fs.unlinkSync(lockPath)
+        }
+      }
+    } catch (e) {
+      console.warn(`[ScraperAI] ⚠️ Nettoyage lock files:`, e)
+    }
+
     // Échapper les arguments pour le shell
     const escapedArgs = args.map(arg => {
       const escaped = arg.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
@@ -121,6 +146,8 @@ export async function POST(request: Request) {
 
     const scriptContent = `#!/bin/bash
 # Script généré automatiquement pour lancer le scraper Python
+export PYTHONUNBUFFERED=1
+export PYTHONDONTWRITEBYTECODE=1
 cd "${path.join(process.cwd(), '..').replace(/"/g, '\\"')}"
 nohup ${pythonCmd} ${escapedArgs} > "${logFile.replace(/"/g, '\\"')}" 2>&1 &
 PYTHON_PID=$!
@@ -267,26 +294,35 @@ export async function GET(request: Request) {
     // On attend des patterns de FIN DÉFINITIVE qui n'apparaissent qu'une fois à la toute fin
     const contentLower = content.toLowerCase()
 
-    // CONDITION DE FIN : Le message "📋 APERÇU" ou "... et X autres" qui n'apparaît QU'À LA TOUTE FIN
-    // Ces messages sont les DERNIERS à être écrits dans le log
-    const hasFinalApercu = content.includes('📋 APERÇU') && (content.includes('... et') || content.includes('RÉPARTITION PAR ÉTAT'))
+    // Patterns de FIN NORMALE (uniquement le résumé FINAL de main.py, pas les résumés par site)
+    // "⭐ Site de référence:" n'apparaît que dans le résumé final de main.py
+    const hasFinalSummary = content.includes('✅ SCRAPING TERMINÉ!') && content.includes('⭐ Site de référence:')
     const hasDataLocation = content.includes('☁️  Données dans:')
-    const hasSavedSuccess = content.includes('💾 Données sauvegardées dans:')
+    const hasSavedLocally = content.includes('💾 Sauvegardé localement:') || content.includes('💾 Backup local:')
 
-    // Erreurs qui terminent le scraping
+    // Patterns d'erreur qui terminent le scraping (crash Python inclus)
     const hasFatalError =
       contentLower.includes('erreur fatale') ||
       contentLower.includes('erreur critique') ||
       content.includes('AUTHENTIFICATION REQUISE') ||
-      content.includes('❌ Aucun site de référence configuré')
+      content.includes('❌ Aucun site de référence configuré') ||
+      content.includes('Traceback (most recent call last)') ||
+      content.includes('TypeError:') ||
+      content.includes('AttributeError:') ||
+      content.includes('KeyError:') ||
+      content.includes('ImportError:') ||
+      content.includes('ModuleNotFoundError:') ||
+      contentLower.includes('fatal error') ||
+      contentLower.includes('exception:')
 
-    // Le scraping est complet seulement si on a l'aperçu final OU la localisation des données
-    const isComplete = hasFinalApercu || hasDataLocation || hasSavedSuccess || hasFatalError
+    // Le scraping est complet si on a la fin normale OU un crash fatal
+    const isComplete = hasFinalSummary || hasDataLocation || hasSavedLocally || hasFatalError
 
     return NextResponse.json({
       lines: newLines,
       totalLines: allLines.length,
       isComplete: isComplete,
+      hasError: hasFatalError,
       content: lastLine === 0 ? content : undefined
     })
   } catch (error: any) {

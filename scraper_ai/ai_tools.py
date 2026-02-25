@@ -15,21 +15,46 @@ try:
 except ImportError:
     from config import CACHE_DIR
 
-# Importer selenium_utils depuis le scraper principal
 try:
-    import sys
-    from pathlib import Path
-    scraper_path = Path(__file__).parent.parent / 'scraper'
-    if scraper_path.exists():
-        sys.path.insert(0, str(scraper_path.parent))
-        from scraper.selenium_utils import SELENIUM_AVAILABLE, fetch_page_with_selenium  # type: ignore
-    else:
-        SELENIUM_AVAILABLE = False
-        fetch_page_with_selenium = None
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.options import Options as ChromeOptions
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    SELENIUM_AVAILABLE = True
 except ImportError:
-    # Fallback si selenium_utils n'existe pas
     SELENIUM_AVAILABLE = False
-    fetch_page_with_selenium = None
+
+def fetch_page_with_selenium(url: str) -> str | None:
+    """Récupère le HTML via Selenium headless Chrome."""
+    if not SELENIUM_AVAILABLE:
+        return None
+    driver = None
+    try:
+        options = ChromeOptions()
+        options.add_argument('--headless=new')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        driver = webdriver.Chrome(options=options)
+        driver.set_page_load_timeout(30)
+        driver.get(url)
+        import time
+        time.sleep(2)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+        time.sleep(1)
+        return driver.page_source
+    except Exception as e:
+        print(f"      ⚠️ Selenium error: {e}")
+        return None
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
 
 
 class AITools:
@@ -490,13 +515,17 @@ class AITools:
         """
         all_links = self.get_all_links(html, base_url)
 
-        # Mots-clés pour identifier les pages de produits
         product_keywords = [
-            'product', 'produit', 'item', 'article',
+            'product', 'produit', 'item',
             'inventory', 'inventaire', 'stock',
             'detail', 'details', 'fiche',
-            'moto', 'vehicle', 'vehicule',
-            'quad', 'atv', 'snowmobile', 'motoneige'
+            'moto', 'motorcycle', 'motocyclette', 'motocyclettes',
+            'vehicle', 'vehicule',
+            'quad', 'atv', 'snowmobile', 'motoneige',
+            'scooter', 'side-by-side', 'cote-a-cote', 'sxs',
+            'a-vendre', 'for-sale', 'pre-owned', 'occasion',
+            'catalogue', 'catalog',
+            'en-stock', 'in-stock', 'disponible',
         ]
 
         # Mots-clés à exclure (pages non-produits)
@@ -1426,16 +1455,106 @@ class AITools:
         if not html:
             return False
 
+        html_lower = html.lower()
         indicators = [
-            'infinite-scroll' in html.lower(),
-            'lazy-load' in html.lower(),
-            'data-lazy' in html.lower(),
-            'loading="lazy"' in html.lower(),
-            'scroll' in html.lower() and 'load' in html.lower(),
-            'intersectionobserver' in html.lower(),
+            'infinite-scroll' in html_lower,
+            'infinite_scroll' in html_lower,
+            'infinitescroll' in html_lower,
+            'data-lazy' in html_lower,
+            'intersectionobserver' in html_lower,
+            'load-more' in html_lower and ('button' in html_lower or 'btn' in html_lower),
+            'loadmore' in html_lower,
+            'voir-plus' in html_lower or 'voir plus' in html_lower,
+            'charger-plus' in html_lower or 'charger plus' in html_lower,
+            'show-more' in html_lower or 'show more' in html_lower,
         ]
 
         return any(indicators)
+
+    def scroll_and_collect(self, url: str, max_scrolls: int = 50,
+                           stability_threshold: int = 3) -> str | None:
+        """Scroll progressif avec Selenium pour charger tout le contenu dynamique.
+
+        Gère : infinite scroll, lazy loading, boutons "Load More" / "Voir plus".
+        Vérifie la stabilité du contenu avant d'arrêter.
+        """
+        if not SELENIUM_AVAILABLE:
+            print("      ⚠️ Selenium non disponible pour scroll_and_collect")
+            return None
+
+        import time
+        driver = None
+        try:
+            options = ChromeOptions()
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            driver = webdriver.Chrome(options=options)
+            driver.set_page_load_timeout(30)
+            driver.get(url)
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By, "body")))
+            time.sleep(2)
+
+            prev_height = 0
+            prev_link_count = 0
+            stable_count = 0
+
+            for i in range(max_scrolls):
+                # Cliquer "Load More" si présent
+                load_more_selectors = [
+                    "button[class*='load-more']", "button[class*='loadmore']",
+                    "a[class*='load-more']", "a[class*='loadmore']",
+                    "button[class*='voir-plus']", "a[class*='voir-plus']",
+                    "button[class*='show-more']", "a[class*='show-more']",
+                    "[data-action='load-more']", "[data-role='load-more']",
+                ]
+                clicked = False
+                for sel in load_more_selectors:
+                    try:
+                        btn = driver.find_element(By.CSS_SELECTOR, sel)
+                        if btn.is_displayed():
+                            btn.click()
+                            clicked = True
+                            time.sleep(2)
+                            break
+                    except Exception:
+                        continue
+
+                if not clicked:
+                    driver.execute_script(
+                        "window.scrollTo(0, document.body.scrollHeight)")
+                    time.sleep(1.5)
+
+                current_height = driver.execute_script(
+                    "return document.body.scrollHeight")
+                current_links = len(driver.find_elements(By.TAG_NAME, "a"))
+
+                if current_height == prev_height and current_links == prev_link_count:
+                    stable_count += 1
+                    if stable_count >= stability_threshold:
+                        print(f"         📊 Contenu stable après {i+1} scrolls ({current_links} liens)")
+                        break
+                else:
+                    stable_count = 0
+
+                prev_height = current_height
+                prev_link_count = current_links
+
+            return driver.page_source
+        except Exception as e:
+            print(f"      ⚠️ Erreur scroll_and_collect: {e}")
+            return None
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
 
     def find_filters(self, html: str) -> List[Dict]:
         """

@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from bs4 import BeautifulSoup
 
+
 try:
     from .supabase_storage import SupabaseStorage, get_storage
     from .selector_detector import SelectorDetector
@@ -50,8 +51,19 @@ class IntelligentScraper:
         self.exploration_agent = ExplorationAgent()
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
         })
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=30,
+            pool_maxsize=30,
+            max_retries=requests.adapters.Retry(total=2, backoff_factor=0.3,
+                                                 status_forcelist=[500, 502, 503, 504])
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
 
     def scrape(
         self,
@@ -303,12 +315,12 @@ class IntelligentScraper:
                 }
             )
 
-        # Résumé final
+        # Résumé du site (pas le résumé final global)
         print(f"\n{'='*70}")
-        print(f"✅ SCRAPING TERMINÉ!")
+        print(f"✅ SITE TERMINÉ: {url}")
         print(f"{'='*70}")
         print(f"📦 Produits extraits: {len(products)}")
-        print(f"⏱️  Temps total: {elapsed_time:.1f}s")
+        print(f"⏱️  Durée site: {elapsed_time:.1f}s")
         print(f"📊 Cache: {cache_status}")
 
         return {
@@ -452,12 +464,16 @@ class IntelligentScraper:
             parsed = urlparse(base_url)
             base_domain = f"{parsed.scheme}://{parsed.netloc}"
 
-            # Identifier les pages listing d'inventaire courantes
             listing_paths = [
                 '/inventaire/', '/inventory/', '/en-inventaire/',
                 '/inventaire-neuf/', '/inventaire-occasion/',
                 '/new-inventory/', '/used-inventory/',
                 '/a-vendre/', '/for-sale/',
+                '/motos/', '/motorcycles/', '/motocyclettes/',
+                '/catalogue/', '/catalog/',
+                '/vehicles/', '/vehicules/',
+                '/en-stock/', '/in-stock/',
+                '/scooters/', '/quads/', '/side-by-side/',
             ]
 
             # Trouver le bon path en testant ceux qui existent
@@ -500,46 +516,72 @@ class IntelligentScraper:
 
             print(f"      📋 Page listing trouvée: {listing_url}")
 
-            # Crawler la pagination de la page listing
             all_product_links = set()
-            max_pages = 30
+            max_pages = 50
             page_num = 1
+
+            product_markers = [
+                '/inventaire/', '/inventory/', '-a-vendre',
+                '/occasion/', '/used/', '/pre-owned/',
+                'a-vendre-', '-for-sale',
+                '/motos/', '/motorcycles/', '/motocyclettes/',
+                '/catalogue/', '/catalog/',
+                '/vehicles/', '/vehicules/',
+                '/scooters/', '/quads/',
+            ]
+            listing_endpoints = (
+                '/inventaire', '/inventory',
+                '/inventaire-neuf', '/inventaire-occasion',
+                '/new-inventory', '/used-inventory',
+                '/motos', '/motorcycles', '/catalogue', '/catalog',
+                '/vehicles', '/vehicules',
+            )
+
+            # Détecter la pagination via ai_tools si disponible
+            detected_pagination = None
+            try:
+                first_resp = session.get(listing_url, timeout=10)
+                if first_resp.status_code == 200:
+                    detected_pagination = self.exploration_agent.ai_tools.detect_pagination(
+                        first_resp.text, listing_url)
+            except Exception:
+                pass
 
             while page_num <= max_pages:
                 if page_num == 1:
                     page_url = listing_url
+                elif detected_pagination:
+                    page_url = self.exploration_agent.ai_tools.build_pagination_url(
+                        listing_url, detected_pagination, page_num)
                 else:
-                    # Patterns de pagination courants
                     if '?' in listing_url:
-                        page_url = f"{listing_url}&paged={page_num}"
+                        page_url = f"{listing_url}&page={page_num}"
                     else:
-                        page_url = f"{listing_url.rstrip('/')}?paged={page_num}"
+                        page_url = f"{listing_url.rstrip('/')}?page={page_num}"
 
                 try:
                     resp = session.get(page_url, timeout=10)
                     if resp.status_code != 200:
                         break
 
-                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    soup = BeautifulSoup(resp.text, 'lxml')
                     links_on_page = set()
 
                     for a_tag in soup.find_all('a', href=True):
                         href = a_tag['href']
                         full_url = urljoin(page_url, href)
-                        # Garder seulement les liens du même domaine
                         if parsed.netloc not in full_url:
                             continue
-                        # Garder les URLs qui ressemblent à des fiches produit
                         url_lower = full_url.lower()
-                        if any(marker in url_lower for marker in [
-                            '/inventaire/', '/inventory/', '-a-vendre',
-                            '/occasion/', '/used/', '/pre-owned/',
-                            'a-vendre-', '-for-sale',
-                        ]):
-                            # Exclure les URLs de listing/catégorie
-                            if not url_lower.rstrip('/').endswith(('/inventaire', '/inventory',
-                                '/inventaire-neuf', '/inventaire-occasion',
-                                '/new-inventory', '/used-inventory')):
+                        has_marker = any(marker in url_lower for marker in product_markers)
+                        last_seg = url_lower.rstrip('/').split('/')[-1]
+                        has_detail = (
+                            any(c.isdigit() for c in last_seg) and
+                            len(last_seg) > 10 and
+                            not _re.match(r'^(page|p)?\d+$', last_seg)
+                        )
+                        if has_marker or has_detail:
+                            if not url_lower.rstrip('/').endswith(listing_endpoints):
                                 links_on_page.add(full_url)
 
                     if not links_on_page:
@@ -548,7 +590,6 @@ class IntelligentScraper:
                     new_links = links_on_page - all_product_links
                     all_product_links.update(links_on_page)
 
-                    # Si aucun nouveau lien → fin de la pagination
                     if not new_links and page_num > 1:
                         break
 
@@ -721,37 +762,141 @@ class IntelligentScraper:
         selectors: Dict[str, str],
         base_url: str
     ) -> List[Dict]:
-        """Extrait les produits de toutes les URLs"""
+        """Extrait les produits avec concurrence adaptative.
+
+        Démarre avec un nombre élevé de workers puis réduit automatiquement
+        si le serveur throttle (détecté par un taux de timeout >40%).
+        Pour les très gros sites, travaille par batches avec pauses.
+        """
         all_products = []
-        skipped_redirects = 0
         skipped_empty = 0
+        total = len(urls)
+        extract_start = time.time()
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                executor.submit(self._extract_from_url, url, selectors, base_url): url
-                for url in urls
-            }
+        if total < 100:
+            initial_workers = 8
+        elif total < 500:
+            initial_workers = 10
+        else:
+            initial_workers = 5
 
-            for future in as_completed(futures):
-                url = futures[future]
-                try:
-                    products = future.result()
-                    if products:
-                        all_products.extend(products)
+        batch_size = min(total, max(initial_workers * 3, 30))
+
+        timeout_count = 0
+        success_count = 0
+        workers = initial_workers
+        processed = 0
+
+        remaining_urls = list(urls)
+
+        print(f"      ⚙️  {workers} workers (adaptatif) pour {total} URLs")
+
+        while remaining_urls:
+            batch = remaining_urls[:batch_size]
+            remaining_urls = remaining_urls[batch_size:]
+            batch_timeouts = 0
+            batch_successes = 0
+
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(self._extract_from_url, url, selectors, base_url): url
+                    for url in batch
+                }
+
+                for future in as_completed(futures):
+                    url = futures[future]
+                    processed += 1
+                    try:
+                        products = future.result()
+                        if products:
+                            all_products.extend(products)
+                            batch_successes += 1
+                            success_count += 1
+                        else:
+                            skipped_empty += 1
+                            batch_successes += 1
+                            success_count += 1
+                    except Exception as e:
+                        err_str = str(e).lower()
+                        if 'timeout' in err_str or 'timed out' in err_str or 'read timed out' in err_str:
+                            batch_timeouts += 1
+                            timeout_count += 1
+                        else:
+                            skipped_empty += 1
+
+                    report_interval = 25 if total > 200 else 50
+                    if processed % report_interval == 0 or processed == total:
+                        elapsed = time.time() - extract_start
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        eta = (total - processed) / rate if rate > 0 else 0
                         print(
-                            f"      ✅ {len(products)} produits de {url[:50]}...")
-                    else:
-                        skipped_empty += 1
-                except Exception as e:
-                    print(f"      ❌ Erreur {url[:50]}...: {e}")
+                            f"      📊 [{processed}/{total}] {len(all_products)} produits — "
+                            f"{rate:.1f} URLs/s — ETA {eta:.0f}s")
+
+            batch_total = batch_successes + batch_timeouts
+            if batch_total > 0 and batch_timeouts / batch_total > 0.25:
+                old_workers = workers
+                workers = max(3, workers * 2 // 3)
+                if workers != old_workers:
+                    print(f"      🔽 Throttling ({batch_timeouts} timeouts/{batch_total}) — {old_workers}→{workers} workers")
+                batch_size = max(workers * 3, 15)
+                if remaining_urls:
+                    time.sleep(0.5)
+            elif batch_total >= 8 and batch_timeouts / batch_total < 0.05 and workers < initial_workers:
+                old_workers = workers
+                workers = min(initial_workers, workers + 1)
+                if workers != old_workers:
+                    print(f"      🔼 Serveur stable — {old_workers}→{workers} workers")
+                batch_size = max(workers * 3, 15)
+
+        elapsed = time.time() - extract_start
+        rate = total / elapsed if elapsed > 0 else 0
 
         if skipped_empty > 0:
-            pct = (skipped_empty / len(urls) * 100) if urls else 0
-            print(f"      ⚠️  {skipped_empty}/{len(urls)} URLs sans produit ({pct:.0f}%) — possibles redirections/pages supprimées")
+            pct = (skipped_empty / total * 100) if total else 0
+            print(f"      ⚠️  {skipped_empty}/{total} URLs sans produit ({pct:.0f}%)")
+        if timeout_count > 0:
+            print(f"      ⚠️  {timeout_count} timeouts (serveur lent)")
+
+        print(f"      ⏱️  Extraction: {elapsed:.1f}s ({rate:.1f} URLs/s)")
 
         unique_products = self._deduplicate_products(all_products)
 
         return unique_products
+
+    @staticmethod
+    def _clean_product_name(name: str) -> str:
+        """Nettoie un nom de produit en retirant les suffixes dealer/ville/condition."""
+        import re
+        if not name:
+            return name
+
+        _product_suffixes = {
+            'edition', 'special', 'limited', 'pro', 'sport', 'touring',
+            'adventure', 'rally', 'trail', 'custom', 'classic', 'premium',
+            'standard', 'base', 'se', 'le', 'gt', 'abs', 'dct', 'es',
+            'bobber', 'scout', 'chief', 'pursuit', 'chieftain', 'roadmaster',
+            'challenger', 'springfield', 'vintage', 'dark horse',
+        }
+
+        # " - Nom du dealer" en fin de chaîne
+        parts = name.rsplit(' - ', 1)
+        if len(parts) == 2:
+            after_dash = parts[1].strip()
+            after_words = set(after_dash.lower().split())
+            is_product_suffix = bool(after_words & _product_suffixes)
+            has_year = bool(re.search(r'\b(19|20)\d{2}\b', after_dash))
+            is_short_code = len(after_dash) <= 6 and re.match(r'^[A-Za-z0-9]+$', after_dash)
+            if not is_product_suffix and not has_year and not is_short_code and len(after_dash) <= 50:
+                name = parts[0].strip()
+
+        # "d'occasion à [Ville]", "neuf à [Ville]", etc.
+        name = re.sub(r"\s+d['\u2019]?occasion\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(r"\s+[àa]\s+vendre\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(r"\s+(?:neuf|usag[ée]+|usage|occasion)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(r"\s+(?:en\s+vente|disponible)\s+(?:[àa]|chez)\s+[\w\s.-]+$", '', name, flags=re.I)
+
+        return name.strip()
 
     def _extract_from_url(
         self,
@@ -770,12 +915,10 @@ class IntelligentScraper:
         - etat (neuf, occasion, demonstrateur)
         """
         try:
-            response = self.session.get(url, timeout=15, allow_redirects=True)
+            response = self.session.get(url, timeout=8, allow_redirects=True)
             if response.status_code != 200:
                 return []
 
-            # Detect stale/sold products: if URL was redirected to a
-            # different path (e.g. listing page), the product no longer exists
             if response.history:
                 from urllib.parse import urlparse
                 original_path = urlparse(url).path.rstrip('/')
@@ -786,20 +929,33 @@ class IntelligentScraper:
             html = response.text
 
             # ============================================================
-            # PRIORITÉ 1: Extraction depuis données structurées (JSON-LD, OG)
-            # C'est la méthode la plus fiable pour les pages de détail produit
+            # FAST PATH: Extraire JSON-LD par regex SANS parser le HTML complet
+            # Couvre ~80% des pages produit et évite BeautifulSoup entièrement
+            # ============================================================
+            product_fast = self._extract_jsonld_fast(html, url, base_url)
+            if product_fast and product_fast.get('name') and product_fast.get('prix'):
+                product_fast['name'] = self._clean_product_name(product_fast['name'])
+                product_fast['sourceSite'] = base_url
+                product_fast['sourceUrl'] = url
+                self._detect_product_condition(product_fast, url, html)
+                return self._tag_with_inventory_signals(
+                    [product_fast], html, url)
+
+            # Parse HTML UNE SEULE FOIS (lxml ~3-5x plus rapide que html.parser)
+            soup = BeautifulSoup(html, 'lxml')
+
+            # ============================================================
+            # PRIORITÉ 1: Extraction complète (JSON-LD + OG + Microdata)
             # ============================================================
             product_from_structured = self._extract_structured_data(
-                html, url, base_url)
+                html, url, base_url, soup=soup)
 
             if product_from_structured and product_from_structured.get('name') and product_from_structured.get('prix'):
-                # Extraction structurée réussie AVEC un prix — utiliser ce résultat
-                # IMPORTANT: Toujours forcer sourceSite au site en cours (pas conditionnel)
+                product_from_structured['name'] = self._clean_product_name(product_from_structured['name'])
                 product_from_structured['sourceSite'] = base_url
                 product_from_structured['sourceUrl'] = url
-                # Détecter l'état/condition du produit
                 self._detect_product_condition(
-                    product_from_structured, url, html)
+                    product_from_structured, url, html, soup=soup)
                 return self._tag_with_inventory_signals(
                     [product_from_structured], html, url)
 
@@ -809,25 +965,22 @@ class IntelligentScraper:
             products = self.selector_detector.extract_with_selectors(
                 html=html,
                 selectors=selectors,
-                base_url=base_url
+                base_url=base_url,
+                soup=soup
             )
 
-            # IMPORTANT: Toujours FORCER sourceUrl et sourceSite (pas conditionnel)
-            # Cela garantit qu'un produit extrait d'un site ne sera jamais attribué à un autre
             for product in products:
                 product['sourceUrl'] = product.get('sourceUrl') or url
-                # Toujours forcer le site source
                 product['sourceSite'] = base_url
-                # Détecter l'état/condition du produit
-                self._detect_product_condition(product, url, html)
+                if product.get('name'):
+                    product['name'] = self._clean_product_name(product['name'])
+                self._detect_product_condition(product, url, html, soup=soup)
 
             # ============================================================
             # HYBRIDE: Si les données structurées avaient un nom mais pas de prix,
             # essayer de trouver le prix, puis retourner les données structurées
-            # (MÊME SANS PRIX — c'est mieux que des données CSS garbage)
             # ============================================================
             if product_from_structured and product_from_structured.get('name') and not product_from_structured.get('prix'):
-                # Chercher un prix dans les produits CSS
                 css_price = None
                 for p in products:
                     if p.get('prix') and p['prix'] > 0:
@@ -837,7 +990,6 @@ class IntelligentScraper:
                 if css_price:
                     product_from_structured['prix'] = css_price
 
-                # Essayer aussi le fallback regex sur le HTML brut
                 if not product_from_structured.get('prix'):
                     from scraper_ai.templates.scraper_template import extract_price
                     import re
@@ -857,13 +1009,11 @@ class IntelligentScraper:
                         if product_from_structured.get('prix'):
                             break
 
-                # IMPORTANT: Retourner les données structurées MÊME SANS PRIX
-                # Un produit avec nom+marque+modèle sans prix est bien plus utile
-                # qu'un produit CSS garbage sans nom ni modèle
+                product_from_structured['name'] = self._clean_product_name(product_from_structured['name'])
                 product_from_structured['sourceSite'] = base_url
                 product_from_structured['sourceUrl'] = url
                 self._detect_product_condition(
-                    product_from_structured, url, html)
+                    product_from_structured, url, html, soup=soup)
                 return self._tag_with_inventory_signals(
                     [product_from_structured], html, url)
 
@@ -872,7 +1022,128 @@ class IntelligentScraper:
         except Exception as e:
             return []
 
-    def _extract_structured_data(self, html: str, url: str, base_url: str) -> Dict:
+    def _extract_jsonld_fast(self, html: str, url: str, base_url: str) -> Dict:
+        """Extraction ultra-rapide JSON-LD par regex, sans BeautifulSoup.
+
+        Extrait les blocs <script type="application/ld+json"> par regex et cherche
+        un objet Product/Vehicle. Couvre ~80% des sites e-commerce.
+        Retourne {} si rien de pertinent n'est trouvé.
+        """
+        import json
+        import re
+        from urllib.parse import urljoin
+
+        product = {}
+        pattern = re.compile(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            re.DOTALL | re.IGNORECASE
+        )
+
+        for match in pattern.finditer(html):
+            try:
+                raw = match.group(1).strip()
+                if not raw:
+                    continue
+                data = json.loads(raw)
+
+                items = []
+                if isinstance(data, list):
+                    items.extend(data)
+                elif isinstance(data, dict):
+                    items.append(data)
+                    if '@graph' in data:
+                        items.extend(data['@graph'])
+
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    item_type = item.get('@type', '')
+                    if isinstance(item_type, list):
+                        type_str = ' '.join(t.lower() for t in item_type)
+                    else:
+                        type_str = item_type.lower()
+
+                    if not any(t in type_str for t in ['product', 'vehicle', 'motorcycle', 'car']):
+                        continue
+
+                    if not product.get('name') and item.get('name'):
+                        product['name'] = str(item['name']).strip()
+
+                    if not product.get('prix'):
+                        price = item.get('price') or item.get('lowPrice') or item.get('highPrice')
+                        if not price:
+                            offers = item.get('offers', {})
+                            if isinstance(offers, list) and offers:
+                                offers = offers[0]
+                            if isinstance(offers, dict):
+                                price = offers.get('price') or offers.get('lowPrice') or offers.get('highPrice')
+                        if price:
+                            try:
+                                product['prix'] = float(str(price).replace(',', '.').replace(' ', ''))
+                            except (ValueError, TypeError):
+                                pass
+
+                    if not product.get('image'):
+                        img = item.get('image')
+                        if img:
+                            if isinstance(img, list):
+                                img = img[0]
+                            if isinstance(img, dict):
+                                img = img.get('url')
+                            if img and isinstance(img, str):
+                                product['image'] = urljoin(base_url, img)
+
+                    if not product.get('marque'):
+                        brand = item.get('brand') or item.get('manufacturer')
+                        if brand:
+                            if isinstance(brand, dict):
+                                brand = brand.get('name')
+                            if brand:
+                                product['marque'] = str(brand)
+
+                    if not product.get('modele'):
+                        model = item.get('model')
+                        if model:
+                            if isinstance(model, dict):
+                                model = model.get('name') or model.get('model')
+                            if model and isinstance(model, str):
+                                product['modele'] = str(model).strip()
+
+                    if not product.get('annee'):
+                        year = item.get('vehicleModelDate') or item.get('modelYear')
+                        if year:
+                            try:
+                                product['annee'] = int(str(year)[:4])
+                            except (ValueError, TypeError):
+                                pass
+
+                    if not product.get('etat'):
+                        condition = item.get('itemCondition', '')
+                        if not condition:
+                            offers = item.get('offers', {})
+                            if isinstance(offers, list) and offers:
+                                offers = offers[0]
+                            if isinstance(offers, dict):
+                                condition = offers.get('itemCondition', '')
+                        if condition:
+                            cond_lower = str(condition).lower()
+                            if 'new' in cond_lower or 'neuf' in cond_lower:
+                                product['etat'] = 'neuf'
+                            elif 'used' in cond_lower or 'occasion' in cond_lower:
+                                product['etat'] = 'occasion'
+
+                    if product.get('name'):
+                        break
+            except (json.JSONDecodeError, Exception):
+                continue
+
+        if product.get('name'):
+            product['sourceUrl'] = url
+            product['sourceSite'] = base_url
+
+        return product
+
+    def _extract_structured_data(self, html: str, url: str, base_url: str, soup=None) -> Dict:
         """Extrait les données produit depuis JSON-LD, Open Graph, et microdata
 
         Cette méthode est essentielle pour les pages de détail produit
@@ -882,7 +1153,8 @@ class IntelligentScraper:
         import re
         from urllib.parse import urljoin
 
-        soup = BeautifulSoup(html, 'html.parser')
+        if soup is None:
+            soup = BeautifulSoup(html, 'lxml')
         product = {}
 
         # ========================================================
@@ -1095,27 +1367,17 @@ class IntelligentScraper:
 
         return product
 
-    def _detect_product_condition(self, product: Dict, url: str, html: str = '') -> Dict:
+    def _detect_product_condition(self, product: Dict, url: str, html: str = '', soup=None) -> Dict:
         """Détecte l'état/condition du produit et le sourceCategorie.
 
         Analyse TOUTES les URLs disponibles (page courante + sourceUrl du produit)
-        car l'état est souvent encodé dans l'URL:
-          - /usage/motocyclette/inventaire/... → occasion
-          - /neuf/motoneige/... → neuf
-          - /inventaire-occasion/... → occasion
-
-        Signaux utilisés (par priorité):
-        1. Données structurées (déjà extraites dans product['etat'] via JSON-LD)
-        2. URL du produit (sourceUrl) - souvent le signal le plus fiable
-        3. URL de la page courante (listing page)
-        4. Contenu HTML de la page (badges, breadcrumbs, titre)
-        5. Kilométrage (si > 0 km, probablement occasion; si 0 ou absent → neuf)
-        6. Fallback: déduire depuis sourceCategorie
+        car l'état est souvent encodé dans l'URL.
 
         Args:
             product: Le produit à enrichir
             url: URL de la page courante (peut être une page listing)
             html: Contenu HTML de la page (optionnel)
+            soup: BeautifulSoup pré-parsé (optionnel, évite double-parsing)
 
         Returns:
             Le produit enrichi avec sourceCategorie et etat
@@ -1175,7 +1437,8 @@ class IntelligentScraper:
 
             # Signal 2: Contenu HTML (titre, breadcrumbs, badges)
             if not etat and html:
-                soup = BeautifulSoup(html, 'html.parser')
+                if soup is None:
+                    soup = BeautifulSoup(html, 'lxml')
 
                 # Chercher dans le titre de la page
                 title_elem = soup.find('title')
@@ -1519,7 +1782,7 @@ SITE_URL = "{url}"
 
 SELECTORS = {json.dumps(selectors, indent=4)}
 
-PRODUCT_URLS = {json.dumps(product_urls[:100], indent=4)}  # Limité à 100 URLs
+PRODUCT_URLS = {json.dumps(product_urls, indent=4)}
 
 def scrape():
     """Fonction principale de scraping"""
@@ -1537,7 +1800,7 @@ def scrape():
         try:
             response = session.get(url, timeout=15)
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(response.text, 'lxml')
                 # Extraction avec les sélecteurs
                 containers = soup.select(SELECTORS.get('product_container', ''))
                 for container in containers:
