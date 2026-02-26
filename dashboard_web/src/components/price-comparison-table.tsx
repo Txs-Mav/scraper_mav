@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react"
 import { Info, X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle } from "lucide-react"
-import BlocTemplate from "./ui/bloc-template"
 import { createPortal } from "react-dom"
 import { deepNormalize, normalizeProductGroupKey } from "@/lib/analytics-calculations"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
@@ -11,6 +10,7 @@ type Product = {
   name: string
   modele?: string
   marque?: string
+  annee?: number | null
   image?: string
   prix?: number
   prixReference?: number | null
@@ -114,14 +114,24 @@ function getProductDisplayName(product: Product): string {
   const genericNames = ["aperçu", "spécifications", "promotion", "specifications", "overview"]
   const isGenericName = genericNames.includes((product.name || "").toLowerCase())
 
+  let displayName = ""
   if (!isGenericName && product.name && !product.name.startsWith("Manufacturier")) {
-    return cleanDisplayName(product.name)
+    displayName = cleanDisplayName(product.name)
+  } else if (marque && modele) {
+    displayName = `${marque} ${modele}`
+  } else if (modele) {
+    displayName = modele
+  } else if (marque) {
+    displayName = marque
+  } else {
+    displayName = cleanDisplayName(product.name || "Produit")
   }
 
-  if (marque && modele) return `${marque} ${modele}`
-  if (modele) return modele
-  if (marque) return marque
-  return cleanDisplayName(product.name || "Produit")
+  if (product.annee && !/\b(19|20)\d{2}\b/.test(displayName)) {
+    displayName = `${product.annee} ${displayName}`
+  }
+
+  return displayName
 }
 
 /**
@@ -310,8 +320,12 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     for (const p of productsWithComparison) {
       const key = getKey(p)
       if (!groups.has(key)) {
+        const refName = p.produitReference?.name
+        const displayProduct: Product = refName
+          ? { ...p, name: refName }
+          : p
         groups.set(key, {
-          displayName: getProductDisplayName(p),
+          displayName: getProductDisplayName(displayProduct),
           image: p.image,
           modele: p.modele,
           marque: p.marque,
@@ -543,6 +557,9 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   </td>
                   <td className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 min-w-[280px]">
                     <div className="flex flex-col gap-0.5">
+                      {p.marque && extractMarque(p.marque) && (
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{extractMarque(p.marque)}</span>
+                      )}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {p.referenceUrl ? (
                           <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
@@ -555,7 +572,6 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                         )}
                         <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
                       </div>
-                      {p.modele && <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-normal">Modèle: {extractModele(p.modele)}</span>}
                     </div>
                   </td>
                   <td className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
@@ -595,16 +611,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
   }
 
   return (
-    <BlocTemplate className="hover-elevate" innerClassName="bg-white/95 dark:bg-[#0F0F12] p-5 border border-gray-100 dark:border-white/5 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.45)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div>
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Comparatif des prix</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Tous les produits scrappés, par concessionnaire
-            <span className="ml-2 text-xs text-blue-500">(couleur, concessionnaire, localisation exclus)</span>
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="px-6 pb-5">
+      <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
           {/* Bouton Imprimer */}
           <button
             type="button"
@@ -659,7 +667,6 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
             <Info className="h-4 w-4" />
             Exemple
           </button>
-        </div>
       </div>
 
       {loadingExample && (
@@ -861,6 +868,6 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           </div>,
           document.body
         )}
-    </BlocTemplate>
+    </div>
   )
 }

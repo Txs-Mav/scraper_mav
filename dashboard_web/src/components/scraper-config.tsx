@@ -411,8 +411,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     onScrapeStart?.()
 
     try {
-      // Sauvegarder la config AVANT le scrape pour que la prochaine session ait les bonnes URLs
-      await saveConfig()
+      // Sauvegarder la config AVANT le scrape avec les valeurs locales résolues
+      // (le state React n'est peut-être pas encore à jour si la config a été chargée via fallback)
+      await saveConfig({ referenceUrl: currentRefUrl, urls: otherUrls })
 
       const response = await fetch("/api/scraper/run", {
         method: "POST",
@@ -439,11 +440,14 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     }
   }
 
-  const saveConfig = async () => {
+  const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[] }) => {
     try {
+      const refUrl = overrides?.referenceUrl ?? referenceUrl.trim()
+      const competitorUrls = overrides?.urls
+        ?? urls.map((u, i) => (competitorEnabled[i] ? u : "")).filter(url => url.trim() !== "")
       const configData = {
-        referenceUrl: referenceUrl.trim(),
-        urls: urls.map((u, i) => (competitorEnabled[i] ? u : "")).filter(url => url.trim() !== ""),
+        referenceUrl: refUrl,
+        urls: competitorUrls,
         ignoreColors: ignoreColors,
         inventoryOnly: inventoryOnly,
       }

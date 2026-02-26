@@ -254,12 +254,12 @@ export default function AnalyticsPage() {
     <Layout>
       <div id="analytics-print-area" className="container mx-auto px-4 py-8">
         {/* Header avec titre et actions */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-          <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white leading-tight">
+        <div className="mb-8">
+          <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white leading-tight mb-4">
             Analyse de Prix
           </h1>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => printCurrentPage("Analyse de Prix")}
               className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1F1F23] border border-gray-200 dark:border-[#2B2B30] rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2B2B30] transition-colors"

@@ -40,14 +40,25 @@ interface ScraperDashboardProps {
   initialData?: { products: Product[] }
 }
 
-const categoryLabels: Record<string, string> = {
-  moto: "Moto", motoneige: "Motoneige", motocross: "Motocross",
-  scooter: "Scooter", quad: "Quad", "side-by-side": "Side-by-Side", autre: "Autre"
+const vehicleTypeLabels: Record<string, string> = {
+  moto: "Moto",
+  vtt: "VTT / Quad",
+  "cote-a-cote": "Côte-à-côte",
+  motoneige: "Motoneige",
+  motomarine: "Motomarine",
+  "3-roues": "3 roues",
+  ponton: "Ponton",
+  bateau: "Bateau",
+  "moteur-hors-bord": "Moteur hors-bord",
+  equipement: "Équipement",
+  remorque: "Remorque",
+  "velo-electrique": "Vélo électrique",
+  autre: "Autre",
 }
 
-const disponibiliteLabels: Record<string, string> = {
-  en_stock: "En stock", sur_commande: "Sur commande",
-  epuise: "Épuisé", non_disponible: "Non disponible"
+const competitiviteLabels: Record<string, string> = {
+  competitif: "Compétitif",
+  non_competitif: "Non compétitif",
 }
 
 const etatLabels: Record<string, string> = {
@@ -58,13 +69,91 @@ const sourceCategorieLabels: Record<string, string> = {
   inventaire: "Inventaire", catalogue: "Catalogue", vehicules_occasion: "Inventaire usagé"
 }
 
+const BRAND_DISPLAY: Record<string, string> = {
+  "cfmoto": "CFMOTO",
+  "cf moto": "CFMOTO",
+  "kawasaki": "Kawasaki",
+  "suzuki": "Suzuki",
+  "royal enfield": "Royal Enfield",
+  "arctic cat": "Arctic Cat",
+  "ktm": "KTM",
+  "husqvarna": "Husqvarna",
+  "yamaha": "Yamaha",
+  "honda": "Honda",
+  "polaris": "Polaris",
+  "can-am": "Can-Am",
+  "can am": "Can-Am",
+  "sea-doo": "Sea-Doo",
+  "sea doo": "Sea-Doo",
+  "ski-doo": "Ski-Doo",
+  "ski doo": "Ski-Doo",
+  "brp": "BRP",
+  "triumph": "Triumph",
+  "harley-davidson": "Harley-Davidson",
+  "harley davidson": "Harley-Davidson",
+  "indian": "Indian",
+  "bmw": "BMW",
+  "ducati": "Ducati",
+  "aprilia": "Aprilia",
+  "beta": "Beta",
+  "gasgas": "GasGas",
+  "gas gas": "GasGas",
+  "sherco": "Sherco",
+  "rfn": "RFN",
+  "argo": "Argo",
+  "campagna": "Campagna",
+  "starcraft": "Starcraft",
+  "talaria": "Talaria",
+  "scootterre": "Scootterre",
+  "segway": "Segway",
+  "sur-ron": "Sur-Ron",
+  "surron": "Sur-Ron",
+}
+
+function normalizeMarque(raw: string): string {
+  if (!raw) return ""
+  const key = raw.toLowerCase().replace(/\s+/g, " ").trim()
+  return BRAND_DISPLAY[key] || raw
+}
+
+function inferVehicleType(product: Product): string {
+  const url = (product.sourceUrl || "").toLowerCase()
+  const name = (product.name || "").toLowerCase()
+
+  if (/\/velos?-electriques?/.test(url)) return "velo-electrique"
+  if (/\/moto-trois-roues|\/three-wheel/.test(url)) return "3-roues"
+  if (/\/motocyclette|\/motorcycle|\/motocyclettes-/.test(url)) return "moto"
+  if (/\/vtt[/-]|\/atv[/-]/.test(url)) return "vtt"
+  if (/\/cote-a-cote|\/side-by-side/.test(url)) return "cote-a-cote"
+  if (/\/motoneige|\/snowmobile/.test(url)) return "motoneige"
+  if (/\/motomarine|\/watercraft/.test(url)) return "motomarine"
+  if (/\/ponton|\/pontoon/.test(url)) return "ponton"
+  if (/\/bateau|\/boat/.test(url)) return "bateau"
+  if (/\/moteur-hors-bord|\/outboard/.test(url)) return "moteur-hors-bord"
+  if (/\/equipement-mecanique|\/power-equipment/.test(url)) return "equipement"
+  if (/\/remorque|\/trailer/.test(url)) return "remorque"
+  if (/\/argo\//.test(url) || /\bargo\b/.test(name)) return "vtt"
+
+  if (/\b(?:ninja|z900|versys|klx|klr|vulcan|kx\d|scrambler|duke|ibex|street|bonneville)\b/.test(name)) return "moto"
+  if (/\b(?:brute force|cforce|kfx|outlander|kingquad)\b/.test(name)) return "vtt"
+  if (/\b(?:teryx|mule|uforce|zforce|maverick|ranger|rzr|defender)\b/.test(name)) return "cote-a-cote"
+  if (/\b(?:jet ski|ultra 310)\b/.test(name)) return "motomarine"
+
+  return "autre"
+}
+
+function getCompetitivite(product: Product): string | null {
+  if (product.prixReference == null || !product.prix || product.prix <= 0) return null
+  return product.prix <= product.prixReference ? "competitif" : "non_competitif"
+}
+
 const BRANDS_LOWER = KNOWN_BRANDS.map(b => b.toLowerCase())
 
 function getEffectiveMarque(product: Product): string {
   const raw = product.marque
   if (raw) {
     const cleaned = raw.replace(/^Manufacturier\s*:\s*/i, "").trim()
-    if (cleaned && cleaned.toLowerCase() !== "manufacturier") return cleaned
+    if (cleaned && cleaned.toLowerCase() !== "manufacturier") return normalizeMarque(cleaned)
   }
   const nameLower = (product.name || "").toLowerCase()
   for (let i = 0; i < BRANDS_LOWER.length; i++) {
@@ -74,7 +163,7 @@ function getEffectiveMarque(product: Product): string {
       const after = nameLower[idx + brand.length]
       if (idx === 0 || nameLower[idx - 1] === ' ') {
         if (!after || after === ' ' || after === '-') {
-          return product.name!.substring(idx, idx + brand.length).toUpperCase()
+          return normalizeMarque(brand)
         }
       }
     }
@@ -94,7 +183,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedMarque, setSelectedMarque] = useState<string>("all")
-  const [selectedDisponibilite, setSelectedDisponibilite] = useState<string>("all")
+  const [selectedCompetitivite, setSelectedCompetitivite] = useState<string>("all")
   const [selectedSite, setSelectedSite] = useState<string>("all")
   const [selectedProduct, setSelectedProduct] = useState<string>("all")
   const [selectedEtat, setSelectedEtat] = useState<string>("all")
@@ -259,7 +348,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   }
 
   const uniqueCategories = useMemo(() => {
-    return Array.from(new Set(products.map(p => (p.category ?? p.categorie ?? "").trim()).filter(Boolean))).sort()
+    return Array.from(new Set(products.map(p => inferVehicleType(p)).filter(v => v !== "autre"))).sort()
   }, [products])
 
   const uniqueMarques = useMemo(() => {
@@ -274,8 +363,9 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     return Array.from(new Set(products.map(p => p.name).filter(Boolean))).sort()
   }, [products])
 
-  const uniqueDisponibilites = useMemo(() => {
-    return Array.from(new Set(products.map(p => p.disponibilite).filter(Boolean))).sort()
+  const uniqueCompetitivites = useMemo(() => {
+    const vals = products.map(p => getCompetitivite(p)).filter((v): v is string => !!v)
+    return Array.from(new Set(vals)).sort()
   }, [products])
 
   const uniqueEtats = useMemo(() => {
@@ -347,9 +437,9 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     if (searchQuery) { const q = searchQuery.toLowerCase(); filtered = filtered.filter(p => p.name?.toLowerCase().includes(q) || getEffectiveMarque(p).toLowerCase().includes(q) || p.modele?.toLowerCase().includes(q)) }
     if (selectedSite !== "all") filtered = filtered.filter(p => extractDomain(p.sourceSite || "") === selectedSite)
     if (selectedMarque !== "all") filtered = filtered.filter(p => getEffectiveMarque(p) === selectedMarque)
-    if (selectedCategory !== "all") filtered = filtered.filter(p => (p.category ?? p.categorie ?? "").trim() === selectedCategory)
+    if (selectedCategory !== "all") filtered = filtered.filter(p => inferVehicleType(p) === selectedCategory)
     if (selectedProduct !== "all") filtered = filtered.filter(p => p.name === selectedProduct)
-    if (selectedDisponibilite !== "all") filtered = filtered.filter(p => p.disponibilite === selectedDisponibilite)
+    if (selectedCompetitivite !== "all") filtered = filtered.filter(p => getCompetitivite(p) === selectedCompetitivite)
     if (selectedEtat !== "all") filtered = filtered.filter(p => (p.etat || p.sourceCategorie || '') === selectedEtat)
     if (priceDifferenceFilter !== null) filtered = filtered.filter(p => p.differencePrix != null && p.differencePrix >= priceDifferenceFilter)
     if (activeTab === "compared") filtered = filtered.filter(p => p.prixReference != null)
@@ -364,17 +454,17 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       return sortOrder === "asc" ? (aVal > bVal ? 1 : aVal < bVal ? -1 : 0) : (aVal < bVal ? 1 : aVal > bVal ? -1 : 0)
     })
     return filtered
-  }, [products, searchQuery, selectedSite, selectedCategory, selectedMarque, selectedProduct, selectedDisponibilite, selectedEtat, priceDifferenceFilter, sortBy, sortOrder, activeTab, productsBySite])
+  }, [products, searchQuery, selectedSite, selectedCategory, selectedMarque, selectedProduct, selectedCompetitivite, selectedEtat, priceDifferenceFilter, sortBy, sortOrder, activeTab, productsBySite])
 
   const hasActiveFilters = useMemo(() => {
-    return searchQuery !== "" || selectedSite !== "all" || selectedMarque !== "all" || selectedCategory !== "all" || selectedProduct !== "all" || selectedDisponibilite !== "all" || selectedEtat !== "all" || priceDifferenceFilter !== null
-  }, [searchQuery, selectedSite, selectedMarque, selectedCategory, selectedProduct, selectedDisponibilite, selectedEtat, priceDifferenceFilter])
+    return searchQuery !== "" || selectedSite !== "all" || selectedMarque !== "all" || selectedCategory !== "all" || selectedProduct !== "all" || selectedCompetitivite !== "all" || selectedEtat !== "all" || priceDifferenceFilter !== null
+  }, [searchQuery, selectedSite, selectedMarque, selectedCategory, selectedProduct, selectedCompetitivite, selectedEtat, priceDifferenceFilter])
 
   // Pas d'auto-reset : laisser l'utilisateur voir "0 résultats" et ajuster ses filtres
 
   const resetFilters = () => {
     setSearchQuery(""); setSelectedSite("all"); setSelectedMarque("all"); setSelectedCategory("all")
-    setSelectedProduct("all"); setSelectedDisponibilite("all"); setSelectedEtat("all"); setPriceDifferenceFilter(null)
+    setSelectedProduct("all"); setSelectedCompetitivite("all"); setSelectedEtat("all"); setPriceDifferenceFilter(null)
     setSortBy("prix"); setSortOrder("asc")
   }
 
@@ -546,9 +636,9 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 { label: "Site", value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: "Tous les sites" },
                 { label: "Marque", value: selectedMarque, onChange: setSelectedMarque, options: uniqueMarques, all: "Toutes les marques" },
                 { label: "État", value: selectedEtat, onChange: setSelectedEtat, options: uniqueEtats, all: "Tous les états", labelMap: { ...etatLabels, ...sourceCategorieLabels } as Record<string, string> },
-                { label: "Catégorie", value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: "Toutes", labelMap: categoryLabels },
+                { label: "Catégorie", value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: "Toutes", labelMap: vehicleTypeLabels },
                 { label: "Produit", value: selectedProduct, onChange: setSelectedProduct, options: uniqueProductsNames, all: "Tous les produits" },
-                { label: "Disponibilité", value: selectedDisponibilite, onChange: setSelectedDisponibilite, options: uniqueDisponibilites, all: "Toutes", labelMap: disponibiliteLabels },
+                { label: "Compétitivité", value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: "Tous", labelMap: competitiviteLabels },
               ].map(f => (
                 <div key={f.label}>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">{f.label}</p>
@@ -587,11 +677,11 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       </div>
 
-      {/* ── Vue des produits ── */}
+      {/* ── Produits ── */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
+        <div className="px-6 py-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Vue des produits</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Produits</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">{filteredProducts.length} produit{filteredProducts.length !== 1 ? 's' : ''}</p>
           </div>
 
@@ -634,16 +724,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-            {activeTab === "reference" && "Tous les produits de votre site de référence"}
             {activeTab === "allCompetitors" && "L'ensemble des produits de vos concurrents"}
             {activeTab === "compared" && "Produits trouvés à la fois chez vous et chez un concurrent"}
             {activeTab.startsWith("site-") && `Produits de ${extractDomain(activeTab.replace("site-", ""))}`}
           </p>
         </div>
 
-        <div className="p-0">
-          <PriceComparisonTable products={filteredProducts} competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))} ignoreColors={ignoreColors} />
-        </div>
+        <PriceComparisonTable products={filteredProducts} competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))} ignoreColors={ignoreColors} />
       </div>
 
       {/* ── Modale cache ── */}
