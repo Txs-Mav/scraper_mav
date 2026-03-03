@@ -10,6 +10,8 @@ import {
 } from "lucide-react"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
+import { useLanguage } from "@/contexts/language-context"
+import type { TranslationKey } from "@/lib/translations"
 import { canAccessOrganisation } from "@/lib/plan-restrictions"
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -76,27 +78,27 @@ function formatTime(hour: number, minute: number): string {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, t: (key: TranslationKey) => string, locale: string): string {
   const d = new Date(dateStr)
   const now = new Date()
   const diff = now.getTime() - d.getTime()
   const hours = Math.floor(diff / (1000 * 60 * 60))
   const minutes = Math.floor(diff / (1000 * 60))
 
-  if (minutes < 1) return "À l'instant"
-  if (minutes < 60) return `Il y a ${minutes} min`
-  if (hours < 24) return `Il y a ${hours}h`
+  if (minutes < 1) return t("alerts.now")
+  if (minutes < 60) return t("alerts.minutesAgo").replace("{0}", minutes.toString())
+  if (hours < 24) return t("alerts.hoursAgo").replace("{0}", hours.toString())
 
-  return d.toLocaleDateString('fr-CA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-CA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-function changeTypeLabel(type: string): string {
+function changeTypeLabel(type: string, t: (key: TranslationKey) => string): string {
   switch (type) {
-    case 'price_increase': return 'Hausse de prix'
-    case 'price_decrease': return 'Baisse de prix'
-    case 'new_product': return 'Nouveau produit'
-    case 'removed_product': return 'Produit retiré'
-    case 'stock_change': return 'Stock modifié'
+    case 'price_increase': return t('alerts.priceUp')
+    case 'price_decrease': return t('alerts.priceDown')
+    case 'new_product': return t('alerts.newProduct')
+    case 'removed_product': return t('alerts.productRemoved')
+    case 'stock_change': return t('alerts.stockChanged')
     default: return type
   }
 }
@@ -127,6 +129,7 @@ function changeTypeBg(type: string): string {
 
 export default function AlertePage() {
   const { user, isLoading: authLoading } = useAuth()
+  const { t, locale } = useLanguage()
   const router = useRouter()
   // Fallback : si subscription_source est null mais promo_code_id est défini → promo
   const effectiveSource = user?.subscription_source || (user?.promo_code_id ? 'promo' : null)
@@ -186,7 +189,7 @@ export default function AlertePage() {
         setApiError(
           data?.details ||
           data?.error ||
-          "Impossible de charger les alertes. Vérifiez la configuration Supabase."
+          t("alerts.loadError")
         )
         // Éviter d'afficher un faux 0/0 quand l'API est en erreur
         setAlerts([])
@@ -203,7 +206,7 @@ export default function AlertePage() {
         setApiError(
           data?.details ||
           data?.error ||
-          "Impossible de charger l'historique des alertes."
+          t("alerts.historyError")
         )
         setChanges([])
         setUnreadCount(0)
@@ -240,7 +243,7 @@ export default function AlertePage() {
   const createAlert = async () => {
     setFormError(null)
     if (!selectedCacheId) {
-      setFormError("Sélectionnez un scraper")
+      setFormError(t("alerts.selectScraper"))
       return
     }
 
@@ -259,7 +262,7 @@ export default function AlertePage() {
 
       if (!res.ok) {
         const data = await res.json()
-        setFormError(data.error || 'Erreur lors de la création')
+        setFormError(data.error || t('alerts.createError'))
         return
       }
 
@@ -269,7 +272,7 @@ export default function AlertePage() {
       setScheduleMinute(0)
       await loadData()
     } catch {
-      setFormError("Erreur réseau")
+      setFormError(t("alerts.networkError"))
     } finally {
       setActionLoading(null)
     }
@@ -290,7 +293,7 @@ export default function AlertePage() {
   }
 
   const deleteAlert = async (alertId: string) => {
-    if (!confirm("Supprimer cette alerte ?")) return
+    if (!confirm(t("alerts.deleteConfirm"))) return
     setActionLoading(alertId)
     try {
       await fetch(`/api/alerts/${alertId}`, { method: 'DELETE' })
@@ -377,8 +380,8 @@ export default function AlertePage() {
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <Lock className="h-12 w-12 text-amber-500" />
-          <p className="text-lg font-medium text-gray-900 dark:text-white">Accès réservé aux plans Pro et Ultime</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Redirection vers le dashboard...</p>
+          <p className="text-lg font-medium text-gray-900 dark:text-white">{t("alerts.accessDenied")}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t("alerts.redirecting")}</p>
         </div>
       </Layout>
     )
@@ -388,166 +391,147 @@ export default function AlertePage() {
 
   return (
     <Layout>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-gray-500 dark:text-gray-400">Automatisation</p>
-            <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white leading-tight flex items-center gap-3 mt-2">
-              <Bell className="h-8 w-8" />
-              Alertes
-              {unreadCount > 0 && (
-                <span className="text-sm font-medium bg-red-500 text-white px-2.5 py-0.5 rounded-full">
-                  {unreadCount}
-                </span>
-              )}
-          </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Programmez des scrapings automatiques et recevez les changements par email.
-            </p>
+      <div className="space-y-4">
+        {/* ── KPI Hero + Secondary ── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* Hero — Alertes actives */}
+          <div className="col-span-2 md:col-span-1 relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-cyan-600 dark:from-blue-600 dark:to-cyan-700 shadow-lg shadow-blue-600/10 dark:shadow-blue-900/20">
+            <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-200/70 mb-1.5">{t("alerts.activeAlerts")}</p>
+                <p className="text-4xl font-black text-white tabular-nums leading-none tracking-tight">{activeAlerts}</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/15">
+                <Bell className="h-5 w-5 text-white/80" />
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <button
-              onClick={() => setShowForm(true)}
-              disabled={!canCreate && !loading}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Nouvelle alerte
-            </button>
-            {/* Indicateur de limite */}
+
+          {/* Secondary KPIs */}
+          {[
+            { label: t("alerts.unread"), value: unreadCount, icon: Eye, accent: "text-amber-500 dark:text-amber-400", dot: "bg-amber-400" },
+            { label: t("alerts.upTrend"), value: priceIncreases, icon: TrendingUp, accent: "text-red-500 dark:text-red-400", dot: "bg-red-400", valueColor: "text-red-600 dark:text-red-400" },
+            { label: t("alerts.downTrend"), value: priceDecreases, icon: TrendingDown, accent: "text-green-500 dark:text-green-400", dot: "bg-green-400", valueColor: "text-green-600 dark:text-green-400" },
+          ].map((s, i) => {
+            const Icon = s.icon
+            return (
+              <div key={i} className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5 flex flex-col justify-between group hover:shadow-md hover:-translate-y-0.5 transition-all">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                    <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">{s.label}</p>
+                  </div>
+                  <Icon className={`h-3.5 w-3.5 ${s.accent} opacity-50`} />
+                </div>
+                <p className={`text-3xl font-extrabold leading-none tabular-nums tracking-tight ${'valueColor' in s && s.valueColor ? s.valueColor : 'text-gray-800 dark:text-gray-100'}`}>{s.value}</p>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* ── Header actions ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2">
             {!loading && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100/80 dark:bg-white/[0.04] text-[11px] font-medium text-gray-500 dark:text-gray-400">
                 <ShieldCheck className="h-3 w-3" />
                 {apiError
-                  ? "Configuration alertes requise"
+                  ? t("alerts.configRequired")
                   : isUnlimited
-                  ? `${alertCount} alerte${alertCount > 1 ? 's' : ''} (illimité)`
-                  : `${alertCount} / ${alertLimit} alerte${alertLimit > 1 ? 's' : ''}`
+                  ? `${alertCount} ${t("alerts.unlimited")}`
+                  : `${alertCount} / ${alertLimit}`
                 }
-              </p>
+              </span>
             )}
-            {/* Messages d'info */}
             {!loading && scraperCaches.length === 0 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Créez d&apos;abord un scraper depuis le dashboard.
-              </p>
-            )}
-            {!loading && scraperCaches.length > 0 && availableCaches.length === 0 && !atLimit && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Tous vos scrapers sont déjà surveillés.
-              </p>
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">{t("alerts.createFirst")}</span>
             )}
             {!loading && !apiError && atLimit && !isUnlimited && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Limite de {alertLimit} alerte{alertLimit > 1 ? 's' : ''} atteinte. Passez au plan Ultime pour plus.
-              </p>
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">{t("alerts.limitReached")}</span>
             )}
           </div>
+          <button
+            onClick={() => setShowForm(true)}
+            disabled={!canCreate && !loading}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold shadow-md shadow-blue-600/15 hover:shadow-lg hover:-translate-y-0.5 transition-all active:translate-y-0"
+          >
+            <Plus className="h-4 w-4" />
+            {t("alerts.newAlert")}
+          </button>
         </div>
 
         {apiError && (
-          <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4">
-            <p className="text-sm text-amber-800 dark:text-amber-200 font-medium">
-              Configuration des alertes incomplète.
-            </p>
-            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-              {apiError}
-            </p>
+          <div className="rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-amber-50/80 dark:bg-amber-950/20 px-4 py-3">
+            <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">{t("alerts.configError")}</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{apiError}</p>
           </div>
         )}
 
-        {/* Stats cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Alertes actives</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{activeAlerts}</p>
-          </div>
-          <div className="bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Non lus</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{unreadCount}</p>
-          </div>
-          <div className="bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Hausses de prix</p>
-            <p className="text-2xl font-bold text-red-600 mt-1">{priceIncreases}</p>
-          </div>
-          <div className="bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Baisses de prix</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">{priceDecreases}</p>
-          </div>
-        </div>
-
-        {/* Create alert form */}
+        {/* ── Create alert form ── */}
         {showForm && (
-          <div className="bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Configurer une nouvelle alerte</h2>
+          <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#111114] shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20 p-6">
+            <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight mb-4">{t("alerts.configureNew")}</h2>
 
             {formError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-800 dark:text-red-300">{formError}</p>
+              <div className="mb-4 px-3 py-2.5 rounded-xl bg-red-50/80 dark:bg-red-950/20 border border-red-200/60 dark:border-red-900/40">
+                <p className="text-sm text-red-700 dark:text-red-300 font-medium">{formError}</p>
               </div>
             )}
 
             <div className="space-y-4">
-              {/* Scraper selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  Site à surveiller
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                  {t("alerts.siteToWatch")}
                 </label>
                 {availableCaches.length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {scraperCaches.length === 0
-                      ? "Aucun scraper en cache. Créez d'abord un scraper depuis le dashboard."
-                      : "Tous vos scrapers sont déjà surveillés."}
+                      ? t("alerts.noScraperCache")
+                      : t("alerts.allMonitored")}
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {availableCaches.map((cache) => (
                       <button
                         key={cache.id}
                         type="button"
                         onClick={() => setSelectedCacheId(cache.id)}
-                        className={`p-4 rounded-lg border-2 text-left transition-colors ${
+                        className={`p-3 rounded-xl border-2 text-left transition-all hover:-translate-y-0.5 ${
                           selectedCacheId === cache.id
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                            : "border-gray-200 dark:border-[#2B2B30] hover:border-gray-300 dark:hover:border-[#3B3B40]"
+                            ? "border-blue-500 bg-blue-50/80 dark:bg-blue-900/20 shadow-sm"
+                            : "border-gray-200/60 dark:border-white/[0.06] hover:border-gray-300 dark:hover:border-white/[0.1]"
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <Globe className="h-4 w-4 text-gray-400" />
-                          <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                            {cache.siteName}
-                          </span>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <Globe className="h-3.5 w-3.5 text-blue-500" />
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{cache.siteName}</span>
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{cache.url}</p>
-                        <p className="text-xs text-gray-400 mt-1">{cache.lastProductCount} produits</p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{cache.url}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5 tabular-nums">{cache.lastProductCount} {t("alerts.productAbbr")}</p>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Schedule */}
               <div className="flex flex-wrap gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    Heure du scraping quotidien
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    {t("alerts.timeUtc")}
                   </label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={scheduleHour}
-                      onChange={(e) => setScheduleHour(parseInt(e.target.value))}
-                      className="px-3 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white text-sm"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(UTC)</span>
-                  </div>
+                  <select
+                    value={scheduleHour}
+                    onChange={(e) => setScheduleHour(parseInt(e.target.value))}
+                    className="px-3 py-2 border border-gray-200/60 dark:border-white/[0.06] rounded-xl bg-white/80 dark:bg-white/[0.03] text-gray-900 dark:text-white text-sm tabular-nums"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="flex items-end">
+                <div className="flex items-end pb-0.5">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -555,131 +539,118 @@ export default function AlertePage() {
                       onChange={(e) => setEmailNotif(e.target.checked)}
                       className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Notification par email
-                    </span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">{t("alerts.emailNotif")}</span>
                   </label>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-2 pt-1">
                 <button
                   onClick={createAlert}
                   disabled={!selectedCacheId || actionLoading === 'create'}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
+                  className="inline-flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:from-gray-400 disabled:to-gray-400 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
                 >
-                  {actionLoading === 'create' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Bell className="h-4 w-4" />
-                  )}
-                  Créer l&apos;alerte
+                  {actionLoading === 'create' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+                  {t("alerts.createAlert")}
                 </button>
                 <button
                   onClick={() => { setShowForm(false); setFormError(null) }}
-                  className="px-5 py-2.5 border border-gray-300 dark:border-[#2B2B30] text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-[#2B2B30] transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
                 >
-                  Annuler
+                  {t("cancel")}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Active alerts list */}
+        {/* ── Active alerts list ── */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : alerts.length === 0 ? (
-          <div className="bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-12 text-center">
-            <Bell className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Aucune alerte configurée</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-              Créez votre première alerte pour surveiller automatiquement les changements de prix.
-              Chaque alerte surveille un site et lance un scraping quotidien à l&apos;heure choisie.
-            </p>
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-10 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/20 flex items-center justify-center mb-5">
+                <Bell className="h-7 w-7 text-blue-500 dark:text-blue-400" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t("alerts.noAlerts")}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                {t("alerts.noAlertsDesc")}
+              </p>
+            </div>
           </div>
         ) : (
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-              Sites surveillés ({alerts.length})
-            </h2>
-            <div className="space-y-3">
+          <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#111114] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.04]">
+              <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
+                {t("alerts.monitoredSites")}
+                <span className="ml-2 px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[11px] font-semibold tabular-nums">{alerts.length}</span>
+              </h2>
+            </div>
+            <div className="divide-y divide-gray-100 dark:divide-white/[0.04]">
               {alerts.map((alert) => {
                 const isLoading = actionLoading === alert.id || actionLoading === `check-${alert.id}`
                 const hostname = alert.scraper_cache?.site_url
                   ? getHostname(alert.scraper_cache.site_url)
-                  : 'Site inconnu'
+                  : t("alerts.unknownSite")
 
                 return (
                   <div
                     key={alert.id}
-                    className={`bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-4 transition-opacity ${
-                      !alert.is_active ? 'opacity-60' : ''
+                    className={`px-5 py-3.5 hover:bg-gray-50/50 dark:hover:bg-white/[0.015] transition ${
+                      !alert.is_active ? 'opacity-50' : ''
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <Globe className="h-4 w-4 text-blue-500 shrink-0" />
-                          <span className="font-medium text-gray-900 dark:text-white truncate">{hostname}</span>
+                          <Globe className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{hostname}</span>
                           {!alert.is_active && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">En pause</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 font-medium">{t("alerts.paused")}</span>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="flex flex-wrap items-center gap-2.5 mt-1 text-[11px] text-gray-400 dark:text-gray-500">
                           <span className="flex items-center gap-1">
-                            <Clock className="h-3.5 w-3.5" />
-                            Tous les jours à {formatTime(alert.schedule_hour, alert.schedule_minute)}
+                            <Clock className="h-3 w-3" />
+                            {formatTime(alert.schedule_hour, alert.schedule_minute)}
                           </span>
                           {alert.email_notification ? (
-                            <span className="flex items-center gap-1 text-blue-500">
-                              <Mail className="h-3.5 w-3.5" /> Email activé
-                            </span>
+                            <span className="flex items-center gap-1 text-blue-500"><Mail className="h-3 w-3" /> Email</span>
                           ) : (
-                            <span className="flex items-center gap-1">
-                              <MailX className="h-3.5 w-3.5" /> Email désactivé
-                            </span>
+                            <span className="flex items-center gap-1"><MailX className="h-3 w-3" /> {t("alerts.noEmail")}</span>
                           )}
-                          <span>{alert.scraper_cache?.last_product_count || 0} produits</span>
-                          {alert.last_run_at && (
-                            <span>Dernier scan : {formatDate(alert.last_run_at)}</span>
-                          )}
+                          <span className="tabular-nums">{alert.scraper_cache?.last_product_count || 0} {t("alerts.productAbbr")}</span>
+                          {alert.last_run_at && <span>{formatDate(alert.last_run_at, t, locale)}</span>}
                         </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => runCheck(alert.id)}
                           disabled={isLoading}
-                          title="Vérifier maintenant"
-                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-50"
+                          title={t("alerts.checkNow")}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition disabled:opacity-50"
                         >
-                          {actionLoading === `check-${alert.id}` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
+                          {actionLoading === `check-${alert.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
                         </button>
                         <button
                           onClick={() => toggleAlert(alert.id, alert.is_active)}
                           disabled={isLoading}
-                          title={alert.is_active ? 'Mettre en pause' : 'Réactiver'}
-                          className="p-2 text-gray-500 hover:text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-lg transition-colors disabled:opacity-50"
+                          title={alert.is_active ? t('alerts.pause') : t('alerts.resume')}
+                          className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-lg transition disabled:opacity-50"
                         >
-                          {alert.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                          {alert.is_active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                         </button>
                         <button
                           onClick={() => deleteAlert(alert.id)}
                           disabled={isLoading}
-                          title="Supprimer"
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+                          title={t("delete")}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition disabled:opacity-50"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
@@ -690,130 +661,113 @@ export default function AlertePage() {
           </div>
         )}
 
-        {/* Changes history */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Changements détectés
+        {/* ── Changes history ── */}
+        <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#111114] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.04] flex items-center justify-between">
+            <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
+              {t("alerts.detectedChanges")}
               {unreadCount > 0 && (
-                <span className="ml-2 text-sm font-normal text-gray-500">({unreadCount} non lu{unreadCount > 1 ? 's' : ''})</span>
+                <span className="ml-2 px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[11px] font-semibold tabular-nums">{unreadCount}</span>
               )}
             </h2>
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700 font-semibold"
               >
-                <CheckCheck className="h-3.5 w-3.5" />
-                Tout marquer comme lu
+                <CheckCheck className="h-3 w-3" />
+                {t("alerts.markAllRead")}
               </button>
             )}
           </div>
 
           {changes.length === 0 ? (
-            <div className="bg-white dark:bg-[#1F1F23] rounded-xl border border-gray-200 dark:border-[#2B2B30] p-8 text-center">
-              <AlertTriangle className="h-10 w-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+            <div className="p-8 text-center">
+              <AlertTriangle className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Aucun changement détecté. Les résultats apparaîtront ici après la première vérification automatique.
+                {t("alerts.noChanges")}
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {visibleChanges.map((change) => {
-                const siteUrl = change.scraper_alerts?.scraper_cache?.site_url
-                const hostname = siteUrl ? getHostname(siteUrl) : ''
-                const isPriceChange = change.change_type === 'price_increase' || change.change_type === 'price_decrease'
-                const isIncrease = change.change_type === 'price_increase'
-                const diff = change.details?.diff as number | undefined
+            <div>
+              <div className="divide-y divide-gray-50 dark:divide-white/[0.02]">
+                {visibleChanges.map((change) => {
+                  const siteUrl = change.scraper_alerts?.scraper_cache?.site_url
+                  const hostname = siteUrl ? getHostname(siteUrl) : ''
+                  const isPriceChange = change.change_type === 'price_increase' || change.change_type === 'price_decrease'
+                  const isIncrease = change.change_type === 'price_increase'
+                  const diff = change.details?.diff as number | undefined
 
-                return (
-                  <div
-                    key={change.id}
-                    className={`rounded-lg border p-4 transition-colors ${changeTypeBg(change.change_type)} ${
-                      !change.is_read ? 'ring-1 ring-blue-300 dark:ring-blue-700' : ''
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 shrink-0">
-                        {changeTypeIcon(change.change_type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        {/* Ligne 1 : type + site + badge non-lu */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {changeTypeLabel(change.change_type)}
-                          </span>
-                          {hostname && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">· {hostname}</span>
-                          )}
-                          {/* Badge augmentation / diminution pour les prix */}
-                          {isPriceChange && change.percentage_change !== null && (
-                            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              isIncrease
-                                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                                : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
-                            }`}>
-                              {isIncrease
-                                ? <TrendingUp className="h-3 w-3" />
-                                : <TrendingDown className="h-3 w-3" />}
-                              {isIncrease ? '+' : ''}{change.percentage_change}%
-                              {diff !== undefined && (
-                                <span className="ml-0.5">
-                                  ({diff > 0 ? '+' : ''}{diff.toFixed(2)} $)
-                                </span>
-                              )}
-                            </span>
-                          )}
-                          {!change.is_read && (
-                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                          )}
+                  return (
+                    <div
+                      key={change.id}
+                      className={`px-5 py-3 transition hover:bg-gray-50/50 dark:hover:bg-white/[0.015] ${
+                        !change.is_read ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 shrink-0 p-1.5 rounded-lg bg-gray-100/80 dark:bg-white/[0.04]">
+                          {changeTypeIcon(change.change_type)}
                         </div>
-
-                        {/* Ligne 2 : nom du produit */}
-                        <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5 truncate">
-                          {change.product_name || 'Produit inconnu'}
-                        </p>
-
-                        {/* Ligne 3 : détails prix avant → après + date */}
-                        <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                          {isPriceChange && change.old_value && change.new_value ? (
-                            <span className="flex items-center gap-1.5">
-                              <span className="line-through opacity-70">{change.old_value}</span>
-                              <span className="text-gray-400">→</span>
-                              <span className={`font-semibold ${
-                                isIncrease ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
-                              }`}>
-                                {change.new_value}
-                              </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {changeTypeLabel(change.change_type, t)}
                             </span>
-                          ) : (
-                            <>
-                              {change.old_value && <span>Avant : {change.old_value}</span>}
-                              {change.new_value && (
-                                <span className="font-medium">
-                                  {change.old_value ? 'Après' : 'Prix'} : {change.new_value}
+                            {hostname && (
+                              <span className="text-[11px] text-gray-400 dark:text-gray-500">· {hostname}</span>
+                            )}
+                            {isPriceChange && change.percentage_change !== null && (
+                              <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums ${
+                                isIncrease
+                                  ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
+                                  : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
+                              }`}>
+                                {isIncrease ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+                                {isIncrease ? '+' : ''}{change.percentage_change}%
+                                {diff !== undefined && <span className="ml-0.5">({diff > 0 ? '+' : ''}{diff.toFixed(2)} $)</span>}
+                              </span>
+                            )}
+                            {!change.is_read && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
+                          </div>
+
+                          <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5 truncate font-medium">
+                            {change.product_name || t('alerts.unknownProduct')}
+                          </p>
+
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                            {isPriceChange && change.old_value && change.new_value ? (
+                              <span className="flex items-center gap-1.5 tabular-nums">
+                                <span className="line-through opacity-60">{change.old_value}</span>
+                                <span className="text-gray-300 dark:text-gray-600">→</span>
+                                <span className={`font-semibold ${isIncrease ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                                  {change.new_value}
                                 </span>
-                              )}
-                            </>
-                          )}
-                          <span className="ml-auto shrink-0">{formatDate(change.detected_at)}</span>
+                              </span>
+                            ) : (
+                              <>
+                                {change.old_value && <span>{t("alerts.before")} {change.old_value}</span>}
+                                {change.new_value && <span className="font-medium">{change.old_value ? t("alerts.after") : t("dash.price")} : {change.new_value}</span>}
+                              </>
+                            )}
+                            <span className="ml-auto shrink-0">{formatDate(change.detected_at, t, locale)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
 
-              {/* Show more / less */}
               {changes.length > 10 && (
                 <button
                   onClick={() => setShowAllChanges(!showAllChanges)}
-                  className="w-full py-3 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center justify-center gap-1 transition-colors"
+                  className="w-full py-3 text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 flex items-center justify-center gap-1 border-t border-gray-100 dark:border-white/[0.04] transition"
                 >
                   {showAllChanges ? (
-                    <>Voir moins <ChevronUp className="h-4 w-4" /></>
+                    <>{t("alerts.showLess")} <ChevronUp className="h-3.5 w-3.5" /></>
                   ) : (
-                    <>Voir les {changes.length - 10} autres changements <ChevronDown className="h-4 w-4" /></>
+                    <>{t("alerts.showMore").replace("{0}", String(changes.length - 10))} <ChevronDown className="h-3.5 w-3.5" /></>
                   )}
                 </button>
               )}

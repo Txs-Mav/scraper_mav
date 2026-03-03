@@ -60,7 +60,7 @@ class IntelligentScraper:
             pool_connections=30,
             pool_maxsize=30,
             max_retries=requests.adapters.Retry(total=2, backoff_factor=0.3,
-                                                 status_forcelist=[500, 502, 503, 504])
+                                                status_forcelist=[500, 502, 503, 504])
         )
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
@@ -240,30 +240,38 @@ class IntelligentScraper:
         # Les sélecteurs CSS restent valides — aucun appel AI.
         # S'applique sur cache hit ET cache miss (première exécution).
         # =====================================================
-        success_rate = (len(products) / len(product_urls) * 100) if product_urls else 0
+        success_rate = (len(products) / len(product_urls)
+                        * 100) if product_urls else 0
         if product_urls and len(product_urls) >= 20 and success_rate < 15:
-            print(f"\n⚠️  Taux d'extraction très bas: {len(products)}/{len(product_urls)} ({success_rate:.0f}%)")
-            print(f"   🔄 Rafraîchissement des URLs depuis le listing (sélecteurs conservés, 0 appel AI)...")
+            print(
+                f"\n⚠️  Taux d'extraction très bas: {len(products)}/{len(product_urls)} ({success_rate:.0f}%)")
+            print(
+                f"   🔄 Rafraîchissement des URLs depuis le listing (sélecteurs conservés, 0 appel AI)...")
             refreshed_urls = self._refresh_urls_from_listing(url, categories)
             if refreshed_urls and len(refreshed_urls) > len(products):
-                print(f"   ✅ {len(refreshed_urls)} URLs actuelles trouvées → ré-extraction")
+                print(
+                    f"   ✅ {len(refreshed_urls)} URLs actuelles trouvées → ré-extraction")
                 product_urls = refreshed_urls
                 products = self._extract_products(product_urls, selectors, url)
                 if self.storage:
                     self.storage.update_scraper_urls(url, product_urls)
                     self.storage.refresh_cache_expiry(url)
-                    print(f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
+                    print(
+                        f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
             else:
                 # Fallback: essayer l'ancienne méthode (sitemap)
                 refreshed_urls = self._refresh_urls_only(url, categories)
                 if refreshed_urls and len(refreshed_urls) > len(products) * 2:
-                    print(f"   ✅ {len(refreshed_urls)} URLs (sitemap) → ré-extraction")
+                    print(
+                        f"   ✅ {len(refreshed_urls)} URLs (sitemap) → ré-extraction")
                     product_urls = refreshed_urls
-                    products = self._extract_products(product_urls, selectors, url)
+                    products = self._extract_products(
+                        product_urls, selectors, url)
                     if self.storage:
                         self.storage.update_scraper_urls(url, product_urls)
                         self.storage.refresh_cache_expiry(url)
-                        print(f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
+                        print(
+                            f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
 
         # Post-filtrage inventaire: exclure les produits catalogue si demandé
         # Exception : si le site est entièrement catalogue (pas d'inventaire),
@@ -491,7 +499,8 @@ class IntelligentScraper:
             for lp in listing_paths:
                 test_url = f"{base_domain}{base_path}{lp}"
                 try:
-                    resp = session.get(test_url, timeout=8, allow_redirects=True)
+                    resp = session.get(test_url, timeout=8,
+                                       allow_redirects=True)
                     if resp.status_code == 200 and len(resp.text) > 5000:
                         listing_url = test_url
                         break
@@ -503,7 +512,8 @@ class IntelligentScraper:
                 for lp in listing_paths:
                     test_url = f"{base_domain}{lp}"
                     try:
-                        resp = session.get(test_url, timeout=8, allow_redirects=True)
+                        resp = session.get(
+                            test_url, timeout=8, allow_redirects=True)
                         if resp.status_code == 200 and len(resp.text) > 5000:
                             listing_url = test_url
                             break
@@ -573,7 +583,8 @@ class IntelligentScraper:
                         if parsed.netloc not in full_url:
                             continue
                         url_lower = full_url.lower()
-                        has_marker = any(marker in url_lower for marker in product_markers)
+                        has_marker = any(
+                            marker in url_lower for marker in product_markers)
                         last_seg = url_lower.rstrip('/').split('/')[-1]
                         has_detail = (
                             any(c.isdigit() for c in last_seg) and
@@ -599,7 +610,8 @@ class IntelligentScraper:
                 except Exception:
                     break
 
-            print(f"      ✅ {len(all_product_links)} URLs actuelles depuis le listing ({page_num - 1} pages)")
+            print(
+                f"      ✅ {len(all_product_links)} URLs actuelles depuis le listing ({page_num - 1} pages)")
 
             if not all_product_links:
                 return []
@@ -614,7 +626,8 @@ class IntelligentScraper:
                     or agent._is_valid_product_url(u, inventory_only=True)
                 ]
 
-            result = self._filter_urls_by_category(unique_urls, categories, base_url)
+            result = self._filter_urls_by_category(
+                unique_urls, categories, base_url)
             return result
 
         except Exception as e:
@@ -676,13 +689,62 @@ class IntelligentScraper:
                     and agent._is_valid_product_url(u, inventory_only=True)
                 ]
 
-            result = self._filter_urls_by_category(unique, categories, base_url)
+            result = self._filter_urls_by_category(
+                unique, categories, base_url)
             print(f"      ✅ {len(result)} URLs après filtrage (0 appel AI)")
             return result
 
         except Exception as e:
             print(f"      ❌ Erreur rafraîchissement URLs: {e}")
             return []
+
+    @staticmethod
+    def _is_non_product_url(url: str) -> bool:
+        """Détecte les URLs qui ne sont clairement PAS des pages produit.
+
+        Filtre les pages de blog, service, contact, info, et les pages
+        de listing/catégorie génériques (sans identifiant produit).
+        """
+        import re
+        url_lower = url.lower()
+
+        non_product_segments = [
+            '/blog/', '/blogue/', '/blog$',
+            '/service/', '/service-entretien/', '/services/',
+            '/contact/', '/nous-joindre/',
+            '/team/', '/equipe/', '/a-propos/', '/about/',
+            '/sell-your-', '/vendez-votre-',
+            '/parts/', '/pieces/',
+            '/entretien-et-reparation', '/maintenance-and-repair',
+            '/faq/', '/aide/', '/help/',
+            '/login/', '/connexion/', '/register/', '/inscription/',
+            '/account/', '/compte/',
+            '/cart/', '/panier/', '/checkout/',
+            '/politique/', '/privacy/', '/cgv/', '/mentions-legales/',
+            '/search/', '/recherche/',
+            '/carriere/', '/careers/', '/emploi/',
+            '/snowmobile-maintenance', '/atv-maintenance', '/motorcycle-maintenance',
+            '/termes-et-conditions', '/terms-of-use', '/terms-and-conditions',
+            '/politique-de-confidentialite', '/privacy-policy',
+            '/financement/', '/financing/',
+            '/promotions$',
+        ]
+        for seg in non_product_segments:
+            if seg.endswith('$'):
+                if url_lower.rstrip('/').endswith(seg[:-1]):
+                    return True
+            elif seg in url_lower:
+                return True
+
+        if re.search(r'/promotions?/local-', url_lower):
+            return True
+
+        parsed = urlparse(url)
+        path = parsed.path.rstrip('/')
+        if path in ('', '/fr', '/en', '/fr/', '/en/'):
+            return True
+
+        return False
 
     def _filter_urls_by_category(
         self,
@@ -768,6 +830,12 @@ class IntelligentScraper:
         si le serveur throttle (détecté par un taux de timeout >40%).
         Pour les très gros sites, travaille par batches avec pauses.
         """
+        pre_filter = len(urls)
+        urls = [u for u in urls if not self._is_non_product_url(u)]
+        if len(urls) < pre_filter:
+            print(
+                f"      🚫 {pre_filter - len(urls)} URLs non-produit filtrées (blog, service, etc.)")
+
         all_products = []
         skipped_empty = 0
         total = len(urls)
@@ -784,8 +852,10 @@ class IntelligentScraper:
 
         timeout_count = 0
         success_count = 0
+        error_count = 0
         workers = initial_workers
         processed = 0
+        failed_urls: List[str] = []
 
         remaining_urls = list(urls)
 
@@ -815,14 +885,14 @@ class IntelligentScraper:
                         else:
                             skipped_empty += 1
                             batch_successes += 1
-                            success_count += 1
                     except Exception as e:
                         err_str = str(e).lower()
                         if 'timeout' in err_str or 'timed out' in err_str or 'read timed out' in err_str:
                             batch_timeouts += 1
                             timeout_count += 1
                         else:
-                            skipped_empty += 1
+                            error_count += 1
+                        failed_urls.append(url)
 
                     report_interval = 25 if total > 200 else 50
                     if processed % report_interval == 0 or processed == total:
@@ -838,7 +908,8 @@ class IntelligentScraper:
                 old_workers = workers
                 workers = max(3, workers * 2 // 3)
                 if workers != old_workers:
-                    print(f"      🔽 Throttling ({batch_timeouts} timeouts/{batch_total}) — {old_workers}→{workers} workers")
+                    print(
+                        f"      🔽 Throttling ({batch_timeouts} timeouts/{batch_total}) — {old_workers}→{workers} workers")
                 batch_size = max(workers * 3, 15)
                 if remaining_urls:
                     time.sleep(0.5)
@@ -846,23 +917,126 @@ class IntelligentScraper:
                 old_workers = workers
                 workers = min(initial_workers, workers + 1)
                 if workers != old_workers:
-                    print(f"      🔼 Serveur stable — {old_workers}→{workers} workers")
+                    print(
+                        f"      🔼 Serveur stable — {old_workers}→{workers} workers")
                 batch_size = max(workers * 3, 15)
+
+        # ── Retry des URLs échouées (timeouts + erreurs) ──
+        if failed_urls:
+            retry_count = len(failed_urls)
+            print(
+                f"      🔄 Retry de {retry_count} URLs échouées (3 workers, timeout 12s)...")
+            retry_workers = min(3, retry_count)
+
+            old_timeout = self.session.timeout if hasattr(
+                self.session, 'timeout') else 8
+
+            retried = 0
+            retry_successes = 0
+            with ThreadPoolExecutor(max_workers=retry_workers) as executor:
+                futures = {
+                    executor.submit(self._extract_from_url, url, selectors, base_url): url
+                    for url in failed_urls
+                }
+                for future in as_completed(futures):
+                    retried += 1
+                    try:
+                        products = future.result()
+                        if products:
+                            all_products.extend(products)
+                            retry_successes += 1
+                    except Exception:
+                        pass
+
+            if retry_successes > 0:
+                print(
+                    f"      ✅ Retry: {retry_successes}/{retry_count} URLs récupérées")
+            else:
+                print(
+                    f"      ℹ️  Retry: aucune URL récupérée sur {retry_count}")
 
         elapsed = time.time() - extract_start
         rate = total / elapsed if elapsed > 0 else 0
 
         if skipped_empty > 0:
             pct = (skipped_empty / total * 100) if total else 0
-            print(f"      ⚠️  {skipped_empty}/{total} URLs sans produit ({pct:.0f}%)")
+            print(
+                f"      ⚠️  {skipped_empty}/{total} URLs sans produit ({pct:.0f}%)")
         if timeout_count > 0:
-            print(f"      ⚠️  {timeout_count} timeouts (serveur lent)")
+            print(f"      ⚠️  {timeout_count} timeouts, {error_count} erreurs")
 
         print(f"      ⏱️  Extraction: {elapsed:.1f}s ({rate:.1f} URLs/s)")
 
         unique_products = self._deduplicate_products(all_products)
 
+        pre_name_filter = len(unique_products)
+        unique_products = [
+            p for p in unique_products
+            if not self._is_listing_page_product(p)
+        ]
+        rejected_names = pre_name_filter - len(unique_products)
+        if rejected_names > 0:
+            print(
+                f"      🚫 {rejected_names} produit(s) rejeté(s) (titre de page listing/blog/info)")
+
         return unique_products
+
+    @staticmethod
+    def _is_listing_page_product(product: Dict) -> bool:
+        """Détecte un produit qui est en fait un titre de page listing ou non-produit.
+
+        Patterns détectés:
+        - "New Kawasaki Watercraft | Motoplex Mirabel" (listing page <title>)
+        - "Motocyclette neufs | Dealer" (listing FR)
+        - "Used Trailers in Mirabel | DealerName" (listing page)
+        - "Maintenance and Repairs | DealerName" (service page)
+        - "Politique de confidentialité | Dealer" (info page)
+        """
+        import re
+        name = product.get('name', '')
+        url = product.get('sourceUrl', '')
+
+        if '|' in name:
+            before_pipe = name.split('|')[0].strip()
+
+            if re.search(
+                r'^(?:New|Used|Neuf|Usag[ée]s?|Tous|All)\s+',
+                before_pipe,
+                re.IGNORECASE
+            ):
+                if not re.search(r'\b(19|20)\d{2}\b', before_pipe):
+                    return True
+
+            if re.search(
+                r'\b(?:neufs?|usag.{0,3}e?s?)\s*(?:.{0,3}\s+\w+)?$',
+                before_pipe,
+                re.IGNORECASE
+            ):
+                return True
+
+            non_product_keywords = [
+                r'\b(?:Blog|Blogue|Service|Contact|Team|[EÉ]quipe)\b',
+                r'\b(?:Parts|Accessories|Pi[eè]ces|Accessoires)\b',
+                r'\b(?:Sell|Vendez|Vendre)\b',
+                r'\b(?:Guide|Formation|Entretien|R[ée]paration|Maintenance)\b',
+                r'\b(?:Promotions?|Cr[ée]dit|Dealership|Concessionnaire)\b',
+                r'\b(?:Powersports|Vehicles?|V[ée]hicules?)\s+(?:de\s+sports|motoris|neufs?|usag)',
+                r'\b(?:Meet the|Rencontrez)\b',
+                r'\b(?:No credit|Aucun cr[ée]dit)\b',
+                r'\b(?:Purchase your|Achetez)\b',
+                r'\b(?:Financing|Financement)\b',
+                r'\b(?:Privacy|Confidentialit[ée]|Politique)\b',
+                r'\b(?:Terms|Termes|Conditions)\b',
+                r'\b(?:Offers?|Your\s+\w+\s+Dealer)\b',
+            ]
+            for kw in non_product_keywords:
+                if re.search(kw, before_pipe, re.IGNORECASE):
+                    return True
+
+        if re.search(r'/(?:blog|blogue)/', url, re.IGNORECASE):
+            return True
+
+        return False
 
     @staticmethod
     def _clean_product_name(name: str) -> str:
@@ -886,15 +1060,20 @@ class IntelligentScraper:
             after_words = set(after_dash.lower().split())
             is_product_suffix = bool(after_words & _product_suffixes)
             has_year = bool(re.search(r'\b(19|20)\d{2}\b', after_dash))
-            is_short_code = len(after_dash) <= 6 and re.match(r'^[A-Za-z0-9]+$', after_dash)
+            is_short_code = len(after_dash) <= 6 and re.match(
+                r'^[A-Za-z0-9]+$', after_dash)
             if not is_product_suffix and not has_year and not is_short_code and len(after_dash) <= 50:
                 name = parts[0].strip()
 
         # "d'occasion à [Ville]", "neuf à [Ville]", etc.
-        name = re.sub(r"\s+d['\u2019]?occasion\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
-        name = re.sub(r"\s+[àa]\s+vendre\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
-        name = re.sub(r"\s+(?:neuf|usag[ée]+|usage|occasion)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
-        name = re.sub(r"\s+(?:en\s+vente|disponible)\s+(?:[àa]|chez)\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(
+            r"\s+d['\u2019]?occasion\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(r"\s+[àa]\s+vendre\s+[àa]\s+[\w\s.-]+$",
+                      '', name, flags=re.I)
+        name = re.sub(
+            r"\s+(?:neuf|usag[ée]+|usage|occasion)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(
+            r"\s+(?:en\s+vente|disponible)\s+(?:[àa]|chez)\s+[\w\s.-]+$", '', name, flags=re.I)
 
         return name.strip()
 
@@ -915,7 +1094,7 @@ class IntelligentScraper:
         - etat (neuf, occasion, demonstrateur)
         """
         try:
-            response = self.session.get(url, timeout=8, allow_redirects=True)
+            response = self.session.get(url, timeout=10, allow_redirects=True)
             if response.status_code != 200:
                 return []
 
@@ -924,7 +1103,12 @@ class IntelligentScraper:
                 original_path = urlparse(url).path.rstrip('/')
                 final_path = urlparse(response.url).path.rstrip('/')
                 if original_path != final_path:
-                    return []
+                    orig_segments = [s for s in original_path.split('/') if s]
+                    final_segments = [s for s in final_path.split('/') if s]
+                    if not orig_segments or not final_segments:
+                        return []
+                    if orig_segments[-1] not in final_path:
+                        return []
 
             html = response.text
 
@@ -934,7 +1118,8 @@ class IntelligentScraper:
             # ============================================================
             product_fast = self._extract_jsonld_fast(html, url, base_url)
             if product_fast and product_fast.get('name') and product_fast.get('prix'):
-                product_fast['name'] = self._clean_product_name(product_fast['name'])
+                product_fast['name'] = self._clean_product_name(
+                    product_fast['name'])
                 product_fast['sourceSite'] = base_url
                 product_fast['sourceUrl'] = url
                 self._detect_product_condition(product_fast, url, html)
@@ -951,7 +1136,8 @@ class IntelligentScraper:
                 html, url, base_url, soup=soup)
 
             if product_from_structured and product_from_structured.get('name') and product_from_structured.get('prix'):
-                product_from_structured['name'] = self._clean_product_name(product_from_structured['name'])
+                product_from_structured['name'] = self._clean_product_name(
+                    product_from_structured['name'])
                 product_from_structured['sourceSite'] = base_url
                 product_from_structured['sourceUrl'] = url
                 self._detect_product_condition(
@@ -991,25 +1177,33 @@ class IntelligentScraper:
                     product_from_structured['prix'] = css_price
 
                 if not product_from_structured.get('prix'):
-                    from scraper_ai.templates.scraper_template import extract_price
+                    from scraper_ai.extract import extract_price
                     import re
                     price_patterns = [
-                        r'class="[^"]*(?:price|prix)[^"]*"[^>]*>([^<]+)',
-                        r'itemprop="price"[^>]*content="([^"]+)"',
-                        r'data-price="([^"]+)"',
-                        r'<span[^>]*class="[^"]*amount[^"]*"[^>]*>([^<]+)',
+                        (r'data-price="([^"]+)"', True),
+                        (r'class="[^"]*(?:current[_-]?price|sale[_-]?price)[^"]*"[^>]*>([^<]+)', True),
+                        (r'itemprop="price"[^>]*content="([^"]+)"', True),
+                        (r'class="[^"]*(?:price|prix)[^"]*"[^>]*>([^<]+)', False),
                     ]
-                    for pattern in price_patterns:
+                    for pattern, is_priority in price_patterns:
                         matches = re.findall(pattern, html, re.I)
                         for match_text in matches:
+                            if not is_priority:
+                                ctx_start = html.lower().find(match_text.lower())
+                                if ctx_start > 0:
+                                    ctx = html[max(0, ctx_start - 100)
+                                                   :ctx_start].lower()
+                                    if 'old-price' in ctx or 'list-price' in ctx or 'line-through' in ctx or 'was-price' in ctx:
+                                        continue
                             price = extract_price(match_text)
-                            if price > 0:
+                            if price and price > 0:
                                 product_from_structured['prix'] = price
                                 break
                         if product_from_structured.get('prix'):
                             break
 
-                product_from_structured['name'] = self._clean_product_name(product_from_structured['name'])
+                product_from_structured['name'] = self._clean_product_name(
+                    product_from_structured['name'])
                 product_from_structured['sourceSite'] = base_url
                 product_from_structured['sourceUrl'] = url
                 self._detect_product_condition(
@@ -1070,16 +1264,19 @@ class IntelligentScraper:
                         product['name'] = str(item['name']).strip()
 
                     if not product.get('prix'):
-                        price = item.get('price') or item.get('lowPrice') or item.get('highPrice')
+                        price = item.get('price') or item.get(
+                            'lowPrice') or item.get('highPrice')
                         if not price:
                             offers = item.get('offers', {})
                             if isinstance(offers, list) and offers:
                                 offers = offers[0]
                             if isinstance(offers, dict):
-                                price = offers.get('price') or offers.get('lowPrice') or offers.get('highPrice')
+                                price = offers.get('price') or offers.get(
+                                    'lowPrice') or offers.get('highPrice')
                         if price:
                             try:
-                                product['prix'] = float(str(price).replace(',', '.').replace(' ', ''))
+                                product['prix'] = float(
+                                    str(price).replace(',', '.').replace(' ', ''))
                             except (ValueError, TypeError):
                                 pass
 
@@ -1110,7 +1307,8 @@ class IntelligentScraper:
                                 product['modele'] = str(model).strip()
 
                     if not product.get('annee'):
-                        year = item.get('vehicleModelDate') or item.get('modelYear')
+                        year = item.get(
+                            'vehicleModelDate') or item.get('modelYear')
                         if year:
                             try:
                                 product['annee'] = int(str(year)[:4])
@@ -1346,6 +1544,12 @@ class IntelligentScraper:
                     product['image'] = urljoin(base_url, img_src)
 
         # ========================================================
+        # STRATÉGIE 3.5: Prix courant depuis le HTML (data-price / current-price)
+        # ========================================================
+        if not product.get('prix'):
+            product['prix'] = self._extract_current_price_from_html(soup)
+
+        # ========================================================
         # STRATÉGIE 4: Title de la page (fallback)
         # ========================================================
         if not product.get('name'):
@@ -1366,6 +1570,43 @@ class IntelligentScraper:
             product['sourceSite'] = base_url
 
         return product
+
+    _OLD_PRICE_KW = frozenset([
+        'old', 'was', 'msrp', 'list-price', 'regular', 'compare',
+        'original', 'crossed', 'strikethrough', 'previous', 'ancien', 'barr',
+    ])
+
+    def _extract_current_price_from_html(self, soup) -> float:
+        """Extract the current/sale price from HTML, avoiding old/list prices."""
+        import re
+        from scraper_ai.extract import extract_price
+
+        for el in soup.find_all(attrs={'data-price': True}):
+            dp = el.get('data-price', '').strip()
+            if dp:
+                price = extract_price(dp)
+                if price and price > 0:
+                    return price
+
+        for cls in ['current-price', 'sale-price', 'special-price',
+                    'promo-price', 'discounted-price', 'final-price']:
+            el = soup.find(class_=cls)
+            if el:
+                price = extract_price(el.get_text(strip=True))
+                if price and price > 0:
+                    return price
+
+        for container_cls in ['product-price', 'price-financing', 'price-wrapper',
+                              'price-block', 'price-box']:
+            container = soup.find(class_=re.compile(container_cls, re.I))
+            if not container:
+                continue
+            text = container.get_text(strip=True)
+            price = extract_price(text)
+            if price and price > 0:
+                return price
+
+        return 0.0
 
     def _detect_product_condition(self, product: Dict, url: str, html: str = '', soup=None) -> Dict:
         """Détecte l'état/condition du produit et le sourceCategorie.
@@ -1410,6 +1651,13 @@ class IntelligentScraper:
         # Si déjà défini par données structurées ou selector_detector, ne pas écraser
         if not product.get('etat'):
             etat = None
+
+            # Signal 0: "démo" / "démonstrateur" dans le nom ou le modèle
+            name_and_modele = ' '.join(
+                str(x) for x in [product.get('name'), product.get('modele')] if x
+            ).lower()
+            if re.search(r'\b(démo|démonstrateur|demonstrateur|demo)\b', name_and_modele):
+                etat = 'demonstrateur'
 
             # Signal 1: URLs (sourceUrl du produit + URL de la page)
             # Analyser chaque URL séparément pour des patterns plus précis
@@ -1472,7 +1720,7 @@ class IntelligentScraper:
                 elif re.search(r'\b(neuf|brand new)\b', all_page_text):
                     etat = 'neuf'
 
-            # Signal 3: Kilométrage comme indicateur (> 0 km = probablement usagé)
+            # Signal 3: Kilométrage + URL usagé (usagé seulement si km écrit ET URL indique usagé)
             if not etat:
                 km = product.get('kilometrage', 0) or 0
                 if isinstance(km, str):
@@ -1480,7 +1728,11 @@ class IntelligentScraper:
                         km = int(re.sub(r'[^\d]', '', km))
                     except (ValueError, TypeError):
                         km = 0
-                if km > 0:
+                url_has_usage_s3 = any(
+                    x in all_urls_lower for x in
+                    ['/usage/', '/used/', '/occasion/', 'usag', '-usage-', '-used-',
+                     'd-occasion', 'pre-possede', 'pre-owned', 'vehicules-occasion', 'inventaire-usage'])
+                if km > 0 and url_has_usage_s3:
                     etat = 'occasion'
 
             # Signal 4: Déduire depuis sourceCategorie
@@ -1494,6 +1746,22 @@ class IntelligentScraper:
                     etat = 'neuf'  # Par défaut l'inventaire est considéré neuf
 
             product['etat'] = etat
+
+        # Règle métier: usagé uniquement si kilométrage écrit ET URL contient "usagé"
+        # Sinon le produit est considéré neuf (pas de km ou URL sans usagé → neuf)
+        if product.get('etat') == 'occasion':
+            km_val = product.get('kilometrage', 0) or 0
+            if isinstance(km_val, str):
+                try:
+                    km_val = int(re.sub(r'[^\d]', '', km_val))
+                except (ValueError, TypeError):
+                    km_val = 0
+            url_has_usage = any(
+                x in all_urls_lower for x in
+                ['/usage/', '/used/', '/occasion/', 'usag', '-usage-', '-used-',
+                 'd-occasion', 'pre-possede', 'pre-owned', 'vehicules-occasion', 'inventaire-usage'])
+            if km_val == 0 or not url_has_usage:
+                product['etat'] = 'neuf'
 
         return product
 
@@ -1736,7 +2004,8 @@ class IntelligentScraper:
             product.pop('_inventory_signals', None)
 
         if excluded > 5:
-            print(f"      🚫 ... et {excluded - 5} autres produits catalogue exclus")
+            print(
+                f"      🚫 ... et {excluded - 5} autres produits catalogue exclus")
 
         if excluded > 0:
             print(

@@ -1,6 +1,7 @@
 "use client"
 
 import { TrendingUp, TrendingDown, DollarSign, Lightbulb } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 
 interface Opportunity {
   type: 'augmentation' | 'baisse' | 'marge'
@@ -15,6 +16,8 @@ interface OpportunitiesProps {
 }
 
 export default function OpportunitiesDetection({ opportunites }: OpportunitiesProps) {
+  const { t } = useLanguage()
+
   const getOpportunityIcon = (type: string) => {
     switch (type) {
       case 'augmentation':
@@ -44,13 +47,13 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
   const getOpportunityLabel = (type: string) => {
     switch (type) {
       case 'augmentation':
-        return 'Augmentation possible'
+        return t("ap.increaseLabel")
       case 'baisse':
-        return 'Baisse recommandée'
+        return t("ap.decreaseLabel")
       case 'marge':
-        return 'Marge potentielle'
+        return t("ap.marginLabel")
       default:
-        return 'Opportunité'
+        return t("ap.opportunityLabel")
     }
   }
 
@@ -60,12 +63,12 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
   return (
     <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Détection d'Opportunités
+        {t("ap.opportunityDetection")}
       </h3>
 
       {sortedOpportunities.length === 0 ? (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          Aucune opportunité détectée pour le moment
+          {t("ap.noOpportunities")}
         </div>
       ) : (
         <div className="space-y-4">
@@ -82,7 +85,7 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                       {getOpportunityLabel(opp.type)}
                     </span>
                     <span className="text-xs text-gray-600 dark:text-gray-400">
-                      Impact: {opp.impactPotentiel.toFixed(0)}
+                      {t("ap.impact")} {opp.impactPotentiel.toFixed(0)}
                     </span>
                   </div>
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

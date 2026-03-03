@@ -17,6 +17,7 @@ export interface Product {
   category?: string
   marque?: string
   modele?: string
+  annee?: number | null
   disponibilite?: string
 }
 
@@ -117,6 +118,35 @@ function removeColors(text: string): string {
   return words.filter(w => !COLOR_KEYWORDS.has(w)).join(' ').replace(/\s+/g, ' ').trim()
 }
 
+function extractYearFromText(text: string): number {
+  if (!text) return 0
+  const match = text.match(/\b(19|20)\d{2}\b/)
+  if (match) {
+    const year = parseInt(match[0], 10)
+    if (year >= 1900 && year <= 2100) return year
+  }
+  return 0
+}
+
+function extractYearFromUrl(url: string): number {
+  if (!url) return 0
+  const match = url.match(/[/-](20[12]\d)(?:[/-]|\.html|$)/)
+  if (match) return parseInt(match[1], 10)
+  const fallback = url.match(/[/-](19\d{2}|20\d{2})(?:[/-]|\.html|$)/)
+  if (fallback) {
+    const year = parseInt(fallback[1], 10)
+    if (year >= 1990 && year <= 2100) return year
+  }
+  return 0
+}
+
+function resolveProductYear(p: Product): number {
+  if (p.annee) return p.annee
+  const fromName = extractYearFromText(p.name || '')
+  if (fromName) return fromName
+  return extractYearFromUrl(p.sourceUrl || '')
+}
+
 export function normalizeProductGroupKey(p: Product): string {
   let marque = deepNormalize(
     (p.marque || '')
@@ -126,6 +156,8 @@ export function normalizeProductGroupKey(p: Product): string {
     (p.modele || '')
       .replace(/^(modèle|modele|model)\s*:\s*/i, '')
   )
+
+  const annee = resolveProductYear(p)
 
   if (!marque || !modele) {
     const nameNorm = deepNormalize(p.name || '')
@@ -150,18 +182,17 @@ export function normalizeProductGroupKey(p: Product): string {
       if (detectedBrand) {
         if (!marque) marque = detectedBrand
         if (!modele) {
-          rest = rest.replace(/\b(20[12]\d)\b/g, '').replace(/\s+/g, ' ').trim()
+          rest = rest.replace(/\b(19|20)\d{2}\b/g, '').replace(/\s+/g, ' ').trim()
           modele = rest
         }
       } else if (!modele) {
-        modele = nameNorm.replace(/\b(20[12]\d)\b/g, '').replace(/\s+/g, ' ').trim()
+        modele = nameNorm.replace(/\b(19|20)\d{2}\b/g, '').replace(/\s+/g, ' ').trim()
       }
     }
   }
 
   marque = BRAND_ALIASES[marque] ?? marque
 
-  // Exclure: localisation, concessionnaire, couleurs, préfixes catégorie (côte à côte, etc.)
   const DEALER_NOISE_PATTERNS = [
     /\b(?:en\s+vente|disponible|neuf|usage|usag[ée]|occasion)\s+(?:a|à|chez|au)\b.*/i,
     /\bd['\u2019]?occasion\s+(?:a|à|chez|au)\b.*/i,
@@ -175,15 +206,13 @@ export function normalizeProductGroupKey(p: Product): string {
     modele = modele.replace(pattern, '').trim()
   }
 
-  // Préfixes catégorie (côte à côte, VTT, etc.) — varient selon les sites
   modele = modele.replace(/^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+/i, '').trim()
   modele = modele.replace(/^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+/i, '').trim()
 
-  // Couleurs
   modele = removeColors(modele)
   marque = removeColors(marque)
 
-  return `${marque}|${modele}`
+  return `${marque}|${modele}|${annee || 0}`
 }
 
 // ─── Interfaces ─────────────────────────────────────────────────────
@@ -504,7 +533,7 @@ export function calculateProductAnalysis(
 
       // Compétitif: uniquement parmi les produits qui ONT des concurrents
       const competitif = hasComp
-        ? (prix <= prixMoyenMarche || Math.abs(ecartPourcentage) < 5)
+        ? (prix <= prixMoyenMarche || Math.abs(ecartPourcentage) < 0.5)
         : true // Sans concurrent = neutre, pas "compétitif"
 
       const refProd = g.referenceProducts[0]
@@ -759,7 +788,7 @@ export function calculateCategoryAnalysis(
       if (prixRef > 0 && prixComp > 0) {
         const ecart = ((prixRef - prixComp) / prixRef) * 100
         ecartTotal += ecart
-        if (prixRef <= prixComp || Math.abs(ecart) < 5) {
+        if (prixRef <= prixComp || Math.abs(ecart) < 0.5) {
           compCount++
         } else {
           nonCompCount++
@@ -839,7 +868,7 @@ export function calculateAlerts(
   const groups = buildMatchedProducts(products, referenceSite)
   const now = new Date().toISOString()
 
-  // Compter les produits non compétitifs (écart > 10%)
+  // Compter les produits non compétitifs (écart > 0.5%)
   let produitsNonCompetitifs = 0
   let produitsTresCher = 0
 
@@ -850,7 +879,7 @@ export function calculateAlerts(
     if (prixRef <= 0 || prixComp <= 0) continue
 
     const ecart = ((prixRef - prixComp) / prixRef) * 100
-    if (ecart > 5) produitsNonCompetitifs++
+    if (ecart > 0.5) produitsNonCompetitifs++
     if (ecart > 15) produitsTresCher++
   }
 
@@ -866,7 +895,7 @@ export function calculateAlerts(
   if (produitsNonCompetitifs > produitsTresCher && produitsNonCompetitifs > 0) {
     alertes.push({
       type: 'ecart',
-      message: `${produitsNonCompetitifs} produit(s) non compétitifs (>5% plus chers que la moyenne concurrente)`,
+      message: `${produitsNonCompetitifs} produit(s) non compétitifs (>0.5% plus chers que la moyenne concurrente)`,
       severite: produitsNonCompetitifs > 10 ? 'high' : produitsNonCompetitifs > 5 ? 'medium' : 'low',
       date: now,
     })

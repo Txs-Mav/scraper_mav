@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
+import { useLanguage } from "@/contexts/language-context"
 import { Settings, CreditCard, Loader2, User } from "lucide-react"
-import Image from "next/image"
 import BlocTemplate from "@/components/ui/bloc-template"
 
 export default function ProfilePage() {
   const { user, isLoading, isMainAccount } = useAuth()
+  const { t, locale } = useLanguage()
   const router = useRouter()
 
   useEffect(() => {
@@ -34,27 +35,25 @@ export default function ProfilePage() {
   }
 
   const subscriptionLabels: Record<string, string> = {
-    free: "Gratuit",
+    free: t("plan.free"),
     standard: "Standard",
     premium: "Premium",
   }
 
-  const displayAvatar =
-    user?.avatar_url ||
-    "https://ferf1mheo22r9ira.public.blob.vercel-storage.com/avatar-01-n0x8HFv8EUetf9z6ht0wScJKoTHqf8.png"
+  const displayAvatar = user?.avatar_url || ""
 
   const displayRole =
     user?.role === "owner"
-      ? "Owner"
+      ? t("profile.owner")
       : user?.role === "member"
-      ? "Membre"
-      : "Utilisateur"
+      ? t("profile.member")
+      : t("profile.user")
 
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white leading-tight mb-8">
-          Mon Profil
+          {t("profilePage.title")}
         </h1>
 
         <BlocTemplate innerClassName="p-6 max-w-2xl">
@@ -62,14 +61,8 @@ export default function ProfilePage() {
             <div className="relative">
               <div className="w-24 h-24 rounded-full ring-4 ring-gray-200 dark:ring-[#2B2B30] overflow-hidden bg-gray-100 dark:bg-[#1F1F23] flex items-center justify-center">
                 {displayAvatar ? (
-                  <Image
-                    src={displayAvatar}
-                    alt={user.name}
-                    width={96}
-                    height={96}
-                    className="object-cover"
-                    unoptimized
-                  />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={displayAvatar} alt={user.name} className="w-full h-full object-cover" />
                 ) : (
                   <User className="h-10 w-10 text-gray-400" />
                 )}
@@ -93,7 +86,7 @@ export default function ProfilePage() {
           <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-6 space-y-4">
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Rôle
+                {t("profilePage.role")}
               </label>
               <p className="text-gray-900 dark:text-white mt-1">
                 {displayRole}
@@ -102,21 +95,21 @@ export default function ProfilePage() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Plan d'abonnement
+                {t("profilePage.plan")}
               </label>
               <p className="text-gray-900 dark:text-white mt-1">
                 {user.subscription_plan
                   ? subscriptionLabels[user.subscription_plan] || user.subscription_plan
-                  : "Aucun"}
+                  : t("profilePage.none")}
               </p>
             </div>
 
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Date d'inscription
+                {t("profilePage.registeredAt")}
               </label>
               <p className="text-gray-900 dark:text-white mt-1">
-                {new Date(user.created_at).toLocaleDateString("fr-FR", {
+                {new Date(user.created_at).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-FR', {
                   year: "numeric",
                   month: "long",
                   day: "numeric",
@@ -131,7 +124,7 @@ export default function ProfilePage() {
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-[#1F1F23] rounded-lg text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#2B2B30] transition-colors"
             >
               <Settings className="h-4 w-4" />
-              Paramètres
+              {t("profilePage.settings")}
             </Link>
             {isMainAccount && (
               <Link
@@ -139,7 +132,7 @@ export default function ProfilePage() {
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <CreditCard className="h-4 w-4" />
-                Abonnement
+                {t("profilePage.subscription")}
               </Link>
             )}
           </div>

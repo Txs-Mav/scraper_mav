@@ -1,10 +1,10 @@
 "use client"
 
 import { useMemo } from "react"
-import { LogOut, Settings, CreditCard, LogIn, MoveUpRight } from "lucide-react"
-import Image from "next/image"
+import { LogOut, Settings, CreditCard, LogIn, MoveUpRight, User } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
+import { useLanguage } from "@/contexts/language-context"
 import { useRouter } from "next/navigation"
 
 interface MenuItem {
@@ -25,7 +25,7 @@ interface Profile01Props {
 const defaultProfile = {
   name: "Eugene An",
   role: "Owner",
-  avatar: "https://ferf1mheo22r9ira.public.blob.vercel-storage.com/avatar-02-albo9B0tWOSLXCVZh9rX9KFxXIVWMr.png",
+  avatar: "",
   subscription: "Free Trial",
 } satisfies Required<Profile01Props>
 
@@ -36,36 +36,37 @@ export default function Profile01({
   subscription = defaultProfile.subscription,
 }: Partial<Profile01Props> = defaultProfile) {
   const { user, logout, isMainAccount } = useAuth()
+  const { t } = useLanguage()
   const router = useRouter()
-
-  const subscriptionLabels: Record<string, string> = {
-    standard: "Gratuit",
-    pro: "Pro",
-    ultime: "Ultime",
-  }
 
   const displayName = user?.name || name
   const displayRole = useMemo(() => {
-    if (user?.role === "owner" || user?.role === "main") return "Owner"
-    if (user?.role === "member") return "Membre"
-    return "Utilisateur"
-  }, [user?.role])
+    if (user?.role === "owner" || user?.role === "main") return t("profile.owner")
+    if (user?.role === "member") return t("profile.member")
+    return t("profile.user")
+  }, [user?.role, t])
   const displayAvatar = user?.avatar_url || avatar
-  const displaySubscription = user?.subscription_plan
-    ? subscriptionLabels[user.subscription_plan] || user.subscription_plan
-    : subscription
+  const displaySubscription = useMemo(() => {
+    if (!user?.subscription_plan) return subscription
+    const labels: Record<string, string> = {
+      standard: t("profile.free"),
+      pro: "Pro",
+      ultime: "Ultime",
+    }
+    return labels[user.subscription_plan] || user.subscription_plan
+  }, [user?.subscription_plan, subscription, t])
 
   const menuItems: MenuItem[] = user
     ? [
         {
-          label: "Profile",
+          label: t("profile.title"),
           href: "/dashboard/profile",
           icon: <Settings className="w-4 h-4" />,
         },
         ...(isMainAccount
           ? [
               {
-                label: "Subscription",
+                label: t("profile.subscription"),
                 value: displaySubscription,
                 href: "/dashboard/payments",
                 icon: <CreditCard className="w-4 h-4" />,
@@ -74,7 +75,7 @@ export default function Profile01({
             ]
           : []),
         {
-          label: "Settings",
+          label: t("profile.settings"),
           href: "/dashboard/settings",
           icon: <Settings className="w-4 h-4" />,
         },
@@ -87,18 +88,17 @@ export default function Profile01({
         <div className="relative px-6 pt-12 pb-6">
           <div className="flex items-center gap-4 mb-8">
             <div className="relative shrink-0">
-              <Image
-                src={displayAvatar}
-                alt={displayName}
-                width={72}
-                height={72}
-                className="rounded-full ring-4 ring-white dark:ring-zinc-900 object-cover"
-                unoptimized
-              />
+              <div className="w-[72px] h-[72px] rounded-full ring-4 ring-white dark:ring-zinc-900 overflow-hidden bg-gray-100 dark:bg-zinc-800 flex items-center justify-center">
+                {displayAvatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover" />
+                ) : (
+                  <User className="h-8 w-8 text-gray-400 dark:text-zinc-500" />
+                )}
+              </div>
               <div className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-zinc-900" />
             </div>
 
-            {/* Profile Info */}
             <div className="flex-1">
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{displayName}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">{displayRole}</p>
@@ -129,9 +129,7 @@ export default function Profile01({
               <button
                 type="button"
                 onClick={async () => {
-                  // Rediriger immédiatement
                   window.location.href = "/login"
-                  // Lancer le logout en arrière-plan sans bloquer la redirection
                   logout().catch(() => {})
                   fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
                 }}
@@ -141,7 +139,7 @@ export default function Profile01({
               >
                 <div className="flex items-center gap-2">
                   <LogOut className="w-4 h-4" />
-                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Logout</span>
+                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{t("profile.logout")}</span>
                 </div>
               </button>
             ) : (
@@ -153,7 +151,7 @@ export default function Profile01({
               >
                 <div className="flex items-center gap-2">
                   <LogIn className="w-4 h-4" />
-                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Login</span>
+                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{t("profile.login")}</span>
                 </div>
               </Link>
             )}

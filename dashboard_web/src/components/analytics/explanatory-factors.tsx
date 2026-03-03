@@ -1,6 +1,7 @@
 "use client"
 
 import { Package, Truck, Tag, CheckCircle, XCircle } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 
 interface Product {
   name: string
@@ -19,11 +20,11 @@ interface ExplanatoryFactorsProps {
   produits: Product[]
 }
 
-const disponibiliteLabels: Record<string, string> = {
-  en_stock: "En stock",
-  sur_commande: "Sur commande",
-  epuise: "Épuisé",
-  non_disponible: "Non disponible"
+const disponibiliteKeys: Record<string, string> = {
+  en_stock: "ap.inStock",
+  sur_commande: "ap.onOrder",
+  epuise: "ap.outOfStock",
+  non_disponible: "ap.unavailable"
 }
 
 const disponibiliteIcons: Record<string, any> = {
@@ -41,6 +42,7 @@ const disponibiliteColors: Record<string, string> = {
 }
 
 export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps) {
+  const { t } = useLanguage()
   // Compter les facteurs
   const stats = {
     enStock: produits.filter(p => p.disponibilite === 'en_stock').length,
@@ -52,7 +54,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
   return (
     <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Facteurs Explicatifs
+        {t("ap.factors")}
       </h3>
 
       {/* Statistiques globales */}
@@ -61,7 +63,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
             <span className="text-sm font-semibold text-green-800 dark:text-green-300">
-              En stock
+              {t("ap.inStock")}
             </span>
           </div>
           <div className="text-2xl font-bold text-green-600 dark:text-green-400">
@@ -72,7 +74,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
           <div className="flex items-center gap-2 mb-2">
             <Package className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
             <span className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">
-              Sur commande
+              {t("ap.onOrder")}
             </span>
           </div>
           <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
@@ -83,7 +85,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
           <div className="flex items-center gap-2 mb-2">
             <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
             <span className="text-sm font-semibold text-red-800 dark:text-red-300">
-              Épuisé
+              {t("ap.outOfStock")}
             </span>
           </div>
           <div className="text-2xl font-bold text-red-600 dark:text-red-400">
@@ -94,7 +96,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
           <div className="flex items-center gap-2 mb-2">
             <Tag className="h-5 w-5 text-gray-600 dark:text-gray-400" />
             <span className="text-sm font-semibold text-gray-800 dark:text-gray-300">
-              Total
+              {t("ap.total")}
             </span>
           </div>
           <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -106,7 +108,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
       {/* Liste des produits avec facteurs */}
       <div className="space-y-2">
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-          Détails par produit
+          {t("ap.productDetails")}
         </h4>
         <div className="max-h-96 overflow-y-auto space-y-2">
           {produits.slice(0, 20).map((produit, index) => {
@@ -137,7 +139,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
                     <div className={`flex items-center gap-1 ${disponibiliteColor}`}>
                       <DisponibiliteIcon className="h-4 w-4" />
                       <span className="text-xs">
-                        {disponibiliteLabels[produit.disponibilite] || produit.disponibilite}
+                        {disponibiliteKeys[produit.disponibilite] ? t(disponibiliteKeys[produit.disponibilite] as any) : produit.disponibilite}
                       </span>
                     </div>
                   )}
@@ -151,7 +153,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
         </div>
         {produits.length > 20 && (
           <div className="text-center text-sm text-gray-500 dark:text-gray-400 pt-2">
-            ... et {produits.length - 20} autres produits
+            {t("ap.andMore").replace("{0}", String(produits.length - 20))}
           </div>
         )}
       </div>

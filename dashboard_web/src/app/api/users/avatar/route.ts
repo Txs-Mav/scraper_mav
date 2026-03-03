@@ -73,25 +73,24 @@ export async function POST(request: Request) {
       .from('avatars')
       .getPublicUrl(filePath)
 
-    // Supprimer tous les anciens avatars de l'utilisateur
-    if (user.avatar_url) {
-      try {
-        // Lister tous les fichiers dans le dossier de l'utilisateur
-        const { data: files, error: listError } = await supabase.storage
-          .from('avatars')
-          .list(user.id)
+    // Supprimer les anciens avatars (sauf celui qu'on vient d'uploader)
+    try {
+      const { data: files, error: listError } = await supabase.storage
+        .from('avatars')
+        .list(user.id)
 
-        if (!listError && files && files.length > 0) {
-          // Supprimer tous les fichiers du dossier utilisateur
-          const filesToDelete = files.map(file => `${user.id}/${file.name}`)
+      if (!listError && files && files.length > 0) {
+        const filesToDelete = files
+          .filter(f => f.name !== fileName)
+          .map(f => `${user.id}/${f.name}`)
+        if (filesToDelete.length > 0) {
           await supabase.storage
             .from('avatars')
             .remove(filesToDelete)
         }
-      } catch (error) {
-        // Ignorer les erreurs de suppression de l'ancien fichier
-        console.error('Error deleting old avatar:', error)
       }
+    } catch (error) {
+      console.error('Error deleting old avatar:', error)
     }
 
     // Mettre à jour l'URL dans la table users

@@ -1,6 +1,7 @@
 "use client"
 
 import { ArrowRight, TrendingUp, TrendingDown, Minus, Target } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 
 interface Opportunity {
   type: 'augmentation' | 'baisse' | 'marge'
@@ -15,6 +16,7 @@ interface RecommendationsProps {
 }
 
 export default function ActionableRecommendations({ opportunites }: RecommendationsProps) {
+  const { t } = useLanguage()
   // Trier par impact potentiel
   const sortedRecommendations = [...opportunites]
     .sort((a, b) => b.impactPotentiel - a.impactPotentiel)
@@ -46,10 +48,10 @@ export default function ActionableRecommendations({ opportunites }: Recommendati
     return (
       <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Recommandations Actionnables
+          {t("ap.recommendations")}
         </h3>
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          Aucune recommandation pour le moment
+          {t("ap.noRecommendations")}
         </div>
       </div>
     )
@@ -58,10 +60,10 @@ export default function ActionableRecommendations({ opportunites }: Recommendati
   return (
     <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Recommandations Actionnables
+        {t("ap.recommendations")}
       </h3>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        Recommandations priorisées par impact potentiel
+        {t("ap.recommendationsDesc")}
       </p>
       <div className="space-y-4">
         {sortedRecommendations.map((rec, index) => (
@@ -79,7 +81,7 @@ export default function ActionableRecommendations({ opportunites }: Recommendati
                     {rec.produit}
                   </span>
                   <span className="text-xs text-gray-600 dark:text-gray-400">
-                    Impact: {rec.impactPotentiel.toFixed(0)}
+                    {t("ap.impact")} {rec.impactPotentiel.toFixed(0)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">

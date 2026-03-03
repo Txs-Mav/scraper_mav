@@ -5,12 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation"
 import ScraperDashboard from "@/components/scraper-dashboard"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
-import { Loader2 } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
+import { DashboardSkeleton } from "@/components/skeleton-loader"
 
 function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, isLoading, refreshUser } = useAuth()
+  const { t } = useLanguage()
   const [checkingPendingPlan, setCheckingPendingPlan] = useState(true)
   const hasCheckedRef = useRef(false)
 
@@ -148,14 +150,10 @@ function DashboardContent() {
     }
   }, [searchParams, router])
 
-  // Afficher un loader pendant la vérification du pending_plan
   if (isLoading || checkingPendingPlan) {
     return (
       <Layout>
-        <div className="flex flex-col items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Chargement...</p>
-        </div>
+        <DashboardSkeleton />
       </Layout>
     )
   }
@@ -166,12 +164,12 @@ function DashboardContent() {
     <Layout>
       {restricted === "analytics" && (
         <div className="mb-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm">
-          L’accès à la page <strong>Analytics</strong> est réservé aux plans Pro et Ultime. Passez à un plan payant pour y accéder.
+          {t("dash.restrictedAnalytics")}
         </div>
       )}
       {restricted === "alerte" && (
         <div className="mb-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm">
-          L’accès à la page <strong>Alerte</strong> est réservé aux plans Pro et Ultime. Passez à un plan payant pour y accéder.
+          {t("dash.restrictedAlerts")}
         </div>
       )}
       <ScraperDashboard />
@@ -183,9 +181,7 @@ export default function DashboardPage() {
   return (
     <Suspense fallback={
       <Layout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-pulse">Chargement...</div>
-        </div>
+        <DashboardSkeleton />
       </Layout>
     }>
       <DashboardContent />

@@ -2,6 +2,7 @@
 
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { AlertCircle } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 
 interface PriceEvolutionProps {
   evolutionPrix: Array<{
@@ -46,6 +47,8 @@ function PriceTooltip({ active, payload, label }: any) {
 }
 
 export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: PriceEvolutionProps) {
+  const { t, locale } = useLanguage()
+
   if (evolutionPrix.length === 0) {
     const hasData = scrapesParJour.length > 0
 
@@ -53,10 +56,10 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
       <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Activité de scraping
+            {t("ap.scrapingActivity")}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-            Nombre de scrapes effectués par jour
+            {t("ap.scrapesPerDay")}
           </p>
         </div>
 
@@ -77,7 +80,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
                 tickLine={false}
                 tickFormatter={(v: string) => {
                   const d = new Date(v)
-                  return d.toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' })
+                  return d.toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-CA', { day: 'numeric', month: 'short' })
                 }}
               />
               <YAxis
@@ -101,7 +104,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
           </ResponsiveContainer>
         ) : (
           <div className="text-center py-12 text-gray-500 text-sm">
-            Aucune donnée d'activité disponible
+            {t("ap.noActivityData")}
           </div>
         )}
       </div>
@@ -109,9 +112,9 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
   }
 
   const chartData = evolutionPrix.map(item => ({
-    date: new Date(item.date).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' }),
-    'Votre prix': item.prixReference,
-    'Moy. concurrents': item.prixMoyenMarche,
+    date: new Date(item.date).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-CA', { month: 'short', day: 'numeric' }),
+    [t("ap.yourPrice")]: item.prixReference,
+    [t("ap.avgCompetitors")]: item.prixMoyenMarche,
     ...Object.entries(item.prixConcurrents).reduce((acc, [site, prix]) => {
       acc[site.substring(0, 20)] = prix
       return acc
@@ -126,7 +129,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
     if (variation < -10) {
       anomalies.push({
         date: curr.date,
-        message: `Baisse de ${Math.abs(variation).toFixed(1)}% le ${new Date(curr.date).toLocaleDateString('fr-FR')}`
+        message: `Baisse de ${Math.abs(variation).toFixed(1)}% le ${new Date(curr.date).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-CA')}`
       })
     }
   }
@@ -135,10 +138,10 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
     <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Évolution des prix
+          {t("ap.priceEvolution")}
         </h3>
         <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-          Suivi de vos prix et de la moyenne concurrente dans le temps
+          {t("ap.priceEvolutionDesc")}
         </p>
       </div>
 
@@ -176,7 +179,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
           />
           <Line
             type="monotone"
-            dataKey="Votre prix"
+            dataKey={t("ap.yourPrice")}
             stroke="#3B82F6"
             strokeWidth={2.5}
             dot={{ fill: '#3B82F6', r: 3, strokeWidth: 0 }}
@@ -184,7 +187,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
           />
           <Line
             type="monotone"
-            dataKey="Moy. concurrents"
+            dataKey={t("ap.avgCompetitors")}
             stroke="#34D399"
             strokeWidth={2}
             strokeDasharray="6 3"

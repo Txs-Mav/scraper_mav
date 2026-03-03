@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo, useState, useEffect, useCallback } from "react"
-import { Info, X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle } from "lucide-react"
+import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { deepNormalize, normalizeProductGroupKey } from "@/lib/analytics-calculations"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
@@ -156,35 +157,67 @@ function cleanForMatching(text: string): string {
   return removeColors(cleaned)
 }
 
+function extractYearFromText(text: string): number {
+  if (!text) return 0
+  const match = text.match(/\b(19|20)\d{2}\b/)
+  if (match) {
+    const year = parseInt(match[0], 10)
+    if (year >= 1900 && year <= 2100) return year
+  }
+  return 0
+}
+
+function extractYearFromUrl(url: string): number {
+  if (!url) return 0
+  const match = url.match(/[/-](20[12]\d)(?:[/-]|\.html|$)/)
+  if (match) return parseInt(match[1], 10)
+  const fallback = url.match(/[/-](19\d{2}|20\d{2})(?:[/-]|\.html|$)/)
+  if (fallback) {
+    const year = parseInt(fallback[1], 10)
+    if (year >= 1990 && year <= 2100) return year
+  }
+  return 0
+}
+
+function resolveProductYear(product: Product): number {
+  if (product.annee) return product.annee
+  const fromName = extractYearFromText(product.name || '')
+  if (fromName) return fromName
+  return extractYearFromUrl(product.sourceUrl || '')
+}
+
 function getProductComparisonKey(product: Product, _ignoreColors?: boolean): string {
   let marque = deepNormalize(extractMarque(product.marque))
   let modele = deepNormalize(extractModele(product.modele))
+  const annee = resolveProductYear(product)
 
   modele = cleanForMatching(modele)
   marque = removeColors(marque)
 
-  if (marque && modele) return `${marque}|${modele}`
+  if (marque && modele) return `${marque}|${modele}|${annee || 0}`
 
   const displayName = getProductDisplayName(product)
-  return cleanForMatching(deepNormalize(displayName))
+  const baseKey = cleanForMatching(deepNormalize(displayName))
+  return `${baseKey}|${annee || 0}`
 }
 
-const etatConfig: Record<string, { label: string; className: string }> = {
-  neuf: { label: "Neuf", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  occasion: { label: "Usagé", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  demonstrateur: { label: "Démo", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
-  inventaire: { label: "Inventaire", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  catalogue: { label: "Catalogue", className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
-  vehicules_occasion: { label: "Usagé", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+const etatConfig: Record<string, { labelKey: string; className: string }> = {
+  neuf: { labelKey: "etat.new", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  occasion: { labelKey: "etat.used", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+  demonstrateur: { labelKey: "etat.demo", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  inventaire: { labelKey: "etat.inventory", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  catalogue: { labelKey: "etat.catalog", className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+  vehicules_occasion: { labelKey: "etat.used", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
 }
 
 function EtatBadge({ etat, sourceCategorie }: { etat?: string; sourceCategorie?: string }) {
+  const { t } = useLanguage()
   const key = etat || sourceCategorie || ''
   const config = etatConfig[key]
   if (!config) return null
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ${config.className}`}>
-      {config.label}
+      {t(config.labelKey as any)}
     </span>
   )
 }
@@ -210,8 +243,7 @@ function PriceCell({ price, delta }: { price: number | null; delta: number | nul
 }
 
 export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false }: PriceComparisonTableProps) {
-  const [showExample, setShowExample] = useState(false)
-  const [loadingExample, setLoadingExample] = useState(false)
+  const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
   const [shareEmails, setShareEmails] = useState("")
@@ -231,65 +263,6 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       label: hostnameFromUrl(url),
     }))
   }, [competitorsUrls])
-
-  // Jeu de données exemple pour la modale
-  const exampleProducts: Product[] = [
-    {
-      name: "Yamaha MT-07 2025",
-      modele: "MT-07",
-      prixReference: 9499,
-      image: "",
-      competitors: {
-        "Moto Performance": 9699,
-        "PowerSport Laval": 9299,
-        "Monette Sports": 9599,
-      },
-    },
-    {
-      name: "Can-Am Outlander 700 2025",
-      modele: "Outlander 700",
-      prixReference: 12499,
-      image: "",
-      competitors: {
-        "Moto Performance": 12999,
-        "PowerSport Laval": 12199,
-        "Monette Sports": 12749,
-      },
-    },
-    {
-      name: "Ski-Doo MXZ 600R 2025",
-      modele: "MXZ 600R",
-      prixReference: 15299,
-      image: "",
-      competitors: {
-        "Moto Performance": 14899,
-        "PowerSport Laval": 15499,
-        "Monette Sports": 15199,
-      },
-    },
-    {
-      name: "Kawasaki KX250 2025",
-      modele: "KX250",
-      prixReference: 10199,
-      image: "",
-      competitors: {
-        "Moto Performance": 10399,
-        "PowerSport Laval": 9999,
-        "Monette Sports": 10199,
-      },
-    },
-    {
-      name: "Sea-Doo Spark Trixx 2025",
-      modele: "Spark Trixx",
-      prixReference: 8999,
-      image: "",
-      competitors: {
-        "Moto Performance": 9299,
-        "PowerSport Laval": 8799,
-        "Monette Sports": 9099,
-      },
-    },
-  ]
 
   const tableData = useMemo(() => {
     // ── Regrouper les produits comparés par clé normalisée ──
@@ -406,36 +379,10 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     })
   }, [products, competitors])
 
-  const exampleData = useMemo(() => {
-    return exampleProducts.map(p => {
-      const reference = p.prixReference ?? p.prix ?? null
-      const compKeys = Object.keys(p.competitors || {})
-      const prices = compKeys.map(k => {
-        const price = p.competitors?.[k] ?? null
-        const delta = reference !== null && price !== null ? price - reference : null
-        return { dealer: k, price, delta }
-      })
-      return {
-        ...p,
-        displayName: p.name,
-        etat: undefined as string | undefined,
-        sourceCategorie: undefined as string | undefined,
-        marque: undefined as string | undefined,
-        reference,
-        prices,
-      }
-    })
-  }, [])
-
-  const exampleCompetitors = useMemo(() => {
-    const labels = Array.from(new Set(exampleProducts.flatMap(p => Object.keys(p.competitors || {}))))
-    return labels.map(id => ({ id, label: id }))
-  }, [])
-
   // ── Actions d'export ──
 
   const handlePrint = useCallback(() => {
-    printSection("price-comparison-table", "Comparatif des prix")
+    printSection("price-comparison-table", t("table.priceComparison"))
   }, [])
 
   const handleExportExcel = useCallback(() => {
@@ -450,7 +397,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       .filter(Boolean)
 
     if (emails.length === 0) {
-      setShareResult({ success: false, message: "Veuillez entrer au moins une adresse courriel." })
+      setShareResult({ success: false, message: t("table.emailRequired") })
       return
     }
 
@@ -468,7 +415,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
 
     setShareSending(false)
     if (result.success) {
-      setShareResult({ success: true, message: `Courriel envoyé à ${emails.length} destinataire${emails.length > 1 ? "s" : ""} avec succès!` })
+      setShareResult({ success: true, message: t("table.emailSuccess") })
       // Fermer la modale après 2.5s
       setTimeout(() => {
         setShowShareModal(false)
@@ -478,7 +425,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         setShareSubject("")
       }, 2500)
     } else {
-      setShareResult({ success: false, message: result.error || "Erreur lors de l'envoi" })
+      setShareResult({ success: false, message: result.error || t("table.emailError") })
     }
   }, [shareEmails, shareSubject, shareMessage, tableData, competitors])
 
@@ -506,13 +453,13 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
             <thead>
               <tr className="sticky top-0 bg-white dark:bg-[#0F0F12]">
                 <th className="sticky left-0 bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
-                  Image
+                  {t("table.image")}
                 </th>
                 <th className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
-                  Produit
+                  {t("table.product")}
                 </th>
                 <th className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
-                  Prix réf
+                  {t("table.refPrice")}
                 </th>
                 {cols.map(c => (
                   <th key={c.id} className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
@@ -525,7 +472,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               {data.length === 0 && (
                 <tr>
                   <td colSpan={3 + cols.length} className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                    {emptyMessage || "Aucun produit à afficher."}
+                    {emptyMessage || t("table.noProducts")}
                   </td>
                 </tr>
               )}
@@ -612,32 +559,30 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
 
   return (
     <div className="px-6 pb-5">
-      <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
-          {/* Bouton Imprimer */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={tableData.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] px-3 py-2 text-xs font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-[#1a1b1f] transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Imprimer le tableau"
-          >
-            <Printer className="h-4 w-4" />
-            Imprimer
-          </button>
-
-          {/* Bouton Export Excel */}
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            disabled={tableData.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] px-3 py-2 text-xs font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-[#1a1b1f] transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Exporter en Excel"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            Excel
-          </button>
-
-          {/* Bouton Partager par courriel */}
+      <div className="flex items-center gap-1.5 mb-4">
+          <div className="flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-[#1F1F23] bg-gray-50/50 dark:bg-white/[0.02] p-1">
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={tableData.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              title={t("table.print")}
+            >
+              <Printer className="h-3.5 w-3.5" />
+              {t("table.print")}
+            </button>
+            <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={tableData.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              title={t("table.excel")}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Excel
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -645,82 +590,18 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               setShowShareModal(true)
             }}
             disabled={tableData.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border border-violet-200 dark:border-violet-800/40 bg-violet-50 dark:bg-violet-900/20 px-3 py-2 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Partager par courriel"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-violet-500/15 hover:shadow-md hover:shadow-violet-500/20 hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            title={t("table.shareByEmail")}
           >
-            <Mail className="h-4 w-4" />
-            Partager
+            <Mail className="h-3.5 w-3.5" />
+            {t("table.share")}
           </button>
-
-          {/* Bouton Exemple */}
-          <button
-            type="button"
-            onClick={() => {
-              setLoadingExample(true)
-              setTimeout(() => {
-                setLoadingExample(false)
-                setShowExample(true)
-              }, 300)
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] px-3 py-2 text-xs font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-[#1a1b1f] transition"
-          >
-            <Info className="h-4 w-4" />
-            Exemple
-          </button>
+          <div className="flex-1" />
       </div>
-
-      {loadingExample && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white px-4 py-3 rounded-xl shadow-lg border border-gray-100 dark:border-[#1F1F23] flex items-center gap-3">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-            <span className="text-sm font-medium">Chargement de l&apos;exemple…</span>
-          </div>
-        </div>
-      )}
 
       <div id="price-comparison-table">
-        {renderTable(tableData, "Aucun produit scrappé pour le moment.")}
+        {renderTable(tableData, t("table.noProductsYet"))}
       </div>
-
-      {/* Modale Exemple */}
-      {mounted &&
-        showExample &&
-        createPortal(
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center px-4" onClick={e => { if (e.target === e.currentTarget) setShowExample(false) }}>
-            <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-6xl w-full p-6 shadow-2xl border border-gray-200 dark:border-gray-800 max-h-[85vh] flex flex-col">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h4 className="text-xl font-bold text-gray-900 dark:text-white">Comparatif des prix</h4>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Voici un aperçu de ce que vous verrez après un scraping. Les écarts de prix sont calculés automatiquement.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowExample(false)}
-                  aria-label="Fermer"
-                  className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 mb-4 text-xs">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 font-medium">Vert = moins cher que vous</span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 font-medium">Rouge = plus cher que vous</span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400 font-medium">Gris = prix identique</span>
-              </div>
-              <div className="overflow-auto flex-1">
-                {renderTable(
-                  exampleData.map(p => ({
-                    ...p,
-                    prices: p.prices.map(pe => ({ ...pe })),
-                  })),
-                  "Exemple vide",
-                  exampleCompetitors
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
 
       {/* Modale Partage par courriel */}
       {mounted &&
@@ -743,7 +624,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     <Mail className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                   </div>
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Partager par courriel</h4>
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{t("table.shareByEmail")}</h4>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {tableData.length} produit{tableData.length > 1 ? "s" : ""} &middot; {competitors.length} concurrent{competitors.length > 1 ? "s" : ""}
                     </p>
@@ -769,7 +650,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                 {/* Destinataires */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Destinataires *
+                    {t("table.recipients")}
                   </label>
                   <input
                     type="text"
@@ -779,19 +660,19 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
                     disabled={shareSending}
                   />
-                  <p className="text-xs text-gray-400">Séparez les adresses par des virgules. Max 10.</p>
+                  <p className="text-xs text-gray-400">{t("table.recipientsHint")}</p>
                 </div>
 
                 {/* Sujet personnalisé */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Sujet (optionnel)
+                    {t("table.subject")}
                   </label>
                   <input
                     type="text"
                     value={shareSubject}
                     onChange={e => setShareSubject(e.target.value)}
-                    placeholder="Comparatif des prix – Go-Data"
+                    placeholder={t("table.subjectDefault")}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
                     disabled={shareSending}
                   />
@@ -800,12 +681,12 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                 {/* Message d'accompagnement */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Message (optionnel)
+                    {t("table.message")}
                   </label>
                   <textarea
                     value={shareMessage}
                     onChange={e => setShareMessage(e.target.value)}
-                    placeholder="Voici le comparatif des prix de cette semaine..."
+                    placeholder={t("table.messageDefault")}
                     rows={3}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 resize-none"
                     disabled={shareSending}
@@ -843,7 +724,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   disabled={shareSending}
                   className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f] transition disabled:opacity-50"
                 >
-                  Annuler
+                  {t("cancel")}
                 </button>
                 <button
                   type="button"
@@ -854,12 +735,12 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   {shareSending ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Envoi en cours...
+                      {t("table.sending")}
                     </>
                   ) : (
                     <>
                       <Send className="h-4 w-4" />
-                      Envoyer
+                      {t("table.send")}
                     </>
                   )}
                 </button>

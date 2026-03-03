@@ -1,6 +1,7 @@
 "use client"
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
+import { useLanguage } from "@/contexts/language-context"
 
 interface Product {
   name: string
@@ -36,6 +37,7 @@ const formatPrice = (v: number) =>
   v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k$` : `${v.toFixed(0)}$`
 
 function ProductGapTooltip({ active, payload }: any) {
+  const { t } = useLanguage()
   if (!active || !payload?.[0]) return null
   const d = payload[0].payload
   return (
@@ -43,20 +45,20 @@ function ProductGapTooltip({ active, payload }: any) {
       <p className="text-sm font-medium text-white mb-2 leading-snug">{d.fullName}</p>
       <div className="space-y-1 text-xs">
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Votre prix</span>
+          <span className="text-gray-400">{t("ap.yourPrice")}</span>
           <span className="font-semibold text-white">{d.prix.toLocaleString('fr-CA')}$</span>
         </div>
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Moy. concurrents</span>
+          <span className="text-gray-400">{t("ap.avgCompetitors")}</span>
           <span className="font-semibold text-white">{d.marche.toLocaleString('fr-CA')}$</span>
         </div>
         <div className="h-px bg-[#2B2B30] my-1" />
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Écart</span>
+          <span className="text-gray-400">{t("ap.gap")}</span>
           <span className={`font-bold ${d.ecart < 0 ? 'text-emerald-400' : d.ecart > 0 ? 'text-red-400' : 'text-gray-400'}`}>
             {d.ecart > 0 ? '+' : ''}{d.ecart}%
-            {d.ecart < -2 && ' — moins cher'}
-            {d.ecart > 2 && ' — plus cher'}
+            {d.ecart < -2 && ` — ${t("ap.cheaper")}`}
+            {d.ecart > 2 && ` — ${t("ap.moreExpensiveShort")}`}
           </span>
         </div>
       </div>
@@ -65,6 +67,7 @@ function ProductGapTooltip({ active, payload }: any) {
 }
 
 function RetailerGapTooltip({ active, payload }: any) {
+  const { t } = useLanguage()
   if (!active || !payload?.[0]) return null
   const d = payload[0].payload
   return (
@@ -72,17 +75,17 @@ function RetailerGapTooltip({ active, payload }: any) {
       <p className="text-sm font-medium text-white mb-1">{d.fullSite}</p>
       <div className="space-y-1 text-xs">
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Agressivité</span>
+          <span className="text-gray-400">{t("ap.aggressiveness")}</span>
           <span className={`font-bold ${d.agressivite > 0 ? 'text-emerald-400' : d.agressivite < 0 ? 'text-red-400' : 'text-gray-400'}`}>
             {d.agressivite > 0 ? '+' : ''}{d.agressivite.toFixed(1)}%
           </span>
         </div>
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Prix moyen</span>
+          <span className="text-gray-400">{t("ap.avgPriceStat")}</span>
           <span className="font-semibold text-white">{formatPrice(d.prixMoyen)}</span>
         </div>
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Produits</span>
+          <span className="text-gray-400">{t("ap.products")}</span>
           <span className="text-white">{d.nombreProduits}</span>
         </div>
       </div>
@@ -91,6 +94,7 @@ function RetailerGapTooltip({ active, payload }: any) {
 }
 
 export default function Visualizations({ produits, detailleurs }: VisualizationsProps) {
+  const { t } = useLanguage()
   // --- Chart 1: Product price gap (diverging horizontal bars) ---
   const productGapData = produits
     .filter(p => p.hasCompetitor && p.prix > 0 && Math.abs(p.ecartPourcentage) > 0.1)
@@ -127,10 +131,10 @@ export default function Visualizations({ produits, detailleurs }: Visualizations
       <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Écart de prix par produit
+            {t("ap.priceGapByProduct")}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-            Votre prix comparé à la moyenne des concurrents
+            {t("ap.priceGapByProductDesc")}
           </p>
         </div>
 
@@ -176,21 +180,21 @@ export default function Visualizations({ produits, detailleurs }: Visualizations
             <div className="mt-4 flex items-center justify-center gap-6 text-xs text-gray-500 dark:text-gray-500">
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
-                <span>Moins cher</span>
+                <span>{t("ap.cheaper")}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm bg-red-400" />
-                <span>Plus cher</span>
+                <span>{t("ap.moreExpensiveShort")}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm bg-gray-500" />
-                <span>Similaire</span>
+                <span>{t("ap.similar")}</span>
               </div>
             </div>
           </>
         ) : (
           <div className="text-center py-12 text-gray-500 dark:text-gray-500 text-sm">
-            Aucune comparaison de prix disponible
+            {t("ap.noPriceComparison")}
           </div>
         )}
       </div>
@@ -199,10 +203,10 @@ export default function Visualizations({ produits, detailleurs }: Visualizations
       <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Compétitivité par détaillant
+            {t("ap.competByRetailer")}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-            Écart moyen par rapport à votre prix de référence
+            {t("ap.competByRetailerDesc")}
           </p>
         </div>
 
@@ -247,17 +251,17 @@ export default function Visualizations({ produits, detailleurs }: Visualizations
             <div className="mt-4 flex items-center justify-center gap-6 text-xs text-gray-500 dark:text-gray-500">
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
-                <span>Moins cher que vous</span>
+                <span>{t("ap.cheaperLegend")}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm bg-red-400" />
-                <span>Plus cher que vous</span>
+                <span>{t("ap.expensiveLegend")}</span>
               </div>
             </div>
           </>
         ) : (
           <div className="text-center py-12 text-gray-500 dark:text-gray-500 text-sm">
-            Aucune donnée de détaillant disponible
+            {t("ap.noRetailerData")}
           </div>
         )}
       </div>

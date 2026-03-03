@@ -2,6 +2,10 @@
 
 import type { ReactNode } from "react"
 import TopNav from "./top-nav"
+import CommandSearch from "../command-search"
+import OnboardingChecklist from "../onboarding-checklist"
+import HelpWidget from "../help-widget"
+import Breadcrumbs from "../breadcrumbs"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 
@@ -27,8 +31,14 @@ export default function Layout({ children }: LayoutProps) {
         <TopNav />
       </header>
       <main className="flex-1 overflow-auto p-6 background-template">
-        <div className="w-full max-w-6xl mx-auto">{children}</div>
+        <div className="w-full max-w-6xl mx-auto">
+          <Breadcrumbs />
+          {children}
+        </div>
       </main>
+      <CommandSearch />
+      <OnboardingChecklist />
+      <HelpWidget />
     </div>
   )
 }

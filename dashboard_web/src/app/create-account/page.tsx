@@ -1,63 +1,33 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, Suspense, useMemo } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
-import { Loader2, Eye, EyeOff } from "lucide-react"
+import { useLanguage, LanguageToggle } from "@/contexts/language-context"
+import {
+  Loader2, Eye, EyeOff, ArrowRight, Check, Sparkles, Zap, Crown,
+  Tag, Shield, Mail,
+} from "lucide-react"
+import Image from "next/image"
+import type { TranslationKey } from "@/lib/translations"
 
-import { Sparkles, Zap, Crown } from "lucide-react"
+function getPasswordStrength(pw: string, t: (key: TranslationKey) => string) {
+  if (!pw) return { score: 0, label: "", color: "" }
+  let s = 0
+  if (pw.length >= 6) s++
+  if (pw.length >= 10) s++
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++
+  if (/\d/.test(pw)) s++
+  if (/[^A-Za-z0-9]/.test(pw)) s++
+  if (s <= 1) return { score: 1, label: t("pw.weak"), color: "bg-red-500" }
+  if (s <= 2) return { score: 2, label: t("pw.medium"), color: "bg-orange-500" }
+  if (s <= 3) return { score: 3, label: t("pw.good"), color: "bg-yellow-500" }
+  if (s <= 4) return { score: 4, label: t("pw.strong"), color: "bg-emerald-500" }
+  return { score: 5, label: t("pw.excellent"), color: "bg-emerald-600" }
+}
 
-const PLANS = [
-  {
-    id: "standard",
-    name: "Gratuit",
-    description: "Idéal pour tester et découvrir les fonctionnalités de base",
-    price: "0 $ / mois",
-    icon: Sparkles,
-    color: "from-gray-500 to-gray-600",
-    features: [
-      "6 scrapings par mois",
-      "2 scrapers en cache",
-      "Dashboard de base",
-      "Export CSV",
-    ]
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    description: "Pour les professionnels qui veulent automatiser leur veille prix",
-    price: "199,99 $ / mois",
-    icon: Zap,
-    color: "from-blue-500 to-blue-600",
-    features: [
-      "Scrapings illimités",
-      "8 scrapers en cache",
-      "Analytics avancés",
-      "Alertes de prix",
-      "Support prioritaire",
-    ],
-    highlighted: true,
-  },
-  {
-    id: "ultime",
-    name: "Ultime",
-    description: "Solution complète pour les équipes et entreprises exigeantes",
-    price: "274,99 $ / mois",
-    icon: Crown,
-    color: "from-purple-500 to-purple-600",
-    features: [
-      "Tout du plan Pro",
-      "Scrapers en cache illimités",
-      "API access",
-      "Support 24/7 dédié",
-      "SLA garanti 99.9%",
-      "Gestion d'équipe",
-    ]
-  },
-]
-
-export default function CreateAccountPage() {
+function CreateAccountContent() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -68,458 +38,362 @@ export default function CreateAccountPage() {
   const [promoCode, setPromoCode] = useState("")
   const [promoCodeValid, setPromoCodeValid] = useState<boolean | null>(null)
   const [validatingPromo, setValidatingPromo] = useState(false)
+  const [acceptTerms, setAcceptTerms] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [accountExists, setAccountExists] = useState(false)
   const [registrationSuccess, setRegistrationSuccess] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const { register, user, isLoading } = useAuth()
+  const { register } = useAuth()
+  const { t } = useLanguage()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  // Quand un code promo est validé, forcer le plan Ultime
+  const pwStrength = useMemo(() => getPasswordStrength(password, t), [password, t])
+  const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword
+
+  const PLANS = useMemo(() => [
+    {
+      id: "standard",
+      name: t("plan.free"),
+      price: "0",
+      period: t("plan.perMonth"),
+      icon: Sparkles,
+      description: t("plan.freeDesc"),
+      features: [t("plan.freeF1"), t("plan.freeF2"), t("plan.freeF3"), t("plan.freeF4")],
+      cta: t("plan.freeCta"),
+    },
+    {
+      id: "pro",
+      name: t("plan.pro"),
+      price: "199,99",
+      period: t("plan.perMonth"),
+      icon: Zap,
+      highlighted: true,
+      description: t("plan.proDesc"),
+      features: [t("plan.proF1"), t("plan.proF2"), t("plan.proF3"), t("plan.proF4"), t("plan.proF5")],
+      cta: t("plan.proCta"),
+    },
+    {
+      id: "ultime",
+      name: t("plan.ultimate"),
+      price: "274,99",
+      period: t("plan.perMonth"),
+      icon: Crown,
+      description: t("plan.ultimateDesc"),
+      features: [t("plan.ultimateF1"), t("plan.ultimateF2"), t("plan.ultimateF3"), t("plan.ultimateF4"), t("plan.ultimateF5"), t("plan.ultimateF6")],
+      cta: t("plan.ultimateCta"),
+    },
+  ], [t])
+
   useEffect(() => {
-    if (promoCodeValid === true) {
-      setSelectedPlan("ultime")
-    }
-  }, [promoCodeValid])
+    const plan = searchParams.get("plan")
+    if (plan && ["standard", "pro", "ultime"].includes(plan)) setSelectedPlan(plan)
+  }, [searchParams])
 
-  // Rediriger immédiatement vers login après inscription réussie
+  useEffect(() => { if (promoCodeValid === true) setSelectedPlan("ultime") }, [promoCodeValid])
+
   useEffect(() => {
     if (registrationSuccess) {
-      // Avec code promo → pas de paiement, juste confirmer l'email
-      if (promoCodeValid) {
-        router.push("/login?message=check_email_promo")
-      } else if (selectedPlan !== "standard") {
-        router.push("/login?message=confirm_email_then_pay")
-      } else {
-        router.push("/login?message=check_email")
-      }
+      if (promoCodeValid) router.push("/login?message=check_email_promo")
+      else if (selectedPlan !== "standard") router.push("/login?message=confirm_email_then_pay")
+      else router.push("/login?message=check_email")
     }
   }, [registrationSuccess, router, selectedPlan, promoCodeValid])
 
-  // Rediriger vers login si le compte existe déjà
   useEffect(() => {
-    if (accountExists) {
-      const timer = setTimeout(() => {
-        router.push("/login")
-      }, 3000) // Rediriger après 3 secondes
-
-      return () => clearTimeout(timer)
-    }
+    if (accountExists) { const tm = setTimeout(() => router.push("/login"), 3000); return () => clearTimeout(tm) }
   }, [accountExists, router])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setAccountExists(false)
-
-    if (password !== confirmPassword) {
-      setError("Les mots de passe ne correspondent pas")
-      return
-    }
-
-    if (password.length < 6) {
-      setError("Le mot de passe doit contenir au moins 6 caractères")
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-    setSuccessMessage(null)
-
-    // Stocker le code promo AVANT le register pour qu'il soit disponible après confirmation
-    const hasValidPromo = !!(promoCode.trim() && promoCodeValid)
-    if (hasValidPromo) {
-      sessionStorage.setItem("pending_promo_code", promoCode.trim())
-      // Stocker aussi le plan choisi pour le retrouver après confirmation email
-      sessionStorage.setItem("pending_promo_plan", selectedPlan)
-    }
-
+  const validatePromoCode = async () => {
+    if (!promoCode.trim()) return
+    setValidatingPromo(true)
     try {
-      // Si code promo valide → ne PAS stocker de pending_plan (pas de paiement Stripe)
-      // Si pas de promo → stocker le pending_plan pour déclencher le paiement Stripe
-      const planForRegister = hasValidPromo ? 'standard' : selectedPlan
-      
-      const { error } = await register({
-        name,
-        email,
-        password,
-        plan: planForRegister, // 'standard' si promo (pas de pending_plan), sinon le plan choisi
-      })
-
-      if (error) {
-        // Gérer différents formats d'erreur
-        let errorMessage = "Erreur lors de la création du compte"
-
-        if (typeof error === 'string') {
-          errorMessage = error
-        } else if (error?.message) {
-          errorMessage = error.message
-        } else if (error?.error?.message) {
-          errorMessage = error.error.message
-        }
-
-        // Vérifier si le compte existe déjà
-        if (error?.code === 'ACCOUNT_EXISTS' || errorMessage.includes('existe déjà')) {
-          setAccountExists(true)
-          errorMessage = "Un compte existe déjà avec cet email. Redirection vers la page de connexion..."
-        }
-
-        // Cas de confirmation email requise - c'est un succès, pas une erreur
-        if (error?.code === 'EMAIL_CONFIRMATION_REQUIRED') {
-          // Marquer comme succès pour déclencher la redirection vers login
-          setRegistrationSuccess(true)
-          setLoading(false)
-          return
-        }
-
-        // Cas où l'email de confirmation a été renvoyé (compte existant non confirmé)
-        if (error?.code === 'EMAIL_CONFIRMATION_RESENT') {
-          setSuccessMessage("Nous avons renvoyé l'email de confirmation. Vérifiez votre boîte de réception (et les spams).")
-          setRegistrationSuccess(true)
-          setLoading(false)
-          return
-        }
-
-        setError(errorMessage)
-        setLoading(false)
-        return
-      }
-
-      // Afficher le message approprié
-      if (hasValidPromo) {
-        setSuccessMessage("Compte créé avec le code promo ! Vérifiez votre email et confirmez pour activer votre plan Ultime gratuit.")
-      } else if (selectedPlan !== "standard") {
-        setSuccessMessage("Compte créé ! Vérifiez votre email et confirmez pour continuer vers le paiement.")
-      } else {
-        setSuccessMessage("Compte créé. Vérifiez votre email et confirmez pour activer votre compte.")
-      }
-
-      setRegistrationSuccess(true)
-      setLoading(false)
-    } catch (err: any) {
-      // Gérer les erreurs inattendues
-      console.error('Error in handleSubmit:', err)
-      setError(err.message || "Une erreur est survenue. Veuillez réessayer.")
-      setLoading(false)
-    }
+      const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode.trim() }) })
+      const data = await res.json()
+      setPromoCodeValid(data.valid)
+      if (!data.valid) setError(data.error || t("register.promoInvalid")); else setError(null)
+    } catch { setPromoCodeValid(false); setError(t("register.promoError")) }
+    finally { setValidatingPromo(false) }
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(null); setAccountExists(false)
+    if (!acceptTerms) { setError(t("register.termsError")); return }
+    if (password !== confirmPassword) { setError(t("register.passwordMismatch")); return }
+    if (password.length < 6) { setError(t("register.passwordShort")); return }
+
+    setLoading(true); setSuccessMessage(null)
+    const hasValidPromo = !!(promoCode.trim() && promoCodeValid)
+    if (hasValidPromo) { sessionStorage.setItem("pending_promo_code", promoCode.trim()); sessionStorage.setItem("pending_promo_plan", selectedPlan) }
+
+    try {
+      const planForRegister = hasValidPromo ? "standard" : selectedPlan
+      const { error } = await register({ name, email, password, plan: planForRegister })
+
+      if (error) {
+        let msg = t("register.genericError")
+        if (typeof error === "string") msg = error
+        else if (error?.message) msg = error.message
+        else if (error?.error?.message) msg = error.error.message
+        if (error?.code === "ACCOUNT_EXISTS" || msg.includes("existe déjà") || msg.includes("already exists")) { setAccountExists(true); msg = t("register.accountExists") }
+        if (error?.code === "EMAIL_CONFIRMATION_REQUIRED") { setRegistrationSuccess(true); setLoading(false); return }
+        if (error?.code === "EMAIL_CONFIRMATION_RESENT") { setSuccessMessage(t("register.resent")); setRegistrationSuccess(true); setLoading(false); return }
+        setError(msg); setLoading(false); return
+      }
+
+      if (hasValidPromo) setSuccessMessage(t("register.successPromo"))
+      else if (selectedPlan !== "standard") setSuccessMessage(t("register.successPaid"))
+      else setSuccessMessage(t("register.successFree"))
+      setRegistrationSuccess(true); setLoading(false)
+    } catch (err: any) { setError(err.message || t("register.unknownError")); setLoading(false) }
+  }
+
+  const inputClass = "w-full h-10 px-3 text-[14px] border border-gray-200 dark:border-white/[0.08] rounded-[8px] bg-white dark:bg-white/[0.03] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-[#0F0F12] dark:via-[#0F0F12] dark:to-[#1A0F1F] px-4 py-12">
-      <div className="max-w-4xl w-full space-y-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            Commencez votre aventure
+    <div className="min-h-screen bg-[#fafbfc] dark:bg-[#09090b]">
+      {/* ── Header ── */}
+      <header className="px-6 py-4 border-b border-gray-100 dark:border-white/[0.06] bg-white/80 dark:bg-[#09090b]/80 backdrop-blur-sm sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="relative h-8 w-8 flex-shrink-0 rounded-[8px] bg-white dark:bg-[#141419] shadow-sm border border-gray-100 dark:border-white/[0.06] overflow-hidden">
+              <Image src="/Go-Data.png" alt="GO-DATA" fill sizes="32px" className="object-contain" />
+            </div>
+            <span className="text-[15px] font-semibold text-gray-900 dark:text-white tracking-tight">GO-DATA</span>
+          </Link>
+          <div className="flex items-center gap-4">
+            <LanguageToggle />
+            <span className="text-[13px] text-gray-400 hidden sm:block">{t("register.alreadyAccount")}</span>
+            <Link href="/login"
+              className="h-8 px-3.5 flex items-center text-[13px] font-medium text-gray-700 dark:text-gray-300 rounded-[8px] border border-gray-200 dark:border-white/[0.08] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all">
+              {t("register.signIn")}
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="px-6 py-12 md:py-16">
+        {/* ── Hero ── */}
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <h1 className="text-[28px] md:text-[36px] font-bold text-gray-900 dark:text-white tracking-tight leading-[1.15]">
+            {t("register.title")}
           </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-400">
-            Créez votre compte et accédez à des outils puissants de scraping
+          <p className="mt-3 text-[15px] text-gray-500 dark:text-gray-400">
+            {t("register.subtitle")}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-[#1F1F23] p-8 rounded-2xl border border-gray-200 dark:border-[#2B2B30] shadow-xl">
-          <div>
-            <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white">
-              Créer un compte
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-              Inscrivez-vous pour commencer
+        {/* ── Plan cards ── */}
+        <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-4 mb-16">
+          {PLANS.map((plan) => {
+            const Icon = plan.icon
+            const isSelected = selectedPlan === plan.id
+            const isPro = plan.highlighted
+
+            return (
+              <div key={plan.id} className="relative flex flex-col">
+                {isPro && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1 text-[11px] font-semibold tracking-wide uppercase rounded-full bg-blue-600 text-white whitespace-nowrap">
+                    {t("register.mostPopular")}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlan(plan.id)}
+                  className={`flex-1 text-left p-6 rounded-[12px] border transition-all duration-200 group ${
+                    isSelected
+                      ? "border-blue-500 bg-white dark:bg-[#111114] shadow-lg shadow-blue-500/[0.08] ring-1 ring-blue-500/20"
+                      : isPro
+                        ? "border-blue-200 dark:border-blue-500/20 bg-white dark:bg-[#111114] shadow-md hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-500/30"
+                        : "border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#111114] shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-white/[0.1]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-[10px] ${
+                      isSelected || isPro ? "bg-blue-50 dark:bg-blue-900/20" : "bg-gray-50 dark:bg-white/[0.04]"
+                    }`}>
+                      <Icon className={`h-5 w-5 ${
+                        isSelected || isPro ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"
+                      }`} />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-[15px] text-gray-900 dark:text-white">{plan.name}</h3>
+                      <p className="text-[12px] text-gray-400 dark:text-gray-500">{plan.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-baseline gap-1 mb-6">
+                    <span className="text-[32px] leading-none font-bold tabular-nums text-gray-900 dark:text-white">
+                      {plan.price}$
+                    </span>
+                    <span className="text-[13px] text-gray-400 dark:text-gray-500">{plan.period}</span>
+                  </div>
+
+                  <ul className="space-y-2.5 mb-6">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5">
+                        <Check className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                          isSelected || isPro ? "text-blue-500 dark:text-blue-400" : "text-gray-300 dark:text-gray-600"
+                        }`} />
+                        <span className="text-[13px] text-gray-600 dark:text-gray-400 leading-snug">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className={`w-full h-10 flex items-center justify-center rounded-[8px] text-[13px] font-semibold transition-all ${
+                    isSelected
+                      ? "bg-blue-600 text-white shadow-sm shadow-blue-600/20"
+                      : isPro
+                        ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 group-hover:bg-gray-800 dark:group-hover:bg-gray-100"
+                        : "bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-gray-300 group-hover:bg-gray-200 dark:group-hover:bg-white/[0.08]"
+                  }`}>
+                    {isSelected
+                      ? <span className="flex items-center gap-1.5"><Check className="h-4 w-4" /> {t("register.selected")}</span>
+                      : plan.cta}
+                  </div>
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* ── Form ── */}
+        <div className="max-w-md mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-[20px] font-semibold text-gray-900 dark:text-white">{t("register.yourInfo")}</h2>
+            <p className="mt-1 text-[13px] text-gray-400 dark:text-gray-500">
+              {t("register.startWith")}{" "}
+              <span className="font-medium text-gray-600 dark:text-gray-300">{PLANS.find((p) => p.id === selectedPlan)?.name}</span>
             </p>
           </div>
 
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            {successMessage && (
-              <div className="rounded-lg p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-900">
-                <p className="text-sm text-green-800 dark:text-green-300 font-medium">
-                  {successMessage}
-                </p>
-                <p className="text-xs mt-2 text-green-700 dark:text-green-300">
-                  Ouvrez l'email de confirmation, cliquez sur le lien, puis reconnectez-vous pour accéder au tableau de bord.
-                </p>
-              </div>
-            )}
-            {error && (
-              <div className={`rounded-lg p-3 ${accountExists
-                  ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900"
-                  : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900"
+          <div className="rounded-[12px] border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#111114] shadow-sm p-6 sm:p-8">
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              {successMessage && (
+                <div className="rounded-[8px] p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
+                  <p className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">{successMessage}</p>
+                  <p className="text-[12px] mt-1 text-emerald-600/70">{t("register.openEmail")}</p>
+                </div>
+              )}
+              {error && (
+                <div className={`rounded-[8px] p-3 ${
+                  accountExists
+                    ? "bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40"
+                    : "bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40"
                 }`}>
-                <p className={`text-sm ${accountExists
-                    ? "text-blue-800 dark:text-blue-300"
-                    : "text-red-800 dark:text-red-300"
-                  }`}>
-                  {error}
-                </p>
-                {accountExists && (
-                  <p className="text-xs mt-2 text-blue-600 dark:text-blue-400">
-                    Vous serez redirigé automatiquement dans quelques secondes...
-                  </p>
+                  <p className={`text-[13px] ${accountExists ? "text-blue-700 dark:text-blue-300" : "text-red-700 dark:text-red-300"}`}>{error}</p>
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="name" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("register.fullName")}</label>
+                <input id="name" type="text" required value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="Jean Dupont" />
+              </div>
+
+              <div>
+                <label htmlFor="email" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("email")}</label>
+                <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} placeholder="vous@entreprise.com" />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("password")}</label>
+                <div className="relative">
+                  <input id="password" type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputClass} pr-10`} placeholder={t("register.minChars")} />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {password.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${i <= pwStrength.score ? pwStrength.color : "bg-gray-100 dark:bg-white/[0.06]"}`} />
+                      ))}
+                    </div>
+                    <p className={`text-[11px] font-medium ${
+                      pwStrength.score <= 1 ? "text-red-500" : pwStrength.score <= 2 ? "text-orange-500" : pwStrength.score <= 3 ? "text-yellow-600 dark:text-yellow-500" : "text-emerald-600 dark:text-emerald-400"
+                    }`}>{pwStrength.label}</p>
+                  </div>
                 )}
               </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="name"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Nom complet
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Jean Dupont"
-                />
-              </div>
 
               <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="votre@email.com"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Mot de passe
-                </label>
+                <label htmlFor="confirmPassword" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("register.confirmPassword")}</label>
                 <div className="relative">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
+                  <input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`${inputClass} pr-10 ${
+                      confirmPassword && !passwordsMatch ? "!border-red-300 dark:!border-red-500/30" : passwordsMatch ? "!border-emerald-300 dark:!border-emerald-500/30" : ""
+                    }`}
+                    placeholder="••••••••" />
+                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {confirmPassword && !passwordsMatch && <p className="mt-1 text-[12px] text-red-500">{t("register.passwordMismatch")}</p>}
               </div>
 
               <div>
-                <label
-                  htmlFor="confirmPassword"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Confirmer le mot de passe
-                </label>
-                <div className="relative">
-                  <input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
-                  </button>
+                <div className="flex items-center gap-2">
+                  <Tag className="h-3.5 w-3.5 text-gray-300 dark:text-gray-600" />
+                  <input type="text" value={promoCode}
+                    onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoCodeValid(null) }}
+                    onBlur={validatePromoCode}
+                    className="flex-1 h-8 px-2.5 text-[13px] border border-gray-200 dark:border-white/[0.08] rounded-[6px] bg-gray-50/50 dark:bg-white/[0.02] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 focus:bg-white dark:focus:bg-white/[0.04] transition-all"
+                    placeholder={t("register.promoPlaceholder")} />
+                  {validatingPromo && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
+                  {promoCodeValid === true && <Check className="h-4 w-4 text-emerald-500" />}
                 </div>
+                {promoCodeValid === true && <p className="mt-1.5 ml-6 text-[12px] font-medium text-emerald-600 dark:text-emerald-400">{t("register.promoActivated")}</p>}
               </div>
-            </div>
 
-            {/* Sélection d'abonnement */}
-            <div className="space-y-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
-                Plan d'abonnement
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <div className="relative mt-0.5">
+                  <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="sr-only peer" />
+                  <div className="w-4 h-4 rounded-[4px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-white/[0.04] peer-checked:bg-blue-600 peer-checked:border-blue-600 transition-all flex items-center justify-center">
+                    {acceptTerms && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                  </div>
+                </div>
+                <span className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                  {t("register.acceptTerms")} <Link href="#" className="text-blue-600 dark:text-blue-400 hover:underline">{t("register.terms")}</Link> {t("register.and")} <Link href="#" className="text-blue-600 dark:text-blue-400 hover:underline">{t("register.privacyPolicy")}</Link>.
+                </span>
               </label>
 
-              {/* Code promo - espace dédié sous le plan */}
-              <div className="rounded-lg p-4 bg-gray-50 dark:bg-[#1A1A1F] border border-gray-200 dark:border-[#2B2B30]">
-                <label
-                  htmlFor="promoCode"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-                >
-                  Code promo (optionnel)
-                </label>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  Avez-vous un code promo ? Entrez-le pour bénéficier d&apos;un plan gratuit à vie.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    id="promoCode"
-                    name="promoCode"
-                    type="text"
-                    value={promoCode}
-                    onChange={(e) => {
-                      setPromoCode(e.target.value.toUpperCase())
-                      setPromoCodeValid(null)
-                    }}
-                    onBlur={async () => {
-                      if (promoCode.trim()) {
-                        setValidatingPromo(true)
-                        try {
-                          const response = await fetch("/api/promo-codes/validate", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ code: promoCode.trim() }),
-                          })
-                          const data = await response.json()
-                          setPromoCodeValid(data.valid)
-                          if (!data.valid) {
-                            setError(data.error || "Code promo invalide")
-                          } else {
-                            setError(null)
-                          }
-                        } catch (err) {
-                          setPromoCodeValid(false)
-                          setError("Erreur lors de la validation du code promo")
-                        } finally {
-                          setValidatingPromo(false)
-                        }
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="PROMO2024-XXXXXX"
-                  />
-                  {validatingPromo && (
-                    <Loader2 className="h-5 w-5 animate-spin text-gray-400 self-center" />
-                  )}
-                  {promoCodeValid === true && (
-                    <span className="text-green-500 self-center text-lg">✓</span>
-                  )}
-                  {promoCodeValid === false && promoCode.trim() && (
-                    <span className="text-red-500 self-center text-lg">✗</span>
-                  )}
-                </div>
-                {promoCodeValid === true && (
-                  <p className="text-sm text-green-600 dark:text-green-400 mt-2 font-medium">
-                    Code promo valide ! Plan Ultime gratuit à vie. Aucun paiement requis.
-                  </p>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {PLANS.map((plan) => {
-                  const Icon = plan.icon
-                  const isSelected = selectedPlan === plan.id
-                  return (
-                    <button
-                      key={plan.id}
-                      type="button"
-                      onClick={() => setSelectedPlan(plan.id)}
-                      className={`relative p-6 rounded-xl border-2 transition-all duration-200 transform hover:scale-105 ${isSelected
-                          ? `border-blue-500 bg-gradient-to-br ${plan.color} shadow-lg`
-                          : plan.highlighted
-                            ? "border-blue-300 dark:border-blue-700 hover:border-blue-400 dark:hover:border-blue-600 bg-white dark:bg-[#0F0F12]"
-                            : "border-gray-200 dark:border-[#2B2B30] hover:border-gray-300 dark:hover:border-[#3B3B40] bg-white dark:bg-[#0F0F12]"
-                        }`}
-                    >
-                      {isSelected && (
-                        <div className="absolute top-2 right-2">
-                          <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
-                            <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        </div>
-                      )}
-                      <div className="text-center">
-                        <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 ${isSelected
-                            ? 'bg-white/20 text-white'
-                            : 'bg-gray-100 dark:bg-[#1F1F23] text-gray-600 dark:text-gray-400'
-                          }`}>
-                          <Icon className="h-6 w-6" />
-                        </div>
-                        <div className={`font-bold text-lg mb-1 ${isSelected ? 'text-white' : 'text-gray-900 dark:text-white'
-                          }`}>
-                          {plan.name}
-                        </div>
-                        <div className={`text-sm mb-3 ${isSelected ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'
-                          }`}>
-                          {plan.description}
-                        </div>
-                        <div className={`text-xs font-semibold mb-2 ${isSelected ? 'text-white/80' : 'text-gray-500 dark:text-gray-500'
-                          }`}>
-                          {plan.price}
-                        </div>
-                        <ul className={`text-xs space-y-1 text-left mt-3 ${isSelected ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'
-                          }`}>
-                          {plan.features.map((feature, idx) => (
-                            <li key={idx} className="flex items-start gap-1">
-                              <span className={isSelected ? 'text-white' : 'text-blue-600 dark:text-blue-400'}>•</span>
-                              <span>{feature}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Création du compte...
-                  </>
-                ) : (
-                  "Créer le compte"
-                )}
+              <button type="submit" disabled={loading || !acceptTerms}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-[8px] text-[14px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-blue-600/20 hover:shadow-md active:scale-[0.98]">
+                {loading
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> {t("register.creating")}</>
+                  : <>{t("register.submit")} <ArrowRight className="h-4 w-4" /></>}
               </button>
-            </div>
+            </form>
+          </div>
 
-            <div className="text-center">
-              <Link
-                href="/login"
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Déjà un compte ? Se connecter
-              </Link>
-            </div>
-          </form>
+          <div className="flex items-center justify-center gap-6 mt-8">
+            {[
+              { icon: Shield, textKey: "register.sslEncryption" as const },
+              { icon: Mail, textKey: "register.responsiveSupport" as const },
+            ].map((item) => (
+              <span key={item.textKey} className="flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                <item.icon className="h-3 w-3" />
+                {t(item.textKey)}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
 
+export default function CreateAccountPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-[#09090b]">
+        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+      </div>
+    }>
+      <CreateAccountContent />
+    </Suspense>
+  )
+}

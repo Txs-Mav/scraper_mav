@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, ChevronDown, Globe, Database, ChevronRight } from "lucide-react"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
+import { useLanguage } from "@/contexts/language-context"
 
 const DEFAULT_REFERENCE_URL = ""
 
@@ -55,6 +56,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   ref
 ) {
   const { user } = useAuth()
+  const { t } = useLanguage()
   const scrapingLimit = useScrapingLimit()
   const router = useRouter()
   const [referenceUrl, setReferenceUrl] = useState(DEFAULT_REFERENCE_URL)
@@ -564,10 +566,10 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           <Clock className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
           <div>
             <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
-              Première analyse requise
+              {t("config.firstAnalysis")}
             </p>
             <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-              {urlsWithoutScraper.length} site{urlsWithoutScraper.length > 1 ? 's' : ''} à analyser • ~3-5 min par site
+              {urlsWithoutScraper.length} {t("config.sitesToAnalyze")}
             </p>
           </div>
         </div>
@@ -587,7 +589,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 <div className="flex items-center gap-2">
                   <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                    Scrapers en cache ({cachedScrapers.length})
+                    {t("config.scrapersCache")} ({cachedScrapers.length})
                   </span>
                 </div>
                 <ChevronDown className={`w-4 h-4 text-blue-600 dark:text-blue-400 transition-transform ${showCachedScrapers ? 'rotate-180' : ''}`} />
@@ -625,7 +627,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                                 : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-600 dark:hover:text-blue-400'
                                 }`}
                             >
-                              {referenceUrl === scraper.url ? '★ Réf' : 'Référence'}
+                              {referenceUrl === scraper.url ? t("config.ref") : t("config.referenceLabel")}
                             </button>
                             <button
                               type="button"
@@ -636,7 +638,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                                 : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                                 }`}
                             >
-                              + Concurrent
+                              {t("config.addCompetitor")}
                             </button>
                           </div>
                         </div>
@@ -652,7 +654,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Site de référence</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.referenceUrl")}</span>
             </div>
             <div className="relative">
               <input
@@ -664,7 +666,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               />
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Les prix seront comparés à ce site
+              {t("config.priceCompared")}
             </p>
           </div>
 
@@ -676,15 +678,15 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Globe className="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-medium text-gray-900 dark:text-white">Concurrents</span>
-                <span className="text-xs text-gray-400">optionnel</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.competitorsLabel")}</span>
+                <span className="text-xs text-gray-400">{t("config.optional")}</span>
               </div>
               <button
                 onClick={addUrl}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Ajouter
+                {t("config.add")}
               </button>
             </div>
 
@@ -729,7 +731,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
           {/* Options de scraping - TOUJOURS VISIBLE */}
           <div className="space-y-3">
-            <span className="text-sm font-medium text-gray-900 dark:text-white">Options</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.options")}</span>
             
             <div className="space-y-2 pl-1">
               <div className="flex items-center gap-2 py-1">
@@ -741,8 +743,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-purple-600 focus:ring-purple-500 focus:ring-offset-0 dark:bg-gray-800"
                 />
                 <label htmlFor="ignoreColors" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                  <span>Ignorer les couleurs</span>
-                  <span className="ml-1 text-xs text-purple-500 dark:text-purple-400">(plus de matchs possibles)</span>
+                  <span>{t("config.ignoreColors")}</span>
+                  <span className="ml-1 text-xs text-purple-500 dark:text-purple-400">{t("config.moreMatches")}</span>
                 </label>
               </div>
               
@@ -755,8 +757,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 dark:bg-gray-800"
                 />
                 <label htmlFor="inventoryOnly" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                  <span>Filtrer catalogue (site de ref.)</span>
-                  <span className="ml-1 text-xs text-emerald-500 dark:text-emerald-400">(concurrents : extraction complète)</span>
+                  <span>{t("config.filterCatalog")}</span>
+                  <span className="ml-1 text-xs text-emerald-500 dark:text-emerald-400">{t("config.fullExtraction")}</span>
                 </label>
               </div>
 
@@ -769,7 +771,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 dark:bg-gray-800"
                 />
                 <label htmlFor="forceRefresh" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                  Régénérer les scrapers (nouvelle extraction)
+                  {t("config.regenerate")}
                 </label>
               </div>
             </div>
@@ -838,7 +840,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 )}
                 <div>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                    {isScraping ? 'Extraction en cours' : scrapeStatus === 'error' ? 'Erreur' : scrapeStatus === 'success' ? 'Terminé' : 'Extraction'}
+                    {isScraping ? t('config.inProgress') : scrapeStatus === 'error' ? t('config.error') : scrapeStatus === 'success' ? t('config.done') : t('config.extractionStep')}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     {formatTime(elapsedTime)}
@@ -880,7 +882,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                       'text-gray-400 dark:text-gray-600'
                     }`}>
                       {step.status === 'completed' && <span className="mr-0.5">✓</span>}
-                      {step.label}
+                      {{ init: t('config.init'), analyze: t('config.analysis'), scrape: t('config.extractionStep'), save: t('config.saving') }[step.id] || step.label}
                     </span>
                   ))}
                 </div>
@@ -895,8 +897,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/30'
               }`}>
                 {scrapeStatus === 'error'
-                  ? 'Une erreur est survenue — consultez les logs.'
-                  : 'Scraping terminé avec succès.'}
+                  ? t('config.errorOccurred')
+                  : t('config.scrapingDone')}
               </div>
             )}
           </div>

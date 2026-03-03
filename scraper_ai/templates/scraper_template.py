@@ -1843,17 +1843,31 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
         product['sourceCategorie'] = 'inventaire'  # Par défaut
     
     # Détection de l'état du produit (neuf, occasion, demonstrateur)
+    # Règle: usagé seulement si kilométrage écrit ET URL contient "usagé"; sinon neuf
+    # "démo" / "démonstrateur" dans le nom ou le modèle → demonstrateur
     etat = None
-    # Signal 1: URL patterns
-    if any(x in url_lower for x in ['occasion', 'used', 'pre-owned', 'usag', 'd-occasion', 'pre-possede']):
-        etat = 'occasion'
-    elif any(x in url_lower for x in ['neuf', '/new/', '-new-', '/new-']):
-        etat = 'neuf'
-    elif any(x in url_lower for x in ['demo', 'demonstrat', 'demonstr']):
+    name_and_modele = ' '.join(str(x or '') for x in [product.get('name'), product.get('modele')]).lower()
+    if re.search(r'\b(démo|démonstrateur|demonstrateur|demo)\b', name_and_modele):
         etat = 'demonstrateur'
-    # Signal 2: Déduire depuis sourceCategorie
+    url_has_usage = any(x in url_lower for x in ['occasion', 'used', 'pre-owned', 'usag', 'd-occasion', 'pre-possede'])
+    km_val = product.get('kilometrage', 0) or 0
+    if isinstance(km_val, str):
+        try:
+            km_val = int(re.sub(r'[^\d]', '', str(km_val)))
+        except (ValueError, TypeError):
+            km_val = 0
+    has_km = km_val > 0
+    # Signal 1: URL patterns (occasion seulement si URL usagé ET kilométrage présent; ne pas écraser démo du nom)
     if not etat:
-        if product['sourceCategorie'] == 'vehicules_occasion':
+        if url_has_usage and has_km:
+            etat = 'occasion'
+        elif any(x in url_lower for x in ['neuf', '/new/', '-new-', '/new-']):
+            etat = 'neuf'
+        elif any(x in url_lower for x in ['demo', 'demonstrat', 'demonstr']):
+            etat = 'demonstrateur'
+    # Signal 2: Déduire depuis sourceCategorie (occasion seulement avec km)
+    if not etat:
+        if product['sourceCategorie'] == 'vehicules_occasion' and has_km:
             etat = 'occasion'
         elif product['sourceCategorie'] == 'catalogue':
             etat = 'neuf'
@@ -2017,6 +2031,58 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
     return product
 
 
+def _is_listing_or_non_product_name(name: str, source_url: str = '') -> bool:
+    """Détecte un nom qui provient d'un titre de page listing/catégorie ou non-produit.
+
+    Retourne True si le nom ressemble à un titre de page HTML plutôt qu'un nom de produit.
+    Ex: "New Kawasaki Watercraft | Motoplex Mirabel", "Motocyclette neufs | Dealer",
+        "Contact Us | Dealer", "Blog post about motorcycles | Dealer"
+    """
+    import re
+
+    if '|' in name:
+        before_pipe = name.split('|')[0].strip()
+
+        if re.search(
+            r'^(?:New|Used|Neuf|Usag[ée]s?|Tous|All)\s+',
+            before_pipe,
+            re.IGNORECASE
+        ):
+            if not re.search(r'\b(19|20)\d{{2}}\b', before_pipe):
+                return True
+
+        if re.search(
+            r'\b(?:neufs?|usag.{{0,3}}e?s?)\s*(?:.{{0,3}}\s+\w+)?$',
+            before_pipe,
+            re.IGNORECASE
+        ):
+            return True
+
+        non_product_kw = [
+            r'\b(?:Blog|Blogue|Service|Contact|Team|[EÉ]quipe)\b',
+            r'\b(?:Parts|Accessories|Pi[eè]ces|Accessoires)\b',
+            r'\b(?:Sell|Vendez|Vendre)\b',
+            r'\b(?:Guide|Formation|Entretien|R[ée]paration|Maintenance)\b',
+            r'\b(?:Promotions?|Cr[ée]dit|Dealership|Concessionnaire)\b',
+            r'\b(?:Powersports|Vehicles?|V[ée]hicules?)\s+(?:de\s+sports|motoris|neufs?|usag)',
+            r'\b(?:Meet the|Rencontrez)\b',
+            r'\b(?:No credit|Aucun cr[ée]dit)\b',
+            r'\b(?:Purchase your|Achetez)\b',
+            r'\b(?:Financing|Financement)\b',
+            r'\b(?:Privacy|Confidentialit[ée]|Politique)\b',
+            r'\b(?:Terms|Termes|Conditions)\b',
+            r'\b(?:Offers?|Your\s+\w+\s+Dealer)\b',
+        ]
+        for kw in non_product_kw:
+            if re.search(kw, before_pipe, re.IGNORECASE):
+                return True
+
+    if source_url and re.search(r'/(?:blog|blogue)/', source_url, re.IGNORECASE):
+        return True
+
+    return False
+
+
 def filter_valid_products(products: List[Dict]) -> List[Dict]:
     """Filtre les produits pour ne garder que les véhicules réels
 
@@ -2053,6 +2119,12 @@ def filter_valid_products(products: List[Dict]) -> List[Dict]:
 
         # Nom qui ressemble à un label/placeholder
         if is_label_text(name):
+            rejected_count += 1
+            continue
+
+        # Nom qui est un titre de page listing/catégorie ou page non-produit
+        source_url = str(product.get('sourceUrl', ''))
+        if _is_listing_or_non_product_name(name, source_url):
             rejected_count += 1
             continue
 
@@ -2193,10 +2265,9 @@ def scrape(base_url: str) -> Dict[str, Any]:
         url_lower = url.lower()
 
         exclude_segments = [
-            # URLs de catalogue (déjà vérifié ci-dessus mais ajout pour sécurité)
             '/catalogue', '/catalog',
             '/service', '/service-', '/services', '/sav',
-            '/article', '/articles', '/blog', '/blogs',
+            '/article', '/articles', '/blog/', '/blogs/', '/blogue/',
             '/conseil', '/conseils', '/guide', '/guides',
             '/formation', '/formations', '/evenement', '/evenements',
             '/contact', '/about', '/a-propos', '/nous-joindre',
@@ -2207,7 +2278,11 @@ def scrape(base_url: str) -> Dict[str, Any]:
             '/faq', '/aide', '/help', '/assistance',
             '/entretien', '/reparation', '/reparations', '/maintenance',
             '/tutoriel', '/tutoriels', '/news', '/actualite', '/actualites',
-            '/event', '/events', '/ouverture', '/invitation'
+            '/event', '/events', '/ouverture', '/invitation',
+            '/team/', '/equipe/',
+            '/sell-your-', '/vendez-votre-',
+            '/carriere', '/careers', '/emploi',
+            '/promotions/local-',
         ]
         for exclude_segment in exclude_segments:
             if exclude_segment in url_lower:

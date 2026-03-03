@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
 import { ChevronDown, ChevronUp, TrendingDown, TrendingUp, Minus, Layers } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 
 interface CategoryStats {
   categorie: string
@@ -36,6 +37,7 @@ const categoryLabels: Record<string, string> = {
 }
 
 function DetailTooltip({ active, payload }: any) {
+  const { t } = useLanguage()
   if (!active || !payload?.[0]) return null
   const d = payload[0].payload
   return (
@@ -43,19 +45,19 @@ function DetailTooltip({ active, payload }: any) {
       <p className="text-sm font-medium text-white mb-1.5">{d.fullSite}</p>
       <div className="space-y-1 text-xs">
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Prix moyen</span>
+          <span className="text-gray-400">{t("ap.avgPrice")}</span>
           <span className="font-semibold text-white">
             {d.prixMoyen.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$
           </span>
         </div>
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Écart vs vous</span>
+          <span className="text-gray-400">{t("ap.gap")}</span>
           <span className={`font-bold ${d.ecart < -2 ? 'text-emerald-400' : d.ecart > 2 ? 'text-red-400' : 'text-gray-400'}`}>
             {d.ecart > 0 ? '+' : ''}{d.ecart.toFixed(1)}%
           </span>
         </div>
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Produits</span>
+          <span className="text-gray-400">{t("ap.products")}</span>
           <span className="text-white">{d.nombreProduits}</span>
         </div>
       </div>
@@ -64,6 +66,7 @@ function DetailTooltip({ active, payload }: any) {
 }
 
 export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) {
+  const { t } = useLanguage()
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
 
   if (categories.length === 0) {
@@ -72,11 +75,11 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
         <div className="flex items-center gap-2 mb-4">
           <Layers className="h-5 w-5 text-violet-500" />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Analyse par Catégorie
+            {t("ap.categoryAnalysis")}
           </h3>
         </div>
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          Aucune donnée de catégorie disponible
+          {t("ap.noCategoryData")}
         </div>
       </div>
     )
@@ -99,11 +102,11 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
       <div className="flex items-center gap-2 mb-1">
         <Layers className="h-5 w-5 text-violet-500" />
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Analyse par Catégorie
+          {t("ap.categoryAnalysis")}
         </h3>
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-500 mb-5">
-        Positionnement de vos prix par catégorie. Cliquez pour voir le détail par concurrent.
+        {t("ap.categoryDesc")}
       </p>
 
       {/* Category cards */}
@@ -177,8 +180,8 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                 {categoryLabels[cat.categorie] || cat.categorie}
               </h4>
               <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
-                <span>Votre prix moy: <strong className="text-blue-600 dark:text-blue-400">{cat.prixMoyenReference > 0 ? `${cat.prixMoyenReference.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
-                <span>Concurrents moy: <strong className="text-gray-900 dark:text-white">{cat.prixMoyenConcurrents > 0 ? `${cat.prixMoyenConcurrents.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
+                <span>{t("ap.yourAvgPrice")} <strong className="text-blue-600 dark:text-blue-400">{cat.prixMoyenReference > 0 ? `${cat.prixMoyenReference.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
+                <span>{t("ap.compAvgPrice")} <strong className="text-gray-900 dark:text-white">{cat.prixMoyenConcurrents > 0 ? `${cat.prixMoyenConcurrents.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
               </div>
             </div>
 
@@ -224,11 +227,11 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                 <div className="mt-2 flex items-center justify-center gap-5 text-[11px] text-gray-500">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-sm bg-emerald-400" />
-                    <span>Moins cher que vous</span>
+                    <span>{t("ap.cheaperLegend")}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-sm bg-red-400" />
-                    <span>Plus cher que vous</span>
+                    <span>{t("ap.expensiveLegend")}</span>
                   </div>
                 </div>
               </div>
@@ -241,16 +244,16 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                   <thead>
                     <tr className="bg-gray-50/50 dark:bg-[#141417]">
                       <th className="text-left py-2 px-5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        Concurrent
+                        {t("ap.competitor")}
                       </th>
                       <th className="text-right py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        Prix moy.
+                        {t("ap.avgPrice")}
                       </th>
                       <th className="text-right py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        Écart
+                        {t("ap.gap")}
                       </th>
                       <th className="text-right py-2 px-5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        Prod.
+                        {t("ap.prod")}
                       </th>
                     </tr>
                   </thead>

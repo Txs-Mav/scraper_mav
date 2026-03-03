@@ -481,10 +481,9 @@ class ExplorationAgent:
 
         # Segments de chemin à exclure (pages non-produits)
         exclude_segments = [
-            # URLs de catalogue (déjà vérifié ci-dessus mais ajout pour sécurité)
             '/catalogue', '/catalog',
             '/service', '/service-', '/services', '/sav',
-            '/article', '/articles', '/blog', '/blogs',
+            '/article', '/articles', '/blog/', '/blogs/', '/blogue/',
             '/conseil', '/conseils', '/guide', '/guides',
             '/formation', '/formations', '/evenement', '/evenements',
             '/promotion', '/promotions', '/promo', '/promos',
@@ -497,7 +496,11 @@ class ExplorationAgent:
             '/entretien', '/reparation', '/reparations', '/maintenance',
             '/tutoriel', '/tutoriels', '/news', '/actualite', '/actualites',
             '/event', '/events', '/ouverture', '/invitation',
-            '/offre', '/offres', '/wishlist', '/favoris'
+            '/offre', '/offres', '/wishlist', '/favoris',
+            '/team/', '/equipe/',
+            '/sell-your-', '/vendez-votre-',
+            '/carriere', '/careers', '/emploi',
+            '/promotions/local-',
         ]
 
         # Vérifier si l'URL contient un segment d'exclusion

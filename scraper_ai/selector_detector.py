@@ -884,11 +884,10 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
                             if href:
                                 product['sourceUrl'] = urljoin(base_url, href)
                         elif field == 'price':
-                            # Pour le prix, nettoyer et convertir
-                            price_text = element.get_text(strip=True)
-                            price = self._parse_price(price_text)
-                            if price:
-                                product['prix'] = price
+                            best_price = self._extract_best_price(
+                                container, selector, is_detail_page, soup)
+                            if best_price:
+                                product['prix'] = best_price
                         elif field == 'year':
                             # Pour l'année, extraire le nombre
                             year_text = element.get_text(strip=True)
@@ -1026,6 +1025,63 @@ IMPORTANT: Les sélecteurs doivent être TESTÉS sur le HTML fourni.
                                             'a-vendre', 'for-sale']):
             return 'inventaire'
         
+        return None
+
+    _OLD_PRICE_KW = frozenset([
+        'old', 'was', 'msrp', 'list-price', 'regular', 'compare',
+        'original', 'crossed', 'strikethrough', 'previous', 'ancien', 'barr',
+    ])
+
+    def _is_old_price_element(self, el) -> bool:
+        check = el
+        for _ in range(6):
+            if not check or not hasattr(check, 'get'):
+                break
+            cls_str = ' '.join(check.get('class', [])).lower()
+            style = (check.get('style') or '').lower()
+            if (any(kw in cls_str for kw in self._OLD_PRICE_KW)
+                    or 'line-through' in style):
+                return True
+            check = getattr(check, 'parent', None)
+        return False
+
+    def _extract_best_price(self, container, selector, is_detail_page, soup):
+        """Extract the current/sale price, avoiding old/list/strikethrough prices."""
+        scope = soup if is_detail_page else container
+
+        dp_el = scope.find(attrs={'data-price': True})
+        if dp_el:
+            dp = dp_el.get('data-price', '').strip()
+            if dp:
+                price = self._parse_price(dp)
+                if price:
+                    return price
+
+        for cls in ('current-price', 'sale-price', 'special-price',
+                    'promo-price', 'discounted-price', 'final-price'):
+            el = container.select_one(f'.{cls}')
+            if not el and is_detail_page:
+                el = soup.select_one(f'.{cls}')
+            if el:
+                price = self._parse_price(el.get_text(strip=True))
+                if price:
+                    return price
+
+        all_matches = container.select(selector)
+        if not all_matches and is_detail_page:
+            all_matches = soup.select(selector)
+
+        for el in all_matches:
+            if not self._is_old_price_element(el):
+                price = self._parse_price(el.get_text(strip=True))
+                if price:
+                    return price
+
+        for el in all_matches:
+            price = self._parse_price(el.get_text(strip=True))
+            if price:
+                return price
+
         return None
 
     def _parse_price(self, price_text: str) -> Optional[float]:

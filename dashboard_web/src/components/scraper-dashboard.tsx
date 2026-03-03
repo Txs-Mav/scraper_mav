@@ -10,8 +10,12 @@ import { useAuth } from "@/contexts/auth-context"
 import { getLocalScrapingsCount, migrateLocalScrapingsToSupabase } from "@/lib/local-storage"
 import LimitWarning from "./limit-warning"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
-import { KNOWN_BRANDS } from "@/lib/analytics-calculations"
+import { useLanguage } from "@/contexts/language-context"
+import { KNOWN_BRANDS, normalizeProductGroupKey } from "@/lib/analytics-calculations"
 import PriceComparisonTable from "./price-comparison-table"
+import Celebration from "./celebration"
+import { DashboardSkeleton } from "./skeleton-loader"
+import { toast } from "sonner"
 
 interface Product {
   name: string
@@ -174,6 +178,27 @@ function getEffectiveMarque(product: Product): string {
 export default function ScraperDashboard({ initialData }: ScraperDashboardProps) {
   const { user } = useAuth()
   const scrapingLimit = useScrapingLimit()
+  const { t, locale } = useLanguage()
+
+  const vehicleTypeLabelsTr = useMemo(() => ({
+    moto: t("vt.moto"), vtt: t("vt.vtt"), "cote-a-cote": t("vt.sxs"),
+    motoneige: t("vt.snowmobile"), motomarine: t("vt.watercraft"), "3-roues": t("vt.threeWheel"),
+    ponton: t("vt.pontoon"), bateau: t("vt.boat"), "moteur-hors-bord": t("vt.outboard"),
+    equipement: t("vt.equipment"), remorque: t("vt.trailer"), "velo-electrique": t("vt.ebike"),
+    autre: t("vt.other"),
+  }), [t])
+
+  const competitiviteLabelsTr = useMemo(() => ({
+    competitif: t("comp.competitive"), non_competitif: t("comp.notCompetitive"),
+  }), [t])
+
+  const etatLabelsTr = useMemo(() => ({
+    neuf: t("etat.new"), occasion: t("etat.used"), demonstrateur: t("etat.demo"),
+  }), [t])
+
+  const sourceCategorieLabelsTr = useMemo(() => ({
+    inventaire: t("etat.inventory"), catalogue: t("etat.catalog"), vehicules_occasion: t("etat.usedInventory"),
+  }), [t])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -318,9 +343,15 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   }
 
   const [scrapeNotification, setScrapeNotification] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
+  const [showCelebration, setShowCelebration] = useState(false)
   const justCompletedScrapingRef = useRef(false)
 
-  const handleScrapeComplete = () => { justCompletedScrapingRef.current = true; setRefreshKey(prev => prev + 1) }
+  const handleScrapeComplete = () => {
+    justCompletedScrapingRef.current = true
+    setRefreshKey(prev => prev + 1)
+    setShowCelebration(true)
+    if (user) localStorage.setItem(`has_scraped_${user.id}`, "true")
+  }
   const handleRefresh = () => { setRefreshKey(prev => prev + 1) }
 
   const [resetting, setResetting] = useState(false)
@@ -400,6 +431,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     return { compared, reference, otherSites, allCompetitors, grouped }
   }, [products, referenceSite])
 
+  // Nombre de « comparés » = groupes uniques (une ligne = un véhicule référent), pas le nombre de lignes produit
+  const comparedUniqueCount = useMemo(() => {
+    const withRef = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
+    const keys = new Set(withRef.map(p => normalizeProductGroupKey(p as any)))
+    return keys.size
+  }, [products])
+
   useEffect(() => { setCacheItems(productsBySite.reference) }, [productsBySite.reference])
   useEffect(() => { setCacheDisplay(cacheItems.slice(0, 2)) }, [cacheItems])
 
@@ -410,21 +448,27 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       const parts: string[] = []
       if (reference.length > 0) parts.push(`${reference.length} référence`)
       if (allCompetitors.length > 0) parts.push(`${allCompetitors.length} concurrents`)
-      if (compared.length > 0) parts.push(`${compared.length} comparés`)
+      if (comparedUniqueCount > 0) parts.push(`${comparedUniqueCount} comparés`)
       const totalProducts = reference.length + allCompetitors.length
       if (totalProducts > 0) {
-        setScrapeNotification({ message: `${totalProducts} produits extraits — ${parts.join(', ')}`, type: compared.length > 0 || !allCompetitors.length ? 'success' : 'warning' })
+        const notifType = comparedUniqueCount > 0 || !allCompetitors.length ? 'success' : 'warning'
+        setScrapeNotification({ message: `${totalProducts} produits extraits — ${parts.join(', ')}`, type: notifType })
+        if (notifType === 'success') {
+          toast.success(`${totalProducts} produits extraits`, { description: parts.join(', '), duration: 8000 })
+        } else {
+          toast.warning(`${totalProducts} produits extraits`, { description: parts.join(', '), duration: 8000 })
+        }
         setTimeout(() => setScrapeNotification(null), 10_000)
       }
-      if (compared.length > 0) setActiveTab("compared")
+      if (comparedUniqueCount > 0) setActiveTab("compared")
       else if (allCompetitors.length > 0) setActiveTab("allCompetitors")
       else setActiveTab("reference")
       return
     }
-    if (activeTab === "compared" && compared.length === 0 && reference.length > 0) setActiveTab("reference")
-    else if (activeTab === "reference" && reference.length === 0 && compared.length > 0) setActiveTab("compared")
+    if (activeTab === "compared" && comparedUniqueCount === 0 && reference.length > 0) setActiveTab("reference")
+    else if (activeTab === "reference" && reference.length === 0 && comparedUniqueCount > 0) setActiveTab("compared")
     else if (activeTab === "reference" && reference.length === 0 && allCompetitors.length > 0) setActiveTab("allCompetitors")
-  }, [activeTab, productsBySite])
+  }, [activeTab, productsBySite, comparedUniqueCount])
 
   const filteredProducts = useMemo(() => {
     let filtered: Product[] = []
@@ -460,6 +504,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     return searchQuery !== "" || selectedSite !== "all" || selectedMarque !== "all" || selectedCategory !== "all" || selectedProduct !== "all" || selectedCompetitivite !== "all" || selectedEtat !== "all" || priceDifferenceFilter !== null
   }, [searchQuery, selectedSite, selectedMarque, selectedCategory, selectedProduct, selectedCompetitivite, selectedEtat, priceDifferenceFilter])
 
+  // En onglet Comparés, une ligne = un groupe (véhicule); on affiche le nombre de lignes, pas de produits bruts
+  const displayResultCount = useMemo(() => {
+    if (activeTab !== "compared") return filteredProducts.length
+    const keys = new Set(filteredProducts.map(p => normalizeProductGroupKey(p as any)))
+    return keys.size
+  }, [activeTab, filteredProducts])
+
   // Pas d'auto-reset : laisser l'utilisateur voir "0 résultats" et ajuster ses filtres
 
   const resetFilters = () => {
@@ -474,20 +525,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   // ── Render ──
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center space-y-3">
-          <div className="h-8 w-8 border-2 border-gray-200 dark:border-gray-700 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Chargement des données...</p>
-        </div>
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   if (error) {
     return (
       <div className="rounded-2xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 p-5 text-sm text-red-700 dark:text-red-300">
-        <p className="font-medium mb-1">Erreur de chargement</p>
+        <p className="font-medium mb-1">{t("dash.loadError")}</p>
         <p className="text-red-600/80 dark:text-red-400/80">{error}</p>
       </div>
     )
@@ -497,58 +541,59 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const scraperCacheCount = scraperCache.length
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {showCelebration && <Celebration onComplete={() => setShowCelebration(false)} />}
+
       {/* Migration */}
       {showMigrationPrompt && user && (
         <div className="flex items-center gap-4 rounded-2xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 px-5 py-4 text-sm">
           <div className="flex-1">
-            <p className="font-medium text-blue-900 dark:text-blue-200">Scrapings locaux disponibles</p>
+            <p className="font-medium text-blue-900 dark:text-blue-200">{t("dash.localScrapings")}</p>
             <p className="text-blue-700/80 dark:text-blue-300/80 text-xs mt-0.5">{getLocalScrapingsCount()} scraping{getLocalScrapingsCount() > 1 ? "s" : ""} sauvegardé{getLocalScrapingsCount() > 1 ? "s" : ""} localement</p>
           </div>
-          <button onClick={handleMigrateScrapings} disabled={migrating} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition disabled:opacity-50">{migrating ? "Migration..." : "Migrer"}</button>
+          <button onClick={handleMigrateScrapings} disabled={migrating} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition disabled:opacity-50">{migrating ? t("dash.migrating") : t("dash.migrate")}</button>
           <button onClick={() => setShowMigrationPrompt(false)} className="text-blue-400 hover:text-blue-600 transition"><X className="h-4 w-4" /></button>
         </div>
       )}
 
       <LimitWarning type="scrapings" current={scrapingLimit.current} limit={scrapingLimit.limit} plan={user?.subscription_plan || null} isAuthenticated={!!user} />
 
-      {/* ── En-tête ── */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white tracking-tight">Dashboard</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {new Intl.DateTimeFormat("fr-CA", { dateStyle: "long" }).format(new Date())}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={handleRefresh} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] px-3.5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition shadow-sm" title="Actualiser">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Actualiser
-          </button>
-          <button type="button" onClick={() => setShowScraperConfig(true)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] px-3.5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition shadow-sm" title="Configurer">
-            <Settings2 className="h-4 w-4" />
-            Configurer
-          </button>
-        </div>
-      </div>
+      {/* spacer */}
+      <div className="h-1" />
 
-      {/* ── Statistiques ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* ── KPI ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Hero — Produits */}
+        <div className="col-span-2 md:col-span-1 relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-indigo-600 dark:from-blue-600 dark:to-indigo-700 shadow-lg shadow-blue-600/10 dark:shadow-blue-900/20">
+          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+          <div className="relative flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-200/70 mb-1.5">{t("dash.products")}</p>
+              <p className="text-4xl font-black text-white tabular-nums leading-none tracking-tight">{displayResultCount}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/15">
+              <Search className="h-5 w-5 text-white/80" />
+            </div>
+          </div>
+        </div>
+
+        {/* Secondary KPIs — muted, lighter */}
         {[
-          { label: "Produits", value: filteredProducts.length, sub: "Catalogue filtré", icon: Search, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/30" },
-          { label: "Référence", value: configuredReferenceSite || referenceSite || "Non défini", sub: "Site principal", icon: Star, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30" },
-          { label: "Concurrents", value: Object.keys(productsBySite.otherSites).length, sub: "Sites actifs", icon: Globe, color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/30" },
-          { label: "Comparés", value: productsBySite.compared.length, sub: "Correspondances", icon: ArrowRightLeft, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
+          { label: t("dash.reference"), value: configuredReferenceSite || referenceSite || "—", icon: Star, accent: "text-amber-500 dark:text-amber-400", dot: "bg-amber-400" },
+          { label: t("dash.competitors"), value: Object.keys(productsBySite.otherSites).length, icon: Globe, accent: "text-purple-500 dark:text-purple-400", dot: "bg-purple-400" },
+          { label: t("dash.compared"), value: comparedUniqueCount, icon: ArrowRightLeft, accent: "text-emerald-500 dark:text-emerald-400", dot: "bg-emerald-400" },
         ].map((s, i) => {
           const Icon = s.icon
           return (
-            <div key={i} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-5 hover:shadow-lg hover:shadow-gray-900/5 dark:hover:shadow-black/20 transition-all hover:-translate-y-0.5">
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`p-2 rounded-xl ${s.bg}`}><Icon className={`h-4 w-4 ${s.color}`} /></div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{s.label}</p>
+            <div key={i} className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">{s.label}</p>
+                </div>
+                <Icon className={`h-3.5 w-3.5 ${s.accent} opacity-50`} />
               </div>
-              <p className={`font-bold text-gray-900 dark:text-white break-all ${typeof s.value === 'string' && s.value.length > 14 ? 'text-sm' : 'text-2xl'}`}>{s.value}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{s.sub}</p>
+              <p className={`font-extrabold text-gray-800 dark:text-gray-100 leading-none ${typeof s.value === 'string' && s.value.length > 12 ? 'text-sm font-bold' : 'text-3xl tabular-nums tracking-tight'}`}>{s.value}</p>
             </div>
           )
         })}
@@ -558,8 +603,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       {scrapeNotification && (
         <div className={`flex items-center justify-between gap-3 rounded-2xl border px-5 py-4 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 ${
           scrapeNotification.type === 'success'
-            ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200'
-            : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200'
+            ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-200'
+            : 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-200/60 dark:border-amber-900/40 text-amber-800 dark:text-amber-200'
         }`}>
           <span>{scrapeNotification.message}</span>
           <button type="button" onClick={() => setScrapeNotification(null)} className="opacity-50 hover:opacity-100 transition"><X className="h-4 w-4" /></button>
@@ -567,31 +612,46 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       )}
 
       {/* ── Extraction ── */}
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-6 hover:shadow-lg hover:shadow-gray-900/5 dark:hover:shadow-black/20 transition-shadow">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Lancer une extraction</h2>
+      <div data-onboarding="scrape" className="relative rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/20">
+              <Zap className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            </div>
+            <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">{t("dash.extraction")}</h2>
+          </div>
           <div className="flex items-center gap-2">
             {scraperCacheCount > 0 && (
-              <button type="button" onClick={() => setShowCacheModal(true)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] px-3.5 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition shadow-sm">
-                <Wand2 className="h-3.5 w-3.5 text-purple-500" />
-                {scraperCacheCount} scraper{scraperCacheCount > 1 ? 's' : ''} en cache
+              <button type="button" onClick={() => setShowCacheModal(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] transition">
+                <Wand2 className="h-3 w-3 text-purple-500" />
+                {scraperCacheCount} {t("dash.inCache")}
               </button>
             )}
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/[0.03] px-3.5 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-400">
-              {competitorEntries.length} concurrent{competitorEntries.length > 1 ? 's' : ''}
-            </div>
+            <span className="text-[11px] font-normal text-gray-400 dark:text-gray-500"><span className="tabular-nums font-medium">{competitorEntries.length}</span> {competitorEntries.length > 1 ? t("dash.competitors_plural") : t("dash.competitor")}</span>
           </div>
         </div>
 
         {!isScrapingActive && (
-          <button
-            type="button"
-            onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
-            className="group w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-xl font-semibold text-sm shadow-lg shadow-purple-600/25 hover:shadow-xl hover:shadow-purple-600/30 transition-all hover:-translate-y-0.5 active:translate-y-0"
-          >
-            <Zap className="h-4 w-4 group-hover:scale-110 transition-transform" />
-            {"Lancer l'extraction"}
-          </button>
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
+              className="group w-full flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-sm shadow-md shadow-purple-600/15 hover:shadow-lg hover:shadow-purple-600/20 transition-all hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <Zap className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              {t("dash.launchExtraction")}
+            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={handleRefresh} disabled={loading} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition">
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                {t("dash.refresh")}
+              </button>
+              <button data-onboarding="config" type="button" onClick={() => setShowScraperConfig(true)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition">
+                <Settings2 className="h-3.5 w-3.5" />
+                {t("dash.configure")}
+              </button>
+            </div>
+          </div>
         )}
         {isScrapingActive && (
           <ScraperConfig
@@ -604,45 +664,68 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         )}
       </div>
 
-      {/* ── Filtres ── */}
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] overflow-hidden">
+      {/* ── Empty state ── */}
+      {products.length === 0 && !isScrapingActive && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-10 text-center">
+          <div className="max-w-md mx-auto">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/20 flex items-center justify-center mb-5">
+              <BarChart3 className="h-7 w-7 text-blue-500 dark:text-blue-400" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t("dash.noData")}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+              {t("dash.noDataDesc")}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+            >
+              <Zap className="h-4 w-4" />
+              {t("dash.launchFirst")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Filtres — visuellement en retrait ── */}
+      <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white/40 dark:bg-white/[0.015] backdrop-blur-sm overflow-hidden">
         <button
           type="button"
           onClick={() => setShowFilters(!showFilters)}
-          className="w-full flex items-center justify-between px-6 py-4 text-sm font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-white/[0.02] transition"
+          className="w-full flex items-center justify-between px-5 py-3.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
         >
-          <span className="flex items-center gap-3">
-            <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.06]"><Search className="h-4 w-4 text-gray-500 dark:text-gray-400" /></div>
-            Filtres et recherche
-            {hasActiveFilters && <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />}
+          <span className="flex items-center gap-2.5">
+            <Search className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+            <span className="text-base font-extrabold tracking-tight">{t("dash.filters")}</span>
+            {hasActiveFilters && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
           </span>
-          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} />
         </button>
 
         <div className={`transition-all duration-300 ease-in-out overflow-hidden ${showFilters ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="px-6 pb-6 space-y-5 border-t border-gray-100 dark:border-gray-800 pt-5">
+          <div className="px-5 pb-5 space-y-4 border-t border-gray-200/30 dark:border-white/[0.04] pt-4">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
               <input
                 type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Rechercher par nom, marque ou modèle..."
-                className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/[0.03] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition"
+                placeholder={t("dash.searchPlaceholder")}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15 focus:border-blue-400/30 transition"
               />
-              {searchQuery && <button type="button" onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"><X className="h-4 w-4" /></button>}
+              {searchQuery && <button type="button" onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"><X className="h-3.5 w-3.5" /></button>}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[
-                { label: "Site", value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: "Tous les sites" },
-                { label: "Marque", value: selectedMarque, onChange: setSelectedMarque, options: uniqueMarques, all: "Toutes les marques" },
-                { label: "État", value: selectedEtat, onChange: setSelectedEtat, options: uniqueEtats, all: "Tous les états", labelMap: { ...etatLabels, ...sourceCategorieLabels } as Record<string, string> },
-                { label: "Catégorie", value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: "Toutes", labelMap: vehicleTypeLabels },
-                { label: "Produit", value: selectedProduct, onChange: setSelectedProduct, options: uniqueProductsNames, all: "Tous les produits" },
-                { label: "Compétitivité", value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: "Tous", labelMap: competitiviteLabels },
+                { label: t("dash.site"), value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: t("dash.allSites") },
+                { label: t("dash.brand"), value: selectedMarque, onChange: setSelectedMarque, options: uniqueMarques, all: t("dash.allBrands") },
+                { label: t("dash.state"), value: selectedEtat, onChange: setSelectedEtat, options: uniqueEtats, all: t("dash.allStates"), labelMap: { ...etatLabelsTr, ...sourceCategorieLabelsTr } as Record<string, string> },
+                { label: t("dash.category"), value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: t("dash.allCategories"), labelMap: vehicleTypeLabelsTr },
+                { label: t("dash.product"), value: selectedProduct, onChange: setSelectedProduct, options: uniqueProductsNames, all: t("dash.allProducts") },
+                { label: t("dash.competitiveness"), value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: t("dash.all"), labelMap: competitiviteLabelsTr },
               ].map(f => (
                 <div key={f.label}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">{f.label}</p>
-                  <select value={f.value} onChange={e => f.onChange(e.target.value)} className="w-full rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] px-3.5 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition shadow-sm">
+                  <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 mb-1.5">{f.label}</p>
+                  <select value={f.value} onChange={e => f.onChange(e.target.value)} className="w-full rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition">
                     <option value="all">{f.all}</option>
                     {f.options.map(o => <option key={o} value={o}>{((f as any).labelMap as Record<string, string> | undefined)?.[o as string] || o}</option>)}
                   </select>
@@ -650,26 +733,26 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mr-2">Trier par</span>
+            <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-gray-200/30 dark:border-white/[0.04]">
+              <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 mr-1.5">{t("dash.sort")}</span>
               {[
-                { value: "marque", label: "Marque" }, { value: "site", label: "Concessionnaire" },
-                { value: "prix", label: "Prix" }, { value: "annee", label: "Année" }, { value: "name", label: "Nom" },
+                { value: "marque", label: t("dash.brand") }, { value: "site", label: t("dash.site") },
+                { value: "prix", label: t("dash.price") }, { value: "annee", label: t("dash.year") }, { value: "name", label: t("name") },
               ].map(o => (
                 <button key={o.value} type="button"
                   onClick={() => { if (sortBy === o.value) setSortOrder(sortOrder === "asc" ? "desc" : "asc"); else { setSortBy(o.value as typeof sortBy); setSortOrder("asc") } }}
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
                     sortBy === o.value
-                      ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-sm"
-                      : "border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04]"
+                      ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                      : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/[0.04]"
                   }`}
                 >
-                  {o.label}{sortBy === o.value && <span className="text-[10px]">{sortOrder === "asc" ? "↑" : "↓"}</span>}
+                  {o.label}{sortBy === o.value && <span className="text-[10px] opacity-70">{sortOrder === "asc" ? "↑" : "↓"}</span>}
                 </button>
               ))}
               {hasActiveFilters && (
-                <button type="button" onClick={resetFilters} className="ml-auto inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition">
-                  <RotateCcw className="h-3 w-3" /> Réinitialiser
+                <button type="button" onClick={resetFilters} className="ml-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">
+                  <RotateCcw className="h-3 w-3" /> Reset
                 </button>
               )}
             </div>
@@ -677,56 +760,71 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       </div>
 
-      {/* ── Produits ── */}
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] overflow-hidden">
-        <div className="px-6 py-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Produits</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{filteredProducts.length} produit{filteredProducts.length !== 1 ? 's' : ''}</p>
+      {/* ── Produits — section principale, élévation max ── */}
+      <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#111114] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+        {/* Tab bar */}
+        <div className="px-6 pt-5 pb-0">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">{t("dash.products")}</h2>
+            <span className="text-[11px] font-normal text-gray-400 dark:text-gray-500 tabular-nums tracking-wide">{displayResultCount} {displayResultCount !== 1 ? t("dash.results") : t("dash.result")}</span>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex items-end gap-0 border-b border-gray-100 dark:border-white/[0.06] -mx-6 px-6 overflow-x-auto scrollbar-hide">
             {[
-              { key: "reference", label: "Référence", count: productsBySite.reference.length, icon: Star, activeColor: "bg-amber-500 shadow-amber-500/25" },
-              { key: "allCompetitors", label: "Concurrents", count: productsBySite.allCompetitors.length, icon: Globe, activeColor: "bg-blue-500 shadow-blue-500/25" },
-              { key: "compared", label: "Comparés", count: productsBySite.compared.length, icon: ArrowRightLeft, activeColor: "bg-emerald-500 shadow-emerald-500/25" },
+              { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length, icon: Star, color: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+              { key: "allCompetitors", label: t("dash.competitors"), count: productsBySite.allCompetitors.length, icon: Globe, color: "text-blue-600 dark:text-blue-400", bar: "bg-blue-500", badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+              { key: "compared", label: t("dash.compared"), count: comparedUniqueCount, icon: ArrowRightLeft, color: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
             ].map(t => {
               const Icon = t.icon
+              const isActive = activeTab === t.key
               return (
                 <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
-                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                    activeTab === t.key
-                      ? `${t.activeColor} text-white shadow-lg hover:-translate-y-0.5`
-                      : "border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04]"
-                  }`}
+                  className="relative flex items-center gap-2 px-4 pb-3 pt-1 group transition-colors whitespace-nowrap"
                 >
-                  <Icon className="h-4 w-4" />
-                  {t.label}
-                  <span className={`text-xs ${activeTab === t.key ? 'opacity-75' : 'opacity-50'}`}>({t.count})</span>
+                  <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? t.color : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300'}`} />
+                  <span className={`text-sm transition-colors ${isActive ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200'}`}>
+                    {t.label}
+                  </span>
+                  <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md transition-colors ${
+                    isActive ? t.badge : 'bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400'
+                  }`}>
+                    {t.count}
+                  </span>
+                  {/* Active underline */}
+                  <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${isActive ? `${t.bar} opacity-100` : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`} />
                 </button>
               )
             })}
 
-            {Object.keys(productsBySite.otherSites).length > 0 && <div className="w-px h-8 bg-gray-200 dark:bg-gray-800 self-center mx-1" />}
+            {Object.keys(productsBySite.otherSites).length > 0 && <div className="w-px h-5 bg-gray-200/60 dark:bg-white/[0.06] self-center mx-2 mb-3" />}
 
-            {Object.entries(productsBySite.otherSites).map(([siteUrl, siteProducts]) => (
-              <button key={siteUrl} type="button" onClick={() => setActiveTab(`site-${siteUrl}`)}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                  activeTab === `site-${siteUrl}`
-                    ? "bg-purple-500 text-white shadow-lg shadow-purple-500/25 hover:-translate-y-0.5"
-                    : "border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04]"
-                }`}
-              >
-                {extractDomain(siteUrl)}
-                <span className={`text-xs ${activeTab === `site-${siteUrl}` ? 'opacity-75' : 'opacity-50'}`}>({siteProducts.length})</span>
-              </button>
-            ))}
+            {Object.entries(productsBySite.otherSites).map(([siteUrl, siteProducts]) => {
+              const isActive = activeTab === `site-${siteUrl}`
+              return (
+                <button key={siteUrl} type="button" onClick={() => setActiveTab(`site-${siteUrl}`)}
+                  className="relative flex items-center gap-2 px-4 pb-3 pt-1 group transition-colors whitespace-nowrap"
+                >
+                  <span className={`text-sm transition-colors ${isActive ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200'}`}>
+                    {extractDomain(siteUrl)}
+                  </span>
+                  <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md transition-colors ${
+                    isActive ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400'
+                  }`}>
+                    {siteProducts.length}
+                  </span>
+                  <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${isActive ? 'bg-purple-500 opacity-100' : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`} />
+                </button>
+              )
+            })}
           </div>
+        </div>
 
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-            {activeTab === "allCompetitors" && "L'ensemble des produits de vos concurrents"}
-            {activeTab === "compared" && "Produits trouvés à la fois chez vous et chez un concurrent"}
-            {activeTab.startsWith("site-") && `Produits de ${extractDomain(activeTab.replace("site-", ""))}`}
+        {/* Tab description */}
+        <div className="px-6 py-3 bg-gray-50/50 dark:bg-white/[0.015] border-b border-gray-100/50 dark:border-white/[0.03]">
+          <p className="text-xs font-normal text-gray-400 dark:text-gray-500">
+            {activeTab === "reference" && t("dash.refProducts")}
+            {activeTab === "allCompetitors" && t("dash.allCompDesc")}
+            {activeTab.startsWith("site-") && `${t("dash.productsOf")} ${extractDomain(activeTab.replace("site-", ""))}`}
           </p>
         </div>
 
@@ -739,21 +837,21 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-3xl w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h4 className="text-lg font-bold text-gray-900 dark:text-white">Scrapers en cache</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Sites avec scraper IA pré-configuré</p>
+                <h4 className="text-lg font-bold text-gray-900 dark:text-white">{t("dash.scrapersCache")}</h4>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t("dash.scrapersCacheDesc")}</p>
               </div>
               <button type="button" onClick={() => setShowCacheModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"><X className="h-5 w-5" /></button>
             </div>
             {scraperCacheCount === 0 ? (
               <div className="text-center py-8">
                 <Wand2 className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">Aucun scraper en cache. Lancez un scraping pour en créer un.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t("dash.noScraperCache")}</p>
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[60vh] overflow-y-auto">
                 {scraperCache.map((scraper, idx) => {
                   const hostname = (() => { try { return new URL(scraper.url).hostname.replace(/^www\./, '') } catch { return scraper.url } })()
-                  const createdDate = scraper.createdAt ? new Date(scraper.createdAt).toLocaleDateString('fr-FR') : '—'
+                  const createdDate = scraper.createdAt ? new Date(scraper.createdAt).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-FR') : '—'
                   return (
                     <div key={`${scraper.cacheKey || scraper.id}-${idx}`} className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 dark:border-gray-800 px-5 py-4 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition group">
                       <div className="flex items-center gap-4 min-w-0">
@@ -767,13 +865,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                             <span className="text-gray-300 dark:text-gray-600">·</span>
                             <span>{scraper.lastProductCount || 0} produits{scraper.inventoryOnly ? <span className="ml-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Inventaire</span> : null}</span>
                             <span className="text-gray-300 dark:text-gray-600">·</span>
-                            <span>Créé le {createdDate}</span>
+                            <span>{t("dash.createdOn")} {createdDate}</span>
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${scraper.status === 'active' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'}`}>
-                          {scraper.status === 'active' ? 'Actif' : 'Expiré'}
+                          {scraper.status === 'active' ? t("active") : t("dash.expired")}
                         </span>
                         <button
                           onClick={async () => {
@@ -804,7 +902,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         >
           <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col border border-gray-200 dark:border-gray-800 shadow-2xl">
             <div className="flex items-center justify-between p-5 pb-4 border-b border-gray-100 dark:border-gray-800">
-              <h4 className="text-lg font-bold text-gray-900 dark:text-white">Configuration</h4>
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white">{t("dash.configuration")}</h4>
               <button type="button" onClick={async () => { await scraperRef.current?.saveConfig(); setShowScraperConfig(false) }} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"><X className="h-5 w-5" /></button>
             </div>
             <div className="overflow-y-auto flex-1 p-5">

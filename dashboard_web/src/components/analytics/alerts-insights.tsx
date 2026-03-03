@@ -1,6 +1,7 @@
 "use client"
 
 import { AlertCircle, Bell, Info } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 
 interface Alert {
   type: 'concurrent' | 'ecart' | 'nouveau'
@@ -20,6 +21,8 @@ interface AlertsInsightsProps {
 }
 
 export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProps) {
+  const { t, locale } = useLanguage()
+
   const getSeverityColor = (severite: string) => {
     switch (severite) {
       case 'high':
@@ -49,7 +52,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
   const produitsNonCompetitifs = alertes.filter(a => a.type === 'ecart').length
   if (produitsNonCompetitifs > 0) {
     insights.push({
-      message: `${produitsNonCompetitifs} produit(s) non compétitifs détectés`,
+      message: `${produitsNonCompetitifs} ${t("ap.nonCompDetected")}`,
       type: 'warning'
     })
   }
@@ -62,12 +65,12 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
       {/* Insights automatiques */}
       <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Insights Automatiques
+          {t("ap.insights")}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gray-50 dark:bg-[#1F1F23] rounded-lg p-4">
             <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-              Prix moyen
+              {t("ap.avgPriceStat")}
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
               {stats.prixMoyen.toFixed(2)}$
@@ -75,18 +78,18 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
           </div>
           <div className="bg-gray-50 dark:bg-[#1F1F23] rounded-lg p-4">
             <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-              Heures économisées
+              {t("ap.hoursSaved")}
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
               {stats.heuresEconomisees.toFixed(1)}h
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-              (30s par véhicule comparé)
+              {t("ap.perVehicle")}
             </div>
           </div>
           <div className="bg-gray-50 dark:bg-[#1F1F23] rounded-lg p-4">
             <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-              Scrapes effectués
+              {t("ap.scrapesDone")}
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
               {stats.nombreScrapes}
@@ -118,11 +121,11 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
       {/* Alertes */}
       <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Alertes et Notifications
+          {t("ap.alertsNotif")}
         </h3>
         {alertes.length === 0 ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            Aucune alerte pour le moment
+            {t("ap.noAlerts")}
           </div>
         ) : (
           <div className="space-y-3">
@@ -137,7 +140,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
                     {alerte.message}
                   </div>
                   <div className="text-xs text-gray-600 dark:text-gray-400">
-                    {new Date(alerte.date).toLocaleDateString('fr-FR', {
+                    {new Date(alerte.date).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-CA', {
                       day: 'numeric',
                       month: 'long',
                       year: 'numeric',

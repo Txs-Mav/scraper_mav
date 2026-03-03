@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
 import { Award, TrendingDown, TrendingUp, ChevronDown, ChevronUp } from "lucide-react"
+import { useLanguage } from "@/contexts/language-context"
 
 interface Retailer {
   site: string
@@ -38,6 +39,7 @@ const fmtPrice = (v: number) =>
   v.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '$'
 
 function EcartTooltip({ active, payload }: any) {
+  const { t } = useLanguage()
   if (!active || !payload?.[0]) return null
   const d = payload[0].payload
   const sign = d.ecart > 0 ? '+' : ''
@@ -46,22 +48,22 @@ function EcartTooltip({ active, payload }: any) {
       <p className="text-sm font-medium text-white mb-2">{d.fullSite}</p>
       <div className="space-y-1.5 text-xs">
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Écart moyen</span>
+          <span className="text-gray-400">{t("ap.avgGap")}</span>
           <span className={`font-bold ${d.ecart > 0.5 ? 'text-emerald-400' : d.ecart < -0.5 ? 'text-red-400' : 'text-gray-400'}`}>
             {sign}{d.ecart.toFixed(1)}%
           </span>
         </div>
         <div className="flex justify-between gap-6">
-          <span className="text-gray-400">Produits comparés</span>
+          <span className="text-gray-400">{t("ap.comparedCount")}</span>
           <span className="text-white">{d.produitsComparables}</span>
         </div>
         <div className="h-px bg-[#2B2B30]" />
         <div className="text-gray-500 leading-relaxed">
           {d.ecart > 0.5
-            ? `Ce détaillant est en moyenne ${d.ecart.toFixed(1)}% moins cher que vous sur les produits comparables.`
+            ? t("ap.lessExpensive").replace("{0}", d.ecart.toFixed(1))
             : d.ecart < -0.5
-            ? `Ce détaillant est en moyenne ${Math.abs(d.ecart).toFixed(1)}% plus cher que vous sur les produits comparables.`
-            : 'Prix similaires aux vôtres sur les produits comparables.'}
+            ? t("ap.moreExpensive").replace("{0}", Math.abs(d.ecart).toFixed(1))
+            : t("ap.aligned")}
         </div>
       </div>
     </div>
@@ -69,16 +71,17 @@ function EcartTooltip({ active, payload }: any) {
 }
 
 export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps) {
+  const { t } = useLanguage()
   const [expandedRetailer, setExpandedRetailer] = useState<string | null>(null)
 
   if (detailleurs.length === 0) {
     return (
       <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Comparaison par Détaillant
+          {t("ap.retailerComparison")}
         </h3>
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          Aucune donnée de détaillant disponible
+          {t("ap.noRetailerData")}
         </div>
       </div>
     )
@@ -105,10 +108,10 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
     <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Comparaison par Détaillant
+          {t("ap.retailerComparison")}
         </h3>
         <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-          Écart moyen de prix calculé sur les produits comparables uniquement
+          {t("ap.retailerDesc")}
         </p>
       </div>
 
@@ -117,22 +120,22 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
         <div className="mb-5 p-3.5 bg-gray-50 dark:bg-[#141417] rounded-xl border border-gray-200 dark:border-[#2B2B30]">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-xs text-gray-500 uppercase tracking-wider font-medium">Écart moyen général (concurrents)</div>
+              <div className="text-xs text-gray-500 uppercase tracking-wider font-medium">{t("ap.generalAvgGap")}</div>
               <div className={`text-xl font-bold mt-0.5 tabular-nums ${ecartMoyenGeneral > 0.5 ? 'text-emerald-600 dark:text-emerald-400' : ecartMoyenGeneral < -0.5 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}`}>
                 {ecartMoyenGeneral > 0 ? '+' : ''}{ecartMoyenGeneral.toFixed(1)}%
               </div>
             </div>
             <div className="text-right text-xs text-gray-500">
-              <div>{competitorsOnly.length} concurrent(s)</div>
-              <div>{competitorsOnly.reduce((s, d) => s + d.produitsComparables, 0)} comparaisons</div>
+              <div>{competitorsOnly.length} {t("ap.comparisons")}</div>
+              <div>{competitorsOnly.reduce((s, d) => s + d.produitsComparables, 0)} {t("ap.comparedCount")}</div>
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
             {ecartMoyenGeneral < -0.5
-              ? `En moyenne, les concurrents sont ${Math.abs(ecartMoyenGeneral).toFixed(1)}% plus chers que vous.`
+              ? t("ap.moreExpensive").replace("{0}", Math.abs(ecartMoyenGeneral).toFixed(1))
               : ecartMoyenGeneral > 0.5
-              ? `En moyenne, les concurrents sont ${ecartMoyenGeneral.toFixed(1)}% moins chers que vous.`
-              : 'Vos prix sont globalement alignés avec les concurrents.'}
+              ? t("ap.lessExpensive").replace("{0}", ecartMoyenGeneral.toFixed(1))
+              : t("ap.aligned")}
           </p>
         </div>
       )}
@@ -179,15 +182,15 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
           <div className="mt-3 flex items-center justify-center gap-6 text-xs text-gray-500">
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
-              <span>Moins cher que vous</span>
+              <span>{t("ap.cheaperLegend")}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-sm bg-red-400" />
-              <span>Plus cher que vous</span>
+              <span>{t("ap.expensiveLegend")}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-sm bg-gray-500" />
-              <span>Similaire</span>
+              <span>{t("ap.similarLegend")}</span>
             </div>
           </div>
         </>
@@ -199,16 +202,16 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
           <thead>
             <tr className="border-b border-gray-200 dark:border-[#1F1F23]">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Détaillant
+                {t("ap.retailer")}
               </th>
               <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Écart moy.
+                {t("ap.avgGapShort")}
               </th>
               <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Prod. comparés
+                {t("ap.comparedCountShort")}
               </th>
               <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Prod. total
+                {t("ap.totalProducts")}
               </th>
               <th className="w-10" />
             </tr>
@@ -266,7 +269,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                   {expandedRetailer === det.site && det.categorieStats && det.categorieStats.length > 0 && (
                     <div className="bg-gray-50/50 dark:bg-[#141417] mx-2 mb-2 rounded-lg px-4 py-3">
                       <div className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">
-                        Écart moyen par catégorie
+                        {t("ap.avgGapCategory")}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {det.categorieStats.map((cs, ci) => {

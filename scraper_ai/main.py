@@ -14,9 +14,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Forcer le flush immédiat de stdout/stderr (important quand redirigé vers un fichier)
 if hasattr(sys.stdout, 'buffer'):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(
+        sys.stdout.buffer, line_buffering=True, encoding='utf-8')
 if hasattr(sys.stderr, 'buffer'):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(
+        sys.stderr.buffer, line_buffering=True, encoding='utf-8')
 
 # Ajouter le répertoire parent au PYTHONPATH pour les imports
 scraper_ai_path = Path(__file__).parent
@@ -164,56 +166,6 @@ KNOWN_BRANDS = sorted([
 # Normaliser les marques pour le matching
 _NORMALIZED_BRANDS = [(_deep_normalize(b), b) for b in KNOWN_BRANDS]
 
-# ── Approche STRICTE pour le matching par inclusion (Level 3) ──
-# Au lieu de lister tous les trims significatifs (impossible à maintenir),
-# on liste les mots IGNORABLES (couleurs, bruit marketing, articles).
-# Tout mot de différence qui N'EST PAS ignorable = différence significative = rejet.
-# Cela couvre automatiquement TOUS les trims existants et futurs.
-
-_IGNORABLE_COLORS = {_deep_normalize(c) for c in [
-    'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
-    'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
-    'kaki', 'sable', 'ivoire', 'creme',
-    'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin', 'chrome', 'carbone',
-    'fonce', 'clair', 'fluo', 'neon',
-    'ebene', 'graphite', 'anthracite', 'platine', 'titane', 'cuivre', 'acier',
-    'cobalt', 'ardoise', 'champagne', 'bonbon', 'diablo', 'etincelle', 'velocite',
-    'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
-    'gray', 'grey', 'silver', 'gold', 'brown',
-    'matte', 'glossy', 'metallic', 'pearl', 'carbon',
-    'dark', 'light', 'bright',
-    'ivory', 'charcoal', 'titanium', 'copper', 'steel', 'platinum',
-    'midnight', 'candy', 'nebuleux', 'nebuleuse',
-] if c}
-
-_IGNORABLE_NOISE = {_deep_normalize(w) for w in [
-    'demo', 'demonstrateur', 'new', 'neuf', 'used', 'usage', 'usagee',
-    'occasion', 'certified', 'certifie', 'preowned', 'pre', 'owned',
-    'camouflage', 'camo',
-] if w}
-
-_IGNORABLE_ARTICLES = {_deep_normalize(w) for w in [
-    'd', 'de', 'a', 'le', 'la', 'les', 'en', 'du', 'des', 'l',
-    'with', 'avec', 'and', 'et', 'the', 'for', 'pour', 'of',
-] if w}
-
-_IGNORABLE_DIFF_WORDS = _IGNORABLE_COLORS | _IGNORABLE_NOISE | _IGNORABLE_ARTICLES
-
-
-def _is_significant_diff(diff_words: set) -> bool:
-    """Approche stricte : tout mot de différence qui n'est pas explicitement
-    ignorable (couleur, bruit marketing, article) est considéré significatif.
-
-    Cela couvre automatiquement tous les trims (SE, Touring, XLT, Sport, LX, EPS, etc.)
-    sans avoir besoin de les lister un par un.
-    """
-    for w in diff_words:
-        if w in _IGNORABLE_DIFF_WORDS:
-            continue
-        return True
-    return False
-
-
 # Mapping pour unifier les variantes de marques
 _BRAND_ALIASES = {
     'cf moto': 'cfmoto',
@@ -234,22 +186,81 @@ _BRAND_ALIASES = {
 }
 
 
+def extract_year_from_text(text: str) -> int:
+    """Extrait une année (19xx/20xx) depuis un texte quelconque."""
+    import re
+    if not text:
+        return 0
+    match = re.search(r'\b(19|20)\d{2}\b', text)
+    if match:
+        year = int(match.group(0))
+        if 1900 <= year <= 2100:
+            return year
+    return 0
+
+
+def extract_year_from_url(url: str) -> int:
+    """Extrait une année depuis une URL de produit.
+
+    Gère les patterns courants :
+      - /kawasaki-ninja-500-se-2025-a-vendre-k59130/
+      - /sportive-kawasaki-ninja-500-se-2026-ms-w-get-171662.html
+      - /suzuki/df40a/2024/
+    """
+    import re
+    if not url:
+        return 0
+    # Chercher un pattern -YYYY- ou /YYYY/ dans l'URL (pas au début pour éviter le port)
+    match = re.search(r'[/-](20[12]\d)(?:[/-]|\.html|$)', url)
+    if match:
+        return int(match.group(1))
+    # Fallback: pattern plus large
+    match = re.search(r'[/-](19\d{2}|20\d{2})(?:[/-]|\.html|$)', url)
+    if match:
+        year = int(match.group(1))
+        if 1990 <= year <= 2100:
+            return year
+    return 0
+
+
+def enrich_product_year(product: dict) -> None:
+    """Enrichit le produit avec l'année extraite depuis name ou sourceUrl si absente.
+
+    Ordre de priorité :
+      1. Champ 'annee' existant
+      2. Regex sur 'name'
+      3. Regex sur 'sourceUrl'
+    """
+    annee = product.get('annee', 0) or 0
+    if annee:
+        return
+
+    year = extract_year_from_text(product.get('name', ''))
+    if not year:
+        year = extract_year_from_url(product.get('sourceUrl', ''))
+
+    if year:
+        product['annee'] = year
+
+
 def normalize_product_key(product: dict, ignore_colors: bool = False, _ignore_colors: bool = False) -> Tuple[str, str, int]:
     """Crée une clé normalisée pour identifier les produits (marque + modèle + année).
 
-    Exclut du matching : couleur, concessionnaire, localisation, préfixes catégorie.
-    Normalisation profonde: sans accents, sans ponctuation, espaces collés entre
-    lettres/chiffres séparés.
-
-    Args:
-        product: Dictionnaire du produit
-        _ignore_colors: Obsolète, conservé pour compatibilité API
+    Exclut du matching : localisation, concessionnaire, état, préfixes catégorie.
+    Les couleurs ne sont retirées QUE si ignore_colors=True.
+    Tout le reste (trims, variantes) est toujours conservé.
     """
     import re
 
     raw_marque = str(product.get('marque', '')).strip()
     raw_modele = str(product.get('modele', '')).strip()
     annee = product.get('annee', 0) or 0
+
+    # ── Toujours tenter d'extraire l'année si absente ──
+    if not annee:
+        annee = extract_year_from_text(product.get('name', ''))
+    if not annee:
+        annee = extract_year_from_url(product.get('sourceUrl', ''))
 
     # Nettoyer les préfixes courants
     raw_marque = re.sub(
@@ -288,20 +299,20 @@ def normalize_product_key(product: dict, ignore_colors: bool = False, _ignore_co
                     marque = detected_brand
                 if not modele:
                     # Retirer l'année du reste pour avoir le modèle pur
-                    year_match = re.search(r'\b(20[12]\d)\b', rest_of_name)
+                    year_match = re.search(r'\b(19|20)\d{2}\b', rest_of_name)
                     if year_match:
                         if not annee:
-                            annee = int(year_match.group(1))
+                            annee = int(year_match.group(0))
                         rest_of_name = rest_of_name[:year_match.start(
                         )] + rest_of_name[year_match.end():]
                     modele = re.sub(r'\s+', ' ', rest_of_name).strip()
             elif not modele:
                 # Aucune marque connue détectée dans le nom — utiliser le nom nettoyé comme modèle
                 # Cas fréquent : marque déjà définie (JSON-LD), nom = juste le modèle (ex: "Z900")
-                year_match = re.search(r'\b(20[12]\d)\b', name_norm)
+                year_match = re.search(r'\b(19|20)\d{2}\b', name_norm)
                 if year_match:
                     if not annee:
-                        annee = int(year_match.group(1))
+                        annee = int(year_match.group(0))
                     name_norm = name_norm[:year_match.start(
                     )] + name_norm[year_match.end():]
                 # Si la marque est déjà définie, la retirer du nom pour éviter la duplication
@@ -318,17 +329,14 @@ def normalize_product_key(product: dict, ignore_colors: bool = False, _ignore_co
     # Unifier les alias de marques
     marque = _BRAND_ALIASES.get(marque, marque)
 
-    # ── Nettoyage du modèle : retirer UNIQUEMENT localisation, concessionnaire, couleurs ──
-    # Seuls ces 3 éléments sont exclus pour que les produits soient correctement matchés
-    # (ex: "côte à côte 2026 CFMOTO UFORCE U10 PRO" ↔ "2026 CFMOTO UFORCE U10 PRO")
+    # ── Nettoyage du modèle : retirer UNIQUEMENT localisation, concessionnaire, état ──
+    # Tout le reste (couleurs, trims, variantes) est conservé pour un matching strict.
 
     _DEALER_NOISE_PATTERNS = [
-        # Phrases structurelles (génériques — fonctionnent pour tout dealer/ville)
         r'\b(?:en\s+vente|disponible|neuf|usage|usag[ée]|occasion)\s+(?:a|à|chez|au)\b.*$',
         r"\bd['\u2019]?occasion\s+(?:a|à|chez|au)\b.*$",
         r'\b(?:a|à)\s+vendre\s+(?:a|à|chez|au)\b.*$',
         r'\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*$',
-        # Suffixes dealer génériques (nom + mot business en fin de chaîne)
         r'\b\w+\s+(?:motosport|motorsport|powersports?)\s*$',
         r'\b(?:moto|motos|auto|autos)\s+\w+\s*$',
         r'\b\w+\s+(?:moto|motos|sport[s]?|auto[s]?|motors?|marine|performance|center|centre)\s*$',
@@ -336,7 +344,6 @@ def normalize_product_key(product: dict, ignore_colors: bool = False, _ignore_co
     for pattern in _DEALER_NOISE_PATTERNS:
         modele = re.sub(pattern, '', modele, flags=re.I).strip()
 
-    # 2. Préfixes de catégorie (côte à côte, VTT, etc.) — varient selon les sites
     _CATEGORY_PREFIX_PATTERNS = [
         r'^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+',
         r'^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+',
@@ -344,10 +351,12 @@ def normalize_product_key(product: dict, ignore_colors: bool = False, _ignore_co
     for pattern in _CATEGORY_PREFIX_PATTERNS:
         modele = re.sub(pattern, '', modele, flags=re.I).strip()
 
-    # 3. Couleurs — toujours exclues pour le matching
-    modele = remove_colors_from_string(modele)
+    _ETAT_STANDALONE = r'\b(?:neuf|new|usage|usagee?|occasion|used|demo|demonstrateur|preowned|pre[\s-]?owned|certifie|certified)\b'
+    modele = re.sub(_ETAT_STANDALONE, '', modele, flags=re.I).strip()
 
-    # Nettoyer les espaces finaux
+    if ignore_colors:
+        modele = remove_colors_from_string(modele)
+
     marque = re.sub(r'\s+', ' ', marque).strip()
     modele = re.sub(r'\s+', ' ', modele).strip()
 
@@ -376,15 +385,9 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
     """
     Trouve les produits du concurrent qui existent aussi dans le site de référence.
 
-    Matching strict après normalisation profonde :
-      1. Match exact (marque + modèle + année) — après deepNormalize
-      2. Match avec année wildcard — si l'un des deux côtés n'a PAS d'année (0),
-         on accepte le match. Si les deux ont une année et qu'elles diffèrent → PAS de match.
-
-    Les sous-modèles (SE, Touring, R, X, etc.) sont TOUJOURS respectés.
-    Les années sont TOUJOURS respectées quand elles existent des deux côtés.
-
-    Retourne UNIQUEMENT les produits du concurrent qui ont une correspondance.
+    Matching STRICT : marque + modèle + année doivent correspondre.
+    L'année est obligatoire : si deux produits ont des années différentes, pas de match.
+    Si les deux côtés n'ont pas d'année (0), le match est permis.
     """
     print(f"\n{'='*60}")
     print(f"🔍 COMPARAISON AVEC LE SITE DE RÉFÉRENCE")
@@ -392,15 +395,27 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
     print(f"📊 Référence: {reference_url} ({len(reference_products)} produits)")
     print(
         f"📊 Concurrent: {comparison_url} ({len(comparison_products)} produits)")
-    print(f"🎨 Matching: couleurs, concessionnaire et localisation exclus")
+    print(f"🔒 Matching strict: marque + modèle + année (année obligatoire)")
 
-    # ── Index des produits de référence ──
-    # Index 1 : clé complète (marque, modele, annee) — pour match exact
+    # Enrichir tous les produits avec l'année avant le matching
+    enriched_ref = 0
+    enriched_comp = 0
+    for rp in reference_products:
+        had_year = bool(rp.get('annee'))
+        enrich_product_year(rp)
+        if not had_year and rp.get('annee'):
+            enriched_ref += 1
+    for cp in comparison_products:
+        had_year = bool(cp.get('annee'))
+        enrich_product_year(cp)
+        if not had_year and cp.get('annee'):
+            enriched_comp += 1
+    print(f"   📅 Années enrichies: {enriched_ref} réf, {enriched_comp} conc (depuis name/URL)")
+
     ref_exact: Dict[Tuple, List[dict]] = {}
-    # Index 2 : clé (marque, modele) → liste de (annee, produit) — pour match avec année wildcard
-    ref_by_model: Dict[Tuple[str, str], List[Tuple[int, dict]]] = {}
 
     skipped_ref = 0
+    no_year_ref = 0
     for rp in reference_products:
         key = normalize_product_key(rp, ignore_colors=ignore_colors)
         marque, modele, annee = key
@@ -408,28 +423,23 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         if not modele:
             skipped_ref += 1
             continue
+        if not annee:
+            no_year_ref += 1
 
-        # Index exact
         if key not in ref_exact:
             ref_exact[key] = []
         ref_exact[key].append(rp)
 
-        # Index par modèle (pour wildcard année)
-        model_key = (marque, modele)
-        if model_key not in ref_by_model:
-            ref_by_model[model_key] = []
-        ref_by_model[model_key].append((annee, rp))
-
     print(
-        f"   📋 Clés de référence: {len(ref_exact)} (modèles uniques: {len(ref_by_model)}, ignorées: {skipped_ref})")
+        f"   📋 Clés de référence: {len(ref_exact)} (ignorées: {skipped_ref}, sans année: {no_year_ref})")
     sample_keys = list(ref_exact.keys())[:5]
     for k in sample_keys:
         print(f"      Réf: marque='{k[0]}' modele='{k[1]}' annee={k[2]}")
 
-    # ── Matching ──
     matched_products = []
     skipped_comp = 0
-    match_levels = {'exact': 0, 'year_wildcard': 0, 'model_inclusion': 0}
+    no_year_comp = 0
+    match_levels = {'exact': 0}
 
     for product in comparison_products:
         key = normalize_product_key(product, ignore_colors=ignore_colors)
@@ -438,80 +448,21 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         if not modele:
             skipped_comp += 1
             continue
+        if not annee:
+            no_year_comp += 1
 
         current_price = float(product.get('prix', 0) or 0)
         ref_matches = None
         match_level = ''
 
-        # ── Niveau 1 : Match exact (marque + modele + annee) ──
+        # Match exact uniquement (marque + modele + annee)
         if key in ref_exact:
             ref_matches = ref_exact[key]
             match_level = 'exact'
 
-        # ── Niveau 2 : Match avec année wildcard ──
-        # Seulement si au moins un côté n'a PAS d'année (0).
-        # Si les deux côtés ont une année et qu'elles diffèrent → PAS de match.
-        if not ref_matches:
-            model_key = (marque, modele)
-            candidates = ref_by_model.get(model_key, [])
-
-            wildcard_matches = []
-            for ref_annee, ref_prod in candidates:
-                # Accepter si : l'un des deux n'a pas d'année
-                if annee == 0 or ref_annee == 0:
-                    wildcard_matches.append(ref_prod)
-                # Si les deux ont une année identique (déjà couvert par exact, mais au cas où)
-                elif annee == ref_annee:
-                    wildcard_matches.append(ref_prod)
-                # Sinon (deux années différentes non-nulles) → on refuse
-
-            if wildcard_matches:
-                ref_matches = wildcard_matches
-                match_level = 'year_wildcard'
-
-        # ── Niveau 3 : Match par inclusion de modèle ──
-        # Si le modèle du concurrent est contenu dans le modèle de la référence (ou inversement),
-        # on accepte le match SEULEMENT si la différence ne contient pas de sous-modèle significatif.
-        #
-        # Ex ACCEPTÉ : "brute force 300" ↔ "brute force 300 rouge" (diff = couleur → OK)
-        # Ex REJETÉ  : "450 sx" ↔ "450 sx se" (diff = "se" → sous-modèle significatif → REJET)
-        # Ex REJETÉ  : "450 sx se" ↔ "450 sx" (diff = "se" → sous-modèle significatif → REJET)
-        if not ref_matches:
-            for ref_key, ref_prods in ref_exact.items():
-                ref_marque, ref_modele, ref_annee = ref_key
-                if ref_marque != marque:
-                    continue
-                # Vérifier compatibilité d'année
-                if annee != 0 and ref_annee != 0 and annee != ref_annee:
-                    continue
-                if not ref_modele or not modele:
-                    continue
-                ref_words = set(ref_modele.split())
-                comp_words = set(modele.split())
-
-                is_subset = comp_words.issubset(
-                    ref_words) or ref_words.issubset(comp_words)
-                if not is_subset:
-                    continue
-
-                diff_words = ref_words.symmetric_difference(comp_words)
-                has_significant_diff = _is_significant_diff(diff_words)
-
-                if has_significant_diff:
-                    if len(matched_products) < 50:
-                        print(
-                            f"      🚫 [inclusion rejetée] '{modele}' ≠ '{ref_modele}' (diff significative: {diff_words})")
-                    continue
-
-                if not ref_matches:
-                    ref_matches = []
-                ref_matches.extend(ref_prods)
-                match_level = 'model_inclusion'
-
         if not ref_matches:
             continue
 
-        # Sélectionner le meilleur match
         best_match = _pick_best_ref(ref_matches, current_price)
         ref_price = float(best_match.get('prix', 0) or 0)
 
@@ -534,15 +485,14 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
 
         if product['differencePrix'] is not None:
             diff_str = f"+{product['differencePrix']:.0f}$" if product['differencePrix'] >= 0 else f"{product['differencePrix']:.0f}$"
-            level_icon = '✅' if match_level == 'exact' else '📅'
             print(
-                f"   {level_icon} [{match_level}] {marque} {modele} {annee or ''}: {current_price:.0f}$ vs {ref_price:.0f}$ ({diff_str})")
+                f"   ✅ [{match_level}] {marque} {modele} {annee or '?'}: {current_price:.0f}$ vs {ref_price:.0f}$ ({diff_str})")
 
     match_rate = (len(matched_products) / len(comparison_products)
                   * 100) if comparison_products else 0
-    print(f"\n   📋 Concurrent - ignorés (modèle vide): {skipped_comp}")
+    print(f"\n   📋 Concurrent - ignorés (modèle vide): {skipped_comp}, sans année: {no_year_comp}")
     print(
-        f"   📊 Matching: exact={match_levels['exact']}, wildcard année={match_levels['year_wildcard']}, inclusion modèle={match_levels['model_inclusion']}")
+        f"   📊 Matching: exact={match_levels['exact']}")
 
     if not matched_products and comparison_products:
         print(f"   ⚠️ Aucune correspondance! Échantillon des clés concurrent:")
@@ -728,7 +678,8 @@ Exemples:
     # =====================================================
     # PHASE 2: CRÉATION DES SCRAPERS (SÉQUENTIEL)
     # =====================================================
-    phase2_results: dict = {}  # Résultats Phase 2 réutilisés en Phase 3 pour éviter double-scraping
+    # Résultats Phase 2 réutilisés en Phase 3 pour éviter double-scraping
+    phase2_results: dict = {}
     if sites_without_cache:
         print(f"\n{'='*50}")
         print(f"🔧 PHASE 2: CRÉATION DES SCRAPERS (séquentiel)")
@@ -791,7 +742,8 @@ Exemples:
             results[url] = phase2_results[url]
             product_count = len(phase2_results[url].get('products', []))
             is_ref = " ⭐" if url == reference_url else ""
-            print(f"   ♻️  {url[:40]}...: {product_count} produits (Phase 2){is_ref}")
+            print(
+                f"   ♻️  {url[:40]}...: {product_count} produits (Phase 2){is_ref}")
         else:
             sites_needing_extraction.append(url)
 
@@ -813,7 +765,8 @@ Exemples:
                     results[result_url] = result_data
                     product_count = len(result_data.get('products', []))
                     is_ref = " ⭐" if url == reference_url else ""
-                    print(f"   ✅ {url[:40]}...: {product_count} produits{is_ref}")
+                    print(
+                        f"   ✅ {url[:40]}...: {product_count} produits{is_ref}")
                 except Exception as e:
                     print(f"   ❌ {url[:40]}...: Erreur - {e}")
                     results[url] = {"companyInfo": {}, "products": []}
@@ -824,7 +777,8 @@ Exemples:
     # Ne retrier que les sites avec 0 produits ET sans erreur de code
     # Les bugs Python (AttributeError, TypeError, etc.) ne doivent pas déclencher
     # un retry qui risque de corrompre un cache valide
-    code_errors = {'AttributeError', 'TypeError', 'NameError', 'KeyError', 'ImportError', 'SyntaxError'}
+    code_errors = {'AttributeError', 'TypeError',
+                   'NameError', 'KeyError', 'ImportError', 'SyntaxError'}
     sites_with_zero_products = [
         url for url in all_sites
         if len(results.get(url, {}).get('products', [])) == 0
@@ -866,7 +820,8 @@ Exemples:
         if results.get(url, {}).get('_error', '') in code_errors
     ]
     if code_error_sites:
-        print(f"\n⚠️  {len(code_error_sites)} site(s) ignoré(s) pour retry (erreur de code):")
+        print(
+            f"\n⚠️  {len(code_error_sites)} site(s) ignoré(s) pour retry (erreur de code):")
         for url in code_error_sites:
             err = results[url].get('_error', '')
             print(f"   ❌ {url[:50]} → {err} (cache préservé)")
@@ -928,6 +883,13 @@ Exemples:
     # Sauvegarder les produits
     # IMPORTANT: Inclure TOUS les produits (référence + TOUS les concurrents, matchés ou non)
     # pour que le dashboard puisse afficher les produits même sans correspondance
+
+    # Enrichir tous les produits avec l'année avant sauvegarde
+    for product in reference_products:
+        enrich_product_year(product)
+    for competitor_url_key in competitor_urls:
+        for product in results.get(competitor_url_key, {}).get('products', []):
+            enrich_product_year(product)
 
     # Marquer les produits de référence avec leur source
     # FORCER sourceSite (pas conditionnel) pour éviter tout mélange de données
@@ -1030,7 +992,8 @@ Exemples:
         for attempt in range(1, max_retries + 1):
             try:
                 timeout = 30 + (attempt - 1) * 15
-                print(f"   💾 Sauvegarde Supabase (tentative {attempt}/{max_retries}, timeout {timeout}s)...")
+                print(
+                    f"   💾 Sauvegarde Supabase (tentative {attempt}/{max_retries}, timeout {timeout}s)...")
                 response = requests.post(
                     f"{api_url}/api/scrapings/save",
                     json=scraping_payload,
