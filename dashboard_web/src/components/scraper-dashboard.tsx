@@ -668,9 +668,6 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       {products.length === 0 && !isScrapingActive && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-10 text-center">
           <div className="max-w-md mx-auto">
-            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/20 flex items-center justify-center mb-5">
-              <BarChart3 className="h-7 w-7 text-blue-500 dark:text-blue-400" />
-            </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t("dash.noData")}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
               {t("dash.noDataDesc")}
