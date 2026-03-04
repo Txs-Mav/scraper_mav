@@ -232,10 +232,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string
     password: string
     plan?: string
+    promoCode?: string
   }) => {
     try {
-      // Stocker le plan payant comme pending_plan s'il n'est pas standard
-      const pendingPlan = data.plan && data.plan !== 'standard' ? data.plan : null
+      const hasPromo = !!data.promoCode
+      const subscriptionPlan = hasPromo ? 'ultime' : 'standard'
+      const pendingPlan = !hasPromo && data.plan && data.plan !== 'standard' ? data.plan : null
 
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -243,10 +245,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         options: {
           data: {
             name: data.name,
-            subscription_plan: 'standard', // Toujours créer avec standard
-            pending_plan: pendingPlan // Plan payant en attente de paiement
+            subscription_plan: subscriptionPlan,
+            pending_plan: pendingPlan,
+            ...(hasPromo ? { promo_code: data.promoCode } : {}),
           },
-          // Rediriger vers l'origine actuelle (localhost ou prod) après confirmation email
           emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined
         }
       })

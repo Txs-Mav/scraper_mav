@@ -128,8 +128,8 @@ function CreateAccountContent() {
     if (hasValidPromo) { sessionStorage.setItem("pending_promo_code", promoCode.trim()); sessionStorage.setItem("pending_promo_plan", selectedPlan) }
 
     try {
-      const planForRegister = hasValidPromo ? "standard" : selectedPlan
-      const { error } = await register({ name, email, password, plan: planForRegister })
+      const planForRegister = hasValidPromo ? "ultime" : selectedPlan
+      const { error } = await register({ name, email, password, plan: planForRegister, promoCode: hasValidPromo ? promoCode.trim() : undefined })
 
       if (error) {
         let msg = t("register.genericError")
