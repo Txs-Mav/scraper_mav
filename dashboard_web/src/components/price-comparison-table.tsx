@@ -22,6 +22,7 @@ type Product = {
   etat?: string
   competitors?: Record<string, number | null>
   produitReference?: { sourceUrl?: string; name?: string; prix?: number }
+  quantity?: number
 }
 
 type PriceComparisonTableProps = {
@@ -281,6 +282,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       competitorUrls: Record<string, string>
       reference: number | null
       competitorPrices: Record<string, number>
+      quantity: number
     }>()
 
     const productsWithComparison = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
@@ -309,9 +311,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           competitorUrls: {},
           reference: p.prixReference ?? null,
           competitorPrices: {},
+          quantity: 0,
         })
       }
       const group = groups.get(key)!
+      group.quantity += (p.quantity || 1)
       const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
       if (siteLabel && p.prix != null) {
         if (!group.competitorPrices[siteLabel]) {
@@ -352,6 +356,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         competitorUrls: {},
         reference: refPrice,
         competitorPrices: {},
+        quantity: p.quantity || 1,
       })
     }
 
@@ -375,6 +380,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         referenceUrl: g.referenceUrl,
         reference: g.reference,
         prices,
+        quantity: g.quantity,
       }
     })
   }, [products, competitors])
@@ -441,6 +447,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       referenceUrl?: string
       reference: number | null
       prices: { dealer: string; price: number | null; delta: number | null; etat?: string; url?: string }[]
+      quantity?: number
     }>,
     emptyMessage?: string,
     overrideCompetitors?: { id: string; label: string }[]
@@ -518,6 +525,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                           </span>
                         )}
                         <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
+                        {p.quantity != null && p.quantity > 1 && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                            x{p.quantity}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </td>

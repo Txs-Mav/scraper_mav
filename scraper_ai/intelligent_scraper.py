@@ -1730,8 +1730,10 @@ class IntelligentScraper:
                     [title_text] + badge_texts + meta_texts)
 
                 # Détection dans le contenu avec regex pour mots entiers
-                # Inclut les variantes féminines (usagée) et formes avec accent
-                if re.search(r'\b(usagée?|usag[eé]e?|occasion|used|pre-owned|pré-possédée?|d[\'\u2019]occasion)\b', all_page_text):
+                # Inclut "véhicule d'occasion", variantes féminines, accents
+                if re.search(r'v[ée]hicule\s+d[\'\u2019]occasion', all_page_text):
+                    etat = 'occasion'
+                elif re.search(r'\b(usagée?|usag[eé]e?|occasion|used|pre-owned|pré-possédée?|d[\'\u2019]occasion)\b', all_page_text):
                     etat = 'occasion'
                 elif re.search(r'\b(démonstrateur|demonstrateur|demo unit|démo)\b', all_page_text):
                     etat = 'demonstrateur'
@@ -2067,23 +2069,28 @@ class IntelligentScraper:
         return filtered
 
     def _deduplicate_products(self, products: List[Dict]) -> List[Dict]:
-        """Déduplique les produits basé sur le nom et le prix"""
-        seen = set()
-        unique = []
+        """Déduplique et regroupe les produits identiques (marque+modèle+année+état).
+
+        Les produits partageant la même clé sont regroupés : le premier sert
+        de représentant et un champ ``quantity`` indique le nombre d'occurrences.
+        """
+        groups: Dict[tuple, Dict] = {}
 
         for product in products:
-            # Créer une clé unique
             key = (
-                product.get('name', '').lower().strip(),
-                product.get('prix', 0),
-                product.get('sourceUrl', '')
+                product.get('marque', '').lower().strip(),
+                product.get('modele', '').lower().strip(),
+                product.get('annee', 0),
+                product.get('etat', 'neuf'),
             )
 
-            if key not in seen:
-                seen.add(key)
-                unique.append(product)
+            if key not in groups:
+                product['quantity'] = 1
+                groups[key] = product
+            else:
+                groups[key]['quantity'] = groups[key].get('quantity', 1) + 1
 
-        return unique
+        return list(groups.values())
 
     def _generate_scraper_code(
         self,

@@ -19,6 +19,8 @@ export interface Product {
   modele?: string
   annee?: number | null
   disponibilite?: string
+  etat?: string
+  quantity?: number
 }
 
 function normalizeSiteKey(site?: string): string {
@@ -212,7 +214,7 @@ export function normalizeProductGroupKey(p: Product): string {
   modele = removeColors(modele)
   marque = removeColors(marque)
 
-  return `${marque}|${modele}|${annee || 0}`
+  return `${marque}|${modele}|${annee || 0}|${p.etat || 'neuf'}`
 }
 
 // ─── Interfaces ─────────────────────────────────────────────────────

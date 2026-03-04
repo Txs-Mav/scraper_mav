@@ -38,6 +38,7 @@ interface Product {
   prixReference?: number | null
   differencePrix?: number | null
   siteReference?: string
+  quantity?: number
 }
 
 interface ScraperDashboardProps {
