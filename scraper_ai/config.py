@@ -43,8 +43,8 @@ else:
 # MODÈLES GEMINI
 # =============================================================================
 # Pour l'analyse HTML et génération de scraper
-MODEL_ANALYSIS = "gemini-2.0-flash-001"  # Version stable pour Vertex AI
-MODEL_EXTRACTION = "gemini-1.5-flash-002"  # Pour l'extraction si nécessaire
+MODEL_ANALYSIS = "gemini-2.5-flash-lite"  # gemini-2.0-flash-001 déprécié juin 2026
+MODEL_EXTRACTION = "gemini-2.5-flash-lite"
 
 # Version du prompt - Incrémenter cette valeur quand le prompt change
 # Cela invalidera automatiquement tous les scrapers en cache
