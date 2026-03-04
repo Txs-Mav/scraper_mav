@@ -3,6 +3,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { createClient } from '@/lib/supabase/server'
+import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 
 export async function POST(request: Request) {
   try {
@@ -19,10 +20,33 @@ export async function POST(request: Request) {
     }
 
     const userId = user.id
-    console.log(`[ScraperAI] ✅ Utilisateur authentifié: ${userId}`)
-
     const body = await request.json()
     const { referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly } = body
+
+    // --- Proxy vers le backend Railway si on est sur Vercel ---
+    if (hasBackend()) {
+      try {
+        const backendRes = await proxyToBackend('/scraper/run', {
+          body: { userId, referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly },
+        })
+        const data = await backendRes.json()
+        if (!backendRes.ok) {
+          return NextResponse.json(data, { status: backendRes.status })
+        }
+        return NextResponse.json({
+          ...data,
+          logFile: data.jobId,
+        })
+      } catch (e: any) {
+        console.error('[ScraperAI] ❌ Erreur proxy backend:', e)
+        return NextResponse.json(
+          { error: 'Backend unavailable', message: 'Le serveur de scraping est indisponible. Réessayez dans quelques instants.' },
+          { status: 503 }
+        )
+      }
+    }
+
+    console.log(`[ScraperAI] ✅ Utilisateur authentifié: ${userId}`)
 
     // Log détaillé de ce qui est reçu du frontend
     console.log(`[ScraperAI] 📥 Body reçu:`)
@@ -274,6 +298,25 @@ export async function GET(request: Request) {
 
     if (!logFile) {
       return NextResponse.json({ error: 'logFile parameter required' }, { status: 400 })
+    }
+
+    // --- Proxy vers le backend Railway si on est sur Vercel ---
+    if (hasBackend()) {
+      try {
+        const backendRes = await proxyToBackend('/scraper/logs', {
+          method: 'GET',
+          params: { jobId: logFile, lastLine: String(lastLine) },
+        })
+        const data = await backendRes.json()
+        return NextResponse.json(data)
+      } catch (e: any) {
+        return NextResponse.json({
+          lines: [],
+          totalLines: 0,
+          isComplete: false,
+          error: 'Backend unavailable',
+        })
+      }
     }
 
     // Vérifier que le fichier existe

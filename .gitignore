@@ -25,3 +25,4 @@ scraper_cache/
 .vscode/
 *.swp
 *.swo
+.vercel

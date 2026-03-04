@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { spawn } from 'child_process'
 import path from 'path'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 
 export async function POST(request: Request) {
   try {
@@ -26,6 +27,24 @@ export async function POST(request: Request) {
     }
     
     const userId = user.id
+
+    // --- Proxy vers le backend Railway si on est sur Vercel ---
+    if (hasBackend()) {
+      try {
+        const backendRes = await proxyToBackend('/scraper-ai/run', {
+          body: { userId, url, referenceUrl, forceRefresh, categories },
+          timeout: 35 * 60 * 1000,
+        })
+        const data = await backendRes.json()
+        return NextResponse.json(data, { status: backendRes.status })
+      } catch (e: any) {
+        console.error('[ScraperAI] ❌ Erreur proxy backend:', e)
+        return NextResponse.json(
+          { error: 'Backend unavailable', message: 'Le serveur de scraping est indisponible.' },
+          { status: 503 }
+        )
+      }
+    }
 
     // Utiliser scraper_ai.main pour exécuter le scraper
     const scraperAiModule = 'scraper_ai.main'

@@ -1843,7 +1843,7 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
         product['sourceCategorie'] = 'inventaire'  # Par défaut
     
     # Détection de l'état du produit (neuf, occasion, demonstrateur)
-    # Règle: usagé seulement si kilométrage écrit ET URL contient "usagé"; sinon neuf
+    # Règle: usagé si kilométrage > 0 (URL ou infos produit) OU URL contient "usagé"
     # "démo" / "démonstrateur" dans le nom ou le modèle → demonstrateur
     etat = None
     name_and_modele = ' '.join(str(x or '') for x in [product.get('name'), product.get('modele')]).lower()
@@ -1857,22 +1857,22 @@ def extract_product_from_html(html: str, url: str, base_url: str) -> Dict[str, A
         except (ValueError, TypeError):
             km_val = 0
     has_km = km_val > 0
-    # Signal 1: URL patterns (occasion seulement si URL usagé ET kilométrage présent; ne pas écraser démo du nom)
+    # Signal 1: URL patterns + kilométrage des infos produit
     if not etat:
-        if url_has_usage and has_km:
+        if url_has_usage or has_km:
             etat = 'occasion'
         elif any(x in url_lower for x in ['neuf', '/new/', '-new-', '/new-']):
             etat = 'neuf'
         elif any(x in url_lower for x in ['demo', 'demonstrat', 'demonstr']):
             etat = 'demonstrateur'
-    # Signal 2: Déduire depuis sourceCategorie (occasion seulement avec km)
+    # Signal 2: Déduire depuis sourceCategorie
     if not etat:
-        if product['sourceCategorie'] == 'vehicules_occasion' and has_km:
+        if product['sourceCategorie'] == 'vehicules_occasion':
             etat = 'occasion'
         elif product['sourceCategorie'] == 'catalogue':
             etat = 'neuf'
         else:
-            etat = 'neuf'  # Inventaire par défaut = neuf
+            etat = 'neuf'
     product['etat'] = etat
 
     product['disponibilite'] = 'en_stock'  # Par défaut

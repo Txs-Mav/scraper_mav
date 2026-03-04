@@ -1647,6 +1647,15 @@ class IntelligentScraper:
             else:
                 product['sourceCategorie'] = 'inventaire'  # Par défaut
 
+        # ── Extraction du kilométrage depuis le HTML (si pas encore présent) ──
+        # Le kilométrage est souvent écrit dans les informations produit même si
+        # absent de l'URL. On l'extrait ici pour qu'il soit disponible pour
+        # la détection de l'état.
+        if html and product.get('kilometrage') is None:
+            mileage_from_html = self._extract_mileage_from_html(html)
+            if mileage_from_html is not None:
+                product['kilometrage'] = mileage_from_html
+
         # ── Détection de l'état (etat) ──
         # Si déjà défini par données structurées ou selector_detector, ne pas écraser
         if not product.get('etat'):
@@ -1720,7 +1729,9 @@ class IntelligentScraper:
                 elif re.search(r'\b(neuf|brand new)\b', all_page_text):
                     etat = 'neuf'
 
-            # Signal 3: Kilométrage + URL usagé (usagé seulement si km écrit ET URL indique usagé)
+            # Signal 3: Kilométrage depuis les infos produit (URL ou HTML)
+            # Le km peut venir de l'URL ou des informations produit sur la page.
+            # Si km > 0, le véhicule a roulé → occasion.
             if not etat:
                 km = product.get('kilometrage', 0) or 0
                 if isinstance(km, str):
@@ -1728,11 +1739,7 @@ class IntelligentScraper:
                         km = int(re.sub(r'[^\d]', '', km))
                     except (ValueError, TypeError):
                         km = 0
-                url_has_usage_s3 = any(
-                    x in all_urls_lower for x in
-                    ['/usage/', '/used/', '/occasion/', 'usag', '-usage-', '-used-',
-                     'd-occasion', 'pre-possede', 'pre-owned', 'vehicules-occasion', 'inventaire-usage'])
-                if km > 0 and url_has_usage_s3:
+                if km > 0:
                     etat = 'occasion'
 
             # Signal 4: Déduire depuis sourceCategorie
@@ -1747,8 +1754,10 @@ class IntelligentScraper:
 
             product['etat'] = etat
 
-        # Règle métier: usagé uniquement si kilométrage écrit ET URL contient "usagé"
-        # Sinon le produit est considéré neuf (pas de km ou URL sans usagé → neuf)
+        # Règle métier: un véhicule est considéré usagé si:
+        #   - Le kilométrage est écrit (dans l'URL ou les infos produit) ET km > 0
+        #   - OU l'URL contient des marqueurs "usagé"
+        # Le véhicule est forcé à neuf seulement si AUCUN des deux critères n'est rempli.
         if product.get('etat') == 'occasion':
             km_val = product.get('kilometrage', 0) or 0
             if isinstance(km_val, str):
@@ -1760,7 +1769,7 @@ class IntelligentScraper:
                 x in all_urls_lower for x in
                 ['/usage/', '/used/', '/occasion/', 'usag', '-usage-', '-used-',
                  'd-occasion', 'pre-possede', 'pre-owned', 'vehicules-occasion', 'inventaire-usage'])
-            if km_val == 0 or not url_has_usage:
+            if km_val == 0 and not url_has_usage:
                 product['etat'] = 'neuf'
 
         return product

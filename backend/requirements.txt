@@ -1,0 +1,15 @@
+# Backend server
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Scraper AI dependencies
+google-cloud-aiplatform>=1.38.0
+google-generativeai>=0.3.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+httpx>=0.25.0
+requests>=2.31.0
+playwright>=1.40.0
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+supabase>=2.0.0

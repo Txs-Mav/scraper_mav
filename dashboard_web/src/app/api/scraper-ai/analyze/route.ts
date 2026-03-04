@@ -3,6 +3,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 
 export async function POST(request: Request) {
   try {
@@ -18,6 +19,24 @@ export async function POST(request: Request) {
         { error: 'URL is required' },
         { status: 400 }
       )
+    }
+
+    // --- Proxy vers le backend Railway si on est sur Vercel ---
+    if (hasBackend()) {
+      try {
+        const backendRes = await proxyToBackend('/scraper-ai/analyze', {
+          body: { userId: user_id || '', url, forceRefresh: forceRefresh || false },
+          timeout: 6 * 60 * 1000,
+        })
+        const data = await backendRes.json()
+        return NextResponse.json(data, { status: backendRes.status })
+      } catch (e: any) {
+        console.error('[ScraperAI] ❌ Erreur proxy backend:', e)
+        return NextResponse.json(
+          { error: 'Backend unavailable', message: 'Le serveur de scraping est indisponible.' },
+          { status: 503 }
+        )
+      }
     }
 
     // Utiliser scraper_ai pour analyser le site

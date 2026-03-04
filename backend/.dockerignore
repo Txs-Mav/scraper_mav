@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+.git
+.env.local
+node_modules
+dashboard_web/.next
+venv
+scraper_logs
+scraper_cache
+scraped_data.json
