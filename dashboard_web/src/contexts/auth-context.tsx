@@ -11,7 +11,7 @@ interface AuthContextType {
   isMainAccount: boolean
   login: (email: string, password: string) => Promise<{ error: any }>
   logout: () => Promise<void>
-  register: (data: { name: string; email: string; password: string; plan?: string }) => Promise<{ error: any }>
+  register: (data: { name: string; email: string; password: string; plan?: string; promoCode?: string }) => Promise<{ error: any }>
   refreshUser: () => Promise<void>
 }
 
