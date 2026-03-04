@@ -1652,7 +1652,7 @@ class IntelligentScraper:
         # absent de l'URL. On l'extrait ici pour qu'il soit disponible pour
         # la détection de l'état.
         if html and product.get('kilometrage') is None:
-            mileage_from_html = self._extract_mileage_from_html(html)
+            mileage_from_html = self._extract_mileage_from_html(html, soup=soup)
             if mileage_from_html is not None:
                 product['kilometrage'] = mileage_from_html
 
@@ -1692,7 +1692,7 @@ class IntelligentScraper:
                                                     'inventaire-neuf']):
                     etat = 'neuf'
 
-            # Signal 2: Contenu HTML (titre, breadcrumbs, badges)
+            # Signal 2: Contenu HTML (titre, breadcrumbs, badges, specs produit)
             if not etat and html:
                 if soup is None:
                     soup = BeautifulSoup(html, 'lxml')
@@ -1713,6 +1713,14 @@ class IntelligentScraper:
                     for elem in soup.select(selector):
                         badge_texts.append(elem.get_text(strip=True).lower())
 
+                # Chercher dans les spécifications produit (li, dd, span avec class condition/etat)
+                for selector in ['li.condition', 'li.etat', 'li.state',
+                                 '[class="condition"]', '[class="etat"]',
+                                 'dd.condition', 'span.condition']:
+                    for elem in soup.select(selector):
+                        text = elem.get_text(strip=True).lower()
+                        badge_texts.append(text)
+
                 # Chercher dans les métadonnées de la page
                 meta_texts = []
                 for meta in soup.find_all('meta', attrs={'name': True}):
@@ -1722,11 +1730,12 @@ class IntelligentScraper:
                     [title_text] + badge_texts + meta_texts)
 
                 # Détection dans le contenu avec regex pour mots entiers
-                if re.search(r'\b(usagé|usag[eé]|occasion|used|pre-owned|pré-possédé)\b', all_page_text):
+                # Inclut les variantes féminines (usagée) et formes avec accent
+                if re.search(r'\b(usagée?|usag[eé]e?|occasion|used|pre-owned|pré-possédée?|d[\'\u2019]occasion)\b', all_page_text):
                     etat = 'occasion'
                 elif re.search(r'\b(démonstrateur|demonstrateur|demo unit|démo)\b', all_page_text):
                     etat = 'demonstrateur'
-                elif re.search(r'\b(neuf|brand new)\b', all_page_text):
+                elif re.search(r'\b(neuf|neuve|brand new)\b', all_page_text):
                     etat = 'neuf'
 
             # Signal 3: Kilométrage depuis les infos produit (URL ou HTML)
@@ -1882,14 +1891,12 @@ class IntelligentScraper:
 
         return signals
 
-    def _extract_mileage_from_html(self, html: str) -> Optional[int]:
-        """Extrait le kilométrage depuis le contenu HTML via regex.
+    def _extract_mileage_from_html(self, html: str, soup=None) -> Optional[int]:
+        """Extrait le kilométrage depuis le contenu HTML.
 
-        Cherche des patterns labellisés (haute fiabilité) comme:
-        - "Kilométrage : 3 600 km"
-        - "Mileage: 5,213 km"
-        - "Odomètre : 0 km"
-        - "Kilométrage : 0 km" (véhicule neuf)
+        Utilise d'abord BeautifulSoup pour gérer les tags HTML entre le label
+        et la valeur (ex: <span class="label">Kilométrage:</span><span>108</span>),
+        puis fallback sur regex du HTML brut.
 
         Returns:
             Valeur en km (int), 0 pour "0 km", ou None si non trouvé.
@@ -1897,6 +1904,42 @@ class IntelligentScraper:
         if not html:
             return None
         import re
+
+        # ── Méthode 1: BeautifulSoup (gère les tags entre label et valeur) ──
+        try:
+            if soup is None:
+                soup = BeautifulSoup(html, 'lxml')
+
+            # Chercher dans les éléments avec class contenant "km", "mileage", "kilometrage"
+            for selector in ['[class*="km"]', '[class*="mileage"]', '[class*="kilometrage"]',
+                             '[class*="odometer"]', '[class*="odometre"]']:
+                for elem in soup.select(selector):
+                    text = elem.get_text(strip=True).lower()
+                    km_match = re.search(r'([\d\s,.\xa0]+)\s*(?:km|mi)?\b', text)
+                    if km_match:
+                        km_str = re.sub(r'[^\d]', '', km_match.group(1))
+                        if km_str:
+                            km = int(km_str)
+                            if 0 <= km < 1_000_000:
+                                return km
+
+            # Chercher dans les <li>, <div>, <span> dont le texte contient "kilométrage"
+            for elem in soup.find_all(['li', 'div', 'span', 'td', 'dd', 'p']):
+                text = elem.get_text(strip=True).lower()
+                if any(kw in text for kw in ['kilom', 'mileage', 'odom']):
+                    km_match = re.search(
+                        r'(?:kilom[eé]trage|mileage|odom[eè]tre|odometer)\s*[:\s]*\s*([\d\s,.\xa0]+)',
+                        text)
+                    if km_match:
+                        km_str = re.sub(r'[^\d]', '', km_match.group(1))
+                        if km_str:
+                            km = int(km_str)
+                            if 0 <= km < 1_000_000:
+                                return km
+        except Exception:
+            pass
+
+        # ── Méthode 2: Regex sur le HTML brut (fallback) ──
         html_lower = html.lower()
 
         labeled_patterns = [
