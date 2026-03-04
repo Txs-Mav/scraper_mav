@@ -2073,16 +2073,19 @@ class IntelligentScraper:
 
         Les produits partageant la même clé sont regroupés : le premier sert
         de représentant et un champ ``quantity`` indique le nombre d'occurrences.
+        Quand marque/modèle sont absents, le ``name`` sert de fallback pour
+        éviter de fusionner des produits différents.
         """
         groups: Dict[tuple, Dict] = {}
 
         for product in products:
-            key = (
-                product.get('marque', '').lower().strip(),
-                product.get('modele', '').lower().strip(),
-                product.get('annee', 0),
-                product.get('etat', 'neuf'),
-            )
+            marque = product.get('marque', '').lower().strip()
+            modele = product.get('modele', '').lower().strip()
+
+            if marque and modele:
+                key = (marque, modele, product.get('annee', 0), product.get('etat', 'neuf'))
+            else:
+                key = (product.get('name', '').lower().strip(), product.get('annee', 0), product.get('etat', 'neuf'))
 
             if key not in groups:
                 product['quantity'] = 1
