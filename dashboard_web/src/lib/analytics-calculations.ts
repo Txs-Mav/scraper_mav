@@ -21,6 +21,8 @@ export interface Product {
   disponibilite?: string
   etat?: string
   quantity?: number
+  inventaire?: string
+  groupedUrls?: string[]
 }
 
 function normalizeSiteKey(site?: string): string {

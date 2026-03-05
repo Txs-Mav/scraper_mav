@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect, useCallback } from "react"
+import React, { useMemo, useState, useEffect, useCallback } from "react"
 import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
@@ -21,8 +21,10 @@ type Product = {
   sourceCategorie?: string
   etat?: string
   competitors?: Record<string, number | null>
-  produitReference?: { sourceUrl?: string; name?: string; prix?: number }
+  produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string }
   quantity?: number
+  inventaire?: string
+  groupedUrls?: string[]
 }
 
 type PriceComparisonTableProps = {
@@ -278,11 +280,13 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       etat?: string
       sourceCategorie?: string
       referenceUrl?: string
+      inventaire?: string
       competitorEtats: Record<string, string>
       competitorUrls: Record<string, string>
       reference: number | null
       competitorPrices: Record<string, number>
       quantity: number
+      groupedUrls: string[]
     }>()
 
     const productsWithComparison = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
@@ -301,21 +305,25 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           : p
         groups.set(key, {
           displayName: getProductDisplayName(displayProduct),
-          image: p.image,
+          image: p.produitReference?.image || p.image,
           modele: p.modele,
           marque: p.marque,
           etat: p.etat,
           sourceCategorie: p.sourceCategorie,
           referenceUrl: p.produitReference?.sourceUrl,
+          inventaire: p.produitReference?.inventaire || p.inventaire,
           competitorEtats: {},
           competitorUrls: {},
           reference: p.prixReference ?? null,
           competitorPrices: {},
           quantity: 0,
+          groupedUrls: [],
         })
       }
       const group = groups.get(key)!
       group.quantity += (p.quantity || 1)
+      if (p.sourceUrl) group.groupedUrls.push(p.sourceUrl)
+      if (p.produitReference?.image && !group.image) group.image = p.produitReference.image
       const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
       if (siteLabel && p.prix != null) {
         if (!group.competitorPrices[siteLabel]) {
@@ -352,11 +360,13 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         etat: p.etat,
         sourceCategorie: p.sourceCategorie,
         referenceUrl: p.sourceUrl,
+        inventaire: p.inventaire,
         competitorEtats: {},
         competitorUrls: {},
         reference: refPrice,
         competitorPrices: {},
         quantity: p.quantity || 1,
+        groupedUrls: p.sourceUrl ? [p.sourceUrl] : [],
       })
     }
 
@@ -378,9 +388,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         etat: g.etat,
         sourceCategorie: g.sourceCategorie,
         referenceUrl: g.referenceUrl,
+        inventaire: g.inventaire,
         reference: g.reference,
         prices,
         quantity: g.quantity,
+        groupedUrls: g.groupedUrls,
       }
     })
   }, [products, competitors])
@@ -435,6 +447,16 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     }
   }, [shareEmails, shareSubject, shareMessage, tableData, competitors])
 
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
+  const toggleRowExpand = (idx: number) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
   const renderTable = (
     data: Array<{
       name: string
@@ -445,9 +467,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       etat?: string
       sourceCategorie?: string
       referenceUrl?: string
+      inventaire?: string
       reference: number | null
       prices: { dealer: string; price: number | null; delta: number | null; etat?: string; url?: string }[]
       quantity?: number
+      groupedUrls?: string[]
     }>,
     emptyMessage?: string,
     overrideCompetitors?: { id: string; label: string }[]
@@ -484,8 +508,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                 </tr>
               )}
               {data.map((p, idx) => (
+                <React.Fragment key={idx}>
                 <tr
-                  key={idx}
                   className="border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#111117] transition-colors"
                 >
                   <td className="sticky left-0 bg-white dark:bg-[#0F0F12] px-3 py-2 align-middle">
@@ -526,11 +550,18 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                         )}
                         <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
                         {p.quantity != null && p.quantity > 1 && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                            x{p.quantity}
-                          </span>
+                          <button
+                            onClick={() => toggleRowExpand(idx)}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors cursor-pointer"
+                            title={expandedRows.has(idx) ? "Masquer les URLs" : "Voir les URLs individuelles"}
+                          >
+                            x{p.quantity} {expandedRows.has(idx) ? '▲' : '▼'}
+                          </button>
                         )}
                       </div>
+                      {p.inventaire && (
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">#{p.inventaire}</span>
+                      )}
                     </div>
                   </td>
                   <td className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
@@ -561,6 +592,28 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     </td>
                   ))}
                 </tr>
+                {expandedRows.has(idx) && p.groupedUrls && p.groupedUrls.length > 0 && (
+                  <tr className="bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-[#1F1F23]">
+                    <td colSpan={3 + cols.length} className="px-4 py-2">
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">URLs regroupées :</span>
+                        {p.groupedUrls.map((url: string, urlIdx: number) => (
+                          <a
+                            key={urlIdx}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[300px]"
+                            title={url}
+                          >
+                            {urlIdx + 1}. {url.split('/').filter(Boolean).pop() || url}
+                          </a>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

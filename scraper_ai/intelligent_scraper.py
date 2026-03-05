@@ -1964,6 +1964,46 @@ class IntelligentScraper:
 
         return None
 
+    def _extract_inventory_number(self, html: str) -> Optional[str]:
+        """Extrait le numéro d'inventaire / stock depuis le HTML."""
+        import re
+
+        if not html:
+            return None
+
+        try:
+            soup = BeautifulSoup(html, 'lxml')
+
+            for selector in ['li.stock', '[class*="stock"]', '[class*="inventaire"]',
+                              '[class*="inventory"]']:
+                for elem in soup.select(selector):
+                    text = elem.get_text(strip=True)
+                    m = re.search(
+                        r'(?:#\s*(?:inventaire|stock|inv)\.?\s*[:\s]*|'
+                        r'(?:inventaire|stock|inventory)\s*(?:#|no\.?|n[°o])?\s*[:\s]*)'
+                        r'([A-Za-z0-9][\w-]{1,20})',
+                        text, re.IGNORECASE)
+                    if m:
+                        return m.group(1).strip()
+
+            patterns = [
+                r'#\s*inventaire\s*[:\s]+([A-Za-z0-9][\w-]{1,20})',
+                r'inventaire\s*#?\s*:\s*([A-Za-z0-9][\w-]{1,20})',
+                r'stock\s*#?\s*:\s*([A-Za-z0-9][\w-]{1,20})',
+                r'inventory\s*#?\s*:\s*([A-Za-z0-9][\w-]{1,20})',
+                r'no\.\s*(?:stock|inventaire)\s*:\s*([A-Za-z0-9][\w-]{1,20})',
+            ]
+            html_lower = html.lower()
+            for pattern in patterns:
+                m = re.search(pattern, html_lower)
+                if m:
+                    start = m.start(1)
+                    return html[start:start + len(m.group(1))].strip()
+        except Exception:
+            pass
+
+        return None
+
     def _tag_with_inventory_signals(self, products: List[Dict], html: str, url: str) -> List[Dict]:
         """Tague les produits avec les signaux d'inventaire et extrait le kilométrage.
 
@@ -1977,6 +2017,12 @@ class IntelligentScraper:
             for p in products:
                 if p.get('kilometrage') is None:
                     p['kilometrage'] = mileage
+
+        inv_number = self._extract_inventory_number(html)
+        if inv_number:
+            for p in products:
+                if not p.get('inventaire'):
+                    p['inventaire'] = inv_number
 
         # Les signaux d'inventaire ne sont nécessaires que pour le post-filtre
         if not getattr(self, '_inventory_only', False):
@@ -2089,9 +2135,13 @@ class IntelligentScraper:
 
             if key not in groups:
                 product['quantity'] = 1
+                product['groupedUrls'] = [product.get('sourceUrl', '')]
                 groups[key] = product
             else:
                 groups[key]['quantity'] = groups[key].get('quantity', 1) + 1
+                url = product.get('sourceUrl', '')
+                if url:
+                    groups[key].setdefault('groupedUrls', []).append(url)
 
         return list(groups.values())
 

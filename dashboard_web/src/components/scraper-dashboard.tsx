@@ -39,6 +39,8 @@ interface Product {
   differencePrix?: number | null
   siteReference?: string
   quantity?: number
+  inventaire?: string
+  groupedUrls?: string[]
 }
 
 interface ScraperDashboardProps {

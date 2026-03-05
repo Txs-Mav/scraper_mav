@@ -474,7 +474,9 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         product['produitReference'] = {
             'name': best_match.get('name'),
             'sourceUrl': best_match.get('sourceUrl'),
-            'prix': ref_price
+            'prix': ref_price,
+            'image': best_match.get('image'),
+            'inventaire': best_match.get('inventaire'),
         }
 
         if not product.get('sourceSite'):
