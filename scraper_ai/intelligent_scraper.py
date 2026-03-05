@@ -1692,36 +1692,80 @@ class IntelligentScraper:
                                                     'inventaire-neuf']):
                     etat = 'neuf'
 
-            # Signal 2: Contenu HTML (titre, breadcrumbs, badges, specs produit)
+            # Signal 2A: Champ "Condition" explicite dans l'aperçu/spécifications.
+            # C'est le signal le plus fiable : on isole la VALEUR du champ condition
+            # pour éviter de mélanger avec d'autres textes de la page.
             if not etat and html:
                 if soup is None:
                     soup = BeautifulSoup(html, 'lxml')
 
-                # Chercher dans le titre de la page
+                condition_value = None
+                for selector in ['li.condition', '[class="condition"]', 'dd.condition',
+                                 'li.etat', '[class="etat"]', 'dd.etat']:
+                    for elem in soup.select(selector):
+                        value_span = elem.select_one('.value, .spec-value, span:last-child, dd')
+                        if value_span:
+                            condition_value = value_span.get_text(strip=True).lower()
+                        else:
+                            raw = elem.get_text(strip=True).lower()
+                            for prefix in ['condition', 'état', 'etat', 'state']:
+                                idx = raw.find(prefix)
+                                if idx >= 0:
+                                    condition_value = raw[idx + len(prefix):].lstrip(' :').strip()
+                                    break
+                            if not condition_value:
+                                condition_value = raw
+                        if condition_value:
+                            break
+                    if condition_value:
+                        break
+
+                # Chercher aussi dans les <li>/<tr> dont le label contient "condition"
+                if not condition_value:
+                    for elem in soup.find_all(['li', 'tr', 'div', 'dl']):
+                        label_elem = elem.find(['span', 'th', 'dt', 'strong', 'b'],
+                                               string=re.compile(r'condition', re.I))
+                        if label_elem:
+                            val_elem = label_elem.find_next_sibling(['span', 'td', 'dd'])
+                            if val_elem:
+                                condition_value = val_elem.get_text(strip=True).lower()
+                            else:
+                                full = elem.get_text(strip=True).lower()
+                                m = re.search(r'condition\s*[:\s]+(.+)', full)
+                                if m:
+                                    condition_value = m.group(1).strip()
+                            if condition_value:
+                                break
+
+                if condition_value:
+                    if re.search(r'v[ée]hicule\s+d[\'\u2019]occasion|d[\'\u2019]occasion|usag[eé]e?|occasion|used|pre-owned', condition_value):
+                        etat = 'occasion'
+                        product['_condition_from_field'] = True
+                    elif re.search(r'd[ée]mo|d[ée]monstrateur|demonstrat', condition_value):
+                        etat = 'demonstrateur'
+                        product['_condition_from_field'] = True
+                    elif re.search(r'neuf|neuve|brand new|v[ée]hicule\s+neuf', condition_value):
+                        etat = 'neuf'
+                        product['_condition_from_field'] = True
+
+            # Signal 2B: Contenu plus large (titre, breadcrumbs, badges, meta)
+            if not etat and html:
+                if soup is None:
+                    soup = BeautifulSoup(html, 'lxml')
+
                 title_elem = soup.find('title')
                 title_text = title_elem.get_text(
                     strip=True).lower() if title_elem else ''
 
-                # Chercher dans les breadcrumbs et badges
                 badge_texts = []
                 for selector in ['[class*="badge"]', '[class*="label"]', '[class*="tag"]',
-                                 '[class*="condition"]', '[class*="etat"]', '[class*="state"]',
-                                 '[class*="stock"]', '[class*="status"]',
+                                 '[class*="state"]', '[class*="status"]',
                                  '.breadcrumb', 'nav[aria-label*="breadcrumb"]',
                                  '[class*="breadcrumb"]', '[class*="type-vehicle"]',
                                  '[class*="vehicle-type"]']:
                     for elem in soup.select(selector):
                         badge_texts.append(elem.get_text(strip=True).lower())
 
-                # Chercher dans les spécifications produit (li, dd, span avec class condition/etat)
-                for selector in ['li.condition', 'li.etat', 'li.state',
-                                 '[class="condition"]', '[class="etat"]',
-                                 'dd.condition', 'span.condition']:
-                    for elem in soup.select(selector):
-                        text = elem.get_text(strip=True).lower()
-                        badge_texts.append(text)
-
-                # Chercher dans les métadonnées de la page
                 meta_texts = []
                 for meta in soup.find_all('meta', attrs={'name': True}):
                     meta_texts.append(str(meta.get('content', '')).lower())
@@ -1729,8 +1773,6 @@ class IntelligentScraper:
                 all_page_text = ' '.join(
                     [title_text] + badge_texts + meta_texts)
 
-                # Détection dans le contenu avec regex pour mots entiers
-                # Inclut "véhicule d'occasion", variantes féminines, accents
                 if re.search(r'v[ée]hicule\s+d[\'\u2019]occasion', all_page_text):
                     etat = 'occasion'
                 elif re.search(r'\b(usagée?|usag[eé]e?|occasion|used|pre-owned|pré-possédée?|d[\'\u2019]occasion)\b', all_page_text):
@@ -1765,10 +1807,13 @@ class IntelligentScraper:
 
             product['etat'] = etat
 
-        # Règle métier: un véhicule est considéré usagé si:
-        #   - Le kilométrage est écrit (dans l'URL ou les infos produit) ET km > 0
-        #   - OU l'URL contient des marqueurs "usagé"
-        # Le véhicule est forcé à neuf seulement si AUCUN des deux critères n'est rempli.
+        # Règle métier de validation finale :
+        # Si l'état a été détecté comme "occasion" par des signaux faibles (badges, meta),
+        # on le confirme seulement si AU MOINS un critère fort est présent :
+        #   - Kilométrage > 0
+        #   - URL contient des marqueurs "usagé"
+        #   - Le champ "Condition" explicite dit "occasion" (Signal 2A → _condition_from_field)
+        # Si AUCUN critère fort → forcer neuf.
         if product.get('etat') == 'occasion':
             km_val = product.get('kilometrage', 0) or 0
             if isinstance(km_val, str):
@@ -1780,9 +1825,11 @@ class IntelligentScraper:
                 x in all_urls_lower for x in
                 ['/usage/', '/used/', '/occasion/', 'usag', '-usage-', '-used-',
                  'd-occasion', 'pre-possede', 'pre-owned', 'vehicules-occasion', 'inventaire-usage'])
-            if km_val == 0 and not url_has_usage:
+            has_explicit_condition = product.get('_condition_from_field', False)
+            if km_val == 0 and not url_has_usage and not has_explicit_condition:
                 product['etat'] = 'neuf'
 
+        product.pop('_condition_from_field', None)
         return product
 
     def _extract_inventory_signals(self, html: str, url: str) -> dict:
@@ -2117,14 +2164,31 @@ class IntelligentScraper:
     def _deduplicate_products(self, products: List[Dict]) -> List[Dict]:
         """Déduplique et regroupe les produits identiques (marque+modèle+année+état).
 
-        Les produits partageant la même clé sont regroupés : le premier sert
-        de représentant et un champ ``quantity`` indique le nombre d'occurrences.
-        Quand marque/modèle sont absents, le ``name`` sert de fallback pour
-        éviter de fusionner des produits différents.
+        Passe 1 : éliminer les vrais doublons (même sourceUrl ou même #inventaire).
+        Passe 2 : regrouper les unités identiques (marque+modèle+année+état) avec
+        un champ ``quantity`` et la liste ``groupedUrls``.
         """
+        # ── Passe 1 : éliminer les doublons exacts (même page crawlée 2 fois) ──
+        seen_urls: set = set()
+        seen_inv: set = set()
+        unique: List[Dict] = []
+        for product in products:
+            url = product.get('sourceUrl', '').rstrip('/')
+            inv = product.get('inventaire', '')
+            if url and url in seen_urls:
+                continue
+            if inv and inv in seen_inv:
+                continue
+            if url:
+                seen_urls.add(url)
+            if inv:
+                seen_inv.add(inv)
+            unique.append(product)
+
+        # ── Passe 2 : regrouper par modèle identique ──
         groups: Dict[tuple, Dict] = {}
 
-        for product in products:
+        for product in unique:
             marque = product.get('marque', '').lower().strip()
             modele = product.get('modele', '').lower().strip()
 

@@ -295,6 +295,15 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     // Clé alignée avec la page Analyse (normalizeProductGroupKey) pour garantir les mêmes regroupements
     const getKey = (p: Product) => normalizeProductGroupKey(p as any)
 
+    // Index des quantités/URLs du site référent (pour ne pas accumuler les quantités des concurrents)
+    const refInfoByKey = new Map<string, { quantity: number; groupedUrls: string[] }>()
+    for (const p of productsRefOnly) {
+      const key = getKey(p)
+      if (!refInfoByKey.has(key)) {
+        refInfoByKey.set(key, { quantity: p.quantity || 1, groupedUrls: p.groupedUrls || (p.sourceUrl ? [p.sourceUrl] : []) })
+      }
+    }
+
     // 1) Traiter d'abord les produits matchés (concurrents avec prix de référence)
     for (const p of productsWithComparison) {
       const key = getKey(p)
@@ -303,6 +312,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         const displayProduct: Product = refName
           ? { ...p, name: refName }
           : p
+        const refInfo = refInfoByKey.get(key)
         groups.set(key, {
           displayName: getProductDisplayName(displayProduct),
           image: p.produitReference?.image || p.image,
@@ -316,13 +326,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           competitorUrls: {},
           reference: p.prixReference ?? null,
           competitorPrices: {},
-          quantity: 0,
-          groupedUrls: [],
+          quantity: refInfo?.quantity || 1,
+          groupedUrls: refInfo?.groupedUrls || [],
         })
       }
       const group = groups.get(key)!
-      group.quantity += (p.quantity || 1)
-      if (p.sourceUrl) group.groupedUrls.push(p.sourceUrl)
       if (p.produitReference?.image && !group.image) group.image = p.produitReference.image
       const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
       if (siteLabel && p.prix != null) {
@@ -350,7 +358,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       const refPrice = p.prix != null && p.prix > 0 ? p.prix : null
       if (refPrice === null) continue
       const baseKey = getKey(p)
-      if (groups.has(baseKey)) continue // déjà traité via un concurrent matché
+      if (groups.has(baseKey)) continue
       const key = `${baseKey}__ref_${refOnlyIndex++}`
       groups.set(key, {
         displayName: getProductDisplayName(p),
@@ -366,7 +374,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         reference: refPrice,
         competitorPrices: {},
         quantity: p.quantity || 1,
-        groupedUrls: p.sourceUrl ? [p.sourceUrl] : [],
+        groupedUrls: p.groupedUrls || (p.sourceUrl ? [p.sourceUrl] : []),
       })
     }
 
