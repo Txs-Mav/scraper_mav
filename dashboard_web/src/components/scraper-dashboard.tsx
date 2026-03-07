@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, Settings2, BarChart3, Zap } from "lucide-react"
+import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, Settings2, BarChart3, Zap, Radar, Clock, Eye, Palette } from "lucide-react"
 import Image from "next/image"
 import ScraperConfig, { ScraperConfigHandle } from "./scraper-config"
 import AIAgent from "./ai-agent"
@@ -232,7 +232,9 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [isScrapingActive, setIsScrapingActive] = useState(false)
   const [shouldStartScraping, setShouldStartScraping] = useState(false)
   const [ignoreColors, setIgnoreColors] = useState(false)
-  const [showFilters, setShowFilters] = useState(true)
+  const [showColorsInNames, setShowColorsInNames] = useState(true)
+  const [showFilters, setShowFilters] = useState(false)
+  const [lastScrapingTime, setLastScrapingTime] = useState<Date | null>(null)
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
   const inlineScraperRef = useRef<ScraperConfigHandle | null>(null)
 
@@ -309,6 +311,12 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         if (!response.ok) throw new Error('Failed to load products')
         const data = await response.json()
         setProducts(data.products || [])
+        const scrapedAt = data.updatedAt || data.createdAt || data.metadata?.updated_at || data.metadata?.created_at
+        if (scrapedAt) {
+          setLastScrapingTime(new Date(scrapedAt))
+        } else if (data.products?.length > 0) {
+          setLastScrapingTime(new Date())
+        }
         if (data.metadata?.reference_url) {
           try {
             const url = new URL(data.metadata.reference_url)
@@ -525,6 +533,34 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const handleRemoveCacheItem = (index: number) => { setCacheItems(prev => prev.filter((_, i) => i !== index)) }
   const handleClearCache = () => { setCacheItems([]) }
 
+  const computeMonitoringStatus = useCallback(() => {
+    const now = new Date()
+    let lastAnalysisText = "—"
+    let nextScanText = "—"
+
+    if (lastScrapingTime) {
+      const diffMs = now.getTime() - lastScrapingTime.getTime()
+      const diffMin = Math.floor(diffMs / 60000)
+      if (diffMin < 1) lastAnalysisText = t("alerts.now")
+      else if (diffMin < 60) lastAnalysisText = t("dash.minutesAgo").replace("{0}", String(diffMin))
+      else lastAnalysisText = t("dash.hoursAgo").replace("{0}", String(Math.floor(diffMin / 60)))
+
+      const nextScanMs = 60 * 60 * 1000 - (diffMs % (60 * 60 * 1000))
+      const nextScanMin = Math.max(1, Math.ceil(nextScanMs / 60000))
+      nextScanText = t("dash.inMinutes").replace("{0}", String(nextScanMin))
+    }
+
+    return { lastAnalysisText, nextScanText }
+  }, [lastScrapingTime, t])
+
+  const [monitoringStatus, setMonitoringStatus] = useState(computeMonitoringStatus)
+
+  useEffect(() => {
+    setMonitoringStatus(computeMonitoringStatus())
+    const interval = setInterval(() => setMonitoringStatus(computeMonitoringStatus()), 30_000)
+    return () => clearInterval(interval)
+  }, [computeMonitoringStatus])
+
   // ── Render ──
 
   if (loading) {
@@ -614,14 +650,19 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       )}
 
-      {/* ── Extraction ── */}
+      {/* ── Surveillance du marché ── */}
       <div data-onboarding="scrape" className="relative rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/20">
-              <Zap className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/20">
+              <Radar className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">{t("dash.extraction")}</h2>
+            <div>
+              <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">{t("dash.marketMonitoring")}</h2>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                {t("dash.monitoringDesc").replace("{0}", String(competitorEntries.length))}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {scraperCacheCount > 0 && (
@@ -630,30 +671,51 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 {scraperCacheCount} {t("dash.inCache")}
               </button>
             )}
-            <span className="text-[11px] font-normal text-gray-400 dark:text-gray-500"><span className="tabular-nums font-medium">{competitorEntries.length}</span> {competitorEntries.length > 1 ? t("dash.competitors_plural") : t("dash.competitor")}</span>
+            <button data-onboarding="config" type="button" onClick={() => setShowScraperConfig(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] transition">
+              <Settings2 className="h-3 w-3" />
+              {t("dash.configuration")}
+            </button>
           </div>
         </div>
 
         {!isScrapingActive && (
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {/* Monitoring status */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-gray-50/80 dark:bg-white/[0.02] border border-gray-100/60 dark:border-white/[0.04]">
+                <Clock className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+                <div>
+                  <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t("dash.lastAnalysis")}</p>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 tabular-nums">{monitoringStatus.lastAnalysisText}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-gray-50/80 dark:bg-white/[0.02] border border-gray-100/60 dark:border-white/[0.04]">
+                <Radar className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />
+                <div>
+                  <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t("dash.nextScan")}</p>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 tabular-nums">{monitoringStatus.nextScanText}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Auto-monitoring badge */}
+            <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              {t("dash.autoMonitoring")}
+            </div>
+
+            {/* Analyze now — secondary button */}
             <button
               type="button"
               onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
-              className="group w-full flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-sm shadow-md shadow-purple-600/15 hover:shadow-lg hover:shadow-purple-600/20 transition-all hover:-translate-y-0.5 active:translate-y-0"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition-all"
             >
-              <Zap className="h-4 w-4 group-hover:scale-110 transition-transform" />
-              {t("dash.launchExtraction")}
+              <Eye className="h-3.5 w-3.5" />
+              {t("dash.analyzeNow")}
             </button>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={handleRefresh} disabled={loading} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition">
-                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                {t("dash.refresh")}
-              </button>
-              <button data-onboarding="config" type="button" onClick={() => setShowScraperConfig(true)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition">
-                <Settings2 className="h-3.5 w-3.5" />
-                {t("dash.configure")}
-              </button>
-            </div>
           </div>
         )}
         {isScrapingActive && (
@@ -669,18 +731,21 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
 
       {/* ── Empty state ── */}
       {products.length === 0 && !isScrapingActive && (
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-10 text-center">
+        <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] p-10 text-center">
           <div className="max-w-md mx-auto">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 flex items-center justify-center mb-5">
+              <Radar className="h-7 w-7 text-emerald-500 dark:text-emerald-400" />
+            </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t("dash.noData")}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
               {t("dash.noDataDesc")}
             </p>
             <button
               type="button"
-              onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+              onClick={() => setShowScraperConfig(true)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
             >
-              <Zap className="h-4 w-4" />
+              <Settings2 className="h-4 w-4" />
               {t("dash.launchFirst")}
             </button>
           </div>
@@ -704,16 +769,6 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
 
         <div className={`transition-all duration-300 ease-in-out overflow-hidden ${showFilters ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
           <div className="px-5 pb-5 space-y-4 border-t border-gray-200/30 dark:border-white/[0.04] pt-4">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-              <input
-                type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                placeholder={t("dash.searchPlaceholder")}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15 focus:border-blue-400/30 transition"
-              />
-              {searchQuery && <button type="button" onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"><X className="h-3.5 w-3.5" /></button>}
-            </div>
-
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[
                 { label: t("dash.site"), value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: t("dash.allSites") },
@@ -761,7 +816,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       </div>
 
       {/* ── Produits — section principale, élévation max ── */}
-      <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#111114] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+      <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-card overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
         {/* Tab bar */}
         <div className="px-6 pt-5 pb-0">
           <div className="flex items-center justify-between mb-5">
@@ -828,13 +883,24 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           </p>
         </div>
 
-        <PriceComparisonTable products={filteredProducts} competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))} ignoreColors={ignoreColors} />
+        <PriceComparisonTable
+          products={filteredProducts}
+          competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))}
+          ignoreColors={ignoreColors}
+          stripColorsFromDisplay={!showColorsInNames}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onToggleColors={() => setShowColorsInNames(prev => !prev)}
+          searchPlaceholder={t("dash.searchPlaceholder")}
+          hideColorsLabel={t("dash.hideColors")}
+          showColorsLabel={t("dash.showColors")}
+        />
       </div>
 
       {/* ── Modale cache ── */}
       {mounted && showCacheModal && createPortal(
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center px-4" onClick={e => { if (e.target === e.currentTarget) setShowCacheModal(false) }}>
-          <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-3xl w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl">
+          <div className="bg-white dark:bg-[#0F0F12] rounded-2xl max-w-3xl w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h4 className="text-lg font-bold text-gray-900 dark:text-white">{t("dash.scrapersCache")}</h4>
@@ -900,9 +966,10 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           className={showScraperConfig ? "fixed inset-0 bg-black/50 backdrop-blur-sm z-[9998] flex items-center justify-center px-4" : "hidden"}
           onClick={async e => { if (e.target === e.currentTarget) { await scraperRef.current?.saveConfig(); setShowScraperConfig(false) } }}
         >
-          <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col border border-gray-200 dark:border-gray-800 shadow-2xl">
+          <div className="bg-white dark:bg-[#0F0F12] rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col border border-gray-200 dark:border-gray-800 shadow-2xl">
             <div className="flex items-center justify-between p-5 pb-4 border-b border-gray-100 dark:border-gray-800">
               <h4 className="text-lg font-bold text-gray-900 dark:text-white">{t("dash.configuration")}</h4>
+
               <button type="button" onClick={async () => { await scraperRef.current?.saveConfig(); setShowScraperConfig(false) }} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"><X className="h-5 w-5" /></button>
             </div>
             <div className="overflow-y-auto flex-1 p-5">

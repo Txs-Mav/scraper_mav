@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { sendEmail } from '@/lib/resend'
 import { spawn } from 'child_process'
 import path from 'path'
+import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -26,6 +27,18 @@ interface Change {
   details: Record<string, any>
 }
 
+interface AlertConfig {
+  watch_price_increase: boolean
+  watch_price_decrease: boolean
+  watch_new_products: boolean
+  watch_removed_products: boolean
+  watch_stock_changes: boolean
+  min_price_change_pct: number
+  min_price_change_abs: number
+}
+
+const MIN_VALID_PRICE = 1
+
 // ─── GET — Vercel Cron (toutes les heures) ──────────────────────────
 
 export async function GET(request: Request) {
@@ -46,16 +59,35 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
-  return runAlertCheck({ alertId: body.alert_id, fromCron: false })
+  return runAlertCheck({
+    alertId: body.alert_id,
+    fromCron: false,
+    triggerScraping: body.trigger_scraping === true,
+  })
+}
+
+// ─── Sélection des alertes éligibles ────────────────────────────────
+
+function isAlertDueForCheck(alert: any, now: Date): boolean {
+  if (alert.schedule_type === 'interval' && alert.schedule_interval_hours) {
+    if (!alert.last_run_at) return true
+    const lastRun = new Date(alert.last_run_at)
+    const nextDue = new Date(lastRun.getTime() + alert.schedule_interval_hours * 3600_000)
+    return now >= nextDue
+  }
+
+  // Mode daily : l'heure courante UTC doit correspondre
+  return alert.schedule_hour === now.getUTCHours()
 }
 
 // ─── Logique principale ─────────────────────────────────────────────
 
-async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
+async function runAlertCheck(options: { alertId?: string; fromCron: boolean; triggerScraping?: boolean }) {
   try {
     const serviceSupabase = createServiceClient()
+    const now = new Date()
 
-    // ── Récupérer les alertes à traiter ──
+    // ── Récupérer les alertes ──
     let alertsQuery = serviceSupabase
       .from('scraper_alerts')
       .select(`
@@ -68,21 +100,24 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
           user_id
         )
       `)
-      .eq('is_active', true)
 
     if (options.alertId) {
       alertsQuery = alertsQuery.eq('id', options.alertId)
-    } else if (options.fromCron) {
-      const currentHour = new Date().getUTCHours()
-      alertsQuery = alertsQuery.eq('schedule_hour', currentHour)
+    } else {
+      alertsQuery = alertsQuery.eq('is_active', true)
     }
 
-    const { data: alerts, error: alertsError } = await alertsQuery
+    const { data: allAlerts, error: alertsError } = await alertsQuery
 
     if (alertsError) {
       console.error('[Alert Check] DB error:', alertsError)
       return NextResponse.json({ error: alertsError.message }, { status: 500 })
     }
+
+    // Filtrer les alertes éligibles (pour le cron, vérifier schedule)
+    const alerts = options.alertId
+      ? allAlerts
+      : (allAlerts || []).filter(a => !options.fromCron || isAlertDueForCheck(a, now))
 
     if (!alerts?.length) {
       return NextResponse.json({
@@ -106,28 +141,41 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
     let totalChecked = 0
     let totalChanges = 0
     let totalSkipped = 0
+    const shouldScrape = options.fromCron || options.triggerScraping === true
 
     for (const [userId, userAlerts] of alertsByUser) {
       try {
-        // ── Étape 1 : Déclencher un nouveau scraping (cron uniquement) ──
-        if (options.fromCron) {
-          console.log(`[Alert Check] Déclenchement du scraping pour user ${userId}...`)
-          const scrapingOk = await triggerUserScraping(userId, serviceSupabase)
-          if (!scrapingOk) {
-            console.warn(`[Alert Check] Scraping échoué/indisponible pour user ${userId}, comparaison des données existantes`)
+        // ── Déclencher le scraping ──
+        if (shouldScrape) {
+          for (const alert of userAlerts) {
+            const refUrl = alert.reference_url || alert.scraper_cache?.site_url
+            if (!refUrl) {
+              console.warn(`[Alert Check] Alerte ${alert.id} sans URL de référence, scraping impossible`)
+              continue
+            }
+            const competitors: string[] = alert.competitor_urls || []
+            const categories: string[] = alert.categories || ['inventaire', 'occasion', 'catalogue']
+            console.log(`[Alert Check] Scraping ref=${refUrl} + ${competitors.length} concurrent(s) pour user ${userId}...`)
+            const ok = await triggerAlertScraping(userId, {
+              reference_url: refUrl,
+              competitor_urls: competitors,
+              categories,
+            })
+            if (!ok) {
+              console.warn(`[Alert Check] Scraping échoué pour ${refUrl}, comparaison des données existantes`)
+            }
           }
         }
 
-        // ── Étape 2 : Pour chaque alerte, comparer et détecter les changements ──
+        // ── Pour chaque alerte, comparer et détecter les changements ──
         for (const alert of userAlerts) {
           try {
-            const siteUrl = alert.scraper_cache?.site_url
+            const siteUrl = alert.reference_url || alert.scraper_cache?.site_url
             if (!siteUrl) {
-              console.warn(`[Alert Check] Alerte ${alert.id} sans site_url, ignorée`)
+              console.warn(`[Alert Check] Alerte ${alert.id} sans URL de référence, ignorée`)
               continue
             }
 
-            // Récupérer les 2 derniers scrapings de l'utilisateur
             const { data: scrapings } = await serviceSupabase
               .from('scrapings')
               .select('id, products, metadata, created_at')
@@ -139,14 +187,13 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
               console.log(`[Alert Check] Alerte ${alert.id}: pas assez de scrapings pour comparer`)
               await serviceSupabase
                 .from('scraper_alerts')
-                .update({ last_run_at: new Date().toISOString() })
+                .update({ last_run_at: now.toISOString() })
                 .eq('id', alert.id)
               totalChecked++
               continue
             }
 
-            // ── DÉDUPLICATION : ne pas re-détecter les mêmes changements ──
-            // On vérifie que le scraping le plus récent est PLUS RÉCENT que le dernier check
+            // ── Déduplication : vérifier nouveau scraping depuis le dernier check ──
             const latestScrapingDate = new Date(scrapings[0].created_at)
             if (alert.last_run_at) {
               const lastRunDate = new Date(alert.last_run_at)
@@ -164,7 +211,6 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
             const currentProducts: Product[] = scrapings[0].products || []
             const previousProducts: Product[] = scrapings[1].products || []
 
-            // ── Filtrer les produits par le site surveillé ──
             const currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
             const previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
 
@@ -173,45 +219,49 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
               `${previousSiteProducts.length} → ${currentSiteProducts.length} produits`
             )
 
-            // Première exécution — pas de données précédentes pour ce site
             if (previousSiteProducts.length === 0) {
               console.log(`[Alert Check] Alerte ${alert.id}: première exécution, pas de base de comparaison`)
               await serviceSupabase
                 .from('scraper_alerts')
-                .update({ last_run_at: new Date().toISOString() })
+                .update({ last_run_at: now.toISOString() })
                 .eq('id', alert.id)
               totalChecked++
               continue
             }
 
-            // ── PROTECTION scraping raté : si 0 produits courants mais N produits précédents,
-            // c'est probablement un scraping échoué — ne pas signaler tous comme "retirés" ──
             if (currentSiteProducts.length === 0 && previousSiteProducts.length > 0) {
               console.warn(
-                `[Alert Check] Alerte ${alert.id}: 0 produits courants mais ${previousSiteProducts.length} précédents — ` +
-                `scraping probablement échoué, skip pour éviter faux positifs`
+                `[Alert Check] Alerte ${alert.id}: 0 produits courants mais ${previousSiteProducts.length} précédents — skip`
               )
               await serviceSupabase
                 .from('scraper_alerts')
-                .update({ last_run_at: new Date().toISOString() })
+                .update({ last_run_at: now.toISOString() })
                 .eq('id', alert.id)
               totalChecked++
               continue
             }
 
-            // Protection supplémentaire : si le nombre de produits chute de >80%,
-            // c'est suspect (scraping partiel) — on prévient mais on continue
             const dropRatio = previousSiteProducts.length > 0
               ? currentSiteProducts.length / previousSiteProducts.length
               : 1
             if (dropRatio < 0.2 && previousSiteProducts.length > 5) {
               console.warn(
-                `[Alert Check] Alerte ${alert.id}: chute suspecte de ${previousSiteProducts.length} → ${currentSiteProducts.length} produits (${Math.round(dropRatio * 100)}%)`
+                `[Alert Check] Alerte ${alert.id}: chute suspecte ${previousSiteProducts.length} → ${currentSiteProducts.length} (${Math.round(dropRatio * 100)}%)`
               )
             }
 
-            // ── Détecter les changements ──
-            const changes = detectChanges(previousSiteProducts, currentSiteProducts)
+            // ── Config de l'alerte pour les seuils et filtres ──
+            const alertConfig: AlertConfig = {
+              watch_price_increase: alert.watch_price_increase ?? true,
+              watch_price_decrease: alert.watch_price_decrease ?? true,
+              watch_new_products: alert.watch_new_products ?? true,
+              watch_removed_products: alert.watch_removed_products ?? true,
+              watch_stock_changes: alert.watch_stock_changes ?? true,
+              min_price_change_pct: alert.min_price_change_pct ?? 1,
+              min_price_change_abs: alert.min_price_change_abs ?? 2,
+            }
+
+            const changes = detectChanges(previousSiteProducts, currentSiteProducts, alertConfig)
 
             if (changes.length > 0) {
               console.log(`[Alert Check] Alerte ${alert.id}: ${changes.length} changement(s) détecté(s)`)
@@ -225,7 +275,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
                 new_value: c.new_value,
                 percentage_change: c.percentage_change,
                 details: c.details,
-                detected_at: new Date().toISOString(),
+                detected_at: now.toISOString(),
               }))
 
               const { error: insertErr } = await serviceSupabase
@@ -236,7 +286,6 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
                 console.error(`[Alert Check] Erreur insertion changements:`, insertErr)
               }
 
-              // ── Envoyer l'email de résumé ──
               if (alert.email_notification) {
                 await sendAlertEmailSafe(
                   userId,
@@ -253,15 +302,15 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
               await serviceSupabase
                 .from('scraper_alerts')
                 .update({
-                  last_run_at: new Date().toISOString(),
-                  last_change_detected_at: new Date().toISOString(),
+                  last_run_at: now.toISOString(),
+                  last_change_detected_at: now.toISOString(),
                 })
                 .eq('id', alert.id)
             } else {
               console.log(`[Alert Check] Alerte ${alert.id}: aucun changement`)
               await serviceSupabase
                 .from('scraper_alerts')
-                .update({ last_run_at: new Date().toISOString() })
+                .update({ last_run_at: now.toISOString() })
                 .eq('id', alert.id)
             }
 
@@ -276,7 +325,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
     }
 
     console.log(
-      `[Alert Check] Terminé: ${totalChecked} vérifié(s), ${totalChanges} changement(s), ${totalSkipped} ignoré(s) (pas de nouveau scraping)`
+      `[Alert Check] Terminé: ${totalChecked} vérifié(s), ${totalChanges} changement(s), ${totalSkipped} ignoré(s)`
     )
 
     return NextResponse.json({
@@ -291,7 +340,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean }) {
   }
 }
 
-// ─── Envoi d'email sécurisé (ne crashe pas le flow si email échoue) ──
+// ─── Envoi d'email sécurisé ─────────────────────────────────────────
 
 async function sendAlertEmailSafe(
   userId: string,
@@ -327,46 +376,136 @@ async function sendAlertEmailSafe(
   }
 }
 
-// ─── Déclenchement du scraping ──────────────────────────────────────
+// ─── Déclenchement du scraping par config d'alerte ──────────────────
 
-/**
- * Déclenche le scraping pour un utilisateur.
- *
- * Stratégie en 2 étapes :
- * 1. Si SCRAPER_WEBHOOK_URL est configuré → appel HTTP (production Vercel)
- * 2. Sinon → spawn Python local (développement / VPS)
- */
-async function triggerUserScraping(userId: string, serviceSupabase: any): Promise<boolean> {
+interface ScrapingConfig {
+  reference_url: string
+  competitor_urls?: string[]
+  categories?: string[]
+}
+
+async function triggerAlertScraping(userId: string, config: ScrapingConfig): Promise<boolean> {
   try {
-    const { data: config } = await serviceSupabase
-      .from('scraper_config')
-      .select('reference_url, competitor_urls, categories')
-      .eq('user_id', userId)
-      .single()
+    let ok = false
 
-    if (!config?.reference_url) {
-      console.warn(`[Alert Scrape] Pas de config scraper pour user ${userId}`)
-      return false
+    // 1. Backend proxy (production Vercel → Railway)
+    if (hasBackend()) {
+      ok = await triggerViaBackendProxy(userId, config)
+    }
+    // 2. Webhook (custom scraper endpoint)
+    else if (process.env.SCRAPER_WEBHOOK_URL) {
+      ok = await triggerViaWebhook(process.env.SCRAPER_WEBHOOK_URL, userId, config)
+    }
+    // 3. Local Python
+    else {
+      ok = await triggerViaLocalPython(userId, config)
     }
 
-    // ── Stratégie 1 : Webhook HTTP (pour Vercel / production serverless) ──
-    const webhookUrl = process.env.SCRAPER_WEBHOOK_URL
-    if (webhookUrl) {
-      return triggerViaWebhook(webhookUrl, userId, config)
+    // Après scraping réussi, lier le scraper_cache si absent
+    if (ok) {
+      await linkScraperCacheToAlerts(userId, config.reference_url)
     }
 
-    // ── Stratégie 2 : Spawn Python local ──
-    return triggerViaLocalPython(userId, config)
+    return ok
   } catch (err: any) {
     console.error(`[Alert Scrape] Erreur:`, err.message)
     return false
   }
 }
 
+async function triggerViaBackendProxy(userId: string, config: ScrapingConfig): Promise<boolean> {
+  try {
+    console.log(`[Alert Scrape] Proxy backend pour ref=${config.reference_url} + ${config.competitor_urls?.length || 0} concurrent(s)`)
+
+    // Scraper le site de référence
+    const refRes = await proxyToBackend('/scraper-ai/run', {
+      body: {
+        userId,
+        url: config.reference_url,
+        referenceUrl: config.reference_url,
+        categories: config.categories,
+      },
+      timeout: 20 * 60 * 1000,
+    })
+    if (!refRes.ok) {
+      const text = await refRes.text().catch(() => '')
+      console.error(`[Alert Scrape] Backend proxy erreur ref ${refRes.status}: ${text.slice(0, 200)}`)
+      return false
+    }
+
+    // Scraper chaque concurrent
+    for (const compUrl of config.competitor_urls || []) {
+      try {
+        const compRes = await proxyToBackend('/scraper-ai/run', {
+          body: {
+            userId,
+            url: compUrl,
+            referenceUrl: config.reference_url,
+            categories: config.categories,
+          },
+          timeout: 20 * 60 * 1000,
+        })
+        if (!compRes.ok) {
+          console.warn(`[Alert Scrape] Backend proxy concurrent ${compUrl} erreur ${compRes.status}`)
+        }
+      } catch (compErr: any) {
+        console.warn(`[Alert Scrape] Backend proxy concurrent ${compUrl} erreur:`, compErr.message)
+      }
+    }
+
+    console.log(`[Alert Scrape] Backend proxy OK pour user ${userId}`)
+    return true
+  } catch (err: any) {
+    console.error(`[Alert Scrape] Backend proxy erreur:`, err.message)
+    return false
+  }
+}
+
+async function linkScraperCacheToAlerts(userId: string, referenceUrl: string): Promise<void> {
+  try {
+    const serviceSupabase = createServiceClient()
+    let refHost: string
+    try {
+      refHost = new URL(referenceUrl).hostname.replace('www.', '').toLowerCase()
+    } catch { return }
+
+    const { data: caches } = await serviceSupabase
+      .from('scraper_cache')
+      .select('id, site_url')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+
+    if (!caches?.length) return
+
+    const match = caches.find((c: any) => {
+      try {
+        return new URL(c.site_url).hostname.replace('www.', '').toLowerCase() === refHost
+      } catch { return false }
+    })
+
+    if (!match) return
+
+    const { error } = await serviceSupabase
+      .from('scraper_alerts')
+      .update({ scraper_cache_id: match.id })
+      .eq('user_id', userId)
+      .eq('reference_url', referenceUrl)
+      .is('scraper_cache_id', null)
+
+    if (error) {
+      console.warn(`[Alert Scrape] Liaison cache échouée:`, error.message)
+    } else {
+      console.log(`[Alert Scrape] Cache lié: ${match.id} → référence ${refHost}`)
+    }
+  } catch (err: any) {
+    console.warn(`[Alert Scrape] Liaison cache erreur (non bloquante):`, err.message)
+  }
+}
+
 async function triggerViaWebhook(
   webhookUrl: string,
   userId: string,
-  config: { reference_url: string; competitor_urls?: string[]; categories?: string[] }
+  config: ScrapingConfig
 ): Promise<boolean> {
   try {
     console.log(`[Alert Scrape] Appel webhook: ${webhookUrl}`)
@@ -412,7 +551,7 @@ async function triggerViaWebhook(
 
 async function triggerViaLocalPython(
   userId: string,
-  config: { reference_url: string; competitor_urls?: string[]; categories?: string[] }
+  config: ScrapingConfig
 ): Promise<boolean> {
   const referenceUrl = config.reference_url
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
@@ -424,6 +563,15 @@ async function triggerViaLocalPython(
 
   if (config.categories?.length) {
     args.push('--categories', config.categories.join(','))
+  }
+
+  // Le référent DOIT être dans les positionnels sinon le script sort immédiatement
+  args.push(referenceUrl)
+
+  if (config.competitor_urls?.length) {
+    for (const url of config.competitor_urls) {
+      if (url !== referenceUrl) args.push(url)
+    }
   }
 
   const workingDir = path.join(process.cwd(), '..')
@@ -523,17 +671,13 @@ function productSecondaryKey(p: Product): string | null {
   return `${marque}|${modele}`
 }
 
-// ─── Détection des changements ──────────────────────────────────────
-
-const MIN_PRICE_CHANGE_PCT = 1
-const MIN_PRICE_CHANGE_ABS = 2
-const MIN_VALID_PRICE = 1
+// ─── Détection des changements (avec seuils configurables) ──────────
 
 function formatPrice(price: number): string {
   return `${price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} $`
 }
 
-function detectChanges(previous: Product[], current: Product[]): Change[] {
+function detectChanges(previous: Product[], current: Product[], config: AlertConfig): Change[] {
   const changes: Change[] = []
 
   const prevByName = new Map<string, Product>()
@@ -569,7 +713,7 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
     }
 
     if (!prev) {
-      if (curr.prix && curr.prix >= MIN_VALID_PRICE) {
+      if (config.watch_new_products && curr.prix && curr.prix >= MIN_VALID_PRICE) {
         changes.push({
           change_type: 'new_product',
           product_name: curr.name,
@@ -592,24 +736,30 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
       const diff = curr.prix - prev.prix
       const pct = (diff / prev.prix) * 100
 
-      if (Math.abs(pct) >= MIN_PRICE_CHANGE_PCT && Math.abs(diff) >= MIN_PRICE_CHANGE_ABS) {
-        changes.push({
-          change_type: pct > 0 ? 'price_increase' : 'price_decrease',
-          product_name: curr.name,
-          old_value: formatPrice(prev.prix),
-          new_value: formatPrice(curr.prix),
-          percentage_change: Math.round(pct * 100) / 100,
-          details: {
-            old_prix: prev.prix,
-            new_prix: curr.prix,
-            diff: Math.round(diff * 100) / 100,
-            sourceUrl: curr.sourceUrl,
-          },
-        })
+      if (Math.abs(pct) >= config.min_price_change_pct && Math.abs(diff) >= config.min_price_change_abs) {
+        const isIncrease = pct > 0
+        const changeType = isIncrease ? 'price_increase' : 'price_decrease'
+
+        if ((isIncrease && config.watch_price_increase) || (!isIncrease && config.watch_price_decrease)) {
+          changes.push({
+            change_type: changeType,
+            product_name: curr.name,
+            old_value: formatPrice(prev.prix),
+            new_value: formatPrice(curr.prix),
+            percentage_change: Math.round(pct * 100) / 100,
+            details: {
+              old_prix: prev.prix,
+              new_prix: curr.prix,
+              diff: Math.round(diff * 100) / 100,
+              sourceUrl: curr.sourceUrl,
+            },
+          })
+        }
       }
     }
 
     if (
+      config.watch_stock_changes &&
       prev.disponibilite && curr.disponibilite &&
       prev.disponibilite.toLowerCase().trim() !== curr.disponibilite.toLowerCase().trim()
     ) {
@@ -624,20 +774,22 @@ function detectChanges(previous: Product[], current: Product[]): Change[] {
     }
   }
 
-  for (const [nameKey, prev] of prevByName) {
-    if (matchedPrevKeys.has(nameKey)) continue
-    const sk = productSecondaryKey(prev)
-    if (sk && currByKey.has(sk)) continue
+  if (config.watch_removed_products) {
+    for (const [nameKey, prev] of prevByName) {
+      if (matchedPrevKeys.has(nameKey)) continue
+      const sk = productSecondaryKey(prev)
+      if (sk && currByKey.has(sk)) continue
 
-    if (prev.prix && prev.prix >= MIN_VALID_PRICE) {
-      changes.push({
-        change_type: 'removed_product',
-        product_name: prev.name,
-        old_value: formatPrice(prev.prix),
-        new_value: null,
-        percentage_change: null,
-        details: { prix: prev.prix, sourceUrl: prev.sourceUrl },
-      })
+      if (prev.prix && prev.prix >= MIN_VALID_PRICE) {
+        changes.push({
+          change_type: 'removed_product',
+          product_name: prev.name,
+          old_value: formatPrice(prev.prix),
+          new_value: null,
+          percentage_change: null,
+          details: { prix: prev.prix, sourceUrl: prev.sourceUrl },
+        })
+      }
     }
   }
 
@@ -701,7 +853,7 @@ async function sendAlertEmail(
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#1f2937;max-width:700px;margin:0 auto;padding:24px;background:#f9fafb;">
   <div style="background:white;border-radius:12px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.1);">
     <div style="margin-bottom:24px;">
-      <h1 style="color:#2563eb;margin:0 0 4px;font-size:22px;">Go-Data — Rapport quotidien</h1>
+      <h1 style="color:#2563eb;margin:0 0 4px;font-size:22px;">Go-Data — Rapport d'alerte</h1>
       <p style="color:#6b7280;margin:0;font-size:14px;">Bonjour ${name},</p>
     </div>
 

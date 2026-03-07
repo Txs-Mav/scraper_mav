@@ -191,7 +191,7 @@ export default function AIAgent() {
   return (
     <div className="space-y-6">
       {/* En-tête */}
-      <div className="bg-white dark:bg-[#0F0F12] rounded-xl p-6 border border-gray-200 dark:border-[#1F1F23]">
+      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-xl p-6 border border-gray-200/60 dark:border-white/[0.06]">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
             <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />
@@ -293,7 +293,7 @@ export default function AIAgent() {
       </div>
 
       {/* Liste des scrapers en cache */}
-      <div className="bg-white dark:bg-[#0F0F12] rounded-xl p-6 border border-gray-200 dark:border-[#1F1F23]">
+      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-xl p-6 border border-gray-200/60 dark:border-white/[0.06]">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5 text-gray-600 dark:text-gray-400" />

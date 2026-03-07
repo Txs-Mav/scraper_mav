@@ -55,7 +55,7 @@ export function DashboardSkeleton() {
       </div>
 
       {/* Products */}
-      <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-[#111114] overflow-hidden shadow-sm">
+      <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-white/[0.025] overflow-hidden shadow-sm">
         <div className="p-5 flex items-center justify-between">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-4 w-20" />
@@ -79,7 +79,7 @@ export function AnalyticsSkeleton() {
       <Skeleton className="h-8 w-48" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-[#111114] p-6 space-y-4 shadow-sm">
+          <div key={i} className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-white/[0.025] p-6 space-y-4 shadow-sm">
             <Skeleton className="h-5 w-36" />
             <Skeleton className="h-44 w-full rounded-xl" />
           </div>
@@ -91,7 +91,7 @@ export function AnalyticsSkeleton() {
 
 export function TableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-[#111114] overflow-hidden shadow-sm animate-in fade-in duration-500">
+    <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-white/[0.025] overflow-hidden shadow-sm animate-in fade-in duration-500">
       {[...Array(rows)].map((_, i) => (
         <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-gray-100/50 dark:border-white/[0.03] last:border-0">
           <Skeleton className="h-4 w-6" />

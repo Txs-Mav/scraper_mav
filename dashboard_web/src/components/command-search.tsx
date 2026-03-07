@@ -42,17 +42,17 @@ export default function CommandSearch() {
   const subscriptionSource = user?.subscription_source || (user?.promo_code_id ? "promo" : null)
 
   const items: SearchItem[] = [
-    { id: "dashboard", label: "Dashboard", description: "Vue principale et scraping", icon: Home, action: () => router.push("/dashboard"), category: "page", keywords: ["accueil", "home", "scraper", "produits"] },
+    { id: "dashboard", label: "Dashboard", description: "Surveillance du marché et produits", icon: Home, action: () => router.push("/dashboard"), category: "page", keywords: ["accueil", "home", "produits", "marché", "surveillance"] },
     ...(canAccessAnalytics(plan, subscriptionSource)
       ? [{ id: "analytics", label: "Analyse", description: "Analytiques et insights", icon: BarChart2, action: () => router.push("/dashboard/analytics"), category: "page" as const, keywords: ["analytics", "graphiques", "prix", "stats"] }]
       : []),
     ...(canAccessOrganisation(plan, subscriptionSource)
-      ? [{ id: "alertes", label: "Alertes", description: "Alertes de prix", icon: Bell, action: () => router.push("/dashboard/alerte"), category: "page" as const, keywords: ["alert", "notification", "prix"] }]
+      ? [{ id: "alertes", label: "Activité récente", description: "Changements de prix et nouveaux produits", icon: Bell, action: () => router.push("/dashboard/alerte"), category: "page" as const, keywords: ["activité", "alert", "notification", "prix", "changements"] }]
       : []),
     { id: "payments", label: "Paiements", description: "Abonnement et facturation", icon: CreditCard, action: () => router.push("/dashboard/payments"), category: "page", keywords: ["abonnement", "plan", "facture", "stripe", "pro"] },
     { id: "profile", label: "Profil", description: "Votre profil", icon: User, action: () => router.push("/dashboard/profile"), category: "page", keywords: ["compte", "avatar", "photo"] },
     { id: "settings", label: "Paramètres", description: "Paramètres du compte", icon: Settings, action: () => router.push("/dashboard/settings"), category: "page", keywords: ["réglages", "mot de passe", "email"] },
-    { id: "scrape", label: "Lancer un scraping", description: "Démarrer une extraction de données", icon: Zap, action: () => { router.push("/dashboard"); setTimeout(() => window.dispatchEvent(new CustomEvent("open-scraper-config")), 300) }, category: "action", keywords: ["scraper", "extraction", "lancer", "démarrer"] },
+    { id: "scrape", label: "Analyser maintenant", description: "Lancer une analyse immédiate du marché", icon: Zap, action: () => { router.push("/dashboard"); setTimeout(() => window.dispatchEvent(new CustomEvent("open-scraper-config")), 300) }, category: "action", keywords: ["analyser", "scraper", "extraction", "lancer", "démarrer", "marché"] },
     { id: "export", label: "Exporter les données", description: "Télécharger vos données", icon: Download, action: () => router.push("/dashboard/settings"), category: "action", keywords: ["export", "télécharger", "json", "csv"] },
     { id: "stripe", label: "Portail Stripe", description: "Gérer facturation et abonnement", icon: ExternalLink, action: async () => { try { const r = await fetch("/api/stripe/portal", { method: "POST" }); const d = await r.json(); if (r.ok && d.url) window.location.href = d.url } catch {} }, category: "action", keywords: ["stripe", "facture", "paiement"] },
   ]
@@ -128,7 +128,7 @@ export default function CommandSearch() {
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-start justify-center pt-[15vh] px-4"
       onClick={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
     >
-      <div className="w-full max-w-lg bg-white dark:bg-[#111114] rounded-2xl shadow-2xl shadow-black/20 border border-gray-200 dark:border-gray-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="w-full max-w-lg bg-white dark:bg-[#0F0F12] rounded-2xl shadow-2xl shadow-black/20 border border-gray-200 dark:border-gray-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Input */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />

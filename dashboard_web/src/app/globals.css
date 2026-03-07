@@ -160,7 +160,7 @@
 
   .dark .bloc-template-inner {
     border-color: rgba(255, 255, 255, 0.06);
-    background-color: rgba(15, 15, 18, 0.98);
+    background-color: rgba(255, 255, 255, 0.025);
   }
 
   .hover-elevate {
@@ -173,7 +173,7 @@
   }
 
   .card {
-    @apply rounded-2xl border border-gray-100 dark:border-white/[0.06] bg-white dark:bg-[#111114];
+    @apply rounded-2xl border border-gray-100 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
     transition: box-shadow 200ms ease, transform 200ms ease;
   }
@@ -195,7 +195,7 @@
   }
 
   .card-elevated {
-    @apply rounded-2xl border border-gray-100 dark:border-white/[0.06] bg-white dark:bg-[#111114];
+    @apply rounded-2xl border border-gray-100 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm;
     box-shadow:
       0 1px 2px rgba(0, 0, 0, 0.03),
       0 4px 8px -2px rgba(0, 0, 0, 0.04),

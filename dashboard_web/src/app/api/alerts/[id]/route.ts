@@ -2,8 +2,20 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 
+const VALID_INTERVALS = [1, 2, 4, 6, 12, 24]
+const VALID_CATEGORIES = ['inventaire', 'occasion', 'catalogue']
+
+function isValidUrl(str: string): boolean {
+  try {
+    const u = new URL(str)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 /**
- * PATCH /api/alerts/[id] - Mettre à jour une alerte
+ * PATCH /api/alerts/[id] - Mettre à jour une alerte (tous les champs configurables)
  */
 export async function PATCH(
   request: Request,
@@ -17,15 +29,51 @@ export async function PATCH(
 
     const { id } = await params
     const body = await request.json()
-
     const supabase = await createClient()
-
-    // Construire les champs à mettre à jour
     const updates: Record<string, any> = {}
+
+    // Scraping config
+    if (body.competitor_urls !== undefined) {
+      updates.competitor_urls = (body.competitor_urls as string[]).filter(u => u && isValidUrl(u.trim()))
+    }
+    if (body.categories !== undefined) {
+      updates.categories = (body.categories as string[]).filter(c => VALID_CATEGORIES.includes(c))
+    }
+
+    // Scheduling
+    if (body.schedule_type !== undefined) {
+      if (!['daily', 'interval'].includes(body.schedule_type)) {
+        return NextResponse.json({ error: "schedule_type doit être 'daily' ou 'interval'" }, { status: 400 })
+      }
+      updates.schedule_type = body.schedule_type
+    }
     if (body.schedule_hour !== undefined) updates.schedule_hour = body.schedule_hour
     if (body.schedule_minute !== undefined) updates.schedule_minute = body.schedule_minute
+    if (body.schedule_interval_hours !== undefined) {
+      if (body.schedule_interval_hours !== null && !VALID_INTERVALS.includes(body.schedule_interval_hours)) {
+        return NextResponse.json({ error: `Intervalle invalide. Valeurs acceptées: ${VALID_INTERVALS.join(', ')}` }, { status: 400 })
+      }
+      updates.schedule_interval_hours = body.schedule_interval_hours
+    }
+
+    // Toggle & email
     if (body.is_active !== undefined) updates.is_active = body.is_active
     if (body.email_notification !== undefined) updates.email_notification = body.email_notification
+
+    // Watch types
+    if (body.watch_price_increase !== undefined) updates.watch_price_increase = body.watch_price_increase
+    if (body.watch_price_decrease !== undefined) updates.watch_price_decrease = body.watch_price_decrease
+    if (body.watch_new_products !== undefined) updates.watch_new_products = body.watch_new_products
+    if (body.watch_removed_products !== undefined) updates.watch_removed_products = body.watch_removed_products
+    if (body.watch_stock_changes !== undefined) updates.watch_stock_changes = body.watch_stock_changes
+
+    // Thresholds
+    if (body.min_price_change_pct !== undefined) updates.min_price_change_pct = Math.max(0, body.min_price_change_pct)
+    if (body.min_price_change_abs !== undefined) updates.min_price_change_abs = Math.max(0, body.min_price_change_abs)
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'Aucun champ à mettre à jour' }, { status: 400 })
+    }
 
     const { data: alert, error } = await supabase
       .from('scraper_alerts')

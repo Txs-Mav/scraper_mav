@@ -3,6 +3,18 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 import { canAccessOrganisation, getAlertLimit, type PlanId } from '@/lib/plan-restrictions'
 
+const VALID_INTERVALS = [1, 2, 4, 6, 12, 24]
+const VALID_CATEGORIES = ['inventaire', 'occasion', 'catalogue']
+
+function isValidUrl(str: string): boolean {
+  try {
+    const u = new URL(str)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 /**
  * GET /api/alerts - Récupérer toutes les alertes de l'utilisateur + limites du plan
  */
@@ -14,7 +26,6 @@ export async function GET() {
     }
 
     const plan = (user.subscription_plan || 'standard') as PlanId
-    // Fallback : si subscription_source est null mais promo_code_id est défini → promo
     const source = user.subscription_source || (user.promo_code_id ? 'promo' as const : null)
 
     if (!canAccessOrganisation(plan, source)) {
@@ -23,7 +34,6 @@ export async function GET() {
 
     const supabase = await createClient()
 
-    // Récupérer les alertes avec les infos du scraper cache
     const { data: alerts, error } = await supabase
       .from('scraper_alerts')
       .select(`
@@ -47,7 +57,7 @@ export async function GET() {
           {
             error: "Configuration Supabase incomplète: tables d'alertes introuvables.",
             code: 'ALERTS_SCHEMA_MISSING',
-            details: "Exécutez la migration 'dashboard_web/supabase/migration_alerts.sql' dans Supabase SQL Editor.",
+            details: "Exécutez les migrations alerts dans Supabase SQL Editor.",
           },
           { status: 503 }
         )
@@ -60,7 +70,6 @@ export async function GET() {
     return NextResponse.json({
       alerts: alerts || [],
       alert_count: alerts?.length || 0,
-      // -1 signifie illimité côté frontend
       alert_limit: alertLimit === Infinity ? -1 : alertLimit,
     })
   } catch (error: any) {
@@ -70,8 +79,9 @@ export async function GET() {
 }
 
 /**
- * POST /api/alerts - Créer une nouvelle alerte
- * Vérifie les limites du plan avant création.
+ * POST /api/alerts - Créer une alerte = scraping configurable
+ * L'utilisateur configure reference_url + competitor_urls + fréquence + seuils.
+ * Les résultats de scraping apparaîtront dans le dashboard principal.
  */
 export async function POST(request: Request) {
   try {
@@ -81,7 +91,6 @@ export async function POST(request: Request) {
     }
 
     const plan = (user.subscription_plan || 'standard') as PlanId
-    // Fallback : si subscription_source est null mais promo_code_id est défini → promo
     const source = user.subscription_source || (user.promo_code_id ? 'promo' as const : null)
 
     if (!canAccessOrganisation(plan, source)) {
@@ -90,7 +99,6 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // ── Vérifier la limite d'alertes pour le plan ──
     const alertLimit = getAlertLimit(plan, source)
 
     const { count, error: countError } = await supabase
@@ -98,13 +106,12 @@ export async function POST(request: Request) {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id)
 
-    // Si la table n'existe pas encore dans le projet Supabase
     if (countError?.code === 'PGRST205') {
       return NextResponse.json(
         {
           error: "Configuration Supabase incomplète: tables d'alertes introuvables.",
           code: 'ALERTS_SCHEMA_MISSING',
-          details: "Exécutez la migration 'dashboard_web/supabase/migration_alerts.sql' dans Supabase SQL Editor.",
+          details: "Exécutez les migrations alerts dans Supabase SQL Editor.",
         },
         { status: 503 }
       )
@@ -121,37 +128,90 @@ export async function POST(request: Request) {
       )
     }
 
-    const { scraper_cache_id, schedule_hour, schedule_minute, email_notification } = await request.json()
+    const body = await request.json()
+    const {
+      reference_url,
+      competitor_urls = [],
+      categories = VALID_CATEGORIES,
+      schedule_type = 'daily',
+      schedule_hour = 8,
+      schedule_minute = 0,
+      schedule_interval_hours,
+      email_notification = true,
+      watch_price_increase = true,
+      watch_price_decrease = true,
+      watch_new_products = true,
+      watch_removed_products = true,
+      watch_stock_changes = true,
+      min_price_change_pct = 1,
+      min_price_change_abs = 2,
+    } = body
 
-    if (!scraper_cache_id) {
-      return NextResponse.json({ error: 'scraper_cache_id requis' }, { status: 400 })
+    // ── Validation ──
+    if (!reference_url || !isValidUrl(reference_url)) {
+      return NextResponse.json({ error: 'URL de référence invalide. Fournissez une URL complète (https://...)' }, { status: 400 })
     }
-    if (schedule_hour === undefined || schedule_hour < 0 || schedule_hour > 23) {
-      return NextResponse.json({ error: 'Heure invalide (0-23)' }, { status: 400 })
+
+    const validCompetitors = (competitor_urls as string[]).filter(u => u && isValidUrl(u.trim()))
+
+    if (schedule_type === 'daily') {
+      if (schedule_hour === undefined || schedule_hour < 0 || schedule_hour > 23) {
+        return NextResponse.json({ error: 'Heure invalide (0-23)' }, { status: 400 })
+      }
+    } else if (schedule_type === 'interval') {
+      if (!schedule_interval_hours || !VALID_INTERVALS.includes(schedule_interval_hours)) {
+        return NextResponse.json({ error: `Intervalle invalide. Valeurs acceptées: ${VALID_INTERVALS.join(', ')}` }, { status: 400 })
+      }
+    } else {
+      return NextResponse.json({ error: "schedule_type doit être 'daily' ou 'interval'" }, { status: 400 })
     }
 
-    // Vérifier que le scraper cache appartient à l'utilisateur
-    const { data: cache } = await supabase
-      .from('scraper_cache')
-      .select('id')
-      .eq('id', scraper_cache_id)
-      .eq('user_id', user.id)
-      .single()
+    const validCategories = (categories as string[]).filter(c => VALID_CATEGORIES.includes(c))
 
-    if (!cache) {
-      return NextResponse.json({ error: 'Scraper non trouvé' }, { status: 404 })
+    // ── Auto-lier un scraper_cache existant ──
+    let scraperCacheId: string | null = null
+    try {
+      const refHost = new URL(reference_url).hostname.replace('www.', '').toLowerCase()
+      const { data: caches } = await supabase
+        .from('scraper_cache')
+        .select('id, site_url')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+
+      if (caches) {
+        const match = caches.find((c: any) => {
+          try {
+            return new URL(c.site_url).hostname.replace('www.', '').toLowerCase() === refHost
+          } catch { return false }
+        })
+        if (match) scraperCacheId = match.id
+      }
+    } catch { /* ignore */ }
+
+    const insertData: Record<string, any> = {
+      user_id: user.id,
+      reference_url,
+      competitor_urls: validCompetitors,
+      categories: validCategories.length > 0 ? validCategories : VALID_CATEGORIES,
+      scraper_cache_id: scraperCacheId,
+      schedule_type,
+      schedule_hour: schedule_type === 'daily' ? schedule_hour : 0,
+      schedule_minute: schedule_type === 'daily' ? (schedule_minute || 0) : 0,
+      schedule_interval_hours: schedule_type === 'interval' ? schedule_interval_hours : null,
+      email_notification: email_notification !== false,
+      is_active: true,
+      watch_price_increase,
+      watch_price_decrease,
+      watch_new_products,
+      watch_removed_products,
+      watch_stock_changes,
+      min_price_change_pct: Math.max(0, min_price_change_pct),
+      min_price_change_abs: Math.max(0, min_price_change_abs),
     }
 
     const { data: alert, error } = await supabase
       .from('scraper_alerts')
-      .upsert({
-        user_id: user.id,
-        scraper_cache_id,
-        schedule_hour,
-        schedule_minute: schedule_minute || 0,
-        email_notification: email_notification !== false,
-        is_active: true,
-      }, { onConflict: 'user_id,scraper_cache_id' })
+      .insert(insertData)
       .select(`
         *,
         scraper_cache (
@@ -167,20 +227,28 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error('[Alerts POST] Error:', error)
-      if ((error as any).code === 'PGRST205') {
-        return NextResponse.json(
-          {
-            error: "Configuration Supabase incomplète: tables d'alertes introuvables.",
-            code: 'ALERTS_SCHEMA_MISSING',
-            details: "Exécutez la migration 'dashboard_web/supabase/migration_alerts.sql' dans Supabase SQL Editor.",
-          },
-          { status: 503 }
-        )
+      if (error.code === '23505') {
+        return NextResponse.json({ error: 'Une alerte existe déjà pour cette URL de référence.' }, { status: 409 })
       }
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ alert })
+    // Fire-and-forget: déclencher le scraping initial
+    if (alert?.id) {
+      const baseUrl =
+        process.env.NEXTJS_API_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        `http://localhost:${process.env.PORT || 3000}`
+      fetch(`${baseUrl}/api/alerts/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alert_id: alert.id, trigger_scraping: true }),
+      }).catch((err) => {
+        console.warn('[Alerts POST] Initial scraping trigger failed (non-blocking):', err.message)
+      })
+    }
+
+    return NextResponse.json({ alert, initial_scraping_triggered: true })
   } catch (error: any) {
     console.error('[Alerts POST] Unexpected error:', error)
     return NextResponse.json({ error: error.message || 'Erreur serveur' }, { status: 500 })

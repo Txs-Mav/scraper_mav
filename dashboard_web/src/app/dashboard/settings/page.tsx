@@ -226,7 +226,7 @@ export default function SettingsPage() {
         </div>
 
         {/* ── Profil ── */}
-        <section data-onboarding="profile" className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113] p-6 sm:p-8 mb-6">
+        <section data-onboarding="profile" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/40 dark:to-purple-950/30">
               <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -335,7 +335,7 @@ export default function SettingsPage() {
         </section>
 
         {/* ── Préférences (Langue) ── */}
-        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113] p-6 sm:p-8 mb-6">
+        <section className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/30">
               <Globe className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
@@ -384,7 +384,7 @@ export default function SettingsPage() {
         <section className={`rounded-2xl border p-6 sm:p-8 mb-6 transition-all ${
           isPaid
             ? "border-blue-200 dark:border-blue-900/50 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/10"
-            : "border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113]"
+            : "border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025]"
         }`}>
           <div className="flex items-center gap-3 mb-6">
             <div className={`p-2.5 rounded-xl ${
@@ -422,7 +422,7 @@ export default function SettingsPage() {
               onClick={() => router.push("/dashboard/payments")}
               className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all hover:-translate-y-0.5 ${
                 isPaid
-                  ? "bg-white dark:bg-[#111113] text-gray-900 dark:text-white border border-gray-200 dark:border-gray-800 hover:shadow-lg shadow-sm"
+                  ? "bg-white dark:bg-white/[0.025] text-gray-900 dark:text-white border border-gray-200/60 dark:border-white/[0.06] hover:shadow-lg shadow-sm"
                   : "bg-blue-600 text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700 hover:shadow-xl"
               }`}
             >
@@ -442,7 +442,7 @@ export default function SettingsPage() {
         </section>
 
         {/* ── Sécurité & Données ── */}
-        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113] p-6 sm:p-8 mb-6">
+        <section className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30">
               <Shield className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -511,7 +511,7 @@ export default function SettingsPage() {
       {/* ── Modal : Mot de passe ── */}
       {showPasswordModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center px-4" onClick={(e) => { if (e.target === e.currentTarget) setShowPasswordModal(false) }}>
-          <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl shadow-gray-900/10 dark:shadow-black/40 border border-gray-100 dark:border-gray-800">
+          <div className="bg-white dark:bg-[#0F0F12] rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl shadow-gray-900/10 dark:shadow-black/40 border border-gray-100 dark:border-gray-800">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/30">
@@ -573,7 +573,7 @@ export default function SettingsPage() {
       {/* ── Modal : Suppression ── */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center px-4" onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false) }}>
-          <div className="bg-white dark:bg-[#111114] rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl shadow-gray-900/10 dark:shadow-black/40 border border-gray-100 dark:border-gray-800">
+          <div className="bg-white dark:bg-[#0F0F12] rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl shadow-gray-900/10 dark:shadow-black/40 border border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/30">
                 <AlertTriangle className="h-5 w-5 text-red-500" />

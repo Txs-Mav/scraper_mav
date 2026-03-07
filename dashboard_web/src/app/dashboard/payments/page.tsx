@@ -357,7 +357,7 @@ export default function PaymentsPage() {
                 className={`relative rounded-2xl border-2 transition-all duration-300 ${getBorderColor()} ${getHoverBorderColor()} ${isCurrent
                     ? "shadow-xl scale-105"
                     : "shadow-lg hover:shadow-xl hover:scale-[1.02]"
-                  } bg-white dark:bg-[#0F0F12] overflow-hidden h-full flex flex-col`}
+                  } bg-white dark:bg-white/[0.025] overflow-hidden h-full flex flex-col`}
               >
                 {isCurrent && (
                   <div className="absolute top-4 right-4 z-10">

@@ -350,7 +350,7 @@ export default function AnalyticsPage() {
 
         {/* Empty state */}
         {displayAnalytics.stats.nombreScrapes === 0 && displayAnalytics.produits.length === 0 && (
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111114] p-10 text-center">
+          <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-10 text-center">
             <div className="max-w-md mx-auto">
               <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/20 flex items-center justify-center mb-5">
                 <Package className="h-7 w-7 text-violet-500 dark:text-violet-400" />

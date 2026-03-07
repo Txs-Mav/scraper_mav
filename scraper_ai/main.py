@@ -477,6 +477,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
             'prix': ref_price,
             'image': best_match.get('image'),
             'inventaire': best_match.get('inventaire'),
+            'kilometrage': best_match.get('kilometrage'),
         }
 
         if not product.get('sourceSite'):
@@ -750,6 +751,8 @@ Exemples:
             sites_needing_extraction.append(url)
 
     if sites_needing_extraction:
+        per_site_timeout = 300
+        total_timeout = per_site_timeout * len(sites_needing_extraction)
         with ThreadPoolExecutor(max_workers=min(len(sites_needing_extraction), 10)) as pool:
             futures = {}
             for url in sites_needing_extraction:
@@ -760,25 +763,29 @@ Exemples:
                 )
                 futures[future] = url
 
-            for future in as_completed(futures):
-                url = futures[future]
-                try:
-                    result_url, result_data = future.result()
-                    results[result_url] = result_data
-                    product_count = len(result_data.get('products', []))
-                    is_ref = " ⭐" if url == reference_url else ""
-                    print(
-                        f"   ✅ {url[:40]}...: {product_count} produits{is_ref}")
-                except Exception as e:
-                    print(f"   ❌ {url[:40]}...: Erreur - {e}")
-                    results[url] = {"companyInfo": {}, "products": []}
+            try:
+                for future in as_completed(futures, timeout=total_timeout):
+                    url = futures[future]
+                    try:
+                        result_url, result_data = future.result(timeout=per_site_timeout)
+                        results[result_url] = result_data
+                        product_count = len(result_data.get('products', []))
+                        is_ref = " ⭐" if url == reference_url else ""
+                        print(
+                            f"   ✅ {url[:40]}...: {product_count} produits{is_ref}")
+                    except Exception as e:
+                        print(f"   ❌ {url[:40]}...: Erreur - {e}")
+                        results[url] = {"companyInfo": {}, "products": []}
+            except TimeoutError:
+                timed_out = [u for f, u in futures.items() if u not in results]
+                print(f"\n   ⚠️  Timeout global Phase 3 — {len(timed_out)} site(s) abandonné(s):")
+                for u in timed_out:
+                    print(f"      ❌ {u[:50]}")
+                    results[u] = {"companyInfo": {}, "products": []}
 
     # =====================================================
-    # PHASE 3b: RETRY DES SITES AVEC 0 PRODUITS
+    # PHASE 3b: RETRY DES SITES AVEC 0 PRODUITS (max 3 sites, sans force_refresh)
     # =====================================================
-    # Ne retrier que les sites avec 0 produits ET sans erreur de code
-    # Les bugs Python (AttributeError, TypeError, etc.) ne doivent pas déclencher
-    # un retry qui risque de corrompre un cache valide
     code_errors = {'AttributeError', 'TypeError',
                    'NameError', 'KeyError', 'ImportError', 'SyntaxError'}
     sites_with_zero_products = [
@@ -787,21 +794,25 @@ Exemples:
         and results.get(url, {}).get('_error', '') not in code_errors
     ]
 
+    MAX_RETRIES = 3
     if sites_with_zero_products:
+        retry_list = sites_with_zero_products[:MAX_RETRIES]
+        skipped = len(sites_with_zero_products) - len(retry_list)
         print(f"\n{'='*50}")
         print(
-            f"🔄 PHASE 3b: RETRY DES SITES SANS PRODUITS ({len(sites_with_zero_products)} sites)")
+            f"🔄 PHASE 3b: RETRY ({len(retry_list)} sites, cache conservé)")
         print(f"{'='*50}")
-        print(f"   ⏳ Nouvelle tentative avec force_refresh=True...\n")
+        if skipped > 0:
+            print(f"   ⏭️  {skipped} site(s) ignoré(s) pour limiter le temps total")
 
-        for url in sites_with_zero_products:
+        for url in retry_list:
             is_ref = " ⭐" if url == reference_url else ""
             site_inv_only = inventory_only if url == reference_url else False
             print(f"   🔄 Retry: {url[:50]}...{is_ref}")
             try:
                 scraper = IntelligentScraper(user_id=user_id)
                 retry_result = scraper.scrape(
-                    url, force_refresh=True, categories=categories, inventory_only=site_inv_only)
+                    url, force_refresh=False, categories=categories, inventory_only=site_inv_only)
                 retry_count = len(retry_result.get('products', []))
                 if retry_count > 0:
                     results[url] = retry_result
@@ -812,8 +823,7 @@ Exemples:
             except Exception as e:
                 print(f"   ❌ Retry échoué: {e}")
 
-            # Pause entre retries pour éviter le rate limiting
-            if url != sites_with_zero_products[-1]:
+            if url != retry_list[-1]:
                 time.sleep(2)
 
     # Signaler les sites ignorés à cause d'erreurs de code

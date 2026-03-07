@@ -204,10 +204,10 @@ function CreateAccountContent() {
                   onClick={() => setSelectedPlan(plan.id)}
                   className={`flex-1 text-left p-6 rounded-[12px] border transition-all duration-200 group ${
                     isSelected
-                      ? "border-blue-500 bg-white dark:bg-[#111114] shadow-lg shadow-blue-500/[0.08] ring-1 ring-blue-500/20"
+                      ? "border-blue-500 bg-white dark:bg-[#0F0F12] shadow-lg shadow-blue-500/[0.08] ring-1 ring-blue-500/20"
                       : isPro
-                        ? "border-blue-200 dark:border-blue-500/20 bg-white dark:bg-[#111114] shadow-md hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-500/30"
-                        : "border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#111114] shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-white/[0.1]"
+                        ? "border-blue-200 dark:border-blue-500/20 bg-white dark:bg-[#0F0F12] shadow-md hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-500/30"
+                        : "border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-white/[0.1]"
                   }`}
                 >
                   <div className="flex items-center gap-3 mb-4">
@@ -269,7 +269,7 @@ function CreateAccountContent() {
             </p>
           </div>
 
-          <div className="rounded-[12px] border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#111114] shadow-sm p-6 sm:p-8">
+          <div className="rounded-[12px] border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] shadow-sm p-6 sm:p-8">
             <form className="space-y-4" onSubmit={handleSubmit}>
               {successMessage && (
                 <div className="rounded-[8px] p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">

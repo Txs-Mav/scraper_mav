@@ -64,7 +64,7 @@ export default function HelpWidget() {
 
       {/* Panel */}
       {open && (
-        <div className="fixed bottom-20 left-6 z-50 w-72 bg-white dark:bg-[#111114] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-gray-200 dark:border-gray-800 overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
+        <div className="fixed bottom-20 left-6 z-50 w-72 bg-white dark:bg-[#0F0F12] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-gray-200 dark:border-gray-800 overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
           <div className="px-5 pt-5 pb-3">
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">Aide & Support</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Comment pouvons-nous vous aider ?</p>

@@ -38,27 +38,27 @@ const STEP_DEFS: StepDef[] = [
   },
   {
     id: "config",
-    label: "Configurez vos sites",
-    description: "Ajoutez votre site et vos concurrents",
-    hint: "Cliquez ici pour ajouter votre site de référence et les sites de vos concurrents.",
+    label: "Ajoutez vos concurrents",
+    description: "Configurez les sites à surveiller",
+    hint: "Cliquez ici pour ajouter votre site de référence et les sites concurrents à surveiller.",
     icon: Globe,
     target: "[data-onboarding='config']",
     page: "/dashboard",
   },
   {
     id: "scrape",
-    label: "Lancez un scraping",
-    description: "Extrayez les prix de vos concurrents",
-    hint: "Lancez une extraction pour récupérer automatiquement les prix de vos concurrents.",
+    label: "Lancez la surveillance",
+    description: "La plateforme analysera vos concurrents",
+    hint: "Lancez la première analyse pour démarrer la surveillance automatique du marché.",
     icon: Rocket,
     target: "[data-onboarding='scrape']",
     page: "/dashboard",
   },
   {
     id: "analyze",
-    label: "Explorez les résultats",
+    label: "Explorez le marché",
     description: "Comparez les prix et trouvez les opportunités",
-    hint: "Consultez vos produits et comparez les prix avec vos concurrents.",
+    hint: "Recherchez des produits, comparez les prix et identifiez votre positionnement.",
     icon: BarChart2,
     target: "[data-onboarding='analyze']",
     page: "/dashboard",
@@ -519,7 +519,7 @@ export default function OnboardingChecklist() {
     }
 
     return (
-      <div className="fixed bottom-6 right-6 z-50 w-80 bg-white dark:bg-[#111114] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-gray-200 dark:border-gray-800 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
+      <div className="fixed bottom-6 right-6 z-50 w-80 bg-white dark:bg-[#0F0F12] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-gray-200 dark:border-gray-800 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
         <div className="relative px-5 pt-5 pb-4">
           <div className="absolute top-3 right-3 flex items-center gap-1">
             <button

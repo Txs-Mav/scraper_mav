@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Bell, User, Home, BarChart2, CreditCard, Search, Command } from "lucide-react"
+import { Bell, User, Home, BarChart2, CreditCard, Search, Command, Activity } from "lucide-react"
 
 import Profile01 from "./profile-01"
 import { ThemeToggle } from "../theme-toggle"
@@ -24,7 +24,7 @@ export default function TopNav() {
   const allNavItems: { labelKey: TranslationKey; href: string; icon: typeof Home; requiresPaid: boolean }[] = [
     { labelKey: "nav.dashboard", href: "/dashboard", icon: Home, requiresPaid: false },
     { labelKey: "nav.analytics", href: "/dashboard/analytics", icon: BarChart2, requiresPaid: true },
-    { labelKey: "nav.alerts", href: "/dashboard/alerte", icon: Bell, requiresPaid: true },
+    { labelKey: "nav.alerts", href: "/dashboard/alerte", icon: Activity, requiresPaid: true },
     { labelKey: "nav.payments", href: "/dashboard/payments", icon: CreditCard, requiresPaid: false },
   ]
 

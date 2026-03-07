@@ -415,7 +415,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     try {
       // Sauvegarder la config AVANT le scrape avec les valeurs locales résolues
       // (le state React n'est peut-être pas encore à jour si la config a été chargée via fallback)
-      await saveConfig({ referenceUrl: currentRefUrl, urls: otherUrls })
+      await saveConfig({ referenceUrl: currentRefUrl, urls: otherUrls, skipAutoScrape: true })
 
       const response = await fetch("/api/scraper/run", {
         method: "POST",
@@ -442,7 +442,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     }
   }
 
-  const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[] }) => {
+  const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[]; skipAutoScrape?: boolean }) => {
     try {
       const refUrl = overrides?.referenceUrl ?? referenceUrl.trim()
       const competitorUrls = overrides?.urls
@@ -452,6 +452,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
         urls: competitorUrls,
         ignoreColors: ignoreColors,
         inventoryOnly: inventoryOnly,
+        skipAutoScrape: overrides?.skipAutoScrape || false,
       }
       console.log('Saving config:', configData)
       const response = await fetch("/api/scraper/config", {
@@ -560,15 +561,15 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
   return (
     <div className="space-y-6">
-      {/* Alerte temps estimé - Style minimal (masquer en mode logs only) */}
+      {/* Alerte temps estimé (masquer en mode logs only) */}
       {!isLogsOnlyMode && urlsWithoutScraper.length > 0 && !isScraping && (
-        <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
-          <Clock className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+        <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-gray-50/80 dark:bg-white/[0.02] border border-gray-200/60 dark:border-white/[0.06]">
+          <Clock className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {t("config.firstAnalysis")}
             </p>
-            <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
               {urlsWithoutScraper.length} {t("config.sitesToAnalyze")}
             </p>
           </div>
@@ -578,42 +579,42 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       {/* Formulaire de configuration (masqué en mode logs-only) */}
       {isConfigOpen && (
         <div className="space-y-6">
-          {/* Scrapers en cache - Sélection visuelle */}
+          {/* Scrapers en cache */}
           {cachedScrapers.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <button
                 type="button"
                 onClick={() => setShowCachedScrapers(!showCachedScrapers)}
-                className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100/50 dark:hover:bg-blue-950/30 transition-colors"
+                className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02] hover:bg-gray-100/50 dark:hover:bg-white/[0.04] transition-colors"
               >
                 <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  <Database className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     {t("config.scrapersCache")} ({cachedScrapers.length})
                   </span>
                 </div>
-                <ChevronDown className={`w-4 h-4 text-blue-600 dark:text-blue-400 transition-transform ${showCachedScrapers ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showCachedScrapers ? 'rotate-180' : ''}`} />
               </button>
 
               {showCachedScrapers && (
-                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113] overflow-hidden">
-                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+                <div className="rounded-xl border border-gray-200/60 dark:border-white/[0.06] overflow-hidden">
+                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-100/60 dark:divide-white/[0.04]">
                     {cachedScrapers.map((scraper, index) => {
                       const domain = getDomain(scraper.url)
                       const isSelected = referenceUrl === scraper.url || urls.includes(scraper.url)
                       return (
                         <div
                           key={index}
-                          className={`flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                          className={`flex items-center gap-3 px-3.5 py-3 hover:bg-gray-50/80 dark:hover:bg-white/[0.02] transition-colors ${isSelected ? 'bg-gray-50 dark:bg-white/[0.03]' : ''}`}
                         >
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold ${isSelected ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                          <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-xs font-semibold text-gray-500 dark:text-gray-400">
                             {domain.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                               {scraper.site_name || domain}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
                               {scraper.url}
                             </p>
                           </div>
@@ -622,9 +623,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                               type="button"
                               onClick={() => selectCachedScraper(scraper, true)}
                               disabled={referenceUrl === scraper.url}
-                              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${referenceUrl === scraper.url
-                                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 cursor-default'
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-600 dark:hover:text-blue-400'
+                              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${referenceUrl === scraper.url
+                                ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 cursor-default'
+                                : 'bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/[0.1]'
                                 }`}
                             >
                               {referenceUrl === scraper.url ? t("config.ref") : t("config.referenceLabel")}
@@ -633,9 +634,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                               type="button"
                               onClick={() => selectCachedScraper(scraper, false)}
                               disabled={urls.includes(scraper.url)}
-                              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${urls.includes(scraper.url)
-                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-default'
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${urls.includes(scraper.url)
+                                ? 'bg-gray-100 dark:bg-white/[0.04] text-gray-300 dark:text-gray-600 cursor-default'
+                                : 'bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/[0.1]'
                                 }`}
                             >
                               {t("config.addCompetitor")}
@@ -651,46 +652,44 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           )}
 
           {/* Site de référence */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="flex items-center gap-2">
-              <Star className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <Star className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
               <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.referenceUrl")}</span>
             </div>
-            <div className="relative">
-              <input
-                type="url"
-                value={referenceUrl}
-                onChange={(e) => setReferenceUrl(e.target.value)}
-                placeholder="https://votre-site.com"
-                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111113] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-500 transition-all placeholder:text-gray-400"
-              />
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <input
+              type="url"
+              value={referenceUrl}
+              onChange={(e) => setReferenceUrl(e.target.value)}
+              placeholder="https://votre-site.com"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/[0.12] transition-all placeholder:text-gray-400"
+            />
+            <p className="text-[11px] text-gray-400 dark:text-gray-500">
               {t("config.priceCompared")}
             </p>
           </div>
 
           {/* Séparateur */}
-          <div className="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-gray-800 to-transparent" />
+          <div className="h-px bg-gray-100 dark:bg-white/[0.04]" />
 
           {/* Sites concurrents */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-gray-400" />
+                <Globe className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.competitorsLabel")}</span>
-                <span className="text-xs text-gray-400">{t("config.optional")}</span>
+                <span className="text-[11px] text-gray-400 dark:text-gray-500">{t("config.optional")}</span>
               </div>
               <button
                 onClick={addUrl}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded-md transition-colors"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-3 h-3" />
                 {t("config.add")}
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {urls.map((url, index) => {
                 const isReference = url.trim() === referenceUrl.trim() && url.trim() !== ""
                 return (
@@ -700,24 +699,24 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                       checked={competitorEnabled[index] && !isReference}
                       onChange={() => !isReference && toggleCompetitorEnabled(index)}
                       disabled={isReference}
-                      className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500/20 disabled:opacity-30"
+                      className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 disabled:opacity-30"
                     />
                     <input
                       type="url"
                       value={url}
                       onChange={(e) => updateUrl(index, e.target.value)}
                       placeholder={`https://concurrent-${index + 1}.com`}
-                      className={`flex-1 px-4 py-3 rounded-xl border bg-white dark:bg-[#111113] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400 ${isReference
-                        ? "border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400"
-                        : "border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white focus:border-blue-500"
+                      className={`flex-1 px-3.5 py-2.5 rounded-xl border bg-white dark:bg-white/[0.02] text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 transition-all placeholder:text-gray-400 ${isReference
+                        ? "border-gray-300 dark:border-white/[0.1] text-gray-500 dark:text-gray-400"
+                        : "border-gray-200/60 dark:border-white/[0.06] text-gray-900 dark:text-white focus:border-gray-300 dark:focus:border-white/[0.12]"
                         }`}
                     />
                     {urls.length > 1 && !isReference && (
                       <button
                         onClick={() => removeUrl(index)}
-                        className="p-2 text-gray-400 hover:text-red-500 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -727,83 +726,82 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           </div>
 
           {/* Séparateur */}
-          <div className="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-gray-800 to-transparent" />
+          <div className="h-px bg-gray-100 dark:bg-white/[0.04]" />
 
-          {/* Options de scraping - TOUJOURS VISIBLE */}
-          <div className="space-y-3">
+          {/* Options */}
+          <div className="space-y-2.5">
             <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.options")}</span>
             
-            <div className="space-y-2 pl-1">
-              <div className="flex items-center gap-2 py-1">
+            <div className="space-y-1">
+              <label htmlFor="ignoreColors" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   id="ignoreColors"
                   checked={ignoreColors}
                   onChange={(e) => setIgnoreColors(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-purple-600 focus:ring-purple-500 focus:ring-offset-0 dark:bg-gray-800"
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 focus:ring-offset-0"
                 />
-                <label htmlFor="ignoreColors" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                  <span>{t("config.ignoreColors")}</span>
-                  <span className="ml-1 text-xs text-purple-500 dark:text-purple-400">{t("config.moreMatches")}</span>
-                </label>
-              </div>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {t("config.ignoreColors")}
+                  <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">{t("config.moreMatches")}</span>
+                </span>
+              </label>
               
-              <div className="flex items-center gap-2 py-1">
+              <label htmlFor="inventoryOnly" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   id="inventoryOnly"
                   checked={inventoryOnly}
                   onChange={(e) => setInventoryOnly(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 dark:bg-gray-800"
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 focus:ring-offset-0"
                 />
-                <label htmlFor="inventoryOnly" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                  <span>{t("config.filterCatalog")}</span>
-                  <span className="ml-1 text-xs text-emerald-500 dark:text-emerald-400">{t("config.fullExtraction")}</span>
-                </label>
-              </div>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {t("config.filterCatalog")}
+                  <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">{t("config.fullExtraction")}</span>
+                </span>
+              </label>
 
-              <div className="flex items-center gap-2 py-1">
+              <label htmlFor="forceRefresh" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   id="forceRefresh"
                   checked={forceRefresh}
                   onChange={(e) => setForceRefresh(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 dark:bg-gray-800"
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 focus:ring-offset-0"
                 />
-                <label htmlFor="forceRefresh" className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
                   {t("config.regenerate")}
-                </label>
-              </div>
+                </span>
+              </label>
             </div>
           </div>
 
-          {/* Résumé minimal */}
+          {/* Résumé */}
           {totalSitesToScrape > 0 && !isScraping && (
             <>
-              <div className="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-gray-800 to-transparent" />
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-3">
+              <div className="h-px bg-gray-100 dark:bg-white/[0.04]" />
+              <div className="flex items-center justify-between py-1">
+                <div className="flex items-center gap-2.5">
                   <div className="flex -space-x-1">
                     {[referenceUrl, ...otherValidUrls].slice(0, 3).map((url, i) => (
-                      <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium border-2 border-white dark:border-[#0f0f12] ${i === 0 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                        }`}>
+                      <div key={i} className="w-7 h-7 rounded-full bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-[11px] font-medium text-gray-500 dark:text-gray-400 border-2 border-white dark:border-[#0f0f12]">
                         {getDomain(url).charAt(0).toUpperCase()}
                       </div>
                     ))}
                     {totalSitesToScrape > 3 && (
-                      <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xs font-medium text-gray-500 border-2 border-white dark:border-[#0f0f12]">
+                      <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-[11px] font-medium text-gray-400 border-2 border-white dark:border-[#0f0f12]">
                         +{totalSitesToScrape - 3}
                       </div>
                     )}
                   </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     {totalSitesToScrape} site{totalSitesToScrape > 1 ? 's' : ''}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-sm text-gray-500">
-                  <Clock className="w-4 h-4" />
-                  <span>~{timeEstimate.text}</span>
-                </div>
+                <span className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  ~{timeEstimate.text}
+                </span>
               </div>
             </>
           )}
@@ -813,7 +811,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
       {/* Terminal de logs - TOUJOURS AFFICHÉ en mode logs-only OU pendant le scraping */}
       {shouldShowLogsTerminal && (
-        <div className="rounded-2xl bg-white/95 dark:bg-[#0F0F12] border border-gray-200/60 dark:border-white/[0.06] overflow-hidden shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.5)]">
+        <div className="rounded-2xl bg-white/95 dark:bg-white/[0.025] border border-gray-200/60 dark:border-white/[0.06] overflow-hidden shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.5)]">
 
           {/* Progression - toujours visible */}
           <div className="px-5 pt-5 pb-4">

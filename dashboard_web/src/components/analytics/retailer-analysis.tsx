@@ -76,7 +76,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
 
   if (detailleurs.length === 0) {
     return (
-      <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
+      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           {t("ap.retailerComparison")}
         </h3>
@@ -105,7 +105,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
     }))
 
   return (
-    <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
+    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.retailerComparison")}
@@ -283,7 +283,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                                   ? 'bg-emerald-50/80 dark:bg-emerald-900/10 border-emerald-200/60 dark:border-emerald-900/30'
                                   : isBad
                                   ? 'bg-red-50/80 dark:bg-red-900/10 border-red-200/60 dark:border-red-900/30'
-                                  : 'bg-white dark:bg-[#0F0F12] border-gray-200/60 dark:border-[#2B2B30]'
+                                  : 'bg-white dark:bg-white/[0.025] border-gray-200/60 dark:border-[#2B2B30]'
                               }`}
                             >
                               <div className="flex items-center justify-between">

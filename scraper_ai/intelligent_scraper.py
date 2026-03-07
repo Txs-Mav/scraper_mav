@@ -20,12 +20,17 @@ try:
     from .exploration_agent import ExplorationAgent
     from .scraper_generator import ScraperGenerator
     from .config import CACHE_DIR, PROMPT_VERSION
+    from .dedicated_scrapers.registry import DedicatedScraperRegistry
 except ImportError:
     from supabase_storage import SupabaseStorage, get_storage
     from selector_detector import SelectorDetector
     from exploration_agent import ExplorationAgent
     from scraper_generator import ScraperGenerator
     from config import CACHE_DIR, PROMPT_VERSION
+    try:
+        from dedicated_scrapers.registry import DedicatedScraperRegistry
+    except ImportError:
+        DedicatedScraperRegistry = None
 
 
 class IntelligentScraper:
@@ -86,6 +91,24 @@ class IntelligentScraper:
         self._inventory_only = inventory_only
         start_time = time.time()
 
+        # Normaliser l'URL
+        url = self._normalize_url(url)
+
+        # =====================================================
+        # PRÉ-CHECK: SCRAPER DÉDIÉ (bypass complet du workflow AI)
+        # =====================================================
+        if DedicatedScraperRegistry and DedicatedScraperRegistry.has_dedicated_scraper(url):
+            print(f"\n{'='*70}")
+            print(f"🔧 SCRAPER DÉDIÉ DÉTECTÉ")
+            print(f"{'='*70}")
+            dedicated = DedicatedScraperRegistry.get_by_url(url)
+            if dedicated:
+                result = dedicated.scrape(
+                    categories=categories,
+                    inventory_only=inventory_only
+                )
+                return result
+
         print(f"\n{'='*70}")
         print(f"🚀 SCRAPER INTELLIGENT v{PROMPT_VERSION}")
         print(f"{'='*70}")
@@ -93,9 +116,6 @@ class IntelligentScraper:
         print(f"👤 User ID: {self.user_id or 'Non connecté (local)'}")
         print(f"🔄 Force refresh: {force_refresh}")
         print(f"📦 Inventaire seulement: {'Oui' if inventory_only else 'Non'}")
-
-        # Normaliser l'URL
-        url = self._normalize_url(url)
 
         # Catégories par défaut: TOUTES les catégories pour extraction complète
         # L'état (neuf/usagé/catalogue) est détecté automatiquement par produit
@@ -242,7 +262,10 @@ class IntelligentScraper:
         # =====================================================
         success_rate = (len(products) / len(product_urls)
                         * 100) if product_urls else 0
-        if product_urls and len(product_urls) >= 20 and success_rate < 15:
+        elapsed_so_far = time.time() - start_time
+        can_auto_heal = elapsed_so_far < 120
+
+        if product_urls and len(product_urls) >= 20 and success_rate < 15 and can_auto_heal:
             print(
                 f"\n⚠️  Taux d'extraction très bas: {len(products)}/{len(product_urls)} ({success_rate:.0f}%)")
             print(
@@ -259,7 +282,6 @@ class IntelligentScraper:
                     print(
                         f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
             else:
-                # Fallback: essayer l'ancienne méthode (sitemap)
                 refreshed_urls = self._refresh_urls_only(url, categories)
                 if refreshed_urls and len(refreshed_urls) > len(products) * 2:
                     print(
@@ -272,6 +294,10 @@ class IntelligentScraper:
                         self.storage.refresh_cache_expiry(url)
                         print(
                             f"   ✅ Cache mis à jour ({len(product_urls)} URLs, sélecteurs inchangés)")
+        elif product_urls and len(product_urls) >= 20 and success_rate < 15:
+            print(
+                f"\n⚠️  Taux d'extraction bas ({success_rate:.0f}%) mais auto-heal ignoré "
+                f"(déjà {elapsed_so_far:.0f}s écoulées)")
 
         # Post-filtrage inventaire: exclure les produits catalogue si demandé
         # Exception : si le site est entièrement catalogue (pas d'inventaire),
@@ -348,20 +374,8 @@ class IntelligentScraper:
             }
         }
 
-    def _check_site_connectivity(self, url: str, max_retries: int = 4, initial_wait: float = 3.0) -> bool:
-        """Vérifie que le site est accessible avant de lancer l'exploration.
-
-        Effectue un HEAD request avec retry et exponential backoff.
-        Gère spécifiquement les erreurs DNS transitoires.
-
-        Args:
-            url: URL du site à vérifier
-            max_retries: Nombre maximum de tentatives (défaut: 4)
-            initial_wait: Délai initial en secondes (défaut: 3s)
-
-        Returns:
-            True si le site est accessible, False sinon
-        """
+    def _check_site_connectivity(self, url: str, max_retries: int = 2, initial_wait: float = 2.0) -> bool:
+        """Vérifie que le site est accessible avant de lancer l'exploration."""
         import socket
 
         parsed = urlparse(url)
@@ -371,14 +385,11 @@ class IntelligentScraper:
 
         for attempt in range(max_retries):
             try:
-                # 1. Vérifier la résolution DNS
                 socket.getaddrinfo(
                     hostname, 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
 
-                # 2. Vérifier l'accès HTTP (HEAD request rapide)
                 response = self.session.head(
-                    url, timeout=15, allow_redirects=True)
-                # Accepter tout code < 500 (même 403/404 = site accessible)
+                    url, timeout=8, allow_redirects=True)
                 if response.status_code < 500:
                     print(
                         f"   ✅ Site accessible (HTTP {response.status_code})")
@@ -390,22 +401,18 @@ class IntelligentScraper:
 
             except Exception as e:
                 error_str = str(e).lower()
-                is_dns = any(kw in error_str for kw in [
+                is_transient = any(kw in error_str for kw in [
                     'nameresolution', 'name resolution', 'nodename nor servname',
                     'temporary failure', 'getaddrinfo', 'newconnectionerror',
-                ])
-                is_transient = is_dns or any(kw in error_str for kw in [
                     'timeout', 'timed out', 'connectionerror', 'connection refused',
                     'connectionreset', 'remotedisconnected', 'max retries',
                     '502', '503', '504',
                 ])
 
                 if attempt < max_retries - 1 and is_transient:
-                    wait_time = initial_wait * \
-                        (2 ** attempt)  # 3s, 6s, 12s, 24s
-                    error_type = "DNS" if is_dns else "connexion"
+                    wait_time = initial_wait * (2 ** attempt)
                     print(
-                        f"   ⚠️ Tentative {attempt + 1}/{max_retries}: Erreur {error_type} → {e}")
+                        f"   ⚠️ Tentative {attempt + 1}/{max_retries}: {e}")
                     print(f"   🔄 Nouvelle tentative dans {wait_time:.0f}s...")
                     time.sleep(wait_time)
                 else:
@@ -473,18 +480,16 @@ class IntelligentScraper:
             base_domain = f"{parsed.scheme}://{parsed.netloc}"
 
             listing_paths = [
-                '/inventaire/', '/inventory/', '/en-inventaire/',
+                '/inventaire/', '/inventory/',
                 '/inventaire-neuf/', '/inventaire-occasion/',
                 '/new-inventory/', '/used-inventory/',
-                '/a-vendre/', '/for-sale/',
-                '/motos/', '/motorcycles/', '/motocyclettes/',
+                '/motos/', '/motorcycles/',
                 '/catalogue/', '/catalog/',
                 '/vehicles/', '/vehicules/',
+                '/a-vendre/', '/for-sale/',
                 '/en-stock/', '/in-stock/',
-                '/scooters/', '/quads/', '/side-by-side/',
             ]
 
-            # Trouver le bon path en testant ceux qui existent
             listing_url = None
             session = tools._get_session() if hasattr(tools, '_get_session') else None
             if not session:
@@ -494,28 +499,32 @@ class IntelligentScraper:
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 })
 
-            # D'abord, chercher le path depuis le base_url
             base_path = parsed.path.rstrip('/')
-            for lp in listing_paths:
-                test_url = f"{base_domain}{base_path}{lp}"
-                try:
-                    resp = session.get(test_url, timeout=8,
-                                       allow_redirects=True)
-                    if resp.status_code == 200 and len(resp.text) > 5000:
-                        listing_url = test_url
-                        break
-                except Exception:
-                    continue
 
-            # Essayer aussi sans le base_path (ex: /fr/inventaire/ → /inventaire/)
-            if not listing_url:
-                for lp in listing_paths:
-                    test_url = f"{base_domain}{lp}"
+            def _test_listing(test_url):
+                try:
+                    resp = session.get(test_url, timeout=5, allow_redirects=True)
+                    if resp.status_code == 200 and len(resp.text) > 5000:
+                        return test_url
+                except Exception:
+                    pass
+                return None
+
+            candidate_urls = []
+            for lp in listing_paths:
+                if base_path:
+                    candidate_urls.append(f"{base_domain}{base_path}{lp}")
+                candidate_urls.append(f"{base_domain}{lp}")
+
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                future_map = {pool.submit(_test_listing, u): u for u in candidate_urls}
+                for future in as_completed(future_map, timeout=20):
                     try:
-                        resp = session.get(
-                            test_url, timeout=8, allow_redirects=True)
-                        if resp.status_code == 200 and len(resp.text) > 5000:
-                            listing_url = test_url
+                        result = future.result(timeout=6)
+                        if result:
+                            listing_url = result
+                            for f in future_map:
+                                f.cancel()
                             break
                     except Exception:
                         continue
@@ -527,7 +536,7 @@ class IntelligentScraper:
             print(f"      📋 Page listing trouvée: {listing_url}")
 
             all_product_links = set()
-            max_pages = 50
+            max_pages = 20
             page_num = 1
 
             product_markers = [
@@ -873,35 +882,40 @@ class IntelligentScraper:
                     for url in batch
                 }
 
-                for future in as_completed(futures):
-                    url = futures[future]
-                    processed += 1
-                    try:
-                        products = future.result()
-                        if products:
-                            all_products.extend(products)
-                            batch_successes += 1
-                            success_count += 1
-                        else:
-                            skipped_empty += 1
-                            batch_successes += 1
-                    except Exception as e:
-                        err_str = str(e).lower()
-                        if 'timeout' in err_str or 'timed out' in err_str or 'read timed out' in err_str:
-                            batch_timeouts += 1
-                            timeout_count += 1
-                        else:
-                            error_count += 1
-                        failed_urls.append(url)
+                try:
+                    for future in as_completed(futures, timeout=180):
+                        url = futures[future]
+                        processed += 1
+                        try:
+                            products = future.result(timeout=30)
+                            if products:
+                                all_products.extend(products)
+                                batch_successes += 1
+                                success_count += 1
+                            else:
+                                skipped_empty += 1
+                                batch_successes += 1
+                        except Exception as e:
+                            err_str = str(e).lower()
+                            if 'timeout' in err_str or 'timed out' in err_str or 'read timed out' in err_str:
+                                batch_timeouts += 1
+                                timeout_count += 1
+                            else:
+                                error_count += 1
+                            failed_urls.append(url)
 
-                    report_interval = 25 if total > 200 else 50
-                    if processed % report_interval == 0 or processed == total:
-                        elapsed = time.time() - extract_start
-                        rate = processed / elapsed if elapsed > 0 else 0
-                        eta = (total - processed) / rate if rate > 0 else 0
-                        print(
-                            f"      📊 [{processed}/{total}] {len(all_products)} produits — "
-                            f"{rate:.1f} URLs/s — ETA {eta:.0f}s")
+                        report_interval = 25 if total > 200 else 50
+                        if processed % report_interval == 0 or processed == total:
+                            elapsed = time.time() - extract_start
+                            rate = processed / elapsed if elapsed > 0 else 0
+                            eta = (total - processed) / rate if rate > 0 else 0
+                            print(
+                                f"      📊 [{processed}/{total}] {len(all_products)} produits — "
+                                f"{rate:.1f} URLs/s — ETA {eta:.0f}s")
+                except TimeoutError:
+                    hung = len(batch) - processed + (total - len(batch) - len(remaining_urls))
+                    print(f"      ⚠️  Batch timeout (180s) — {hung} URLs abandonnées")
+                    timeout_count += hung
 
             batch_total = batch_successes + batch_timeouts
             if batch_total > 0 and batch_timeouts / batch_total > 0.25:
@@ -938,15 +952,18 @@ class IntelligentScraper:
                     executor.submit(self._extract_from_url, url, selectors, base_url): url
                     for url in failed_urls
                 }
-                for future in as_completed(futures):
-                    retried += 1
-                    try:
-                        products = future.result()
-                        if products:
-                            all_products.extend(products)
-                            retry_successes += 1
-                    except Exception:
-                        pass
+                try:
+                    for future in as_completed(futures, timeout=120):
+                        retried += 1
+                        try:
+                            products = future.result(timeout=15)
+                            if products:
+                                all_products.extend(products)
+                                retry_successes += 1
+                        except Exception:
+                            pass
+                except TimeoutError:
+                    print(f"      ⚠️  Retry timeout (120s) — arrêt des retries restants")
 
             if retry_successes > 0:
                 print(

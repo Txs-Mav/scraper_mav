@@ -199,7 +199,7 @@ export default function Home() {
 
         {/* Dashboard Preview Section */}
         <section id="demo" className="max-w-6xl mx-auto pb-32">
-          <div className="relative rounded-2xl border border-gray-200/80 dark:border-gray-800/80 bg-white/80 dark:bg-[#111113]/80 backdrop-blur-sm shadow-2xl shadow-gray-900/5 dark:shadow-black/30 overflow-hidden">
+          <div className="relative rounded-2xl border border-gray-200/80 dark:border-gray-800/80 bg-white/80 dark:bg-[#0F0F12]/80 backdrop-blur-sm shadow-2xl shadow-gray-900/5 dark:shadow-black/30 overflow-hidden">
             {/* Browser chrome */}
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-[#0a0a0c]/80">
               <div className="flex gap-1.5">
@@ -214,7 +214,7 @@ export default function Home() {
               </div>
             </div>
             {/* Mock Dashboard Content */}
-            <div className="p-6 md:p-8 bg-gradient-to-br from-gray-50 to-white dark:from-[#0f0f12] dark:to-[#111113]">
+            <div className="p-6 md:p-8 bg-gradient-to-br from-gray-50 to-white dark:from-[#0f0f12] dark:to-[#0F0F12]">
               <div className="grid md:grid-cols-3 gap-4 mb-6">
                 {[
                   { label: "Scrapings ce mois", value: "1,234", change: "+12%" },
@@ -280,7 +280,7 @@ export default function Home() {
                 <div className="absolute -top-4 -left-2 text-7xl font-black text-gray-100 dark:text-gray-900 select-none group-hover:text-blue-100 dark:group-hover:text-blue-950 transition-colors">
                   {item.step}
                 </div>
-                <div className="relative p-6 rounded-2xl bg-white dark:bg-[#111113] border border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-600/5">
+                <div className="relative p-6 rounded-2xl bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-600/5">
                   <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center mb-4">
                     <item.icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
@@ -321,7 +321,7 @@ export default function Home() {
                 description: "Notre intelligence artificielle détecte et s'adapte aux changements de structure des sites automatiquement.",
               },
             ].map((feature) => (
-              <div key={feature.title} className="p-6 rounded-2xl bg-white dark:bg-[#111113] border border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900 transition-all group">
+              <div key={feature.title} className="p-6 rounded-2xl bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900 transition-all group">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                   <feature.icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                 </div>
@@ -344,7 +344,7 @@ export default function Home() {
                 key={plan.name}
                 className={`relative p-8 rounded-2xl border transition-all hover:-translate-y-1 ${plan.highlighted
                   ? "bg-gradient-to-br from-blue-600 to-blue-700 border-blue-500 text-white shadow-2xl shadow-blue-600/25"
-                  : "bg-white dark:bg-[#111113] border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900"
+                  : "bg-white dark:bg-[#0F0F12] border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900"
                   }`}
               >
                 {plan.highlighted && (
@@ -388,7 +388,7 @@ export default function Home() {
 
         {/* CTA Section */}
         <section className="max-w-4xl mx-auto pb-32">
-          <div className="relative p-12 md:p-16 rounded-3xl bg-gradient-to-br from-gray-900 to-gray-800 dark:from-[#1a1a1f] dark:to-[#111113] text-white text-center overflow-hidden">
+          <div className="relative p-12 md:p-16 rounded-3xl bg-gradient-to-br from-gray-900 to-gray-800 dark:from-[#1a1a1f] dark:to-[#0F0F12] text-white text-center overflow-hidden">
             {/* Decorative squares */}
             <div className="absolute top-4 left-4 w-20 h-20 border border-white/10 rounded-xl" />
             <div className="absolute bottom-4 right-4 w-16 h-16 border border-white/10 rounded-lg" />

@@ -20,7 +20,7 @@ export function BlocTemplate({ children, className, innerClassName }: BlocTempla
     >
       <div
         className={cn(
-          "bloc-template-inner bg-white/95 dark:bg-[#0F0F12]",
+          "bloc-template-inner bg-white/95 dark:bg-white/[0.025]",
           innerClassName
         )}
       >

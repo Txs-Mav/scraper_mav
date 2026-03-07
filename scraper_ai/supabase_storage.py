@@ -75,7 +75,7 @@ class SupabaseStorage:
         result = self._make_request(
             'get',
             '/api/scraper-ai/cache/load',
-            params={'user_id': self.user_id, 'cache_key': cache_key}
+            params={'user_id': self.user_id, 'cache_key': cache_key, 'site_url': site_url}
         )
         
         if result and result.get('found'):

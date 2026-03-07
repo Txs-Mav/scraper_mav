@@ -103,7 +103,7 @@ export default function SubscriptionPage() {
           {PLANS.map((plan) => (
             <div
               key={plan.id}
-              className={`bg-white dark:bg-[#0F0F12] rounded-lg border-2 p-6 ${
+              className={`bg-white dark:bg-white/[0.025] rounded-lg border-2 p-6 ${
                 user.subscription_plan === plan.id
                   ? "border-blue-500"
                   : "border-gray-200 dark:border-[#1F1F23]"

@@ -59,7 +59,46 @@ export async function GET(request: Request) {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        // Aucun résultat trouvé
+        // Aucun résultat dans le cache utilisateur → chercher dans shared_scrapers
+        const siteUrl = searchParams.get('site_url')
+        if (siteUrl) {
+          const domain = new URL(siteUrl).hostname.replace('www.', '')
+          const serviceClient = process.env.SUPABASE_SERVICE_ROLE_KEY
+            ? createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY)
+            : supabase
+
+          const { data: shared } = await serviceClient
+            .from('shared_scrapers')
+            .select('id, site_name, site_slug, site_url, scraper_module, selectors, listing_urls, pagination_config, categories, extracted_fields, version')
+            .eq('site_domain', domain)
+            .eq('is_active', true)
+            .single()
+
+          if (shared) {
+            return NextResponse.json({
+              found: true,
+              is_shared_scraper: true,
+              id: shared.id,
+              scraper_code: '',
+              selectors: shared.selectors || {},
+              product_urls: [],
+              metadata: {
+                site_name: shared.site_name,
+                scraper_module: shared.scraper_module,
+                scraper_type: 'dedicated',
+                listing_urls: shared.listing_urls,
+                pagination_config: shared.pagination_config,
+                categories: shared.categories,
+                extracted_fields: shared.extracted_fields,
+              },
+              expires_at: null,
+              status: 'dedicated',
+              template_version: shared.version,
+              is_expired: false,
+            })
+          }
+        }
+
         return NextResponse.json({
           found: false,
           message: 'Scraper not found'

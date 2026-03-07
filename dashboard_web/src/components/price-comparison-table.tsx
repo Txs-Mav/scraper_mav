@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useMemo, useState, useEffect, useCallback } from "react"
-import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle } from "lucide-react"
+import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, Search, Palette } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { deepNormalize, normalizeProductGroupKey } from "@/lib/analytics-calculations"
@@ -21,16 +21,24 @@ type Product = {
   sourceCategorie?: string
   etat?: string
   competitors?: Record<string, number | null>
-  produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string }
+  produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string; kilometrage?: number }
   quantity?: number
   inventaire?: string
   groupedUrls?: string[]
+  kilometrage?: number
 }
 
 type PriceComparisonTableProps = {
   products: Product[]
   competitorsUrls?: string[]
   ignoreColors?: boolean
+  stripColorsFromDisplay?: boolean
+  searchQuery?: string
+  onSearchChange?: (query: string) => void
+  onToggleColors?: () => void
+  searchPlaceholder?: string
+  hideColorsLabel?: string
+  showColorsLabel?: string
 }
 
 function hostnameFromUrl(url: string) {
@@ -245,7 +253,14 @@ function PriceCell({ price, delta }: { price: number | null; delta: number | nul
   )
 }
 
-export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false }: PriceComparisonTableProps) {
+function stripColorWords(text: string): string {
+  if (!text) return text
+  const words = text.split(/\s+/)
+  const filtered = words.filter(w => !COLOR_KEYWORDS_NORMALIZED.has(w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')))
+  return filtered.join(' ').replace(/\s+/g, ' ').trim() || text
+}
+
+export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }: PriceComparisonTableProps) {
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
@@ -281,6 +296,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       sourceCategorie?: string
       referenceUrl?: string
       inventaire?: string
+      kilometrage?: number
       competitorEtats: Record<string, string>
       competitorUrls: Record<string, string>
       reference: number | null
@@ -322,6 +338,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           sourceCategorie: p.sourceCategorie,
           referenceUrl: p.produitReference?.sourceUrl,
           inventaire: p.produitReference?.inventaire || p.inventaire,
+          kilometrage: p.produitReference?.kilometrage ?? p.kilometrage,
           competitorEtats: {},
           competitorUrls: {},
           reference: p.prixReference ?? null,
@@ -369,6 +386,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         sourceCategorie: p.sourceCategorie,
         referenceUrl: p.sourceUrl,
         inventaire: p.inventaire,
+        kilometrage: p.kilometrage,
         competitorEtats: {},
         competitorUrls: {},
         reference: refPrice,
@@ -397,6 +415,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         sourceCategorie: g.sourceCategorie,
         referenceUrl: g.referenceUrl,
         inventaire: g.inventaire,
+        kilometrage: g.kilometrage,
         reference: g.reference,
         prices,
         quantity: g.quantity,
@@ -465,6 +484,16 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     })
   }
 
+  const [detailRows, setDetailRows] = useState<Set<number>>(new Set())
+  const toggleDetailRow = (idx: number) => {
+    setDetailRows(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
   const renderTable = (
     data: Array<{
       name: string
@@ -476,6 +505,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       sourceCategorie?: string
       referenceUrl?: string
       inventaire?: string
+      kilometrage?: number
       reference: number | null
       prices: { dealer: string; price: number | null; delta: number | null; etat?: string; url?: string }[]
       quantity?: number
@@ -490,14 +520,14 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         <div className="min-w-[900px]">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="sticky top-0 bg-white dark:bg-[#0F0F12]">
-                <th className="sticky left-0 bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+              <tr className="sticky top-0 bg-white dark:bg-card">
+                <th className="sticky left-0 bg-white dark:bg-card px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
                   {t("table.image")}
                 </th>
-                <th className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
+                <th className="sticky left-[80px] bg-white dark:bg-card px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
                   {t("table.product")}
                 </th>
-                <th className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                <th className="sticky left-[260px] bg-white dark:bg-card px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
                   {t("table.refPrice")}
                 </th>
                 {cols.map(c => (
@@ -515,47 +545,64 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   </td>
                 </tr>
               )}
-              {data.map((p, idx) => (
+              {data.map((p, idx) => {
+                const isUsed = p.etat === 'occasion' || p.etat === 'vehicules_occasion' || p.sourceCategorie === 'occasion' || p.sourceCategorie === 'vehicules_occasion'
+                const hasDetails = (isUsed && p.kilometrage != null) || !!p.inventaire
+                return (
                 <React.Fragment key={idx}>
                 <tr
                   className="border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#111117] transition-colors"
                 >
-                  <td className="sticky left-0 bg-white dark:bg-[#0F0F12] px-3 py-2 align-middle">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-[#1F1F23] shadow-[0_8px_20px_-14px_rgba(0,0,0,0.4)]">
-                      {p.image ? (
-                        <>
-                          <img
-                            src={p.image}
-                            alt={p.name}
-                            width={48}
-                            height={48}
-                            className="object-cover w-full h-full"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
-                          />
-                          <div className="hidden w-full h-full flex items-center justify-center text-gray-400 text-[10px]">{p.marque?.slice(0, 3) || 'Img'}</div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Img</div>
-                      )}
+                  <td className="sticky left-0 bg-white dark:bg-card px-3 py-2 align-middle">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => hasDetails && toggleDetailRow(idx)}
+                        className={`flex-shrink-0 p-0.5 rounded transition-all ${hasDetails ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] cursor-pointer' : 'text-gray-200 dark:text-gray-700 cursor-default'}`}
+                        disabled={!hasDetails}
+                        title={hasDetails ? (detailRows.has(idx) ? t("table.hideDetails") : t("table.showDetails")) : ''}
+                      >
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${detailRows.has(idx) ? 'rotate-180' : ''}`} />
+                      </button>
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-[#1F1F23] shadow-[0_8px_20px_-14px_rgba(0,0,0,0.4)]">
+                        {p.image ? (
+                          <>
+                            <img
+                              src={p.image}
+                              alt={p.name}
+                              width={48}
+                              height={48}
+                              className="object-cover w-full h-full"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                            />
+                            <div className="hidden w-full h-full flex items-center justify-center text-gray-400 text-[10px]">{p.marque?.slice(0, 3) || 'Img'}</div>
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Img</div>
+                        )}
+                      </div>
                     </div>
                   </td>
-                  <td className="sticky left-[80px] bg-white dark:bg-[#0F0F12] px-3 py-2 min-w-[280px]">
+                  <td className="sticky left-[80px] bg-white dark:bg-card px-3 py-2 min-w-[280px]">
                     <div className="flex flex-col gap-0.5">
                       {p.marque && extractMarque(p.marque) && (
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{extractMarque(p.marque)}</span>
                       )}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {p.referenceUrl ? (
-                          <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
-                            {p.displayName || p.name}
-                          </a>
-                        ) : (
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
-                            {p.displayName || p.name}
-                          </span>
-                        )}
+                        {(() => {
+                          const rawName = p.displayName || p.name
+                          const displayedName = stripColorsFromDisplay ? stripColorWords(rawName) : rawName
+                          return p.referenceUrl ? (
+                            <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
+                              {displayedName}
+                            </a>
+                          ) : (
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
+                              {displayedName}
+                            </span>
+                          )
+                        })()}
                         <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
                         {p.quantity != null && p.quantity > 1 && (
                           <button
@@ -572,7 +619,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                       )}
                     </div>
                   </td>
-                  <td className="sticky left-[260px] bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
+                  <td className="sticky left-[260px] bg-white dark:bg-card px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
                     {p.reference !== null ? (
                       p.referenceUrl ? (
                         <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
@@ -600,6 +647,26 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     </td>
                   ))}
                 </tr>
+                {detailRows.has(idx) && hasDetails && (
+                  <tr className="bg-slate-50/70 dark:bg-slate-900/20 border-b border-gray-100 dark:border-[#1F1F23]">
+                    <td colSpan={3 + cols.length} className="px-4 py-2.5">
+                      <div className="flex flex-wrap gap-x-6 gap-y-1.5 items-center pl-6">
+                        {isUsed && p.kilometrage != null && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.mileage")}</span>
+                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{p.kilometrage.toLocaleString()} km</span>
+                          </div>
+                        )}
+                        {p.inventaire && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.serialNumber")}</span>
+                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">#{p.inventaire}</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {expandedRows.has(idx) && p.groupedUrls && p.groupedUrls.length > 0 && (
                   <tr className="bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-[#1F1F23]">
                     <td colSpan={3 + cols.length} className="px-4 py-2">
@@ -622,7 +689,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   </tr>
                 )}
                 </React.Fragment>
-              ))}
+              )})}
+            
             </tbody>
           </table>
         </div>
@@ -670,6 +738,33 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
             {t("table.share")}
           </button>
           <div className="flex-1" />
+          {onSearchChange && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery || ""}
+                onChange={e => onSearchChange(e.target.value)}
+                placeholder={searchPlaceholder || "Rechercher..."}
+                className="w-72 pl-8 pr-7 py-1.5 rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/[0.12] transition"
+              />
+              {searchQuery && (
+                <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+          {onToggleColors && (
+            <button
+              type="button"
+              onClick={onToggleColors}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04] transition shrink-0"
+            >
+              <Palette className="h-3 w-3" />
+              {stripColorsFromDisplay ? (showColorsLabel || "Afficher couleurs") : (hideColorsLabel || "Masquer couleurs")}
+            </button>
+          )}
       </div>
 
       <div id="price-comparison-table">

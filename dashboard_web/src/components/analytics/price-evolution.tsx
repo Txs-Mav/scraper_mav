@@ -53,7 +53,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
     const hasData = scrapesParJour.length > 0
 
     return (
-      <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
+      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {t("ap.scrapingActivity")}
@@ -135,7 +135,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
   }
 
   return (
-    <div className="bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-200 dark:border-[#1F1F23] p-6">
+    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.priceEvolution")}
