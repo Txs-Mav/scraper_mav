@@ -544,11 +544,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       if (diffMin < 1) lastAnalysisText = t("alerts.now")
       else if (diffMin < 60) lastAnalysisText = t("dash.minutesAgo").replace("{0}", String(diffMin))
       else lastAnalysisText = t("dash.hoursAgo").replace("{0}", String(Math.floor(diffMin / 60)))
-
-      const nextScanMs = 60 * 60 * 1000 - (diffMs % (60 * 60 * 1000))
-      const nextScanMin = Math.max(1, Math.ceil(nextScanMs / 60000))
-      nextScanText = t("dash.inMinutes").replace("{0}", String(nextScanMin))
     }
+
+    const nextHour = new Date(now)
+    nextHour.setMinutes(0, 0, 0)
+    nextHour.setHours(nextHour.getHours() + 1)
+    const nextScanMin = Math.max(1, Math.ceil((nextHour.getTime() - now.getTime()) / 60000))
+    nextScanText = t("dash.inMinutes").replace("{0}", String(nextScanMin))
 
     return { lastAnalysisText, nextScanText }
   }, [lastScrapingTime, t])
