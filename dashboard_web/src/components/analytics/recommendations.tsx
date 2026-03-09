@@ -81,7 +81,7 @@ export default function ActionableRecommendations({ opportunites }: Recommendati
                     {rec.produit}
                   </span>
                   <span className="text-xs text-gray-600 dark:text-gray-400">
-                    {t("ap.impact")} {rec.impactPotentiel.toFixed(0)}
+                    {t("ap.impact")} {rec.impactPotentiel.toFixed(0)}$
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">

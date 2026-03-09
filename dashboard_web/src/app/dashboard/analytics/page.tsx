@@ -61,6 +61,7 @@ interface AnalyticsData {
     frequencePromotions: number
     nombreProduits: number
     produitsComparables: number
+    isReference: boolean
     categorieStats: Array<{
       categorie: string
       prixMoyen: number
@@ -248,7 +249,7 @@ export default function AnalyticsPage() {
     })
   }
 
-  const competitifCount = displayAnalytics.produits.filter(p => p.competitif).length
+  const competitifCount = displayAnalytics.produits.filter(p => p.competitif && p.hasCompetitor).length
   const nonCompetitifCount = displayAnalytics.produits.filter(p => !p.competitif && p.hasCompetitor).length
 
   return (

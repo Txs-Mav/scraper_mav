@@ -163,24 +163,54 @@ def main():
 
     print(f"\n📊 Scraping terminé : {scraping_success} OK, {scraping_failed} échoué(s)")
 
-    # ── 3. Appeler le endpoint check de Vercel pour détecter les changements ──
+    # ── 3. Pour chaque alerte scrapée, appeler POST /api/alerts/check ──
+    # On utilise POST avec alert_id pour bypasser le schedule check
+    # (Vercel Cron a peut-être déjà mis à jour last_run_at, rendant le GET inutile)
     check_url = f"{app_url}/api/alerts/check"
-    print(f"\n📡 Appel à {check_url}...")
+    check_headers = {
+        "Authorization": f"Bearer {cron_secret}",
+        "Content-Type": "application/json",
+    }
 
-    try:
-        resp = requests.get(
-            check_url,
-            headers={"Authorization": f"Bearer {cron_secret}"},
-            timeout=120,
-        )
+    check_ok = 0
+    check_failed = 0
+    total_changes = 0
 
-        if resp.status_code == 200:
-            data = resp.json()
-            print(f"   ✅ Check OK — {data.get('checked', 0)} vérifié(s), {data.get('changes_detected', 0)} changement(s)")
-        else:
-            print(f"   ❌ Erreur {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        print(f"   ❌ Erreur appel check: {e}")
+    scraped_alert_ids = [
+        a["id"] for a in alerts
+        if (a.get("reference_url") or (a.get("scraper_cache") or {}).get("site_url"))
+    ]
+
+    if scraped_alert_ids:
+        print(f"\n📡 Analyse de {len(scraped_alert_ids)} alerte(s) via {check_url}...")
+
+        for alert_id in scraped_alert_ids:
+            short_id = alert_id[:8]
+            try:
+                resp = requests.post(
+                    check_url,
+                    headers=check_headers,
+                    json={"alert_id": alert_id, "trigger_scraping": False},
+                    timeout=120,
+                )
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    changes = data.get("changes_detected", 0)
+                    total_changes += changes
+                    status = f"{changes} changement(s)" if changes else "aucun changement"
+                    print(f"   ✅ Alerte {short_id}: {status}")
+                    check_ok += 1
+                else:
+                    print(f"   ❌ Alerte {short_id}: erreur {resp.status_code} — {resp.text[:200]}")
+                    check_failed += 1
+            except Exception as e:
+                print(f"   ❌ Alerte {short_id}: erreur — {e}")
+                check_failed += 1
+
+        print(f"\n📊 Analyse terminée : {check_ok} OK, {check_failed} échoué(s), {total_changes} changement(s) total")
+    else:
+        print("\n⚠️  Aucune alerte avec URL valide à analyser")
 
     print(f"\n{'='*60}")
     print(f"✅ ALERT CRON TERMINÉ")

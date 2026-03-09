@@ -85,7 +85,7 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                       {getOpportunityLabel(opp.type)}
                     </span>
                     <span className="text-xs text-gray-600 dark:text-gray-400">
-                      {t("ap.impact")} {opp.impactPotentiel.toFixed(0)}
+                      {t("ap.impact")} {opp.impactPotentiel.toFixed(0)}$
                     </span>
                   </div>
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

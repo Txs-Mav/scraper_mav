@@ -9,7 +9,6 @@ import {
   Mail,
   ExternalLink,
   ChevronRight,
-  Keyboard,
 } from "lucide-react"
 
 interface HelpItem {
@@ -32,17 +31,10 @@ export default function HelpWidget() {
       color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30",
     },
     {
-      icon: Keyboard,
-      label: "Raccourcis clavier",
-      description: "⌘K pour rechercher",
-      action: () => { setOpen(false); window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true })) },
-      color: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30",
-    },
-    {
       icon: Mail,
       label: "Nous contacter",
-      description: "support@go-data.ca",
-      action: () => window.open("mailto:support@go-data.ca"),
+      description: "gestion@go-data.co",
+      action: () => window.open("mailto:gestion@go-data.co"),
       color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30",
     },
   ]

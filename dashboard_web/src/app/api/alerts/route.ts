@@ -233,15 +233,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Fire-and-forget: déclencher le scraping initial
     if (alert?.id) {
       const baseUrl =
         process.env.NEXTJS_API_URL ||
         process.env.NEXT_PUBLIC_APP_URL ||
         `http://localhost:${process.env.PORT || 3000}`
+      const triggerHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (process.env.CRON_SECRET) {
+        triggerHeaders['Authorization'] = `Bearer ${process.env.CRON_SECRET}`
+      }
       fetch(`${baseUrl}/api/alerts/check`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: triggerHeaders,
         body: JSON.stringify({ alert_id: alert.id, trigger_scraping: true }),
       }).catch((err) => {
         console.warn('[Alerts POST] Initial scraping trigger failed (non-blocking):', err.message)

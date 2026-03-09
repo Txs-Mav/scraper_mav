@@ -2,8 +2,10 @@ name: Alertes automatisées
 
 on:
   schedule:
-    # Toutes les heures à :00 UTC
-    - cron: '0 * * * *'
+    # Toutes les heures à :07 UTC (évite le pic de charge à :00)
+    - cron: '7 * * * *'
+    # Retry décalé en cas de rate du premier run
+    - cron: '37 * * * *'
   workflow_dispatch:
     # Permet de déclencher manuellement depuis l'onglet Actions
 
@@ -39,4 +41,5 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          AI_PROVIDER: genai
         run: python scripts/alert_cron.py

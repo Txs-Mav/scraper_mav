@@ -12,6 +12,7 @@ interface Retailer {
   frequencePromotions: number
   nombreProduits: number
   produitsComparables: number
+  isReference?: boolean
   categorieStats: Array<{
     categorie: string
     prixMoyen: number
@@ -87,8 +88,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
     )
   }
 
-  // Écart moyen général (excluant le site de référence = celui avec le plus de produits comparables et agressivité > 0)
-  const competitorsOnly = detailleurs.filter(d => d.agressivite <= 0 && d.produitsComparables > 0)
+  const competitorsOnly = detailleurs.filter(d => !d.isReference && d.produitsComparables > 0)
   const ecartMoyenGeneral = competitorsOnly.length > 0
     ? competitorsOnly.reduce((s, d) => s + d.agressivite, 0) / competitorsOnly.length
     : 0
@@ -228,8 +228,13 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                     )}
                   >
                     <div className="flex-1 py-3 px-4 text-sm text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
-                      {index === 0 && <Award className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />}
+                      {det.isReference && <Award className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />}
                       <span className="truncate">{det.site}</span>
+                      {det.isReference && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 flex-shrink-0">
+                          {t("ap.yourSite")}
+                        </span>
+                      )}
                     </div>
                     <div className="py-3 px-4 text-sm text-right w-28">
                       {det.produitsComparables > 0 ? (

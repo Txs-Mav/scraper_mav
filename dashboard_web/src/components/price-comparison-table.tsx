@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useMemo, useState, useEffect, useCallback } from "react"
-import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, Search, Palette } from "lucide-react"
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react"
+import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { deepNormalize, normalizeProductGroupKey } from "@/lib/analytics-calculations"
@@ -78,16 +78,6 @@ const COLOR_KEYWORDS_NORMALIZED = new Set([
   'etincelle', 'velocite',
 ])
 
-function removeColors(text: string): string {
-  if (!text) return ''
-  const normalized = deepNormalize(text)
-  return normalized.split(' ')
-    .filter(word => !COLOR_KEYWORDS_NORMALIZED.has(word))
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
 function cleanDisplayName(name: string): string {
   if (!name) return name
 
@@ -144,72 +134,6 @@ function getProductDisplayName(product: Product): string {
   }
 
   return displayName
-}
-
-/**
- * Génère une clé de comparaison pour un produit.
- * Exclut : couleur, concessionnaire, localisation, préfixes catégorie (côte à côte, etc.)
- * Aligné avec le backend Python.
- */
-function cleanForMatching(text: string): string {
-  const dealerPatterns = [
-    /\b(?:en\s+vente|disponible|neuf|usage|usag[ée]|occasion)\s+(?:a|à|chez|au)\b.*/i,
-    /\bd['\u2019]?occasion\s+(?:a|à|chez|au)\b.*/i,
-    /\b(?:a|à)\s+vendre\s+(?:a|à|chez|au)\b.*/i,
-    /\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*/i,
-    /\b\w+\s+(?:motosport|motorsport|powersports?)\s*$/i,
-    /\b(?:moto|motos|auto|autos)\s+\w+\s*$/i,
-    /\b\w+\s+(?:moto|motos|sport[s]?|auto[s]?|motors?|marine|performance|center|centre)\s*$/i,
-  ]
-  let cleaned = text
-  for (const p of dealerPatterns) cleaned = cleaned.replace(p, '').trim()
-  cleaned = cleaned.replace(/^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+/i, '').trim()
-  cleaned = cleaned.replace(/^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+/i, '').trim()
-  return removeColors(cleaned)
-}
-
-function extractYearFromText(text: string): number {
-  if (!text) return 0
-  const match = text.match(/\b(19|20)\d{2}\b/)
-  if (match) {
-    const year = parseInt(match[0], 10)
-    if (year >= 1900 && year <= 2100) return year
-  }
-  return 0
-}
-
-function extractYearFromUrl(url: string): number {
-  if (!url) return 0
-  const match = url.match(/[/-](20[12]\d)(?:[/-]|\.html|$)/)
-  if (match) return parseInt(match[1], 10)
-  const fallback = url.match(/[/-](19\d{2}|20\d{2})(?:[/-]|\.html|$)/)
-  if (fallback) {
-    const year = parseInt(fallback[1], 10)
-    if (year >= 1990 && year <= 2100) return year
-  }
-  return 0
-}
-
-function resolveProductYear(product: Product): number {
-  if (product.annee) return product.annee
-  const fromName = extractYearFromText(product.name || '')
-  if (fromName) return fromName
-  return extractYearFromUrl(product.sourceUrl || '')
-}
-
-function getProductComparisonKey(product: Product, _ignoreColors?: boolean): string {
-  let marque = deepNormalize(extractMarque(product.marque))
-  let modele = deepNormalize(extractModele(product.modele))
-  const annee = resolveProductYear(product)
-
-  modele = cleanForMatching(modele)
-  marque = removeColors(marque)
-
-  if (marque && modele) return `${marque}|${modele}|${annee || 0}`
-
-  const displayName = getProductDisplayName(product)
-  const baseKey = cleanForMatching(deepNormalize(displayName))
-  return `${baseKey}|${annee || 0}`
 }
 
 const etatConfig: Record<string, { labelKey: string; className: string }> = {
@@ -474,6 +398,33 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     }
   }, [shareEmails, shareSubject, shareMessage, tableData, competitors])
 
+  const ROWS_PER_PAGE = 50
+  const [currentPage, setCurrentPage] = useState(0)
+  const totalPages = Math.max(1, Math.ceil(tableData.length / ROWS_PER_PAGE))
+
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [products, searchQuery])
+
+  const tableScrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollTableRight, setCanScrollTableRight] = useState(false)
+
+  const checkTableScroll = useCallback(() => {
+    const el = tableScrollRef.current
+    if (!el) return
+    setCanScrollTableRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
+  }, [])
+
+  useEffect(() => {
+    const el = tableScrollRef.current
+    if (!el) return
+    checkTableScroll()
+    el.addEventListener("scroll", checkTableScroll, { passive: true })
+    const ro = new ResizeObserver(checkTableScroll)
+    ro.observe(el)
+    return () => { el.removeEventListener("scroll", checkTableScroll); ro.disconnect() }
+  }, [checkTableScroll, tableData, competitors])
+
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
   const toggleRowExpand = (idx: number) => {
     setExpandedRows(prev => {
@@ -515,26 +466,28 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     overrideCompetitors?: { id: string; label: string }[]
   ) => {
     const cols = overrideCompetitors || competitors
+    const dynamicMinWidth = 460 + (cols.length * 140)
     return (
-      <div className="overflow-x-auto">
-        <div className="min-w-[900px]">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="sticky top-0 bg-white dark:bg-card">
-                <th className="sticky left-0 bg-white dark:bg-card px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
-                  {t("table.image")}
-                </th>
-                <th className="sticky left-[80px] bg-white dark:bg-card px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
-                  {t("table.product")}
-                </th>
-                <th className="sticky left-[260px] bg-white dark:bg-card px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
-                  {t("table.refPrice")}
-                </th>
-                {cols.map(c => (
-                  <th key={c.id} className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
-                    {c.label}
+      <div className="relative">
+        <div ref={tableScrollRef} className="overflow-x-auto">
+          <div style={{ minWidth: Math.max(900, dynamicMinWidth) }}>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="sticky top-0 bg-transparent">
+                  <th className="sticky left-0 bg-transparent px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                    {t("table.image")}
                   </th>
-                ))}
+                  <th className="sticky left-[80px] bg-transparent px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
+                    {t("table.product")}
+                  </th>
+                  <th className="sticky left-[260px] bg-transparent px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                    {t("table.refPrice")}
+                  </th>
+                  {cols.map(c => (
+                    <th key={c.id} className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[130px]" title={c.label}>
+                      <span className="truncate block max-w-[130px] ml-auto">{c.label}</span>
+                    </th>
+                  ))}
               </tr>
             </thead>
             <tbody>
@@ -553,7 +506,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                 <tr
                   className="border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#111117] transition-colors"
                 >
-                  <td className="sticky left-0 bg-white dark:bg-card px-3 py-2 align-middle">
+                  <td className="sticky left-0 bg-transparent px-3 py-2 align-middle">
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => hasDetails && toggleDetailRow(idx)}
@@ -584,7 +537,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                       </div>
                     </div>
                   </td>
-                  <td className="sticky left-[80px] bg-white dark:bg-card px-3 py-2 min-w-[280px]">
+                  <td className="sticky left-[80px] bg-transparent px-3 py-2 min-w-[280px]">
                     <div className="flex flex-col gap-0.5">
                       {p.marque && extractMarque(p.marque) && (
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{extractMarque(p.marque)}</span>
@@ -619,7 +572,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                       )}
                     </div>
                   </td>
-                  <td className="sticky left-[260px] bg-white dark:bg-card px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
+                  <td className="sticky left-[260px] bg-transparent px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
                     {p.reference !== null ? (
                       p.referenceUrl ? (
                         <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
@@ -631,7 +584,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     ) : "—"}
                   </td>
                   {p.prices.map(priceEntry => (
-                    <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-gray-900 dark:text-gray-200">
+                    <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-gray-900 dark:text-gray-200 min-w-[130px]">
                       <div className="flex flex-col items-end gap-0.5">
                         {priceEntry.url && priceEntry.price !== null ? (
                           <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
@@ -691,15 +644,21 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                 </React.Fragment>
               )})}
             
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
+        {canScrollTableRight && cols.length >= 3 && (
+          <div className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none bg-gradient-to-l from-white/80 to-transparent dark:from-black/60 z-10 flex items-center justify-center">
+            <ChevronRight className="h-4 w-4 text-gray-300 dark:text-gray-600 animate-pulse" />
+          </div>
+        )}
       </div>
     )
   }
 
   return (
-    <div className="px-6 pb-5">
+    <div className="px-6 pt-4 pb-5">
       <div className="flex items-center gap-1.5 mb-4">
           <div className="flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-[#1F1F23] bg-gray-50/50 dark:bg-white/[0.02] p-1">
             <button
@@ -768,8 +727,62 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       </div>
 
       <div id="price-comparison-table">
-        {renderTable(tableData, t("table.noProductsYet"))}
+        {renderTable(
+          tableData.slice(currentPage * ROWS_PER_PAGE, (currentPage + 1) * ROWS_PER_PAGE),
+          t("table.noProductsYet")
+        )}
       </div>
+
+      {tableData.length > ROWS_PER_PAGE && (
+        <div className="flex items-center justify-between mt-4 px-1">
+          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+            {t("table.showing")} {currentPage * ROWS_PER_PAGE + 1} {t("table.to")} {Math.min((currentPage + 1) * ROWS_PER_PAGE, tableData.length)} {t("table.of")} {tableData.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-3 w-3" />
+              {t("table.previous")}
+            </button>
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: totalPages }, (_, i) => i).map(page => {
+                if (totalPages <= 7 || page === 0 || page === totalPages - 1 || Math.abs(page - currentPage) <= 1) {
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition ${
+                        page === currentPage
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                          : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      {page + 1}
+                    </button>
+                  )
+                }
+                if (page === 1 && currentPage > 3) return <span key="start-dots" className="px-1 text-xs text-gray-400">…</span>
+                if (page === totalPages - 2 && currentPage < totalPages - 4) return <span key="end-dots" className="px-1 text-xs text-gray-400">…</span>
+                return null
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {t("table.next")}
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modale Partage par courriel */}
       {mounted &&

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, ChevronDown, Globe, Database, ChevronRight } from "lucide-react"
+import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, ChevronDown, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck, Trash2 } from "lucide-react"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
@@ -14,6 +14,19 @@ type CachedScraper = {
   site_name?: string
   created_at?: string
   updated_at?: string
+}
+
+type SharedScraper = {
+  id: string
+  site_name: string
+  site_slug: string
+  site_url: string
+  site_domain: string
+  description?: string
+  categories?: string[]
+  vehicle_types?: string[]
+  logo_url?: string
+  version?: string
 }
 
 type ScrapingStep = {
@@ -77,6 +90,10 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const logPollingRef = useRef<NodeJS.Timeout | null>(null)
   const [cachedScrapers, setCachedScrapers] = useState<CachedScraper[]>([])
   const [showCachedScrapers, setShowCachedScrapers] = useState(false)
+  const [sharedSearchQuery, setSharedSearchQuery] = useState("")
+  const [sharedSearchResults, setSharedSearchResults] = useState<SharedScraper[]>([])
+  const [isSearchingShared, setIsSearchingShared] = useState(false)
+  const sharedSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const addUrl = () => {
     setUrls([...urls, ""])
@@ -515,6 +532,61 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     setShowCachedScrapers(false)
   }
 
+  const deleteCachedScraper = async (scraper: CachedScraper) => {
+    const params = new URLSearchParams({ url: scraper.url })
+    if (user?.id) params.set('user_id', user.id)
+    try {
+      const response = await fetch(`/api/scraper-ai/cache?${params}`, { method: 'DELETE' })
+      if (response.ok) {
+        removeUrlFromConfig(scraper.url)
+        setCachedScrapers(prev => prev.filter(s => s.url !== scraper.url))
+      }
+    } catch (error) {
+      console.error('Error deleting cached scraper:', error)
+    }
+  }
+
+  const searchSharedScrapers = useCallback(async (query: string) => {
+    if (query.trim().length < 2) {
+      setSharedSearchResults([])
+      return
+    }
+    setIsSearchingShared(true)
+    try {
+      const res = await fetch(`/api/shared-scrapers/search?q=${encodeURIComponent(query.trim())}`)
+      if (res.ok) {
+        const data = await res.json()
+        setSharedSearchResults(data.scrapers || [])
+      }
+    } catch {
+      setSharedSearchResults([])
+    } finally {
+      setIsSearchingShared(false)
+    }
+  }, [])
+
+  const handleSharedSearchChange = useCallback((value: string) => {
+    setSharedSearchQuery(value)
+    if (sharedSearchTimeoutRef.current) clearTimeout(sharedSearchTimeoutRef.current)
+    sharedSearchTimeoutRef.current = setTimeout(() => searchSharedScrapers(value), 300)
+  }, [searchSharedScrapers])
+
+  const selectSharedScraper = (scraper: SharedScraper, isReference: boolean) => {
+    if (isReference) {
+      setReferenceUrl(scraper.site_url)
+    } else {
+      const emptyIndex = urls.findIndex(u => !u.trim())
+      if (emptyIndex !== -1) {
+        updateUrl(emptyIndex, scraper.site_url)
+      } else {
+        setUrls([...urls, scraper.site_url])
+        setCompetitorEnabled(prev => [...prev, true])
+      }
+    }
+    setSharedSearchQuery("")
+    setSharedSearchResults([])
+  }
+
   useEffect(() => {
     loadConfig()
     loadCachedScrapers()
@@ -579,6 +651,91 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       {/* Formulaire de configuration (masqué en mode logs-only) */}
       {isConfigOpen && (
         <div className="space-y-6">
+          {/* Barre de recherche scrapers universels */}
+          <div className="relative">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
+              <input
+                type="text"
+                value={sharedSearchQuery}
+                onChange={(e) => handleSharedSearchChange(e.target.value)}
+                placeholder={t("config.searchUniversal")}
+                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:focus:ring-violet-400/20 focus:border-violet-300 dark:focus:border-violet-500/30 transition-all placeholder:text-gray-400"
+              />
+              {isSearchingShared && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-violet-500 animate-spin" />
+              )}
+            </div>
+
+            {sharedSearchQuery.trim().length >= 2 && (
+              <div className="mt-1.5 rounded-xl border border-violet-200/60 dark:border-violet-500/20 bg-white dark:bg-[#18181b] overflow-hidden shadow-lg shadow-violet-500/5">
+                <div className="px-3 py-2 bg-violet-50/50 dark:bg-violet-500/[0.06] border-b border-violet-100/60 dark:border-violet-500/10 flex items-center gap-2">
+                  <Sparkles className="w-3 h-3 text-violet-500 dark:text-violet-400" />
+                  <span className="text-[11px] font-medium text-violet-600 dark:text-violet-400">
+                    {t("config.universalScrapers")}
+                  </span>
+                </div>
+                {sharedSearchResults.length > 0 ? (
+                  <div className="max-h-52 overflow-y-auto divide-y divide-gray-100/60 dark:divide-white/[0.04]">
+                    {sharedSearchResults.map((shared) => {
+                      const isUsed = referenceUrl.includes(shared.site_domain) || urls.some(u => u.includes(shared.site_domain))
+                      return (
+                        <div
+                          key={shared.id}
+                          className={`flex items-center gap-3 px-3.5 py-3 hover:bg-violet-50/50 dark:hover:bg-violet-500/[0.04] transition-colors ${isUsed ? 'bg-violet-50/30 dark:bg-violet-500/[0.03]' : ''}`}
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-100 to-violet-50 dark:from-violet-500/20 dark:to-violet-500/5 flex items-center justify-center text-xs font-bold text-violet-600 dark:text-violet-400">
+                            {shared.site_name.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                {shared.site_name}
+                              </p>
+                              <BadgeCheck className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 flex-shrink-0" />
+                            </div>
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+                              {shared.site_domain}
+                              {shared.description && ` · ${shared.description.slice(0, 50)}`}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => selectSharedScraper(shared, true)}
+                              disabled={referenceUrl.includes(shared.site_domain)}
+                              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${referenceUrl.includes(shared.site_domain)
+                                ? 'bg-violet-600 dark:bg-violet-500 text-white cursor-default'
+                                : 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/20'
+                                }`}
+                            >
+                              {referenceUrl.includes(shared.site_domain) ? t("config.ref") : t("config.referenceLabel")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => selectSharedScraper(shared, false)}
+                              disabled={urls.some(u => u.includes(shared.site_domain))}
+                              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${urls.some(u => u.includes(shared.site_domain))
+                                ? 'bg-gray-100 dark:bg-white/[0.04] text-gray-300 dark:text-gray-600 cursor-default'
+                                : 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/20'
+                                }`}
+                            >
+                              {t("config.addCompetitor")}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : !isSearchingShared ? (
+                  <div className="px-3.5 py-4 text-center">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{t("config.noResultsSearch")}</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+
           {/* Scrapers en cache */}
           {cachedScrapers.length > 0 && (
             <div className="space-y-2">
@@ -618,7 +775,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                               {scraper.url}
                             </p>
                           </div>
-                          <div className="flex gap-1">
+                          <div className="flex items-center gap-1">
                             <button
                               type="button"
                               onClick={() => selectCachedScraper(scraper, true)}
@@ -640,6 +797,14 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                                 }`}
                             >
                               {t("config.addCompetitor")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteCachedScraper(scraper)}
+                              className="p-1.5 rounded-md text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              title={t("config.deleteSite")}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -664,9 +829,6 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               placeholder="https://votre-site.com"
               className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/[0.12] transition-all placeholder:text-gray-400"
             />
-            <p className="text-[11px] text-gray-400 dark:text-gray-500">
-              {t("config.priceCompared")}
-            </p>
           </div>
 
           {/* Séparateur */}
@@ -678,7 +840,6 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               <div className="flex items-center gap-2">
                 <Globe className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.competitorsLabel")}</span>
-                <span className="text-[11px] text-gray-400 dark:text-gray-500">{t("config.optional")}</span>
               </div>
               <button
                 onClick={addUrl}
@@ -731,7 +892,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           {/* Options */}
           <div className="space-y-2.5">
             <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.options")}</span>
-            
+
             <div className="space-y-1">
               <label htmlFor="ignoreColors" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
                 <input
@@ -746,7 +907,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">{t("config.moreMatches")}</span>
                 </span>
               </label>
-              
+
               <label htmlFor="inventoryOnly" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
                 <input
                   type="checkbox"
@@ -757,22 +918,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 />
                 <span className="text-sm text-gray-600 dark:text-gray-400">
                   {t("config.filterCatalog")}
-                  <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">{t("config.fullExtraction")}</span>
                 </span>
               </label>
 
-              <label htmlFor="forceRefresh" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
-                <input
-                  type="checkbox"
-                  id="forceRefresh"
-                  checked={forceRefresh}
-                  onChange={(e) => setForceRefresh(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 focus:ring-offset-0"
-                />
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {t("config.regenerate")}
-                </span>
-              </label>
             </div>
           </div>
 
@@ -862,23 +1010,21 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 <div className="flex gap-1.5 mb-2.5">
                   {scrapingSteps.map((step) => (
                     <div key={step.id} className="flex-1 h-1.5 rounded-full overflow-hidden bg-gray-100 dark:bg-white/[0.06]">
-                      <div className={`h-full rounded-full transition-all duration-700 ease-out ${
-                        step.status === 'completed' ? 'w-full bg-emerald-500' :
-                        step.status === 'active' ? 'w-2/3 bg-blue-500 animate-pulse' :
-                        step.status === 'error' ? 'w-full bg-red-500' :
-                        'w-0'
-                      }`} />
+                      <div className={`h-full rounded-full transition-all duration-700 ease-out ${step.status === 'completed' ? 'w-full bg-emerald-500' :
+                          step.status === 'active' ? 'w-2/3 bg-blue-500 animate-pulse' :
+                            step.status === 'error' ? 'w-full bg-red-500' :
+                              'w-0'
+                        }`} />
                     </div>
                   ))}
                 </div>
                 <div className="flex justify-between">
                   {scrapingSteps.map((step) => (
-                    <span key={step.id} className={`text-[11px] font-medium transition-colors ${
-                      step.status === 'completed' ? 'text-emerald-600 dark:text-emerald-400' :
-                      step.status === 'active' ? 'text-blue-600 dark:text-blue-400' :
-                      step.status === 'error' ? 'text-red-500 dark:text-red-400' :
-                      'text-gray-400 dark:text-gray-600'
-                    }`}>
+                    <span key={step.id} className={`text-[11px] font-medium transition-colors ${step.status === 'completed' ? 'text-emerald-600 dark:text-emerald-400' :
+                        step.status === 'active' ? 'text-blue-600 dark:text-blue-400' :
+                          step.status === 'error' ? 'text-red-500 dark:text-red-400' :
+                            'text-gray-400 dark:text-gray-600'
+                      }`}>
                       {step.status === 'completed' && <span className="mr-0.5">✓</span>}
                       {{ init: t('config.init'), analyze: t('config.analysis'), scrape: t('config.extractionStep'), save: t('config.saving') }[step.id] || step.label}
                     </span>
@@ -889,11 +1035,10 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
             {/* Message de fin */}
             {!isScraping && scrapeStatus && (
-              <div className={`mt-4 px-4 py-3 rounded-xl text-sm font-medium ${
-                scrapeStatus === 'error'
+              <div className={`mt-4 px-4 py-3 rounded-xl text-sm font-medium ${scrapeStatus === 'error'
                   ? 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/30'
                   : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/30'
-              }`}>
+                }`}>
                 {scrapeStatus === 'error'
                   ? t('config.errorOccurred')
                   : t('config.scrapingDone')}
@@ -934,13 +1079,12 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                       const isProgress = line.includes('📊') || /\d+\/\d+/.test(line)
 
                       return (
-                        <div key={i} className={`text-[11px] leading-relaxed py-0.5 ${
-                          isError ? 'text-red-600 dark:text-red-400 font-medium' :
-                          isSuccess ? 'text-emerald-600 dark:text-emerald-400' :
-                          isWarning ? 'text-amber-600 dark:text-amber-400' :
-                          isProgress ? 'text-blue-600/80 dark:text-blue-400/80' :
-                          'text-gray-400 dark:text-gray-500'
-                        }`}>
+                        <div key={i} className={`text-[11px] leading-relaxed py-0.5 ${isError ? 'text-red-600 dark:text-red-400 font-medium' :
+                            isSuccess ? 'text-emerald-600 dark:text-emerald-400' :
+                              isWarning ? 'text-amber-600 dark:text-amber-400' :
+                                isProgress ? 'text-blue-600/80 dark:text-blue-400/80' :
+                                  'text-gray-400 dark:text-gray-500'
+                          }`}>
                           {line}
                         </div>
                       )

@@ -5,6 +5,8 @@ import { spawn } from 'child_process'
 import path from 'path'
 import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 
+export const maxDuration = 300
+
 // ─── Types ──────────────────────────────────────────────────────────
 
 interface Product {
@@ -25,6 +27,7 @@ interface Change {
   new_value: string | null
   percentage_change: number | null
   details: Record<string, any>
+  source_site: string
 }
 
 interface AlertConfig {
@@ -52,13 +55,25 @@ export async function GET(request: Request) {
     console.warn('[Alert Check] CRON_SECRET non configuré — endpoint non sécurisé en production')
   }
 
-  return runAlertCheck({ fromCron: true })
+  const url = new URL(request.url)
+  const analysisOnly = url.searchParams.get('analysis_only') === 'true'
+
+  return runAlertCheck({ fromCron: true, analysisOnly })
 }
 
-// ─── POST — Appel manuel depuis le dashboard ────────────────────────
+// ─── POST — Appel interne ou manuel ─────────────────────────────────
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
+
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret && process.env.NODE_ENV === 'production') {
+    const authHeader = request.headers.get('authorization')
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+    }
+  }
+
   return runAlertCheck({
     alertId: body.alert_id,
     fromCron: false,
@@ -76,16 +91,31 @@ function isAlertDueForCheck(alert: any, now: Date): boolean {
     return now >= nextDue
   }
 
-  // Mode daily : l'heure courante UTC doit correspondre
-  return alert.schedule_hour === now.getUTCHours()
+  if (alert.schedule_type === 'daily') {
+    const hour = alert.schedule_hour ?? 8
+    return hour === now.getUTCHours()
+  }
+
+  // Fallback: alertes sans schedule_type explicite → traiter comme interval 1h
+  if (!alert.last_run_at) return true
+  const lastRun = new Date(alert.last_run_at)
+  return now >= new Date(lastRun.getTime() + 3600_000)
 }
 
 // ─── Logique principale ─────────────────────────────────────────────
 
-async function runAlertCheck(options: { alertId?: string; fromCron: boolean; triggerScraping?: boolean }) {
+async function runAlertCheck(options: { alertId?: string; fromCron: boolean; triggerScraping?: boolean; analysisOnly?: boolean }) {
   try {
     const serviceSupabase = createServiceClient()
     const now = new Date()
+
+    console.log(
+      `[Alert Check] Démarrage — mode=${options.fromCron ? 'cron' : 'manual'}` +
+      `${options.analysisOnly ? ' (analysis_only)' : ''}` +
+      `${options.alertId ? ` alertId=${options.alertId}` : ''}` +
+      `${options.triggerScraping ? ' +scraping' : ''}` +
+      ` — ${now.toISOString()}`
+    )
 
     // ── Récupérer les alertes ──
     let alertsQuery = serviceSupabase
@@ -141,7 +171,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
     let totalChecked = 0
     let totalChanges = 0
     let totalSkipped = 0
-    const shouldScrape = options.fromCron || options.triggerScraping === true
+    const shouldScrape = !options.analysisOnly && (options.fromCron || options.triggerScraping === true)
 
     for (const [userId, userAlerts] of alertsByUser) {
       try {
@@ -170,25 +200,51 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
         // ── Pour chaque alerte, comparer et détecter les changements ──
         for (const alert of userAlerts) {
           try {
-            const siteUrl = alert.reference_url || alert.scraper_cache?.site_url
-            if (!siteUrl) {
+            const refUrl = alert.reference_url || alert.scraper_cache?.site_url
+            if (!refUrl) {
               console.warn(`[Alert Check] Alerte ${alert.id} sans URL de référence, ignorée`)
               continue
             }
 
-            const { data: scrapings } = await serviceSupabase
+            let { data: scrapings } = await serviceSupabase
               .from('scrapings')
-              .select('id, products, metadata, created_at')
+              .select('id, products, metadata, created_at, reference_url')
               .eq('user_id', userId)
+              .eq('reference_url', refUrl)
               .order('created_at', { ascending: false })
               .limit(2)
 
             if (!scrapings || scrapings.length < 2) {
-              console.log(`[Alert Check] Alerte ${alert.id}: pas assez de scrapings pour comparer`)
-              await serviceSupabase
-                .from('scraper_alerts')
-                .update({ last_run_at: now.toISOString() })
-                .eq('id', alert.id)
+              const normalizedRefUrl = normalizeUrl(refUrl)
+              const { data: allUserScrapings } = await serviceSupabase
+                .from('scrapings')
+                .select('id, products, metadata, created_at, reference_url')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(20)
+
+              if (allUserScrapings?.length) {
+                const matchingScrapings = allUserScrapings.filter(
+                  (s: any) => normalizeUrl(s.reference_url) === normalizedRefUrl
+                )
+                if (matchingScrapings.length >= 2) {
+                  scrapings = matchingScrapings.slice(0, 2)
+                  console.log(
+                    `[Alert Check] Alerte ${alert.id}: fallback URL normalisée trouvé ` +
+                    `(${matchingScrapings[0].reference_url} ≈ ${refUrl})`
+                  )
+                }
+              }
+            }
+
+            if (!scrapings || scrapings.length < 2) {
+              console.log(`[Alert Check] Alerte ${alert.id}: pas assez de scrapings pour ref=${refUrl} (trouvé: ${scrapings?.length || 0})`)
+              if (shouldScrape) {
+                await serviceSupabase
+                  .from('scraper_alerts')
+                  .update({ last_run_at: now.toISOString() })
+                  .eq('id', alert.id)
+              }
               totalChecked++
               continue
             }
@@ -211,45 +267,6 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
             const currentProducts: Product[] = scrapings[0].products || []
             const previousProducts: Product[] = scrapings[1].products || []
 
-            const currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
-            const previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
-
-            console.log(
-              `[Alert Check] Alerte ${alert.id} (${siteUrl}): ` +
-              `${previousSiteProducts.length} → ${currentSiteProducts.length} produits`
-            )
-
-            if (previousSiteProducts.length === 0) {
-              console.log(`[Alert Check] Alerte ${alert.id}: première exécution, pas de base de comparaison`)
-              await serviceSupabase
-                .from('scraper_alerts')
-                .update({ last_run_at: now.toISOString() })
-                .eq('id', alert.id)
-              totalChecked++
-              continue
-            }
-
-            if (currentSiteProducts.length === 0 && previousSiteProducts.length > 0) {
-              console.warn(
-                `[Alert Check] Alerte ${alert.id}: 0 produits courants mais ${previousSiteProducts.length} précédents — skip`
-              )
-              await serviceSupabase
-                .from('scraper_alerts')
-                .update({ last_run_at: now.toISOString() })
-                .eq('id', alert.id)
-              totalChecked++
-              continue
-            }
-
-            const dropRatio = previousSiteProducts.length > 0
-              ? currentSiteProducts.length / previousSiteProducts.length
-              : 1
-            if (dropRatio < 0.2 && previousSiteProducts.length > 5) {
-              console.warn(
-                `[Alert Check] Alerte ${alert.id}: chute suspecte ${previousSiteProducts.length} → ${currentSiteProducts.length} (${Math.round(dropRatio * 100)}%)`
-              )
-            }
-
             // ── Config de l'alerte pour les seuils et filtres ──
             const alertConfig: AlertConfig = {
               watch_price_increase: alert.watch_price_increase ?? true,
@@ -261,12 +278,72 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
               min_price_change_abs: alert.min_price_change_abs ?? 2,
             }
 
-            const changes = detectChanges(previousSiteProducts, currentSiteProducts, alertConfig)
+            // ── Analyser TOUS les sites : référence + concurrents ──
+            const competitorUrls: string[] = alert.competitor_urls || []
+            const allSiteUrls = [refUrl, ...competitorUrls]
+            const allChanges: Change[] = []
+            let totalCurrentCount = 0
+            let totalPreviousCount = 0
+            let hasAnyPreviousData = false
 
-            if (changes.length > 0) {
-              console.log(`[Alert Check] Alerte ${alert.id}: ${changes.length} changement(s) détecté(s)`)
+            for (const siteUrl of allSiteUrls) {
+              const currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
+              const previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
+              const siteHostname = extractHostname(siteUrl)
 
-              const changesToInsert = changes.map(c => ({
+              totalCurrentCount += currentSiteProducts.length
+              totalPreviousCount += previousSiteProducts.length
+
+              console.log(
+                `[Alert Check] Alerte ${alert.id} (${siteHostname}): ` +
+                `${previousSiteProducts.length} → ${currentSiteProducts.length} produits`
+              )
+
+              if (previousSiteProducts.length === 0) continue
+              hasAnyPreviousData = true
+
+              if (currentSiteProducts.length === 0 && previousSiteProducts.length > 0) {
+                console.warn(
+                  `[Alert Check] Alerte ${alert.id} (${siteHostname}): 0 produits courants mais ${previousSiteProducts.length} précédents — skip ce site`
+                )
+                continue
+              }
+
+              const dropRatio = currentSiteProducts.length / previousSiteProducts.length
+              if (dropRatio < 0.2 && previousSiteProducts.length > 5) {
+                console.warn(
+                  `[Alert Check] Alerte ${alert.id} (${siteHostname}): chute suspecte ${previousSiteProducts.length} → ${currentSiteProducts.length} (${Math.round(dropRatio * 100)}%)`
+                )
+              }
+
+              const siteChanges = detectChanges(previousSiteProducts, currentSiteProducts, alertConfig, siteHostname)
+              allChanges.push(...siteChanges)
+            }
+
+            if (!hasAnyPreviousData) {
+              console.log(`[Alert Check] Alerte ${alert.id}: première exécution, pas de base de comparaison`)
+              if (shouldScrape) {
+                await serviceSupabase
+                  .from('scraper_alerts')
+                  .update({ last_run_at: now.toISOString() })
+                  .eq('id', alert.id)
+              }
+              totalChecked++
+              continue
+            }
+
+            if (allChanges.length > 0) {
+              const MAX_CHANGES_PER_ALERT = 200
+              if (allChanges.length > MAX_CHANGES_PER_ALERT) {
+                console.warn(
+                  `[Alert Check] Alerte ${alert.id}: ${allChanges.length} changements détectés, ` +
+                  `tronqué à ${MAX_CHANGES_PER_ALERT} (possible anomalie de scraping)`
+                )
+              }
+              const cappedChanges = allChanges.slice(0, MAX_CHANGES_PER_ALERT)
+              console.log(`[Alert Check] Alerte ${alert.id}: ${cappedChanges.length} changement(s) détecté(s) sur ${allSiteUrls.length} site(s)`)
+
+              const changesToInsert = cappedChanges.map(c => ({
                 alert_id: alert.id,
                 user_id: userId,
                 change_type: c.change_type,
@@ -275,6 +352,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
                 new_value: c.new_value,
                 percentage_change: c.percentage_change,
                 details: c.details,
+                source_site: c.source_site,
                 detected_at: now.toISOString(),
               }))
 
@@ -289,15 +367,15 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
               if (alert.email_notification) {
                 await sendAlertEmailSafe(
                   userId,
-                  siteUrl,
-                  changes,
-                  currentSiteProducts.length,
-                  previousSiteProducts.length,
+                  refUrl,
+                  cappedChanges,
+                  totalCurrentCount,
+                  totalPreviousCount,
                   serviceSupabase
                 )
               }
 
-              totalChanges += changes.length
+              totalChanges += cappedChanges.length
 
               await serviceSupabase
                 .from('scraper_alerts')
@@ -307,7 +385,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
                 })
                 .eq('id', alert.id)
             } else {
-              console.log(`[Alert Check] Alerte ${alert.id}: aucun changement`)
+              console.log(`[Alert Check] Alerte ${alert.id}: aucun changement sur ${allSiteUrls.length} site(s)`)
               await serviceSupabase
                 .from('scraper_alerts')
                 .update({ last_run_at: now.toISOString() })
@@ -324,8 +402,10 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
       }
     }
 
+    const elapsedMs = Date.now() - now.getTime()
     console.log(
-      `[Alert Check] Terminé: ${totalChecked} vérifié(s), ${totalChanges} changement(s), ${totalSkipped} ignoré(s)`
+      `[Alert Check] Terminé en ${elapsedMs}ms: ${totalChecked} vérifié(s), ${totalChanges} changement(s), ${totalSkipped} ignoré(s)` +
+      `${options.analysisOnly ? ' (analysis_only)' : ''}`
     )
 
     return NextResponse.json({
@@ -333,6 +413,8 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
       checked: totalChecked,
       changes_detected: totalChanges,
       skipped_no_new_data: totalSkipped,
+      analysis_only: options.analysisOnly || false,
+      elapsed_ms: elapsedMs,
     })
   } catch (error: any) {
     console.error('[Alert Check] Erreur fatale:', error)
@@ -631,6 +713,25 @@ async function triggerViaLocalPython(
   })
 }
 
+// ─── Normalisation et extraction d'URL ──────────────────────────────
+
+function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    return `${u.protocol}//${u.hostname.replace('www.', '').toLowerCase()}${u.pathname.replace(/\/+$/, '')}`
+  } catch {
+    return url.toLowerCase().replace(/\/+$/, '').replace(/^https?:\/\/www\./, 'https://')
+  }
+}
+
+function extractHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace('www.', '').toLowerCase()
+  } catch {
+    return url.toLowerCase()
+  }
+}
+
 // ─── Filtrage des produits par site ─────────────────────────────────
 
 function filterProductsBySite(products: Product[], siteUrl: string): Product[] {
@@ -677,7 +778,7 @@ function formatPrice(price: number): string {
   return `${price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} $`
 }
 
-function detectChanges(previous: Product[], current: Product[], config: AlertConfig): Change[] {
+function detectChanges(previous: Product[], current: Product[], config: AlertConfig, sourceSite: string): Change[] {
   const changes: Change[] = []
 
   const prevByName = new Map<string, Product>()
@@ -721,6 +822,7 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
           new_value: formatPrice(curr.prix),
           percentage_change: null,
           details: { prix: curr.prix, disponibilite: curr.disponibilite, sourceUrl: curr.sourceUrl },
+          source_site: sourceSite,
         })
       }
       continue
@@ -753,6 +855,7 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
               diff: Math.round(diff * 100) / 100,
               sourceUrl: curr.sourceUrl,
             },
+            source_site: sourceSite,
           })
         }
       }
@@ -770,6 +873,7 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
         new_value: curr.disponibilite,
         percentage_change: null,
         details: { sourceUrl: curr.sourceUrl },
+        source_site: sourceSite,
       })
     }
   }
@@ -788,6 +892,7 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
           new_value: null,
           percentage_change: null,
           details: { prix: prev.prix, sourceUrl: prev.sourceUrl },
+          source_site: sourceSite,
         })
       }
     }
@@ -827,10 +932,13 @@ async function sendAlertEmail(
     const pctBadge = c.percentage_change
       ? ` <span style="color:${c.percentage_change > 0 ? '#dc2626' : '#16a34a'};font-weight:700;">(${c.percentage_change > 0 ? '+' : ''}${c.percentage_change}%)</span>`
       : ''
+    const siteBadge = c.source_site
+      ? `<span style="display:inline-block;background:#eff6ff;color:#2563eb;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-left:4px;">${c.source_site}</span>`
+      : ''
 
     return `<tr>
       <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;white-space:nowrap;">${icon} ${label}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;">${c.product_name || 'N/A'}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;">${c.product_name || 'N/A'}${siteBadge}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${c.old_value || '—'}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600;color:${
         c.change_type === 'price_decrease' ? '#16a34a' :

@@ -71,6 +71,7 @@ interface AlertChange {
   new_value: string | null
   percentage_change: number | null
   details: Record<string, any>
+  source_site: string | null
   detected_at: string
   is_read: boolean
   scraper_alerts?: {
@@ -707,8 +708,9 @@ export default function AlertePage() {
             <div>
               <div className="divide-y divide-gray-50 dark:divide-white/[0.02]">
                 {visibleChanges.map((change) => {
-                  const siteUrl = change.scraper_alerts?.scraper_cache?.site_url
-                  const hostname = siteUrl ? getHostname(siteUrl) : ''
+                  const sourceSite = change.source_site
+                  const fallbackSiteUrl = change.scraper_alerts?.scraper_cache?.site_url
+                  const displaySite = sourceSite || (fallbackSiteUrl ? getHostname(fallbackSiteUrl) : '')
                   const isPriceChange = change.change_type === 'price_increase' || change.change_type === 'price_decrease'
                   const isIncrease = change.change_type === 'price_increase'
                   const diff = change.details?.diff as number | undefined
@@ -729,9 +731,6 @@ export default function AlertePage() {
                             <span className="text-sm font-semibold text-gray-900 dark:text-white">
                               {changeTypeLabel(change.change_type, t)}
                             </span>
-                            {hostname && (
-                              <span className="text-[11px] text-gray-400 dark:text-gray-500">· {hostname}</span>
-                            )}
                             {isPriceChange && change.percentage_change !== null && (
                               <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums ${
                                 isIncrease
@@ -751,6 +750,12 @@ export default function AlertePage() {
                           </p>
 
                           <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                            {displaySite && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium shrink-0">
+                                <Globe className="h-2.5 w-2.5" />
+                                {displaySite}
+                              </span>
+                            )}
                             {isPriceChange && change.old_value && change.new_value ? (
                               <span className="flex items-center gap-1.5 tabular-nums">
                                 <span className="line-through opacity-60">{change.old_value}</span>

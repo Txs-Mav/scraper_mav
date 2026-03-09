@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, Settings2, BarChart3, Zap, Radar, Clock, Eye, Palette } from "lucide-react"
+import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Settings2, BarChart3, Zap, Radar, Clock, Eye, Palette } from "lucide-react"
 import Image from "next/image"
 import ScraperConfig, { ScraperConfigHandle } from "./scraper-config"
 import AIAgent from "./ai-agent"
@@ -237,8 +237,32 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [lastScrapingTime, setLastScrapingTime] = useState<Date | null>(null)
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
   const inlineScraperRef = useRef<ScraperConfigHandle | null>(null)
+  const tabScrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollTabLeft, setCanScrollTabLeft] = useState(false)
+  const [canScrollTabRight, setCanScrollTabRight] = useState(false)
 
   useEffect(() => { setMounted(true); setIsScrapingActive(false); setShouldStartScraping(false) }, [])
+
+  const checkTabScroll = useCallback(() => {
+    const el = tabScrollRef.current
+    if (!el) return
+    setCanScrollTabLeft(el.scrollLeft > 2)
+    setCanScrollTabRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+  }, [])
+
+  useEffect(() => {
+    const el = tabScrollRef.current
+    if (!el) return
+    checkTabScroll()
+    el.addEventListener("scroll", checkTabScroll, { passive: true })
+    const ro = new ResizeObserver(checkTabScroll)
+    ro.observe(el)
+    return () => { el.removeEventListener("scroll", checkTabScroll); ro.disconnect() }
+  }, [checkTabScroll, products])
+
+  const scrollTabs = useCallback((dir: "left" | "right") => {
+    tabScrollRef.current?.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" })
+  }, [])
 
   useEffect(() => {
     if (shouldStartScraping && isScrapingActive) {
@@ -667,12 +691,6 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {scraperCacheCount > 0 && (
-              <button type="button" onClick={() => setShowCacheModal(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] transition">
-                <Wand2 className="h-3 w-3 text-purple-500" />
-                {scraperCacheCount} {t("dash.inCache")}
-              </button>
-            )}
             <button data-onboarding="config" type="button" onClick={() => setShowScraperConfig(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] transition">
               <Settings2 className="h-3 w-3" />
               {t("dash.configuration")}
@@ -818,7 +836,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       </div>
 
       {/* ── Produits — section principale, élévation max ── */}
-      <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-card overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+      <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
         {/* Tab bar */}
         <div className="px-6 pt-5 pb-0">
           <div className="flex items-center justify-between mb-5">
@@ -826,53 +844,64 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
             <span className="text-[11px] font-normal text-gray-400 dark:text-gray-500 tabular-nums tracking-wide">{displayResultCount} {displayResultCount !== 1 ? t("dash.results") : t("dash.result")}</span>
           </div>
 
-          <div className="flex items-end gap-0 border-b border-gray-100 dark:border-white/[0.06] -mx-6 px-6 overflow-x-auto scrollbar-hide">
-            {[
-              { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length, icon: Star, color: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-              { key: "allCompetitors", label: t("dash.competitors"), count: productsBySite.allCompetitors.length, icon: Globe, color: "text-blue-600 dark:text-blue-400", bar: "bg-blue-500", badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
-              { key: "compared", label: t("dash.compared"), count: comparedUniqueCount, icon: ArrowRightLeft, color: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-            ].map(t => {
-              const Icon = t.icon
-              const isActive = activeTab === t.key
-              return (
-                <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
-                  className="relative flex items-center gap-2 px-4 pb-3 pt-1 group transition-colors whitespace-nowrap"
-                >
-                  <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? t.color : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300'}`} />
-                  <span className={`text-sm transition-colors ${isActive ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200'}`}>
-                    {t.label}
-                  </span>
-                  <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md transition-colors ${
-                    isActive ? t.badge : 'bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400'
-                  }`}>
-                    {t.count}
-                  </span>
-                  {/* Active underline */}
-                  <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${isActive ? `${t.bar} opacity-100` : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`} />
-                </button>
-              )
-            })}
+          <div className="relative border-b border-gray-100 dark:border-white/[0.06] -mx-6">
+            {canScrollTabLeft && (
+              <button type="button" onClick={() => scrollTabs("left")} className="absolute left-0 top-0 bottom-0 z-10 flex items-center pl-1.5 pr-3 bg-gradient-to-r from-white via-white/90 to-transparent dark:from-black/60 dark:via-black/30">
+                <ChevronLeft className="h-4 w-4 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" />
+              </button>
+            )}
+            {canScrollTabRight && (
+              <button type="button" onClick={() => scrollTabs("right")} className="absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1.5 pl-3 bg-gradient-to-l from-white via-white/90 to-transparent dark:from-black/60 dark:via-black/30">
+                <ChevronRight className="h-4 w-4 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" />
+              </button>
+            )}
+            <div ref={tabScrollRef} className="flex items-end gap-0 px-6 overflow-x-auto scrollbar-hide">
+              {[
+                { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length, icon: Star, color: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+                { key: "allCompetitors", label: t("dash.competitors"), count: productsBySite.allCompetitors.length, icon: Globe, color: "text-blue-600 dark:text-blue-400", bar: "bg-blue-500", badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+                { key: "compared", label: t("dash.compared"), count: comparedUniqueCount, icon: ArrowRightLeft, color: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+              ].map(t => {
+                const Icon = t.icon
+                const isActive = activeTab === t.key
+                return (
+                  <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
+                    className="relative flex items-center gap-2 px-4 pb-3 pt-1 group transition-colors whitespace-nowrap"
+                  >
+                    <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? t.color : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300'}`} />
+                    <span className={`text-sm transition-colors ${isActive ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200'}`}>
+                      {t.label}
+                    </span>
+                    <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md transition-colors ${
+                      isActive ? t.badge : 'bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400'
+                    }`}>
+                      {t.count}
+                    </span>
+                    <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${isActive ? `${t.bar} opacity-100` : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`} />
+                  </button>
+                )
+              })}
 
-            {Object.keys(productsBySite.otherSites).length > 0 && <div className="w-px h-5 bg-gray-200/60 dark:bg-white/[0.06] self-center mx-2 mb-3" />}
+              {Object.keys(productsBySite.otherSites).length > 0 && <div className="w-px h-5 bg-gray-200/60 dark:bg-white/[0.06] self-center mx-2 mb-3" />}
 
-            {Object.entries(productsBySite.otherSites).map(([siteUrl, siteProducts]) => {
-              const isActive = activeTab === `site-${siteUrl}`
-              return (
-                <button key={siteUrl} type="button" onClick={() => setActiveTab(`site-${siteUrl}`)}
-                  className="relative flex items-center gap-2 px-4 pb-3 pt-1 group transition-colors whitespace-nowrap"
-                >
-                  <span className={`text-sm transition-colors ${isActive ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200'}`}>
-                    {extractDomain(siteUrl)}
-                  </span>
-                  <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md transition-colors ${
-                    isActive ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400'
-                  }`}>
-                    {siteProducts.length}
-                  </span>
-                  <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${isActive ? 'bg-purple-500 opacity-100' : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`} />
-                </button>
-              )
-            })}
+              {Object.entries(productsBySite.otherSites).map(([siteUrl, siteProducts]) => {
+                const isActive = activeTab === `site-${siteUrl}`
+                return (
+                  <button key={siteUrl} type="button" onClick={() => setActiveTab(`site-${siteUrl}`)}
+                    className="relative flex items-center gap-2 px-4 pb-3 pt-1 group transition-colors whitespace-nowrap"
+                  >
+                    <span className={`text-sm transition-colors ${isActive ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200'}`}>
+                      {extractDomain(siteUrl)}
+                    </span>
+                    <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md transition-colors ${
+                      isActive ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400'
+                    }`}>
+                      {siteProducts.length}
+                    </span>
+                    <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${isActive ? 'bg-purple-500 opacity-100' : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`} />
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
@@ -898,69 +927,6 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           showColorsLabel={t("dash.showColors")}
         />
       </div>
-
-      {/* ── Modale cache ── */}
-      {mounted && showCacheModal && createPortal(
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center px-4" onClick={e => { if (e.target === e.currentTarget) setShowCacheModal(false) }}>
-          <div className="bg-white dark:bg-[#0F0F12] rounded-2xl max-w-3xl w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h4 className="text-lg font-bold text-gray-900 dark:text-white">{t("dash.scrapersCache")}</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t("dash.scrapersCacheDesc")}</p>
-              </div>
-              <button type="button" onClick={() => setShowCacheModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"><X className="h-5 w-5" /></button>
-            </div>
-            {scraperCacheCount === 0 ? (
-              <div className="text-center py-8">
-                <Wand2 className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">{t("dash.noScraperCache")}</p>
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-[60vh] overflow-y-auto">
-                {scraperCache.map((scraper, idx) => {
-                  const hostname = (() => { try { return new URL(scraper.url).hostname.replace(/^www\./, '') } catch { return scraper.url } })()
-                  const createdDate = scraper.createdAt ? new Date(scraper.createdAt).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-FR') : '—'
-                  return (
-                    <div key={`${scraper.cacheKey || scraper.id}-${idx}`} className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 dark:border-gray-800 px-5 py-4 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition group">
-                      <div className="flex items-center gap-4 min-w-0">
-                        <div className="p-2 rounded-xl bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 flex-shrink-0">
-                          <Wand2 className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{hostname}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mt-0.5">
-                            <span>{scraper.productUrlsCount || 0} URLs</span>
-                            <span className="text-gray-300 dark:text-gray-600">·</span>
-                            <span>{scraper.lastProductCount || 0} produits{scraper.inventoryOnly ? <span className="ml-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Inventaire</span> : null}</span>
-                            <span className="text-gray-300 dark:text-gray-600">·</span>
-                            <span>{t("dash.createdOn")} {createdDate}</span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${scraper.status === 'active' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'}`}>
-                          {scraper.status === 'active' ? t("active") : t("dash.expired")}
-                        </span>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const params = new URLSearchParams({ cache_key: scraper.cacheKey || '', user_id: user?.id || '', url: scraper.url || '' })
-                              const response = await fetch(`/api/scraper-ai/cache?${params.toString()}`, { method: 'DELETE' })
-                              if (response.ok) { setScraperCache(prev => prev.filter((_, i) => i !== idx)); setPendingRemovedCacheUrls(prev => [...prev, scraper.url]); scraperRef.current?.removeUrlFromConfig(scraper.url) }
-                            } catch (error) { console.error(error) }
-                          }}
-                          className="p-2 rounded-xl text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition opacity-0 group-hover:opacity-100"
-                        ><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
 
       {/* ── Modale config ── */}
       {mounted && createPortal(

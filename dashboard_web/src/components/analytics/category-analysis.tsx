@@ -52,7 +52,7 @@ function DetailTooltip({ active, payload }: any) {
         </div>
         <div className="flex justify-between gap-6">
           <span className="text-gray-400">{t("ap.gap")}</span>
-          <span className={`font-bold ${d.ecart < -2 ? 'text-emerald-400' : d.ecart > 2 ? 'text-red-400' : 'text-gray-400'}`}>
+          <span className={`font-bold ${d.ecart > 2 ? 'text-emerald-400' : d.ecart < -2 ? 'text-red-400' : 'text-gray-400'}`}>
             {d.ecart > 0 ? '+' : ''}{d.ecart.toFixed(1)}%
           </span>
         </div>
@@ -169,7 +169,7 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
             ecart: Number(d.ecartPourcentage.toFixed(1)),
             prixMoyen: d.prixMoyen,
             nombreProduits: d.nombreProduits,
-            fill: d.ecartPourcentage < -2 ? '#34D399' : d.ecartPourcentage > 2 ? '#F87171' : '#6B7280',
+            fill: d.ecartPourcentage > 2 ? '#34D399' : d.ecartPourcentage < -2 ? '#F87171' : '#6B7280',
           }))
 
         return (
@@ -227,11 +227,11 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                 <div className="mt-2 flex items-center justify-center gap-5 text-[11px] text-gray-500">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-sm bg-emerald-400" />
-                    <span>{t("ap.cheaperLegend")}</span>
+                    <span>{t("ap.expensiveLegend")}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-sm bg-red-400" />
-                    <span>{t("ap.expensiveLegend")}</span>
+                    <span>{t("ap.cheaperLegend")}</span>
                   </div>
                 </div>
               </div>
@@ -270,8 +270,8 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                           {det.prixMoyen.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$
                         </td>
                         <td className={`py-2 px-4 text-sm text-right font-semibold tabular-nums ${
-                          det.ecartPourcentage < -2 ? 'text-emerald-600 dark:text-emerald-400'
-                            : det.ecartPourcentage > 2 ? 'text-red-600 dark:text-red-400'
+                          det.ecartPourcentage > 2 ? 'text-emerald-600 dark:text-emerald-400'
+                            : det.ecartPourcentage < -2 ? 'text-red-600 dark:text-red-400'
                             : 'text-gray-500'
                         }`}>
                           {det.ecartPourcentage >= 0 ? '+' : ''}

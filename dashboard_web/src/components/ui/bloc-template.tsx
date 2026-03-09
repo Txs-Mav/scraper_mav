@@ -14,13 +14,13 @@ export function BlocTemplate({ children, className, innerClassName }: BlocTempla
   return (
     <div
       className={cn(
-        "bloc-template shadow-[0_20px_60px_-25px_rgba(0,0,0,0.45)]",
+        "bloc-template",
         className
       )}
     >
       <div
         className={cn(
-          "bloc-template-inner bg-white/95 dark:bg-white/[0.025]",
+          "bloc-template-inner",
           innerClassName
         )}
       >

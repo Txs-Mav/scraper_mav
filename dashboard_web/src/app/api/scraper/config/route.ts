@@ -274,9 +274,14 @@ async function triggerImmediateScraping(
     process.env.NEXT_PUBLIC_APP_URL ||
     `http://localhost:${process.env.PORT || 3000}`
 
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (process.env.CRON_SECRET) {
+    headers['Authorization'] = `Bearer ${process.env.CRON_SECRET}`
+  }
+
   const res = await fetch(`${baseUrl}/api/alerts/check`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ alert_id: alert.id, trigger_scraping: true }),
   })
 

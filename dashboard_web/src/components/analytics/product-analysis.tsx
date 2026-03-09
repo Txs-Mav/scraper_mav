@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Search, Filter } from "lucide-react"
+import { useState, useMemo, useEffect } from "react"
+import { Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 
 interface Product {
@@ -30,12 +30,20 @@ const categoryLabels: Record<string, string> = {
   autre: "Autre",
 }
 
+const DEFAULT_THRESHOLD = 0.5
+const ROWS_PER_PAGE = 25
+
 export default function ProductCategoryAnalysis({ produits }: ProductAnalysisProps) {
   const { t } = useLanguage()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [sortBy, setSortBy] = useState<"name" | "prix" | "ecart">("ecart")
   const [showFilter, setShowFilter] = useState<"compared" | "all" | "no-competitor">("compared")
+  const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD)
+  const [currentPage, setCurrentPage] = useState(0)
+
+  const isCompetitif = (p: Product) =>
+    p.hasCompetitor ? p.ecartPourcentage < threshold : true
 
   // Compteurs globaux (avant filtrage recherche/catégorie)
   const counts = useMemo(() => {
@@ -43,11 +51,11 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
     return {
       total: produits.length,
       compared: compared.length,
-      competitifs: compared.filter(p => p.competitif).length,
-      nonCompetitifs: compared.filter(p => !p.competitif).length,
+      competitifs: compared.filter(p => p.ecartPourcentage < threshold).length,
+      nonCompetitifs: compared.filter(p => p.ecartPourcentage >= threshold).length,
       sansCompetitor: produits.filter(p => !p.hasCompetitor).length,
     }
-  }, [produits])
+  }, [produits, threshold])
 
   const filteredProducts = produits.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -72,6 +80,14 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
     }
   })
 
+  useEffect(() => { setCurrentPage(0) }, [searchTerm, selectedCategory, showFilter, sortBy])
+
+  const totalPages = Math.max(1, Math.ceil(sortedProducts.length / ROWS_PER_PAGE))
+  const paginatedProducts = sortedProducts.slice(
+    currentPage * ROWS_PER_PAGE,
+    (currentPage + 1) * ROWS_PER_PAGE
+  )
+
   const categories = Array.from(new Set(produits.map(p => p.categorie))).filter(Boolean)
 
   // Résumé par catégorie (seulement les produits comparés)
@@ -85,7 +101,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
       }
       summary[cat].total++
       summary[cat].ecartSum += p.ecartPourcentage
-      if (p.competitif) summary[cat].competitif++
+      if (p.ecartPourcentage < threshold) summary[cat].competitif++
     }
     return Object.entries(summary)
       .map(([cat, s]) => ({
@@ -95,7 +111,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
         ecartMoyen: s.total > 0 ? s.ecartSum / s.total : 0,
       }))
       .sort((a, b) => b.total - a.total)
-  }, [produits])
+  }, [produits, threshold])
 
   return (
     <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
@@ -138,6 +154,36 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{t("ap.noCompetitor")}</div>
           <div className="text-xl font-bold text-gray-600 dark:text-gray-300">{counts.sansCompetitor}</div>
         </button>
+      </div>
+
+      {/* Seuil de compétitivité */}
+      <div className="mb-5 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-400">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          <span>{t("ap.thresholdLabel")}</span>
+        </div>
+        <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+          <input
+            type="range"
+            min={0}
+            max={20}
+            step={0.5}
+            value={threshold}
+            onChange={e => setThreshold(parseFloat(e.target.value))}
+            className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200 dark:bg-gray-700 accent-violet-600 dark:accent-violet-500"
+          />
+          <span className="tabular-nums text-sm font-bold text-gray-900 dark:text-white min-w-[52px] text-right">
+            {threshold.toFixed(1)}%
+          </span>
+        </div>
+        {threshold !== DEFAULT_THRESHOLD && (
+          <button
+            onClick={() => setThreshold(DEFAULT_THRESHOLD)}
+            className="text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors"
+          >
+            {t("ap.thresholdReset")}
+          </button>
+        )}
       </div>
 
       {/* Résumé par catégorie (seulement produits comparés) */}
@@ -247,7 +293,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
             </tr>
           </thead>
           <tbody>
-            {sortedProducts.map((produit, index) => (
+            {paginatedProducts.map((produit, index) => (
               <tr
                 key={index}
                 className="border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#1A1A1E] transition-colors"
@@ -270,9 +316,9 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                 <td className={`py-3 px-4 text-sm text-right font-semibold tabular-nums ${
                   !produit.hasCompetitor
                     ? 'text-gray-400 dark:text-gray-600'
-                    : produit.ecartPourcentage < -0.5
+                    : produit.ecartPourcentage < -threshold
                     ? 'text-green-600 dark:text-green-400'
-                    : produit.ecartPourcentage > 0.5
+                    : produit.ecartPourcentage >= threshold
                     ? 'text-red-600 dark:text-red-400'
                     : 'text-gray-600 dark:text-gray-400'
                 }`}>
@@ -286,7 +332,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                       {t("ap.noCompetitorBadge")}
                     </span>
-                  ) : produit.competitif ? (
+                  ) : isCompetitif(produit) ? (
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
                       {t("ap.competitiveBadge")}
                     </span>
@@ -308,6 +354,57 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
             ? t("ap.noCompetitorFound")
             : t("ap.noProductFound")
           }
+        </div>
+      )}
+
+      {sortedProducts.length > ROWS_PER_PAGE && (
+        <div className="flex items-center justify-between mt-4 px-1">
+          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+            {currentPage * ROWS_PER_PAGE + 1} – {Math.min((currentPage + 1) * ROWS_PER_PAGE, sortedProducts.length)} {t("ap.paginationOf")} {sortedProducts.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-3 w-3" />
+              {t("ap.paginationPrev")}
+            </button>
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: totalPages }, (_, i) => i).map(page => {
+                if (totalPages <= 7 || page === 0 || page === totalPages - 1 || Math.abs(page - currentPage) <= 1) {
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition ${
+                        page === currentPage
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                          : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      {page + 1}
+                    </button>
+                  )
+                }
+                if (page === 1 && currentPage > 3) return <span key="start-dots" className="px-1 text-xs text-gray-400">…</span>
+                if (page === totalPages - 2 && currentPage < totalPages - 4) return <span key="end-dots" className="px-1 text-xs text-gray-400">…</span>
+                return null
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {t("ap.paginationNext")}
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
         </div>
       )}
     </div>

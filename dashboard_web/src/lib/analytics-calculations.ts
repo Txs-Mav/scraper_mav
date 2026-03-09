@@ -286,6 +286,7 @@ export interface AnalyticsData {
     frequencePromotions: number
     nombreProduits: number
     produitsComparables: number
+    isReference: boolean
     categorieStats: Array<{
       categorie: string
       prixMoyen: number
@@ -737,6 +738,7 @@ export function calculateRetailerAnalysis(
       frequencePromotions,
       nombreProduits: totalProduits,
       produitsComparables: ecartCount,
+      isReference: isRef,
       categorieStats,
     })
   }
