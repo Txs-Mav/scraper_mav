@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getCurrentUser } from '@/lib/supabase/helpers'
 import { sendEmail } from '@/lib/resend'
 import { spawn } from 'child_process'
 import path from 'path'
@@ -69,7 +70,9 @@ export async function POST(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && process.env.NODE_ENV === 'production') {
     const authHeader = request.headers.get('authorization')
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    const sessionUser = await getCurrentUser().catch(() => null)
+    const hasCronAuth = authHeader === `Bearer ${cronSecret}`
+    if (!hasCronAuth && !sessionUser) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
     }
   }
@@ -497,42 +500,27 @@ async function triggerAlertScraping(userId: string, config: ScrapingConfig): Pro
 
 async function triggerViaBackendProxy(userId: string, config: ScrapingConfig): Promise<boolean> {
   try {
-    console.log(`[Alert Scrape] Proxy backend pour ref=${config.reference_url} + ${config.competitor_urls?.length || 0} concurrent(s)`)
+    const allUrls = [
+      config.reference_url,
+      ...(config.competitor_urls || []).filter((url) => url && url !== config.reference_url),
+    ]
 
-    // Scraper le site de référence
-    const refRes = await proxyToBackend('/scraper-ai/run', {
+    console.log(`[Alert Scrape] Proxy backend groupé pour ref=${config.reference_url} + ${allUrls.length - 1} concurrent(s)`)
+
+    const batchRes = await proxyToBackend('/scraper-ai/run', {
       body: {
         userId,
         url: config.reference_url,
+        urls: allUrls,
         referenceUrl: config.reference_url,
         categories: config.categories,
       },
-      timeout: 20 * 60 * 1000,
+      timeout: 30 * 60 * 1000,
     })
-    if (!refRes.ok) {
-      const text = await refRes.text().catch(() => '')
-      console.error(`[Alert Scrape] Backend proxy erreur ref ${refRes.status}: ${text.slice(0, 200)}`)
+    if (!batchRes.ok) {
+      const text = await batchRes.text().catch(() => '')
+      console.error(`[Alert Scrape] Backend proxy erreur ${batchRes.status}: ${text.slice(0, 200)}`)
       return false
-    }
-
-    // Scraper chaque concurrent
-    for (const compUrl of config.competitor_urls || []) {
-      try {
-        const compRes = await proxyToBackend('/scraper-ai/run', {
-          body: {
-            userId,
-            url: compUrl,
-            referenceUrl: config.reference_url,
-            categories: config.categories,
-          },
-          timeout: 20 * 60 * 1000,
-        })
-        if (!compRes.ok) {
-          console.warn(`[Alert Scrape] Backend proxy concurrent ${compUrl} erreur ${compRes.status}`)
-        }
-      } catch (compErr: any) {
-        console.warn(`[Alert Scrape] Backend proxy concurrent ${compUrl} erreur:`, compErr.message)
-      }
     }
 
     console.log(`[Alert Scrape] Backend proxy OK pour user ${userId}`)
@@ -670,7 +658,7 @@ async function triggerViaLocalPython(
         ...process.env,
         PYTHONUNBUFFERED: '1',
         GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-        NEXTJS_API_URL: process.env.NEXTJS_API_URL || `http://localhost:${process.env.PORT || 3000}`,
+        NEXTJS_API_URL: process.env.NEXTJS_API_URL || `http://localhost:${process.env.PORT || process.env.NEXT_DEV_PORT || 3000}`,
         SCRAPER_USER_ID: userId,
       },
     })

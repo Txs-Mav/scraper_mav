@@ -21,13 +21,36 @@ export async function GET() {
     }
 
     const supabase = await createClient()
+    const { data: config } = await supabase
+      .from('scraper_config')
+      .select('reference_url')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    const { data: scrapings, error } = await supabase
+    let scrapingsQuery = supabase
       .from('scrapings')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(1)
+
+    if (config?.reference_url) {
+      scrapingsQuery = scrapingsQuery.eq('reference_url', config.reference_url)
+    }
+
+    let { data: scrapings, error } = await scrapingsQuery
+
+    // Fallback si la config active n'a pas encore de scraping.
+    if ((!scrapings || scrapings.length === 0) && config?.reference_url) {
+      const fallbackResult = await supabase
+        .from('scrapings')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      scrapings = fallbackResult.data
+      error = fallbackResult.error
+    }
 
     if (error) {
       console.error('Error fetching scrapings from Supabase:', error)

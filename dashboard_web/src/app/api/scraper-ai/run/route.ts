@@ -7,9 +7,19 @@ import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { url, referenceUrl, forceRefresh, categories } = body
+    const { url, urls, referenceUrl, forceRefresh, categories } = body
 
-    if (!url) {
+    const requestedUrls = Array.isArray(urls) ? urls.filter((value: unknown): value is string => typeof value === 'string' && value.trim() !== '') : []
+    const primaryUrl = typeof url === 'string' ? url.trim() : ''
+    const allUrls = [...requestedUrls]
+    if (primaryUrl && !allUrls.includes(primaryUrl)) {
+      allUrls.push(primaryUrl)
+    }
+    if (referenceUrl && !allUrls.includes(referenceUrl)) {
+      allUrls.unshift(referenceUrl)
+    }
+
+    if (allUrls.length === 0) {
       return NextResponse.json(
         { error: 'URL is required' },
         { status: 400 }
@@ -32,7 +42,7 @@ export async function POST(request: Request) {
     if (hasBackend()) {
       try {
         const backendRes = await proxyToBackend('/scraper-ai/run', {
-          body: { userId, url, referenceUrl, forceRefresh, categories },
+          body: { userId, url: primaryUrl || allUrls[0], urls: allUrls, referenceUrl, forceRefresh, categories },
           timeout: 35 * 60 * 1000,
         })
         const data = await backendRes.json()
@@ -69,9 +79,9 @@ export async function POST(request: Request) {
       args.push('--categories', categories.join(','))
     }
     
-    args.push(url)
+    args.push(...allUrls)
 
-    console.log(`[ScraperAI] Running scraper for: ${url}`)
+    console.log(`[ScraperAI] Running scraper for ${allUrls.length} site(s)`)
     console.log(`[ScraperAI] Command: ${pythonCmd} ${args.join(' ')}`)
     console.log(`[ScraperAI] Working directory: ${path.join(process.cwd(), '..')}`)
     console.log(`[ScraperAI] User ID: ${userId || 'anonymous'}`)
@@ -122,7 +132,7 @@ export async function POST(request: Request) {
           console.log(`[ScraperAI] ✅ Scraping completed successfully`)
           resolve(NextResponse.json({
             success: true,
-            message: `Scraping terminé pour ${url}`,
+            message: `Scraping terminé pour ${allUrls.length} site(s)`,
             stdout: stdout.slice(-5000) // Derniers 5000 caractères
           }))
         } else {

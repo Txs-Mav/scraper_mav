@@ -119,6 +119,7 @@ class ScraperRunRequest(BaseModel):
 class ScraperAIRunRequest(BaseModel):
     userId: str
     url: str
+    urls: list[str] = []
     referenceUrl: str | None = None
     forceRefresh: bool = False
     categories: list[str] | None = None
@@ -219,7 +220,15 @@ async def scraper_logs(jobId: str, lastLine: int = 0):
 
 @app.post("/scraper-ai/run", dependencies=[Depends(verify_secret)])
 async def scraper_ai_run(body: ScraperAIRunRequest):
-    """Run the scraper for a single URL (synchronous, waits for completion)."""
+    """Run the scraper synchronously for one or many URLs."""
+    all_urls = [u for u in body.urls if u and u.strip()]
+    if body.url and body.url.strip() and body.url not in all_urls:
+        all_urls.append(body.url)
+    if body.referenceUrl and body.referenceUrl not in all_urls:
+        all_urls.insert(0, body.referenceUrl)
+    if not all_urls:
+        raise HTTPException(400, detail={"error": "URL is required"})
+
     args = [sys.executable, "-u", "-m", "scraper_ai.main"]
     args.extend(["--user-id", body.userId])
     if body.referenceUrl:
@@ -228,7 +237,7 @@ async def scraper_ai_run(body: ScraperAIRunRequest):
         args.append("--force-refresh")
     if body.categories:
         args.extend(["--categories", ",".join(body.categories)])
-    args.append(body.url)
+    args.extend(all_urls)
 
     env = {
         **os.environ,
@@ -249,7 +258,7 @@ async def scraper_ai_run(body: ScraperAIRunRequest):
         if proc.returncode == 0:
             return {
                 "success": True,
-                "message": f"Scraping terminé pour {body.url}",
+                "message": f"Scraping terminé pour {len(all_urls)} site(s)",
                 "stdout": proc.stdout[-5000:] if proc.stdout else "",
             }
         else:

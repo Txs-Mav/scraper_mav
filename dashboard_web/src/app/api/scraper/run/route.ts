@@ -168,10 +168,23 @@ export async function POST(request: Request) {
     const urlsJson = JSON.stringify(allUrls).replace(/\\/g, '\\\\').replace(/\$/g, '\\$')
     const refUrlEscaped = referenceUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
 
+    // Détecter le vrai port depuis la requête (Next.js peut changer de port si 3000 est pris)
+    let actualApiUrl = process.env.NEXTJS_API_URL || ''
+    if (!actualApiUrl) {
+      try {
+        const reqUrl = new URL(request.url)
+        actualApiUrl = reqUrl.origin
+      } catch {
+        actualApiUrl = `http://localhost:${process.env.PORT || 3000}`
+      }
+    }
+    console.log(`[ScraperAI] 🔗 NEXTJS_API_URL résolu: ${actualApiUrl}`)
+
     const scriptContent = `#!/bin/bash
 # Script généré automatiquement pour lancer le scraper Python
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
+export NEXTJS_API_URL="${actualApiUrl.replace(/"/g, '\\"')}"
 cd "${path.join(process.cwd(), '..').replace(/"/g, '\\"')}"
 nohup ${pythonCmd} ${escapedArgs} > "${logFile.replace(/"/g, '\\"')}" 2>&1 &
 PYTHON_PID=$!
