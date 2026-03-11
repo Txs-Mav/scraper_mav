@@ -18,7 +18,9 @@ class SupabaseStorage:
     
     def __init__(self, user_id: Optional[str] = None):
         self.user_id = user_id
-        self.api_url = os.environ.get('NEXTJS_API_URL', 'http://localhost:3000')
+        self.api_url = os.environ.get('NEXTJS_API_URL', '').strip() or 'http://localhost:3000'
+        if self.api_url == 'http://localhost:3000' and os.environ.get('RAILWAY_ENVIRONMENT'):
+            print("⚠️  NEXTJS_API_URL non configuré sur Railway — le cache et la sauvegarde ne fonctionneront pas!")
         self.timeout = 15
     
     def _get_cache_key(self, url: str) -> str:

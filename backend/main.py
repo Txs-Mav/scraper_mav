@@ -166,6 +166,8 @@ async def scraper_run(body: ScraperRunRequest):
         **os.environ,
         "PYTHONUNBUFFERED": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
+        "NEXTJS_API_URL": os.environ.get("NEXTJS_API_URL", ""),
+        "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
     }
 
     proc = subprocess.Popen(
@@ -243,6 +245,7 @@ async def scraper_ai_run(body: ScraperAIRunRequest):
         **os.environ,
         "PYTHONUNBUFFERED": "1",
         "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+        "NEXTJS_API_URL": os.environ.get("NEXTJS_API_URL", ""),
     }
 
     try:
@@ -314,6 +317,7 @@ except Exception as e:
         **os.environ,
         "PYTHONUNBUFFERED": "1",
         "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+        "NEXTJS_API_URL": os.environ.get("NEXTJS_API_URL", ""),
     }
 
     try:

@@ -1111,7 +1111,7 @@ class IntelligentScraper:
         - etat (neuf, occasion, demonstrateur)
         """
         try:
-            response = self.session.get(url, timeout=10, allow_redirects=True)
+            response = self.session.get(url, timeout=15, allow_redirects=True)
             if response.status_code != 200:
                 return []
 

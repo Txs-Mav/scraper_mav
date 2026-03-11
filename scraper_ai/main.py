@@ -30,15 +30,21 @@ try:
     from .intelligent_scraper import IntelligentScraper, scrape_site
     from .supabase_storage import SupabaseStorage, set_global_user
     from .config import PROMPT_VERSION
+    from .dedicated_scrapers.registry import DedicatedScraperRegistry
 except ImportError:
     try:
         from scraper_ai.intelligent_scraper import IntelligentScraper, scrape_site
         from scraper_ai.supabase_storage import SupabaseStorage, set_global_user
         from scraper_ai.config import PROMPT_VERSION
+        from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
     except ImportError:
         from intelligent_scraper import IntelligentScraper, scrape_site
         from supabase_storage import SupabaseStorage, set_global_user
         from config import PROMPT_VERSION
+        try:
+            from dedicated_scrapers.registry import DedicatedScraperRegistry
+        except ImportError:
+            DedicatedScraperRegistry = None
 
 
 # Liste des couleurs communes à ignorer pour le matching
@@ -679,27 +685,41 @@ Exemples:
         f"\n   📊 Résumé: {len(sites_with_cache)} en cache, {len(sites_without_cache)} à créer")
 
     # =====================================================
-    # PHASE 2: CRÉATION DES SCRAPERS (SÉQUENTIEL)
+    # PHASE 2: CRÉATION DES SCRAPERS UNIVERSELS (SÉQUENTIEL)
     # =====================================================
-    # Résultats Phase 2 réutilisés en Phase 3 pour éviter double-scraping
+    # Les scrapers dédiés (pas de Gemini) sont envoyés en Phase 3 (parallèle)
+    # Seuls les scrapers universels (Gemini) restent séquentiels ici
     phase2_results: dict = {}
-    if sites_without_cache:
+
+    has_registry = DedicatedScraperRegistry is not None
+    dedicated_sites = []
+    universal_sites = []
+    for url in sites_without_cache:
+        if has_registry and DedicatedScraperRegistry.has_dedicated_scraper(url):
+            dedicated_sites.append(url)
+        else:
+            universal_sites.append(url)
+
+    if dedicated_sites:
+        print(f"\n   🔧 {len(dedicated_sites)} site(s) dédié(s) détecté(s) → Phase 3 (parallèle)")
+        for url in dedicated_sites:
+            print(f"      ⚡ {url[:50]}...")
+
+    if universal_sites:
         print(f"\n{'='*50}")
-        print(f"🔧 PHASE 2: CRÉATION DES SCRAPERS (séquentiel)")
+        print(f"🔧 PHASE 2: CRÉATION DES SCRAPERS UNIVERSELS (séquentiel)")
         print(f"{'='*50}")
         print(
-            f"   ⏱️  Estimation: ~{len(sites_without_cache) * 45}s ({len(sites_without_cache)} sites × ~45s)")
-        print(f"   💡 Traitement un par un pour éviter les limites API\n")
+            f"   ⏱️  Estimation: ~{len(universal_sites) * 45}s ({len(universal_sites)} sites × ~45s)")
+        print(f"   💡 Traitement un par un pour éviter les limites API Gemini\n")
 
-        failed_sites: list = []  # Sites dont le scraper n'a rien extrait
+        failed_sites: list = []
 
-        for i, url in enumerate(sites_without_cache, 1):
+        for i, url in enumerate(universal_sites, 1):
             site_start = time.time()
-            # inventory_only s'applique UNIQUEMENT au site de référence
-            # Les concurrents doivent extraire TOUS les produits (1000-2000+)
             site_inv_only = inventory_only if url == reference_url else False
             print(
-                f"\n   [{i}/{len(sites_without_cache)}] 🔄 Création du scraper pour {url[:50]}..."
+                f"\n   [{i}/{len(universal_sites)}] 🔄 Création du scraper pour {url[:50]}..."
                 f" {'(inventaire)' if site_inv_only else '(complet)'}")
             try:
                 scraper = IntelligentScraper(user_id=user_id)
@@ -709,37 +729,43 @@ Exemples:
                 site_elapsed = time.time() - site_start
                 if product_count == 0:
                     print(
-                        f"   [{i}/{len(sites_without_cache)}] ⚠️  Scraper créé mais 0 produits ({site_elapsed:.0f}s) - sera re-tenté en phase 3")
+                        f"   [{i}/{len(universal_sites)}] ⚠️  Scraper créé mais 0 produits ({site_elapsed:.0f}s) - sera re-tenté en phase 3")
                     failed_sites.append(url)
                 else:
                     print(
-                        f"   [{i}/{len(sites_without_cache)}] ✅ Scraper créé: {product_count} produits extraits ({site_elapsed:.0f}s)")
+                        f"   [{i}/{len(universal_sites)}] ✅ Scraper créé: {product_count} produits extraits ({site_elapsed:.0f}s)")
                     phase2_results[url] = {
                         "companyInfo": {},
                         "products": result.get('products', []),
                         "metadata": result.get('metadata', {})
                     }
             except Exception as e:
-                print(f"   [{i}/{len(sites_without_cache)}] ❌ Erreur: {e}")
+                print(f"   [{i}/{len(universal_sites)}] ❌ Erreur: {e}")
                 failed_sites.append(url)
 
-            # Petite pause entre chaque site pour éviter le rate limiting
-            if i < len(sites_without_cache):
+            if i < len(universal_sites):
                 print(f"   ⏳ Pause de 2s avant le prochain site...")
                 time.sleep(2)
 
     # =====================================================
     # PHASE 3: EXTRACTION (PARALLÈLE)
     # =====================================================
+    # Inclut: scrapers dédiés, sites en cache, sites universels échoués en Phase 2
+    sites_needing_extraction = []
+    for url in all_sites:
+        if url in phase2_results:
+            pass
+        else:
+            sites_needing_extraction.append(url)
+
     print(f"\n{'='*50}")
     print(f"⚡ PHASE 3: EXTRACTION DES DONNÉES (parallèle)")
     print(f"{'='*50}")
-    print(f"   🚀 Extraction parallèle de {len(all_sites)} sites...\n")
+    print(f"   🚀 {len(sites_needing_extraction)} sites en parallèle, "
+          f"{len(phase2_results)} déjà extraits en Phase 2\n")
 
     results: Dict[str, dict] = {}
 
-    # Utiliser directement les résultats de Phase 2 pour éviter le double-scraping
-    sites_needing_extraction = []
     for url in all_sites:
         if url in phase2_results:
             results[url] = phase2_results[url]
@@ -747,8 +773,6 @@ Exemples:
             is_ref = " ⭐" if url == reference_url else ""
             print(
                 f"   ♻️  {url[:40]}...: {product_count} produits (Phase 2){is_ref}")
-        else:
-            sites_needing_extraction.append(url)
 
     if sites_needing_extraction:
         per_site_timeout = 300
@@ -988,7 +1012,7 @@ Exemples:
     saved_to_supabase = False
     if user_id:
         import requests
-        api_url = os.environ.get('NEXTJS_API_URL', 'http://localhost:3000')
+        api_url = os.environ.get('NEXTJS_API_URL', '').strip() or 'http://localhost:3000'
 
         scraping_payload = {
             "user_id": user_id,
