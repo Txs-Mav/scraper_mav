@@ -168,6 +168,8 @@ async def scraper_run(body: ScraperRunRequest):
         "PYTHONDONTWRITEBYTECODE": "1",
         "NEXTJS_API_URL": os.environ.get("NEXTJS_API_URL", ""),
         "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
     }
 
     proc = subprocess.Popen(
@@ -246,6 +248,8 @@ async def scraper_ai_run(body: ScraperAIRunRequest):
         "PYTHONUNBUFFERED": "1",
         "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
         "NEXTJS_API_URL": os.environ.get("NEXTJS_API_URL", ""),
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
     }
 
     try:
@@ -318,6 +322,8 @@ except Exception as e:
         "PYTHONUNBUFFERED": "1",
         "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
         "NEXTJS_API_URL": os.environ.get("NEXTJS_API_URL", ""),
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
     }
 
     try:

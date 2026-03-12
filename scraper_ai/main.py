@@ -537,6 +537,116 @@ def scrape_site_wrapper(args: tuple) -> Tuple[str, dict]:
         return (url, {"companyInfo": {}, "products": [], "_error": type(e).__name__})
 
 
+def _save_direct_supabase(supabase_url: str, supabase_key: str, row: dict,
+                          user_id: str, reference_url: str) -> bool:
+    """Sauvegarde directement dans Supabase via PostgREST (pas de limite 4.5MB Vercel)."""
+    import requests
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
+        print(f"   💾 Sauvegarde directe Supabase (PostgREST, pas de limite de taille)...")
+        resp = requests.post(
+            f"{supabase_url}/rest/v1/scrapings",
+            json=row,
+            headers=headers,
+            timeout=60,
+        )
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            record = data[0] if isinstance(data, list) and data else data
+            print(f"☁️  Sauvegardé dans Supabase (ID: {record.get('id', 'N/A')})")
+            _cleanup_old_scrapings(supabase_url, supabase_key, user_id, reference_url, keep=5)
+            return True
+        else:
+            print(f"⚠️  Erreur PostgREST ({resp.status_code}): {resp.text[:300]}")
+            return False
+    except Exception as e:
+        print(f"⚠️  Erreur sauvegarde directe: {e}")
+        return False
+
+
+def _cleanup_old_scrapings(supabase_url: str, supabase_key: str,
+                           user_id: str, reference_url: str, keep: int = 5):
+    """Garde seulement les N derniers scrapings par (user_id, reference_url)."""
+    import requests
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+        }
+        resp = requests.get(
+            f"{supabase_url}/rest/v1/scrapings",
+            params={
+                "select": "id,created_at",
+                "user_id": f"eq.{user_id}",
+                "reference_url": f"eq.{reference_url}",
+                "order": "created_at.desc",
+            },
+            headers=headers,
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return
+        rows = resp.json()
+        if len(rows) <= keep:
+            return
+        ids_to_delete = [r["id"] for r in rows[keep:]]
+        for old_id in ids_to_delete:
+            requests.delete(
+                f"{supabase_url}/rest/v1/scrapings",
+                params={"id": f"eq.{old_id}"},
+                headers={**headers, "Content-Type": "application/json"},
+                timeout=10,
+            )
+        print(f"   🧹 Nettoyage: {len(ids_to_delete)} ancien(s) scraping(s) supprimé(s)")
+    except Exception as e:
+        print(f"   ⚠️  Nettoyage échoué (non bloquant): {e}")
+
+
+def _save_via_api(row: dict, user_id: str) -> bool:
+    """Fallback: sauvegarde via l'API Next.js (limite 4.5MB sur Vercel)."""
+    import requests
+    api_url = os.environ.get('NEXTJS_API_URL', '').strip() or 'http://localhost:3000'
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            timeout = 30 + (attempt - 1) * 15
+            print(
+                f"   💾 Sauvegarde via API Next.js (tentative {attempt}/{max_retries}, timeout {timeout}s)...")
+            response = requests.post(
+                f"{api_url}/api/scrapings/save",
+                json=row,
+                timeout=timeout,
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success') and not result.get('isLocal'):
+                    print(
+                        f"☁️  Sauvegardé dans Supabase (ID: {result.get('scraping', {}).get('id', 'N/A')})")
+                    return True
+                else:
+                    print(
+                        f"⚠️  Réponse API: {result.get('message', 'Sauvegarde locale uniquement')}")
+            elif response.status_code == 413:
+                print(f"⚠️  Payload trop volumineux pour Vercel (4.5MB). Configurez SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY pour la sauvegarde directe.")
+                return False
+            else:
+                print(
+                    f"⚠️  Erreur API ({response.status_code}): {response.text[:200]}")
+        except Exception as e:
+            print(f"⚠️  Tentative {attempt}/{max_retries} échouée: {e}")
+
+        if attempt < max_retries:
+            wait = attempt * 5
+            print(f"   ⏳ Nouvelle tentative dans {wait}s...")
+            time.sleep(wait)
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=f'Scraper AI v{PROMPT_VERSION} - Scraping intelligent avec cache Supabase',
@@ -1008,13 +1118,14 @@ Exemples:
         }
     }
 
-    # PRIORITÉ 1: Sauvegarder dans Supabase via l'API (si user_id fourni)
+    # PRIORITÉ 1: Sauvegarder directement dans Supabase (bypass Vercel 4.5MB limit)
+    # PRIORITÉ 2: Fallback via l'API Next.js si pas de credentials directes
     saved_to_supabase = False
     if user_id:
-        import requests
-        api_url = os.environ.get('NEXTJS_API_URL', '').strip() or 'http://localhost:3000'
+        supabase_url = os.environ.get('SUPABASE_URL') or os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '')
+        supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 
-        scraping_payload = {
+        scraping_row = {
             "user_id": user_id,
             "reference_url": reference_url,
             "competitor_urls": competitor_urls,
@@ -1024,38 +1135,12 @@ Exemples:
             "mode": "reference_only" if not competitor_urls else "comparison"
         }
 
-        max_retries = 3
-        for attempt in range(1, max_retries + 1):
-            try:
-                timeout = 30 + (attempt - 1) * 15
-                print(
-                    f"   💾 Sauvegarde Supabase (tentative {attempt}/{max_retries}, timeout {timeout}s)...")
-                response = requests.post(
-                    f"{api_url}/api/scrapings/save",
-                    json=scraping_payload,
-                    timeout=timeout
-                )
+        if supabase_url and supabase_key:
+            saved_to_supabase = _save_direct_supabase(
+                supabase_url, supabase_key, scraping_row, user_id, reference_url)
 
-                if response.status_code == 200:
-                    result = response.json()
-                    if result.get('success') and not result.get('isLocal'):
-                        saved_to_supabase = True
-                        print(
-                            f"☁️  Sauvegardé dans Supabase (ID: {result.get('scraping', {}).get('id', 'N/A')})")
-                        break
-                    else:
-                        print(
-                            f"⚠️  Réponse API: {result.get('message', 'Sauvegarde locale uniquement')}")
-                else:
-                    print(
-                        f"⚠️  Erreur API ({response.status_code}): {response.text[:200]}")
-            except Exception as e:
-                print(f"⚠️  Tentative {attempt}/{max_retries} échouée: {e}")
-
-            if attempt < max_retries:
-                wait = attempt * 5
-                print(f"   ⏳ Nouvelle tentative dans {wait}s...")
-                time.sleep(wait)
+        if not saved_to_supabase:
+            saved_to_supabase = _save_via_api(scraping_row, user_id)
 
     # TOUJOURS sauvegarder localement en backup (peu importe le résultat Supabase)
     output_file = Path(__file__).parent.parent / "scraped_data.json"
