@@ -279,9 +279,14 @@ class MvmMotosportScraper(DedicatedScraper):
     def _enrich_from_detail_pages(self, products: List[Dict]) -> List[Dict]:
         """Enrichit chaque produit avec les données des pages détail (parallèle)."""
         total = len(products)
+        if total == 0:
+            return products
+
         workers = min(8, total)
         enriched_count = 0
+        abandoned_count = 0
         start = time.time()
+        global_timeout = max(600, total * 3)
 
         print(f"\n   🔍 Enrichissement: {total} pages détail ({workers} workers)...")
 
@@ -294,25 +299,37 @@ class MvmMotosportScraper(DedicatedScraper):
             }
 
             processed = 0
-            for future in as_completed(futures, timeout=300):
-                processed += 1
-                url = futures[future]
-                try:
-                    specs = future.result(timeout=15)
-                    if specs:
-                        product = url_to_product[url]
-                        for key, val in specs.items():
-                            if val and not product.get(key):
-                                product[key] = val
-                        enriched_count += 1
-                except Exception:
-                    pass
+            try:
+                for future in as_completed(futures, timeout=global_timeout):
+                    processed += 1
+                    url = futures[future]
+                    try:
+                        specs = future.result(timeout=15)
+                        if specs:
+                            product = url_to_product[url]
+                            for key, val in specs.items():
+                                if val and not product.get(key):
+                                    product[key] = val
+                            enriched_count += 1
+                    except Exception:
+                        pass
 
-                if processed % 50 == 0 or processed == total:
-                    elapsed = time.time() - start
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    print(f"      📊 [{processed}/{total}] {enriched_count} enrichis — {rate:.1f}/s")
+                    if processed % 50 == 0 or processed == total:
+                        elapsed = time.time() - start
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        print(f"      📊 [{processed}/{total}] {enriched_count} enrichis — {rate:.1f}/s")
+            except TimeoutError:
+                abandoned_count = total - processed
+                print(
+                    f"      ⚠️  Timeout enrichissement ({global_timeout}s) — "
+                    f"{abandoned_count}/{total} pages abandonnées, "
+                    f"{enriched_count} déjà enrichis conservés"
+                )
+                for f in futures:
+                    f.cancel()
 
+        if abandoned_count:
+            print(f"      ⚠️  Enrichissement partiel: {abandoned_count} page(s) détail n'ont pas répondu à temps")
         print(f"      ✅ {enriched_count}/{total} produits enrichis")
         return products
 

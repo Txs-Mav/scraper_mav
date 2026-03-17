@@ -105,6 +105,7 @@ class DedicatedScraper(ABC):
         processed = 0
         workers = min(8, total)
         extract_start = time.time()
+        pending_count = 0
 
         print(f"\n📥 Extraction de {total} pages ({workers} workers)...")
 
@@ -114,21 +115,32 @@ class DedicatedScraper(ABC):
                 for url in urls
             }
 
-            for future in as_completed(futures, timeout=300):
-                processed += 1
-                try:
-                    product = future.result(timeout=15)
-                    if product:
-                        all_products.append(product)
-                except Exception:
-                    pass
+            try:
+                for future in as_completed(futures, timeout=max(300, total * 3)):
+                    processed += 1
+                    try:
+                        product = future.result(timeout=15)
+                        if product:
+                            all_products.append(product)
+                    except Exception:
+                        pass
 
-                if processed % 25 == 0 or processed == total:
-                    elapsed = time.time() - extract_start
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    print(f"   📊 [{processed}/{total}] {len(all_products)} produits — {rate:.1f} URLs/s")
+                    if processed % 25 == 0 or processed == total:
+                        elapsed = time.time() - extract_start
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        print(f"   📊 [{processed}/{total}] {len(all_products)} produits — {rate:.1f} URLs/s")
+            except TimeoutError:
+                pending_count = total - processed
+                print(
+                    f"   ⚠️  Timeout extraction — {pending_count}/{total} URL(s) abandonnée(s), "
+                    f"{len(all_products)} produit(s) déjà extrait(s) conservé(s)"
+                )
+                for future in futures:
+                    future.cancel()
 
         unique = self._deduplicate(all_products)
+        if pending_count:
+            print(f"   ⚠️  Extraction partielle: {pending_count} URL(s) n'ont pas répondu à temps")
         print(f"   ✅ {len(unique)} produits uniques (dédupliqués de {len(all_products)})")
         return unique
 
