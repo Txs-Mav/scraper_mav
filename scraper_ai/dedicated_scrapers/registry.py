@@ -13,6 +13,7 @@ from .motosport4saisons import Motosport4SaisonsScraper
 from .motos_illimitees import MotosIllimiteesScraper
 from .motovanier import MotoVanierScraper
 from .mathias_sports import MathiasSportsScraper
+from .joliette_recreatif import JolietteRecreatifScraper
 
 
 _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
@@ -23,6 +24,7 @@ _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'motos-illimitees': MotosIllimiteesScraper,
     'motovanier': MotoVanierScraper,
     'mathias-sports': MathiasSportsScraper,
+    'joliette-recreatif': JolietteRecreatifScraper,
 }
 
 _DOMAIN_MAP: Dict[str, str] = {
@@ -35,6 +37,7 @@ _DOMAIN_MAP: Dict[str, str] = {
     'motosillimitees.com': 'motos-illimitees',
     'motovanier.ca': 'motovanier',
     'mathiassports.com': 'mathias-sports',
+    'jolietterecreatif.ca': 'joliette-recreatif',
 }
 
 
