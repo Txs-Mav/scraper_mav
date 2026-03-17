@@ -3,6 +3,7 @@
  * pour le comparatif de prix et la page analyse.
  */
 import * as XLSX from "xlsx"
+import { getEffectiveStatus } from "@/lib/product-status"
 
 // ── Types ──
 
@@ -293,7 +294,8 @@ function getEtatLabel(etat: string): string {
     catalogue: "Catalogue",
     vehicules_occasion: "Usagé",
   }
-  return labels[etat] || etat || ""
+  const normalized = getEffectiveStatus(etat)
+  return labels[normalized] || normalized || etat || ""
 }
 
 /**

@@ -240,9 +240,9 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           onChange={(e) => setSelectedCategory(e.target.value)}
           className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white text-sm"
         >
-          <option value="all">{t("ap.allCategories")}</option>
+          <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.allCategories")}</option>
           {categories.map(cat => (
-            <option key={cat} value={cat}>{categoryLabels[cat] || cat}</option>
+            <option key={cat} value={cat} style={{ backgroundColor: "#ffffff", color: "#111827" }}>{categoryLabels[cat] || cat}</option>
           ))}
         </select>
         <select
@@ -250,9 +250,9 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           onChange={(e) => setSortBy(e.target.value as "name" | "prix" | "ecart")}
           className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white text-sm"
         >
-          <option value="ecart">{t("ap.sortByGap")}</option>
-          <option value="prix">{t("ap.sortByPrice")}</option>
-          <option value="name">{t("ap.sortByName")}</option>
+          <option value="ecart" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByGap")}</option>
+          <option value="prix" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByPrice")}</option>
+          <option value="name" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByName")}</option>
         </select>
         <button
           onClick={() => setShowFilter(showFilter === "all" ? "compared" : "all")}

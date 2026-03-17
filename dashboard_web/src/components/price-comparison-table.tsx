@@ -5,6 +5,7 @@ import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, C
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { deepNormalize, normalizeProductGroupKey } from "@/lib/analytics-calculations"
+import { getEffectiveStatus } from "@/lib/product-status"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
 
 type Product = {
@@ -147,7 +148,7 @@ const etatConfig: Record<string, { labelKey: string; className: string }> = {
 
 function EtatBadge({ etat, sourceCategorie }: { etat?: string; sourceCategorie?: string }) {
   const { t } = useLanguage()
-  const key = etat || sourceCategorie || ''
+  const key = getEffectiveStatus(etat, sourceCategorie)
   const config = etatConfig[key]
   if (!config) return null
   return (

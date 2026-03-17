@@ -12,6 +12,7 @@ import LimitWarning from "./limit-warning"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useLanguage } from "@/contexts/language-context"
 import { KNOWN_BRANDS, normalizeProductGroupKey } from "@/lib/analytics-calculations"
+import { getEffectiveStatus } from "@/lib/product-status"
 import PriceComparisonTable from "./price-comparison-table"
 import Celebration from "./celebration"
 import { DashboardSkeleton } from "./skeleton-loader"
@@ -435,7 +436,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   }, [products])
 
   const uniqueEtats = useMemo(() => {
-    return Array.from(new Set(products.map(p => p.etat || p.sourceCategorie).filter((v): v is string => !!v))).sort()
+    return Array.from(new Set(products.map(p => getEffectiveStatus(p.etat, p.sourceCategorie)).filter(Boolean))).sort()
   }, [products])
 
   const productsBySite = useMemo(() => {
@@ -519,7 +520,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     if (selectedCategory !== "all") filtered = filtered.filter(p => inferVehicleType(p) === selectedCategory)
     if (selectedProduct !== "all") filtered = filtered.filter(p => p.name === selectedProduct)
     if (selectedCompetitivite !== "all") filtered = filtered.filter(p => getCompetitivite(p) === selectedCompetitivite)
-    if (selectedEtat !== "all") filtered = filtered.filter(p => (p.etat || p.sourceCategorie || '') === selectedEtat)
+    if (selectedEtat !== "all") filtered = filtered.filter(p => getEffectiveStatus(p.etat, p.sourceCategorie) === selectedEtat)
     if (priceDifferenceFilter !== null) filtered = filtered.filter(p => p.differencePrix != null && p.differencePrix >= priceDifferenceFilter)
     if (activeTab === "compared") filtered = filtered.filter(p => p.prixReference != null)
 
@@ -800,9 +801,19 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
               ].map(f => (
                 <div key={f.label}>
                   <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 mb-1.5">{f.label}</p>
-                  <select value={f.value} onChange={e => f.onChange(e.target.value)} className="w-full rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition">
-                    <option value="all">{f.all}</option>
-                    {f.options.map(o => <option key={o} value={o}>{((f as any).labelMap as Record<string, string> | undefined)?.[o as string] || o}</option>)}
+                  <select
+                    value={f.value}
+                    onChange={e => f.onChange(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition"
+                  >
+                    <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>
+                      {f.all}
+                    </option>
+                    {f.options.map(o => (
+                      <option key={o} value={o} style={{ backgroundColor: "#ffffff", color: "#111827" }}>
+                        {((f as any).labelMap as Record<string, string> | undefined)?.[o as string] || o}
+                      </option>
+                    ))}
                   </select>
                 </div>
               ))}

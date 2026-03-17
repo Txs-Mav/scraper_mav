@@ -13,6 +13,7 @@
  */
 import { NextResponse } from "next/server"
 import { sendEmail } from "@/lib/resend"
+import { getEffectiveStatus } from "@/lib/product-status"
 import { createClient } from "@/lib/supabase/server"
 
 interface ComparisonRow {
@@ -47,7 +48,8 @@ function getEtatLabel(etat: string): string {
     catalogue: "Catalogue",
     vehicules_occasion: "Usagé",
   }
-  return labels[etat] || etat || ""
+  const normalized = getEffectiveStatus(etat)
+  return labels[normalized] || normalized || etat || ""
 }
 
 function buildEmailHtml(rows: ComparisonRow[], competitors: string[], customMessage?: string, senderName?: string): string {
