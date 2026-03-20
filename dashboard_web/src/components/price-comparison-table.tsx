@@ -400,19 +400,22 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
   }, [shareEmails, shareSubject, shareMessage, tableData, competitors])
 
   type TableRow = (typeof tableData)[number]
-  type FamilyGroup = { familyKey: string; familyLabel: string; rows: TableRow[] }
 
-  const familyGroups = useMemo<FamilyGroup[]>(() => {
+  const [groupByFamily, setGroupByFamily] = useState(false)
+
+  const flatRows = useMemo(() => {
+    const result: Array<{ type: 'family'; label: string; count: number } | { type: 'row'; row: TableRow; globalIdx: number }> = []
+
+    if (!groupByFamily) {
+      tableData.forEach((row, i) => result.push({ type: 'row', row, globalIdx: i }))
+      return result
+    }
+
     const families = new Map<string, { label: string; rows: TableRow[] }>()
-
     for (const row of tableData) {
       const fk = getProductFamilyKey({
-        name: row.name,
-        marque: row.marque,
-        modele: row.modele,
-        prix: row.reference || 0,
+        name: row.name, marque: row.marque, modele: row.modele, prix: row.reference || 0,
       } as any)
-
       if (!families.has(fk)) {
         const [marque, baseModel] = fk.split('|')
         const label = marque && baseModel
@@ -423,17 +426,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       families.get(fk)!.rows.push(row)
     }
 
-    return Array.from(families.values())
-      .map(f => ({ familyKey: f.label, familyLabel: f.label, rows: f.rows }))
-      .sort((a, b) => b.rows.length - a.rows.length)
-  }, [tableData])
-
-  const flatRows = useMemo(() => {
-    const result: Array<{ type: 'family'; label: string; count: number } | { type: 'row'; row: TableRow; globalIdx: number }> = []
     let globalIdx = 0
-    for (const family of familyGroups) {
+    const sorted = Array.from(families.values()).sort((a, b) => b.rows.length - a.rows.length)
+    for (const family of sorted) {
       if (family.rows.length > 1) {
-        result.push({ type: 'family', label: family.familyLabel, count: family.rows.length })
+        result.push({ type: 'family', label: family.label, count: family.rows.length })
       }
       for (const row of family.rows) {
         result.push({ type: 'row', row, globalIdx })
@@ -441,7 +438,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       }
     }
     return result
-  }, [familyGroups])
+  }, [tableData, groupByFamily])
 
   const ROWS_PER_PAGE = 50
   const [currentPage, setCurrentPage] = useState(0)
@@ -787,6 +784,18 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               {stripColorsFromDisplay ? (showColorsLabel || "Afficher couleurs") : (hideColorsLabel || "Masquer couleurs")}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setGroupByFamily(prev => !prev)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition shrink-0 ${
+              groupByFamily
+                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04]'
+            }`}
+          >
+            <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
+            {groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}
+          </button>
       </div>
 
       <div id="price-comparison-table">
