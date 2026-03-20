@@ -444,7 +444,7 @@ class MotoplexScraper(DedicatedScraper):
         return False
 
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
-        """Regroupe les produits identiques (marque+modèle+année+état+couleur)."""
+        """Regroupe les produits identiques (marque+modèle+année+état, couleurs ignorées)."""
         seen_urls: set = set()
         unique: List[Dict] = []
         for product in products:
@@ -462,12 +462,11 @@ class MotoplexScraper(DedicatedScraper):
             modele = product.get('modele', '').lower().strip()
             annee = product.get('annee', 0)
             etat = product.get('etat', 'neuf')
-            couleur = product.get('couleur', '').lower().strip()
 
             if marque and modele:
-                key = (marque, modele, annee, etat, couleur)
+                key = (marque, modele, annee, etat)
             else:
-                key = (product.get('name', '').lower().strip(), annee, etat, couleur)
+                key = (product.get('name', '').lower().strip(), annee, etat)
 
             if key not in groups:
                 product['quantity'] = 1

@@ -475,12 +475,11 @@ class MvmMotosportScraper(DedicatedScraper):
             modele = product.get('modele', '').lower().strip()
             annee = product.get('annee', 0)
             etat = product.get('etat', 'neuf')
-            couleur = product.get('couleur', '').lower().strip()
 
             if marque and modele:
-                key = (marque, modele, annee, etat, couleur)
+                key = (marque, modele, annee, etat)
             else:
-                key = (product.get('name', '').lower().strip(), annee, etat, couleur)
+                key = (product.get('name', '').lower().strip(), annee, etat)
 
             if key not in groups:
                 product['quantity'] = 1
