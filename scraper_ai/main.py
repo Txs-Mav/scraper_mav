@@ -249,12 +249,11 @@ def enrich_product_year(product: dict) -> None:
         product['annee'] = year
 
 
-def normalize_product_key(product: dict, ignore_colors: bool = False, _ignore_colors: bool = False) -> Tuple[str, str, int]:
+def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[str, str, int]:
     """Crée une clé normalisée pour identifier les produits (marque + modèle + année).
 
-    Exclut du matching : localisation, concessionnaire, état, préfixes catégorie.
-    Les couleurs ne sont retirées QUE si ignore_colors=True.
-    Tout le reste (trims, variantes) est toujours conservé.
+    Exclut du matching : localisation, concessionnaire, état, préfixes catégorie, couleurs.
+    Les couleurs sont retirées par défaut (cohérent avec le front-end TypeScript).
     """
     import re
 
@@ -387,13 +386,13 @@ def _pick_best_ref(ref_matches: List[dict], current_price: float) -> dict:
 
 def find_matching_products(reference_products: List[dict], comparison_products: List[dict],
                            reference_url: str, comparison_url: str,
-                           ignore_colors: bool = False) -> List[dict]:
+                           ignore_colors: bool = True) -> List[dict]:
     """
     Trouve les produits du concurrent qui existent aussi dans le site de référence.
 
     Matching STRICT : marque + modèle + année doivent correspondre.
-    L'année est obligatoire : si deux produits ont des années différentes, pas de match.
-    Si les deux côtés n'ont pas d'année (0), le match est permis.
+    Les couleurs sont ignorées par défaut pour éviter les faux négatifs
+    (un même modèle en couleurs différentes doit quand même matcher).
     """
     print(f"\n{'='*60}")
     print(f"🔍 COMPARAISON AVEC LE SITE DE RÉFÉRENCE")
@@ -682,7 +681,9 @@ Exemples:
     parser.add_argument('--invalidate-cache', '-i', action='store_true',
                         help='Invalider le cache pour les URLs spécifiées')
     parser.add_argument('--ignore-colors', action='store_true',
-                        help='Ignorer les couleurs lors du matching des produits (permet plus de correspondances)')
+                        help='(déprécié, maintenant le comportement par défaut) Ignorer les couleurs lors du matching')
+    parser.add_argument('--strict-colors', action='store_true',
+                        help='Garder les couleurs lors du matching (par défaut les couleurs sont ignorées)')
     parser.add_argument('--inventory-only', action='store_true',
                         help='Extraire seulement les produits d\'inventaire (exclut les pages catalogue/showroom)')
 
@@ -691,7 +692,7 @@ Exemples:
     urls = args.urls
     reference_url = args.reference_url
     force_refresh = args.force_refresh
-    ignore_colors = args.ignore_colors
+    ignore_colors = not args.strict_colors  # True par défaut (--ignore-colors est maintenant un no-op)
     inventory_only = args.inventory_only
     user_id = args.user_id or os.environ.get('SCRAPER_USER_ID')
 
