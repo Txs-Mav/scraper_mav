@@ -45,20 +45,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
     }
   }
 
-  // Calculer les insights automatiques
   const insights: Array<{ message: string; type: 'info' | 'warning' | 'success' }> = []
-
-  // Produits non compétitifs
-  const produitsNonCompetitifs = alertes.filter(a => a.type === 'ecart').length
-  if (produitsNonCompetitifs > 0) {
-    insights.push({
-      message: `${produitsNonCompetitifs} ${t("ap.nonCompDetected")}`,
-      type: 'warning'
-    })
-  }
-
-  // Baisse moyenne du marché (à calculer si on a des données historiques)
-  // Pour l'instant, on affiche juste les stats générales
 
   return (
     <div className="space-y-6">

@@ -24,6 +24,8 @@ import {
   Shield,
   FileDown,
   Globe,
+  Search,
+  Command,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
@@ -343,7 +345,7 @@ export default function SettingsPage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t("settings.preferences")}</h2>
           </div>
 
-          <div className="flex items-center justify-between py-4">
+          <div className="flex items-center justify-between py-4 border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-4">
               <div className="p-2 rounded-lg bg-gray-50 dark:bg-white/[0.04]">
                 <Globe className="h-4 w-4 text-gray-500 dark:text-gray-400" />
@@ -377,6 +379,28 @@ export default function SettingsPage() {
                 {t("settings.english")}
               </button>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-4">
+              <div className="p-2 rounded-lg bg-gray-50 dark:bg-white/[0.04]">
+                <Search className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{t("settings.search")}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t("settings.searchDesc")}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] hover:border-gray-300 dark:hover:border-gray-700 transition-all"
+            >
+              <kbd className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-200 dark:bg-white/[0.06] text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                <Command className="h-2.5 w-2.5" />K
+              </kbd>
+              {t("settings.searchTry")}
+            </button>
           </div>
         </section>
 

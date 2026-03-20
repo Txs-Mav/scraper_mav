@@ -59,6 +59,7 @@ def main():
     all_alerts = result.data or []
 
     now = datetime.now(timezone.utc)
+    tolerance = timedelta(minutes=10)
     alerts = []
     for a in all_alerts:
         stype = a.get("schedule_type", "daily")
@@ -69,7 +70,7 @@ def main():
                 alerts.append(a)
             else:
                 last_run_dt = datetime.fromisoformat(last_run.replace("Z", "+00:00"))
-                if now >= last_run_dt + timedelta(hours=interval_h):
+                if now >= last_run_dt + timedelta(hours=interval_h) - tolerance:
                     alerts.append(a)
         else:
             if a.get("schedule_hour") == current_hour:
@@ -87,7 +88,21 @@ def main():
 
     print(f"📋 {len(alerts)} alerte(s) pour {len(users)} utilisateur(s)\n")
 
-    # ── 2. Pour chaque alerte, lancer le scraping avec ses propres URLs ──
+    # ── 2. Verrouiller last_run_at AVANT le scraping pour éviter la dérive ──
+    # On aligne sur le début de l'heure courante pour que le prochain check
+    # à HH+1:07 soit toujours >= last_run_at + 1h (pas de drift possible).
+    cron_start_time = now.replace(minute=0, second=0, microsecond=0)
+
+    for alert in alerts:
+        try:
+            supabase.table("scraper_alerts") \
+                .update({"last_run_at": cron_start_time.isoformat()}) \
+                .eq("id", alert["id"]) \
+                .execute()
+        except Exception as e:
+            print(f"⚠️  Impossible de verrouiller last_run_at pour {alert['id'][:8]}: {e}")
+
+    # ── 3. Pour chaque alerte, lancer le scraping avec ses propres URLs ──
     scraping_success = 0
     scraping_failed = 0
 
@@ -163,9 +178,8 @@ def main():
 
     print(f"\n📊 Scraping terminé : {scraping_success} OK, {scraping_failed} échoué(s)")
 
-    # ── 3. Pour chaque alerte scrapée, appeler POST /api/alerts/check ──
-    # On utilise POST avec alert_id pour bypasser le schedule check
-    # (Vercel Cron a peut-être déjà mis à jour last_run_at, rendant le GET inutile)
+    # ── 4. Pour chaque alerte scrapée, appeler POST /api/alerts/check ──
+    # skip_schedule_update=True car last_run_at est déjà verrouillé à l'étape 2
     check_url = f"{app_url}/api/alerts/check"
     check_headers = {
         "Authorization": f"Bearer {cron_secret}",
@@ -190,7 +204,11 @@ def main():
                 resp = requests.post(
                     check_url,
                     headers=check_headers,
-                    json={"alert_id": alert_id, "trigger_scraping": False},
+                    json={
+                        "alert_id": alert_id,
+                        "trigger_scraping": False,
+                        "skip_schedule_update": True,
+                    },
                     timeout=120,
                 )
 

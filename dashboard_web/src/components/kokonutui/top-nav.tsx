@@ -3,11 +3,10 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Bell, User, Home, BarChart2, CreditCard, Search, Command, Activity } from "lucide-react"
+import { User, Home, BarChart2, CreditCard, Activity } from "lucide-react"
 
 import Profile01 from "./profile-01"
 import { ThemeToggle } from "../theme-toggle"
-import { LanguageToggle } from "@/contexts/language-context"
 import { useLanguage } from "@/contexts/language-context"
 import { useAuth } from "@/contexts/auth-context"
 import { cn } from "@/lib/utils"
@@ -74,20 +73,6 @@ export default function TopNav() {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4 ml-auto sm:ml-0">
-        {/* Search trigger */}
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))}
-          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/[0.03] text-gray-400 dark:text-gray-500 text-sm hover:bg-gray-100 dark:hover:bg-white/[0.06] hover:border-gray-300 dark:hover:border-gray-700 transition-all"
-        >
-          <Search className="h-3.5 w-3.5" />
-          <span className="text-xs">{t("search")}</span>
-          <kbd className="ml-2 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-200 dark:bg-white/[0.06] text-[10px] font-medium">
-            <Command className="h-2.5 w-2.5" />K
-          </kbd>
-        </button>
-
-        <LanguageToggle />
         <ThemeToggle />
 
         {/* Section profil */}

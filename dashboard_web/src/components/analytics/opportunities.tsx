@@ -80,12 +80,9 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
               <div className="flex items-start gap-3">
                 {getOpportunityIcon(opp.type)}
                 <div className="flex-1">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="mb-2">
                     <span className="text-sm font-semibold text-gray-900 dark:text-white">
                       {getOpportunityLabel(opp.type)}
-                    </span>
-                    <span className="text-xs text-gray-600 dark:text-gray-400">
-                      {t("ap.impact")} {opp.impactPotentiel.toFixed(0)}$
                     </span>
                   </div>
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

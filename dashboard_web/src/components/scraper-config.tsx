@@ -8,6 +8,26 @@ import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 
 const DEFAULT_REFERENCE_URL = ""
+const SCRAPING_SESSION_KEY = "go-data-scraping-session"
+
+interface ScrapingSession {
+  logFile: string
+  startTime: number
+  referenceUrl: string
+}
+
+function saveScrapingSession(session: ScrapingSession) {
+  try { localStorage.setItem(SCRAPING_SESSION_KEY, JSON.stringify(session)) } catch {}
+}
+function loadScrapingSession(): ScrapingSession | null {
+  try {
+    const raw = localStorage.getItem(SCRAPING_SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+function clearScrapingSession() {
+  try { localStorage.removeItem(SCRAPING_SESSION_KEY) } catch {}
+}
 
 type CachedScraper = {
   url: string
@@ -300,7 +320,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           logPollingRef.current = null
         }
         setIsScraping(false)
-        // Erreur si le backend signale hasError, OU si le contenu contient des patterns d'erreur
+        clearScrapingSession()
         const fullContent = data.content || ''
         const isError = data.hasError ||
           fullContent.includes('Traceback (most recent call last)') ||
@@ -446,6 +466,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       const data = await response.json()
       if (data.logFile) {
         setCurrentLogFile(data.logFile)
+        saveScrapingSession({ logFile: data.logFile, startTime: Date.now(), referenceUrl: currentRefUrl })
         setLogContent(prev => [...prev, `✅ Scraping lancé avec succès (${allUrls.length} sites)`, `📄 Fichier de logs: ${data.logFile.split('/').pop()}`])
       } else {
         setLogContent(prev => [...prev, `⚠️ Pas de fichier de logs retourné`])
@@ -455,6 +476,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       setLogContent(prev => [...prev, `❌ Erreur: ${error.message}`])
       setScrapeStatus('error')
       setIsScraping(false)
+      clearScrapingSession()
       setScrapingSteps(prev => prev.map(s => s.status === 'active' ? { ...s, status: 'error' } : s))
     }
   }
@@ -590,6 +612,20 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   useEffect(() => {
     loadConfig()
     loadCachedScrapers()
+
+    const session = loadScrapingSession()
+    if (session?.logFile) {
+      const ageMs = Date.now() - session.startTime
+      if (ageMs < 30 * 60_000) {
+        setCurrentLogFile(session.logFile)
+        setIsScraping(true)
+        setScrapeStatus(null)
+        setScrapingSteps(SCRAPING_STEPS.map(s => ({ ...s, status: 'active' as const })))
+        setLogContent([`🔄 Reprise du scraping en cours...`, `📍 Référence: ${session.referenceUrl}`])
+      } else {
+        clearScrapingSession()
+      }
+    }
   }, [])
 
   const otherValidUrls = urls.filter((url, idx) => competitorEnabled[idx] && url.trim() !== "" && url.trim() !== referenceUrl.trim())

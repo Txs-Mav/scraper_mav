@@ -100,10 +100,11 @@ export async function POST(request: Request) {
       args.push('--ignore-colors')
     }
 
-    // Ajouter l'option --inventory-only si activé (exclut les pages catalogue)
-    if (inventoryOnly) {
-      args.push('--inventory-only')
-    }
+    // NOTE: --inventory-only n'est PLUS passé au Python.
+    // Le filtrage catalogue pour le site de référence se fait maintenant
+    // côté comparaison (filterCatalogueFromReference dans alerts/check/route.ts).
+    // Cela permet de sauvegarder TOUS les produits en Supabase et de filtrer
+    // uniquement au moment de la comparaison, sans perdre de données.
 
     // Ajouter toutes les URLs à scraper
     args.push(...allUrls)
@@ -115,7 +116,7 @@ export async function POST(request: Request) {
     console.log(`[ScraperAI]   - Référence: ${referenceUrl}`)
     console.log(`[ScraperAI]   - Force refresh: ${forceRefresh || false}`)
     console.log(`[ScraperAI]   - Ignorer couleurs: ${ignoreColors || false}`)
-    console.log(`[ScraperAI]   - Inventaire seulement: ${inventoryOnly || false}`)
+    console.log(`[ScraperAI]   - Filtrer catalogue (comparaison): ${inventoryOnly || false}`)
     console.log(`[ScraperAI] 🚀 Commande: python3 ${args.join(' ')}`)
 
     const pythonCmd = process.platform === 'win32' ? 'python -u' : 'python3 -u'

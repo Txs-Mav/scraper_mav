@@ -419,15 +419,31 @@ export default function AlertePage() {
 
   const markAllRead = async () => {
     try {
+      setChanges(prev => prev.map(c => ({ ...c, is_read: true })))
+      setUnreadCount(0)
       await fetch('/api/alerts/changes', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mark_all_read: true }),
       })
-      setChanges(prev => prev.map(c => ({ ...c, is_read: true })))
-      setUnreadCount(0)
     } catch (err) {
       console.error('[Alerte] Error marking all read:', err)
+      await loadData()
+    }
+  }
+
+  const markOneRead = async (changeId: string) => {
+    try {
+      setChanges(prev => prev.map(c => c.id === changeId ? { ...c, is_read: true } : c))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+      await fetch('/api/alerts/changes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [changeId] }),
+      })
+    } catch (err) {
+      console.error('[Alerte] Error marking read:', err)
+      await loadData()
     }
   }
 
@@ -718,7 +734,7 @@ export default function AlertePage() {
                   return (
                     <div
                       key={change.id}
-                      className={`px-5 py-3 transition hover:bg-gray-50/50 dark:hover:bg-white/[0.015] ${
+                      className={`group px-5 py-3 transition hover:bg-gray-50/50 dark:hover:bg-white/[0.015] ${
                         !change.is_read ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''
                       }`}
                     >
@@ -742,7 +758,13 @@ export default function AlertePage() {
                                 {diff !== undefined && <span className="ml-0.5">({diff > 0 ? '+' : ''}{diff.toFixed(2)} $)</span>}
                               </span>
                             )}
-                            {!change.is_read && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
+                            {!change.is_read && (
+                              <button
+                                onClick={() => markOneRead(change.id)}
+                                className="w-2 h-2 rounded-full bg-blue-500 shrink-0 hover:bg-blue-700 transition-colors cursor-pointer"
+                                title={t("alerts.markRead")}
+                              />
+                            )}
                           </div>
 
                           <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5 truncate font-medium">

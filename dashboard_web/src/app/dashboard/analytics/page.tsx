@@ -11,7 +11,6 @@ import RetailerAnalysis from "@/components/analytics/retailer-analysis"
 import CategoryAnalysis from "@/components/analytics/category-analysis"
 import AlertsAndInsights from "@/components/analytics/alerts-insights"
 import ExplanatoryFactors from "@/components/analytics/explanatory-factors"
-import ActionableRecommendations from "@/components/analytics/recommendations"
 import Visualizations from "@/components/analytics/visualizations"
 import { Lock, RefreshCw, RotateCcw, Calendar, Package, Store, TrendingUp, Printer } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
@@ -34,12 +33,16 @@ interface AnalyticsData {
     name: string
     prix: number
     prixMoyenMarche: number
+    prixMinMarche: number
     ecartPourcentage: number
+    ecartPourcentageMin: number
     competitif: boolean
     hasCompetitor: boolean
     categorie: string
     sourceSite?: string
     disponibilite?: string
+    etat?: string
+    inventaire?: string
   }>
   evolutionPrix: Array<{
     date: string
@@ -399,10 +402,6 @@ export default function AnalyticsPage() {
 
           <BlocTemplate className="hover-elevate">
             <ExplanatoryFactors produits={displayAnalytics.produits} />
-          </BlocTemplate>
-
-          <BlocTemplate className="hover-elevate">
-            <ActionableRecommendations opportunites={displayAnalytics.opportunites} />
           </BlocTemplate>
 
           <BlocTemplate className="hover-elevate">

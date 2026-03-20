@@ -6,8 +6,9 @@ import Link from "next/link"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
-import { Settings, CreditCard, Loader2, User } from "lucide-react"
+import { Settings, CreditCard, Globe, Loader2, User } from "lucide-react"
 import BlocTemplate from "@/components/ui/bloc-template"
+import { LanguageToggle } from "@/contexts/language-context"
 
 export default function ProfilePage() {
   const { user, isLoading, isMainAccount } = useAuth()
@@ -118,7 +119,27 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-6 mt-6 flex gap-4">
+          <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-6 mt-6">
+            <div className="flex flex-col gap-4 rounded-2xl border border-gray-200/70 bg-gray-50/70 p-4 dark:border-[#1F1F23] dark:bg-[#141418] sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-white p-2 text-gray-500 shadow-sm dark:bg-[#1B1B20] dark:text-gray-400">
+                  <Globe className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    {t("settings.language")}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {t("settings.languageDesc")}
+                  </p>
+                </div>
+              </div>
+
+              <LanguageToggle className="self-start sm:self-center" />
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-6 mt-6 flex flex-wrap gap-4">
             <Link
               href="/dashboard/settings"
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-[#1F1F23] rounded-lg text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#2B2B30] transition-colors"

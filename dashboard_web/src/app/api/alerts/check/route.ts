@@ -57,7 +57,17 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url)
-  const analysisOnly = url.searchParams.get('analysis_only') === 'true'
+  const explicitAnalysisOnly = url.searchParams.get('analysis_only') === 'true'
+
+  // Sur Vercel (serverless), le scraping local Python est impossible.
+  // Si pas de BACKEND_URL configuré, forcer analysis_only pour éviter des échecs silencieux.
+  const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+  const hasBackendUrl = !!process.env.BACKEND_URL
+  const analysisOnly = explicitAnalysisOnly || (isServerless && !hasBackendUrl)
+
+  if (isServerless && !hasBackendUrl && !explicitAnalysisOnly) {
+    console.log('[Alert Check] Vercel sans BACKEND_URL → mode analysis_only automatique')
+  }
 
   return runAlertCheck({ fromCron: true, analysisOnly })
 }
@@ -81,16 +91,19 @@ export async function POST(request: Request) {
     alertId: body.alert_id,
     fromCron: false,
     triggerScraping: body.trigger_scraping === true,
+    skipScheduleUpdate: body.skip_schedule_update === true,
   })
 }
 
 // ─── Sélection des alertes éligibles ────────────────────────────────
 
+const SCHEDULE_TOLERANCE_MS = 10 * 60_000 // 10 min de tolérance pour absorber les délais de cron
+
 function isAlertDueForCheck(alert: any, now: Date): boolean {
   if (alert.schedule_type === 'interval' && alert.schedule_interval_hours) {
     if (!alert.last_run_at) return true
     const lastRun = new Date(alert.last_run_at)
-    const nextDue = new Date(lastRun.getTime() + alert.schedule_interval_hours * 3600_000)
+    const nextDue = new Date(lastRun.getTime() + alert.schedule_interval_hours * 3600_000 - SCHEDULE_TOLERANCE_MS)
     return now >= nextDue
   }
 
@@ -99,15 +112,14 @@ function isAlertDueForCheck(alert: any, now: Date): boolean {
     return hour === now.getUTCHours()
   }
 
-  // Fallback: alertes sans schedule_type explicite → traiter comme interval 1h
   if (!alert.last_run_at) return true
   const lastRun = new Date(alert.last_run_at)
-  return now >= new Date(lastRun.getTime() + 3600_000)
+  return now >= new Date(lastRun.getTime() + 3600_000 - SCHEDULE_TOLERANCE_MS)
 }
 
 // ─── Logique principale ─────────────────────────────────────────────
 
-async function runAlertCheck(options: { alertId?: string; fromCron: boolean; triggerScraping?: boolean; analysisOnly?: boolean }) {
+async function runAlertCheck(options: { alertId?: string; fromCron: boolean; triggerScraping?: boolean; analysisOnly?: boolean; skipScheduleUpdate?: boolean }) {
   try {
     const serviceSupabase = createServiceClient()
     const now = new Date()
@@ -242,7 +254,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
 
             if (!scrapings || scrapings.length < 2) {
               console.log(`[Alert Check] Alerte ${alert.id}: pas assez de scrapings pour ref=${refUrl} (trouvé: ${scrapings?.length || 0})`)
-              if (shouldScrape) {
+              if (shouldScrape && !options.skipScheduleUpdate) {
                 await serviceSupabase
                   .from('scraper_alerts')
                   .update({ last_run_at: now.toISOString() })
@@ -290,8 +302,21 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
             let hasAnyPreviousData = false
 
             for (const siteUrl of allSiteUrls) {
-              const currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
-              const previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
+              const isReference = normalizeUrl(siteUrl) === normalizeUrl(refUrl)
+              let currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
+              let previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
+
+              if (isReference && alert.filter_catalogue_reference !== false) {
+                const preFilterCount = currentSiteProducts.length
+                currentSiteProducts = filterCatalogueFromReference(currentSiteProducts)
+                previousSiteProducts = filterCatalogueFromReference(previousSiteProducts)
+                if (preFilterCount !== currentSiteProducts.length) {
+                  console.log(
+                    `[Alert Check] Alerte ${alert.id}: filtrage catalogue référence ${preFilterCount} → ${currentSiteProducts.length} produits`
+                  )
+                }
+              }
+
               const siteHostname = extractHostname(siteUrl)
 
               totalCurrentCount += currentSiteProducts.length
@@ -325,7 +350,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
 
             if (!hasAnyPreviousData) {
               console.log(`[Alert Check] Alerte ${alert.id}: première exécution, pas de base de comparaison`)
-              if (shouldScrape) {
+              if (shouldScrape && !options.skipScheduleUpdate) {
                 await serviceSupabase
                   .from('scraper_alerts')
                   .update({ last_run_at: now.toISOString() })
@@ -380,19 +405,28 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
 
               totalChanges += cappedChanges.length
 
-              await serviceSupabase
-                .from('scraper_alerts')
-                .update({
-                  last_run_at: now.toISOString(),
-                  last_change_detected_at: now.toISOString(),
-                })
-                .eq('id', alert.id)
+              if (options.skipScheduleUpdate) {
+                await serviceSupabase
+                  .from('scraper_alerts')
+                  .update({ last_change_detected_at: now.toISOString() })
+                  .eq('id', alert.id)
+              } else {
+                await serviceSupabase
+                  .from('scraper_alerts')
+                  .update({
+                    last_run_at: now.toISOString(),
+                    last_change_detected_at: now.toISOString(),
+                  })
+                  .eq('id', alert.id)
+              }
             } else {
               console.log(`[Alert Check] Alerte ${alert.id}: aucun changement sur ${allSiteUrls.length} site(s)`)
-              await serviceSupabase
-                .from('scraper_alerts')
-                .update({ last_run_at: now.toISOString() })
-                .eq('id', alert.id)
+              if (!options.skipScheduleUpdate) {
+                await serviceSupabase
+                  .from('scraper_alerts')
+                  .update({ last_run_at: now.toISOString() })
+                  .eq('id', alert.id)
+              }
             }
 
             totalChecked++
@@ -739,6 +773,19 @@ function filterProductsBySite(products: Product[], siteUrl: string): Product[] {
     } catch {
       return productSite.toLowerCase().includes(targetHost)
     }
+  })
+}
+
+/**
+ * Filtre les produits catalogue du site référence.
+ * Le site référence ne garde que les produits en inventaire réel (pas le catalogue
+ * fabricant), pour comparer uniquement le stock en concession.
+ * Les sites concurrents gardent TOUS leurs produits (catalogue inclus).
+ */
+function filterCatalogueFromReference(products: Product[]): Product[] {
+  return products.filter(p => {
+    const cat = (p.sourceCategorie || '').toLowerCase()
+    return cat !== 'catalogue'
   })
 }
 

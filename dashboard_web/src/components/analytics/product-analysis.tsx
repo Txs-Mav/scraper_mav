@@ -8,7 +8,9 @@ interface Product {
   name: string
   prix: number
   prixMoyenMarche: number
+  prixMinMarche: number
   ecartPourcentage: number
+  ecartPourcentageMin: number
   competitif: boolean
   hasCompetitor: boolean
   categorie: string
@@ -41,21 +43,25 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
   const [showFilter, setShowFilter] = useState<"compared" | "all" | "no-competitor">("compared")
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD)
   const [currentPage, setCurrentPage] = useState(0)
+  const [compareMode, setCompareMode] = useState<"avg" | "min">("avg")
 
+  const getEcart = (p: Product) =>
+    compareMode === "min" ? p.ecartPourcentageMin : p.ecartPourcentage
+  const getCompPrice = (p: Product) =>
+    compareMode === "min" ? p.prixMinMarche : p.prixMoyenMarche
   const isCompetitif = (p: Product) =>
-    p.hasCompetitor ? p.ecartPourcentage < threshold : true
+    p.hasCompetitor ? getEcart(p) < threshold : true
 
-  // Compteurs globaux (avant filtrage recherche/catégorie)
   const counts = useMemo(() => {
     const compared = produits.filter(p => p.hasCompetitor)
     return {
       total: produits.length,
       compared: compared.length,
-      competitifs: compared.filter(p => p.ecartPourcentage < threshold).length,
-      nonCompetitifs: compared.filter(p => p.ecartPourcentage >= threshold).length,
+      competitifs: compared.filter(p => (compareMode === "min" ? p.ecartPourcentageMin : p.ecartPourcentage) < threshold).length,
+      nonCompetitifs: compared.filter(p => (compareMode === "min" ? p.ecartPourcentageMin : p.ecartPourcentage) >= threshold).length,
       sansCompetitor: produits.filter(p => !p.hasCompetitor).length,
     }
-  }, [produits, threshold])
+  }, [produits, threshold, compareMode])
 
   const filteredProducts = produits.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -74,7 +80,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
       case "prix":
         return b.prix - a.prix
       case "ecart":
-        return Math.abs(b.ecartPourcentage) - Math.abs(a.ecartPourcentage)
+        return Math.abs(getEcart(b)) - Math.abs(getEcart(a))
       default:
         return 0
     }
@@ -90,7 +96,6 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
 
   const categories = Array.from(new Set(produits.map(p => p.categorie))).filter(Boolean)
 
-  // Résumé par catégorie (seulement les produits comparés)
   const categorySummary = useMemo(() => {
     const compared = produits.filter(p => p.hasCompetitor)
     const summary: Record<string, { total: number; competitif: number; ecartSum: number }> = {}
@@ -100,8 +105,9 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
         summary[cat] = { total: 0, competitif: 0, ecartSum: 0 }
       }
       summary[cat].total++
-      summary[cat].ecartSum += p.ecartPourcentage
-      if (p.ecartPourcentage < threshold) summary[cat].competitif++
+      const ecart = compareMode === "min" ? p.ecartPourcentageMin : p.ecartPourcentage
+      summary[cat].ecartSum += ecart
+      if (ecart < threshold) summary[cat].competitif++
     }
     return Object.entries(summary)
       .map(([cat, s]) => ({
@@ -111,7 +117,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
         ecartMoyen: s.total > 0 ? s.ecartSum / s.total : 0,
       }))
       .sort((a, b) => b.total - a.total)
-  }, [produits, threshold])
+  }, [produits, threshold, compareMode])
 
   return (
     <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
@@ -121,6 +127,30 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
       <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
         {t("ap.productAnalysisDesc")}
       </p>
+
+      {/* Toggle: Moyenne vs Prix le plus bas */}
+      <div className="mb-4 flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02] p-1 w-fit">
+        <button
+          onClick={() => setCompareMode("avg")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            compareMode === "avg"
+              ? "bg-white dark:bg-white/[0.1] text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+          }`}
+        >
+          {t("ap.compareModeAvg")}
+        </button>
+        <button
+          onClick={() => setCompareMode("min")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            compareMode === "min"
+              ? "bg-white dark:bg-white/[0.1] text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+          }`}
+        >
+          {t("ap.compareModeMin")}
+        </button>
+      </div>
 
       {/* Statistiques — 4 blocs distincts */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
@@ -282,7 +312,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                 {t("ap.headerYourPrice")}
               </th>
               <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">
-                {t("ap.headerAvgComp")}
+                {compareMode === "min" ? t("ap.headerMinComp") : t("ap.headerAvgComp")}
               </th>
               <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">
                 {t("ap.headerGap")}
@@ -309,21 +339,21 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                 </td>
                 <td className="py-3 px-4 text-sm text-right text-gray-500 dark:text-gray-400 tabular-nums">
                   {produit.hasCompetitor
-                    ? `${produit.prixMoyenMarche.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$`
+                    ? `${getCompPrice(produit).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$`
                     : '—'
                   }
                 </td>
                 <td className={`py-3 px-4 text-sm text-right font-semibold tabular-nums ${
                   !produit.hasCompetitor
                     ? 'text-gray-400 dark:text-gray-600'
-                    : produit.ecartPourcentage < -threshold
+                    : getEcart(produit) < -threshold
                     ? 'text-green-600 dark:text-green-400'
-                    : produit.ecartPourcentage >= threshold
+                    : getEcart(produit) >= threshold
                     ? 'text-red-600 dark:text-red-400'
                     : 'text-gray-600 dark:text-gray-400'
                 }`}>
                   {produit.hasCompetitor
-                    ? `${produit.ecartPourcentage >= 0 ? '+' : ''}${produit.ecartPourcentage.toFixed(1)}%`
+                    ? `${getEcart(produit) >= 0 ? '+' : ''}${getEcart(produit).toFixed(1)}%`
                     : '—'
                   }
                 </td>

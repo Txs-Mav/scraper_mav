@@ -259,12 +259,16 @@ export interface AnalyticsData {
     name: string
     prix: number
     prixMoyenMarche: number
+    prixMinMarche: number
     ecartPourcentage: number
+    ecartPourcentageMin: number
     competitif: boolean
     hasCompetitor: boolean
     categorie: string
     sourceSite?: string
     disponibilite?: string
+    etat?: string
+    inventaire?: string
   }>
   evolutionPrix: Array<{
     date: string
@@ -519,16 +523,18 @@ export function calculateProductAnalysis(
   if (!groups.length) return []
 
   return groups
-    .filter(g => g.referenceProducts.length > 0) // N'inclure que VOS produits
+    .filter(g => g.referenceProducts.length > 0)
     .map(g => {
       const hasComp = g.competitorProducts.length > 0
 
-      // Prix de référence (notre prix)
       const prix = avgPrice(g.referenceProducts)
 
-      // Prix moyen du marché = moyenne des concurrents SEULEMENT
       const prixMoyenMarche = hasComp
         ? avgPrice(g.competitorProducts)
+        : 0
+
+      const prixMinMarche = hasComp
+        ? Math.min(...g.competitorProducts.map(p => p.prix))
         : 0
 
       const ecartPourcentage =
@@ -536,10 +542,14 @@ export function calculateProductAnalysis(
           ? ((prix - prixMoyenMarche) / prix) * 100
           : 0
 
-      // Compétitif: uniquement parmi les produits qui ONT des concurrents
+      const ecartPourcentageMin =
+        prix > 0 && hasComp && prixMinMarche > 0
+          ? ((prix - prixMinMarche) / prix) * 100
+          : 0
+
       const competitif = hasComp
         ? (prix <= prixMoyenMarche || Math.abs(ecartPourcentage) < 0.5)
-        : true // Sans concurrent = neutre, pas "compétitif"
+        : true
 
       const refProd = g.referenceProducts[0]
 
@@ -547,12 +557,16 @@ export function calculateProductAnalysis(
         name: g.name,
         prix,
         prixMoyenMarche,
+        prixMinMarche,
         ecartPourcentage,
+        ecartPourcentageMin,
         competitif,
         hasCompetitor: hasComp,
         categorie: g.categorie,
         sourceSite: refProd?.sourceSite,
         disponibilite: refProd?.disponibilite,
+        etat: refProd?.etat,
+        inventaire: refProd?.inventaire,
       }
     })
     .filter(p => p.prix > 0)
@@ -627,8 +641,10 @@ export function calculateOpportunities(
 }
 
 /**
- * Analyse par détaillant: compare chaque site concurrent au site de référence
- * uniquement via les produits matchés. Inclut un breakdown par catégorie.
+ * Analyse par détaillant: chaque site est comparé à la moyenne de TOUS les
+ * autres sites sur les produits matchés.
+ *
+ * Résultat: agressivite > 0 = plus cher que la moyenne, < 0 = moins cher.
  */
 export function calculateRetailerAnalysis(
   products: Product[],
@@ -639,112 +655,102 @@ export function calculateRetailerAnalysis(
   const groups = buildMatchedProducts(products, referenceSite)
   const normalizedReference = normalizeSiteKey(referenceSite)
 
-  // Collecter tous les sites concurrents
-  const competitorSites = new Set<string>()
+  const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
+  const totalProductsBySite: Record<string, number> = {}
+  for (const p of validProducts) {
+    const site = normalizeSiteKey(p.sourceSite || p.sourceUrl)
+    totalProductsBySite[site] = (totalProductsBySite[site] || 0) + 1
+  }
+
+  const allSitesSet = new Set<string>()
+  allSitesSet.add(normalizedReference)
   for (const g of groups) {
     for (const site of Object.keys(g.competitorsBySite)) {
-      competitorSites.add(site)
+      allSitesSet.add(site)
     }
   }
 
-  // Inclure le site de référence aussi
-  const allSites = [normalizedReference, ...Array.from(competitorSites)]
+  type SiteAcc = { ecartTotal: number; ecartCount: number; priceTotal: number; priceCount: number }
+  const siteAcc: Record<string, SiteAcc> = {}
+  const siteCatAcc: Record<string, Record<string, SiteAcc>> = {}
 
-  const results: AnalyticsData['detailleurs'] = []
+  for (const site of allSitesSet) {
+    siteAcc[site] = { ecartTotal: 0, ecartCount: 0, priceTotal: 0, priceCount: 0 }
+    siteCatAcc[site] = {}
+  }
 
-  for (const site of allSites) {
-    const isRef = site === normalizedReference
+  for (const g of groups) {
+    if (g.referenceProducts.length === 0 && g.competitorProducts.length === 0) continue
 
-    // Produits de ce site avec un match (présent sur ≥2 sites)
-    let ecartTotal = 0
-    let ecartCount = 0
-    let promoCount = 0
-    let totalProduits = 0
-    let prixTotal = 0
+    const pricesBySite: Record<string, number> = {}
 
-    // Par catégorie
-    const catStats: Record<string, { prixTotal: number; count: number; ecartTotal: number; ecartCount: number }> = {}
-
-    for (const g of groups) {
-      let siteProds: Product[]
-      let compareProds: Product[]
-
-      if (isRef) {
-        siteProds = g.referenceProducts
-        compareProds = g.competitorProducts
-      } else {
-        siteProds = g.competitorsBySite[site] || []
-        compareProds = g.referenceProducts
-      }
-
-      if (siteProds.length === 0) continue
-
-      const sitePrix = avgPrice(siteProds)
-      const comparePrix = compareProds.length > 0 ? avgPrice(compareProds) : 0
-
-      // Prix de référence pour ce groupe — TOUJOURS utilisé comme dénominateur
-      const refPrixForGroup = g.referenceProducts.length > 0 ? avgPrice(g.referenceProducts) : 0
-
-      totalProduits += siteProds.length
-      prixTotal += sitePrix * siteProds.length
-
-      if (refPrixForGroup > 0 && comparePrix > 0 && compareProds.length > 0) {
-        // Écart: (prixComparaison - prixSite) / prixRéférence
-        // Toujours relatif au prix de référence pour cohérence
-        const ecart = ((comparePrix - sitePrix) / refPrixForGroup) * 100
-        ecartTotal += ecart
-        ecartCount++
-
-        // Promo = prix significativement sous le prix de référence
-        if (sitePrix < refPrixForGroup * 0.92) {
-          promoCount++
-        }
-      }
-
-      // Stats par catégorie
-      const cat = g.categorie
-      if (!catStats[cat]) {
-        catStats[cat] = { prixTotal: 0, count: 0, ecartTotal: 0, ecartCount: 0 }
-      }
-      catStats[cat].prixTotal += sitePrix * siteProds.length
-      catStats[cat].count += siteProds.length
-      if (refPrixForGroup > 0 && comparePrix > 0 && compareProds.length > 0) {
-        const ecart = ((comparePrix - sitePrix) / refPrixForGroup) * 100
-        catStats[cat].ecartTotal += ecart
-        catStats[cat].ecartCount++
+    if (g.referenceProducts.length > 0) {
+      pricesBySite[normalizedReference] = avgPrice(g.referenceProducts)
+    }
+    for (const [site, prods] of Object.entries(g.competitorsBySite)) {
+      if (prods.length > 0) {
+        pricesBySite[site] = avgPrice(prods)
       }
     }
 
-    if (totalProduits === 0) continue
+    const sitesInGroup = Object.keys(pricesBySite)
+    if (sitesInGroup.length < 2) continue
 
-    const prixMoyen = prixTotal / totalProduits
-    const agressivite = ecartCount > 0 ? ecartTotal / ecartCount : 0
-    const frequencePromotions = ecartCount > 0 ? (promoCount / ecartCount) * 100 : 0
+    for (const site of sitesInGroup) {
+      const otherPrices = sitesInGroup.filter(s => s !== site).map(s => pricesBySite[s])
+      const avgOthers = otherPrices.reduce((s, v) => s + v, 0) / otherPrices.length
+      if (avgOthers <= 0) continue
 
-    const categorieStats = Object.entries(catStats)
-      .filter(([, s]) => s.count > 0)
+      const ecart = ((pricesBySite[site] - avgOthers) / avgOthers) * 100
+
+      siteAcc[site].ecartTotal += ecart
+      siteAcc[site].ecartCount++
+      siteAcc[site].priceTotal += pricesBySite[site]
+      siteAcc[site].priceCount++
+
+      const cat = g.categorie
+      if (!siteCatAcc[site][cat]) {
+        siteCatAcc[site][cat] = { ecartTotal: 0, ecartCount: 0, priceTotal: 0, priceCount: 0 }
+      }
+      siteCatAcc[site][cat].ecartTotal += ecart
+      siteCatAcc[site][cat].ecartCount++
+      siteCatAcc[site][cat].priceTotal += pricesBySite[site]
+      siteCatAcc[site][cat].priceCount++
+    }
+  }
+
+  const results: AnalyticsData['detailleurs'] = []
+
+  for (const site of allSitesSet) {
+    const acc = siteAcc[site]
+    if (acc.ecartCount === 0 && !totalProductsBySite[site]) continue
+
+    const agressivite = acc.ecartCount > 0 ? acc.ecartTotal / acc.ecartCount : 0
+    const prixMoyen = acc.priceCount > 0 ? acc.priceTotal / acc.priceCount : 0
+
+    const categorieStats = Object.entries(siteCatAcc[site] || {})
+      .filter(([, s]) => s.ecartCount > 0)
       .map(([cat, s]) => ({
         categorie: cat,
-        prixMoyen: s.prixTotal / s.count,
-        agressivite: s.ecartCount > 0 ? s.ecartTotal / s.ecartCount : 0,
-        nombreProduits: s.count,
+        prixMoyen: s.priceTotal / s.priceCount,
+        agressivite: s.ecartTotal / s.ecartCount,
+        nombreProduits: s.priceCount,
       }))
-      .sort((a, b) => b.agressivite - a.agressivite)
+      .sort((a, b) => a.agressivite - b.agressivite)
 
     results.push({
       site,
       prixMoyen,
       agressivite,
-      frequencePromotions,
-      nombreProduits: totalProduits,
-      produitsComparables: ecartCount,
-      isReference: isRef,
+      frequencePromotions: 0,
+      nombreProduits: totalProductsBySite[site] || 0,
+      produitsComparables: acc.ecartCount,
+      isReference: site === normalizedReference,
       categorieStats,
     })
   }
 
-  // Trier par écart moyen décroissant (le plus compétitif en premier)
-  return results.sort((a, b) => b.agressivite - a.agressivite)
+  return results.sort((a, b) => a.agressivite - b.agressivite)
 }
 
 /**

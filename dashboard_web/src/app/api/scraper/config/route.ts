@@ -45,7 +45,8 @@ export async function GET() {
         referenceUrl: "",
         urls: [],
         priceDifferenceFilter: null,
-        ignoreColors: false
+        ignoreColors: false,
+        inventoryOnly: true
       })
     }
 
@@ -55,6 +56,7 @@ export async function GET() {
       priceDifferenceFilter: config.price_difference_filter,
       categories: config.categories || [],
       ignoreColors: config.ignore_colors || false,
+      inventoryOnly: config.filter_catalogue_reference ?? true,
       updatedAt: config.updated_at
     })
   } catch (error: any) {
@@ -100,7 +102,8 @@ export async function POST(request: Request) {
       competitor_urls: newCompetitors,
       price_difference_filter: body.priceDifferenceFilter ?? null,
       categories: body.categories || [],
-      ignore_colors: body.ignoreColors || false
+      ignore_colors: body.ignoreColors || false,
+      filter_catalogue_reference: body.inventoryOnly || false
     }
 
     const { data, error } = await supabase
@@ -157,6 +160,7 @@ export async function POST(request: Request) {
         priceDifferenceFilter: data.price_difference_filter,
         categories: data.categories || [],
         ignoreColors: data.ignore_colors || false,
+        inventoryOnly: data.filter_catalogue_reference ?? true,
         updatedAt: data.updated_at
       }
     })
@@ -186,13 +190,21 @@ async function syncAlertFromConfig(
     .eq('reference_url', referenceUrl)
     .single()
 
+  // Read current config to get filter_catalogue_reference
+  const { data: currentConfig } = await serviceSupabase
+    .from('scraper_config')
+    .select('filter_catalogue_reference')
+    .eq('user_id', userId)
+    .single()
+  const filterCatalogue = currentConfig?.filter_catalogue_reference ?? true
+
   if (existing) {
-    // Update competitor URLs if changed
     const { error } = await serviceSupabase
       .from('scraper_alerts')
       .update({
         competitor_urls: competitorUrls,
         is_active: true,
+        filter_catalogue_reference: filterCatalogue,
       })
       .eq('id', existing.id)
 
@@ -220,6 +232,7 @@ async function syncAlertFromConfig(
       reference_url: referenceUrl,
       competitor_urls: competitorUrls,
       categories: ['inventaire', 'occasion', 'catalogue'],
+      filter_catalogue_reference: filterCatalogue,
       schedule_type: 'interval',
       schedule_hour: 0,
       schedule_minute: 0,
