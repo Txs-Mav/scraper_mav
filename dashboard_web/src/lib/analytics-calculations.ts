@@ -237,10 +237,17 @@ export function normalizeProductGroupKeyWithMode(p: Product, mode: MatchMode = '
 
 export { stripModelSuffixes }
 
+function extractModelCore(modele: string): string {
+  if (!modele) return modele
+  const match = modele.match(/^(.*?\b\d+)\b/)
+  if (match) return match[1].replace(/\s+/g, ' ').trim()
+  return modele.split(/\s+/)[0] || modele
+}
+
 export function getProductFamilyKey(p: Product): string {
   const fullKey = normalizeProductGroupKey(p)
   const [marque, modele] = fullKey.split('|')
-  return `${marque}|${stripModelSuffixes(modele)}`
+  return `${marque}|${extractModelCore(modele)}`
 }
 
 // ─── Interfaces ─────────────────────────────────────────────────────
