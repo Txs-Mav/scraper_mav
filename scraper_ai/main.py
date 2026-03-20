@@ -249,11 +249,11 @@ def enrich_product_year(product: dict) -> None:
         product['annee'] = year
 
 
-def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[str, str, int]:
-    """Crée une clé normalisée pour identifier les produits (marque + modèle + année).
+def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[str, str, int, str]:
+    """Crée une clé normalisée pour identifier les produits (marque + modèle + année + état).
 
-    Exclut du matching : localisation, concessionnaire, état, préfixes catégorie, couleurs.
-    Les couleurs sont retirées par défaut (cohérent avec le front-end TypeScript).
+    Exclut du matching : localisation, concessionnaire, préfixes catégorie, couleurs.
+    Inclut l'état (neuf/occasion) pour éviter de matcher un usagé avec un neuf.
     """
     import re
 
@@ -365,7 +365,11 @@ def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[st
     marque = re.sub(r'\s+', ' ', marque).strip()
     modele = re.sub(r'\s+', ' ', modele).strip()
 
-    return (marque, modele, annee)
+    etat = (product.get('etat') or 'neuf').lower().strip()
+    if etat in ('demonstrateur', 'demo'):
+        etat = 'neuf'
+
+    return (marque, modele, annee, etat)
 
 
 def _pick_best_ref(ref_matches: List[dict], current_price: float) -> dict:
@@ -400,7 +404,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
     print(f"📊 Référence: {reference_url} ({len(reference_products)} produits)")
     print(
         f"📊 Concurrent: {comparison_url} ({len(comparison_products)} produits)")
-    print(f"🔒 Matching strict: marque + modèle + année (année obligatoire)")
+    print(f"🔒 Matching strict: marque + modèle + année + état")
 
     # Enrichir tous les produits avec l'année avant le matching
     enriched_ref = 0
@@ -423,7 +427,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
     no_year_ref = 0
     for rp in reference_products:
         key = normalize_product_key(rp, ignore_colors=ignore_colors)
-        marque, modele, annee = key
+        marque, modele, annee, etat = key
 
         if not modele:
             skipped_ref += 1
@@ -439,7 +443,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         f"   📋 Clés de référence: {len(ref_exact)} (ignorées: {skipped_ref}, sans année: {no_year_ref})")
     sample_keys = list(ref_exact.keys())[:5]
     for k in sample_keys:
-        print(f"      Réf: marque='{k[0]}' modele='{k[1]}' annee={k[2]}")
+        print(f"      Réf: marque='{k[0]}' modele='{k[1]}' annee={k[2]} etat='{k[3]}'")
 
     matched_products = []
     skipped_comp = 0
@@ -448,7 +452,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
 
     for product in comparison_products:
         key = normalize_product_key(product, ignore_colors=ignore_colors)
-        marque, modele, annee = key
+        marque, modele, annee, etat = key
 
         if not modele:
             skipped_comp += 1
@@ -460,7 +464,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         ref_matches = None
         match_level = ''
 
-        # Match exact uniquement (marque + modele + annee)
+        # Match exact (marque + modele + annee + etat)
         if key in ref_exact:
             ref_matches = ref_exact[key]
             match_level = 'exact'
@@ -471,7 +475,6 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         best_match = _pick_best_ref(ref_matches, current_price)
         ref_price = float(best_match.get('prix', 0) or 0)
 
-        # Enrichir le produit avec les infos de comparaison
         product['prixReference'] = ref_price
         product['differencePrix'] = (
             current_price - ref_price) if current_price > 0 and ref_price > 0 else None
@@ -494,7 +497,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         if product['differencePrix'] is not None:
             diff_str = f"+{product['differencePrix']:.0f}$" if product['differencePrix'] >= 0 else f"{product['differencePrix']:.0f}$"
             print(
-                f"   ✅ [{match_level}] {marque} {modele} {annee or '?'}: {current_price:.0f}$ vs {ref_price:.0f}$ ({diff_str})")
+                f"   ✅ [{match_level}] {marque} {modele} {annee or '?'} ({etat}): {current_price:.0f}$ vs {ref_price:.0f}$ ({diff_str})")
 
     match_rate = (len(matched_products) / len(comparison_products)
                   * 100) if comparison_products else 0
@@ -507,7 +510,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         for p in comparison_products[:5]:
             k = normalize_product_key(p, ignore_colors=ignore_colors)
             print(
-                f"      Conc: marque='{k[0]}' modele='{k[1]}' annee={k[2]} | name='{p.get('name', '')[:50]}'")
+                f"      Conc: marque='{k[0]}' modele='{k[1]}' annee={k[2]} etat='{k[3]}' | name='{p.get('name', '')[:50]}'")
 
     print(
         f"\n📈 Correspondances: {len(matched_products)}/{len(comparison_products)} ({match_rate:.0f}%)")
