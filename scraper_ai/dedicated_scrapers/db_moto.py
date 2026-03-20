@@ -28,7 +28,7 @@ from bs4 import BeautifulSoup
 from .base import DedicatedScraper
 
 
-CATALOGUE_SITEMAPS = {
+CATALOGUE_CPTS = {
     'motorcycle': 'Motocyclette',
     'atv': 'VTT',
     'side-by-side': 'Côte à côte',
@@ -146,28 +146,57 @@ class DBMotoScraper(DedicatedScraper):
     # ================================================================
 
     def _discover_all_urls(self, categories: List[str]) -> Dict[str, List[str]]:
-        """Découvre TOUTES les URLs produits (catalogue + inventaire).
+        """Découvre TOUTES les URLs produits.
 
-        Toujours fetch les deux sources : les sitemaps catalogue contiennent les
-        produits neufs réels (pas juste un catalogue fabricant), et le sitemap
-        inventaire contient le stock en concession. Le paramètre categories
-        ne filtre que la SORTIE dans scrape(), pas la découverte.
+        Catalogue : API REST WordPress (CPTs motorcycle, atv, etc.) — fiable et complet.
+        Inventaire : sitemap XML.
         """
         url_map: Dict[str, List[str]] = {}
 
-        for slug, vtype in CATALOGUE_SITEMAPS.items():
-            sitemap_url = f"{self.SITEMAP_BASE}{slug}-sitemap.xml"
-            urls = self._fetch_sitemap_urls(sitemap_url)
-            if urls:
-                for u in urls:
-                    url_map.setdefault('catalogue', []).append(u)
+        catalogue_urls = self._discover_catalogue_via_rest()
+        if catalogue_urls:
+            url_map['catalogue'] = catalogue_urls
 
         sitemap_url = f"{self.SITEMAP_BASE}inventory-sitemap.xml"
-        urls = self._fetch_sitemap_urls(sitemap_url)
-        if urls:
-            url_map['inventaire'] = urls
+        inv_urls = self._fetch_sitemap_urls(sitemap_url)
+        if inv_urls:
+            url_map['inventaire'] = inv_urls
 
         return url_map
+
+    def _discover_catalogue_via_rest(self) -> List[str]:
+        """Découvre les URLs catalogue via l'API REST WordPress (fiable et complet)."""
+        all_urls: List[str] = []
+        rest_base = "https://www.dbmoto.ca/wp-json/wp/v2"
+
+        for cpt, vtype in CATALOGUE_CPTS.items():
+            page = 1
+            cat_count = 0
+            while True:
+                api_url = f"{rest_base}/{cpt}?per_page=100&page={page}&_fields=link"
+                try:
+                    resp = self.session.get(api_url, timeout=15)
+                    if resp.status_code != 200:
+                        break
+                    items = resp.json()
+                    if not items:
+                        break
+                    for item in items:
+                        link = item.get('link', '')
+                        if link:
+                            all_urls.append(link.rstrip('/'))
+                            cat_count += 1
+                    total = resp.headers.get('X-WP-TotalPages', '1')
+                    if page >= int(total):
+                        break
+                    page += 1
+                except Exception:
+                    break
+
+            if cat_count:
+                print(f"   📋 [{cpt}] {cat_count} URLs catalogue")
+
+        return all_urls
 
     def _fetch_sitemap_urls(self, sitemap_url: str) -> List[str]:
         try:
