@@ -492,6 +492,16 @@ class MotoplexScraper(DedicatedScraper):
     def _clean_name(name: str) -> str:
         if not name:
             return name
+        # Annotations entre astérisques: *LIQUIDATION*, *BAS KILOMÉTRAGE*, *744 KM*, etc.
+        name = re.sub(r'\*[^*]+\*', '', name)
+        # Annotations sans astérisques mais avec astérisque ouvrante orpheline: *744 KM
+        name = re.sub(r'\*\d+\s*km\b', '', name, flags=re.I)
+        # Mots-clés dealer standalone (sans astérisques)
+        name = re.sub(r'\b(?:liquidation|pour\s+pi[èe]ces?|bas\s+kil+om[ée]trage)\b', '', name, flags=re.I)
+        # Annotations km standalone: "744 KM", "1200 KM" (seulement si précédé de espace/début)
+        name = re.sub(r'(?<=\s)\d+\s*km\b', '', name, flags=re.I)
+        # Marque dupliquée: "BMW BMW R1200" → "BMW R1200"
+        name = re.sub(r'^(\w+)\s+\1\b', r'\1', name, flags=re.I)
         name = re.sub(r"\s+(?:neuf|usag[ée]+)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
         name = re.sub(r"\s+[àa]\s+vendre\s+.*$", '', name, flags=re.I)
         name = re.sub(r'\s*\|\s*Motoplex.*$', '', name, flags=re.I)
