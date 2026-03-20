@@ -229,12 +229,10 @@ function stripModelSuffixes(modele: string): string {
 
 export function normalizeProductGroupKeyWithMode(p: Product, mode: MatchMode = 'exact'): string {
   const fullKey = normalizeProductGroupKey(p)
-  if (mode === 'exact') return fullKey
-
-  const [marque, modele, annee, etat] = fullKey.split('|')
+  const [marque, modele, annee] = fullKey.split('|')
   const m = (mode === 'base' || mode === 'flexible') ? stripModelSuffixes(modele) : modele
   const y = (mode === 'no_year' || mode === 'flexible') ? '0' : annee
-  return `${marque}|${m}|${y}|${etat}`
+  return `${marque}|${m}|${y}`
 }
 
 // ─── Interfaces ─────────────────────────────────────────────────────

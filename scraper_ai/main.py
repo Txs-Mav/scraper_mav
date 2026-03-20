@@ -250,11 +250,11 @@ def enrich_product_year(product: dict) -> None:
         product['annee'] = year
 
 
-def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[str, str, int, str]:
-    """Crée une clé normalisée pour identifier les produits (marque + modèle + année + état).
+def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[str, str, int]:
+    """Crée une clé normalisée pour identifier les produits (marque + modèle + année).
 
     Exclut du matching : localisation, concessionnaire, préfixes catégorie, couleurs.
-    Inclut l'état (neuf/occasion) pour éviter de matcher un usagé avec un neuf.
+    L'état (neuf/occasion) n'est PAS dans la clé — un usagé peut matcher un neuf du même modèle.
     """
     import re
 
@@ -366,11 +366,7 @@ def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[st
     marque = re.sub(r'\s+', ' ', marque).strip()
     modele = re.sub(r'\s+', ' ', modele).strip()
 
-    etat = (product.get('etat') or 'neuf').lower().strip()
-    if etat in ('demonstrateur', 'demo'):
-        etat = 'neuf'
-
-    return (marque, modele, annee, etat)
+    return (marque, modele, annee)
 
 
 MATCH_MODES = ('exact', 'base', 'no_year', 'flexible')
@@ -447,12 +443,12 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         enrich_product_year(cp)
 
     def _build_key(product, mode):
-        marque, modele, annee, etat = normalize_product_key(product, ignore_colors=ignore_colors)
+        marque, modele, annee = normalize_product_key(product, ignore_colors=ignore_colors)
         if mode in ('base', 'flexible'):
             modele = _strip_model_suffixes(modele)
         if mode in ('no_year', 'flexible'):
             annee = 0
-        return (marque, modele, annee, etat)
+        return (marque, modele, annee)
 
     # Index de référence pour chaque niveau actif
     ref_index: Dict[Tuple, List[dict]] = {}
@@ -473,7 +469,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
 
     for product in comparison_products:
         key = _build_key(product, match_mode)
-        marque, modele, annee, etat = key
+        marque, modele, annee = key
 
         if not modele:
             skipped_comp += 1
@@ -510,7 +506,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
 
         if product['differencePrix'] is not None:
             diff_str = f"+{product['differencePrix']:.0f}$" if product['differencePrix'] >= 0 else f"{product['differencePrix']:.0f}$"
-            print(f"   ✅ [{match_mode}] {marque} {modele} {annee or '*'} ({etat}): "
+            print(f"   ✅ [{match_mode}] {marque} {modele} {annee or '*'}: "
                   f"{current_price:.0f}$ vs {ref_price:.0f}$ ({diff_str})")
 
     match_rate = (len(matched_products) / len(comparison_products)
@@ -523,7 +519,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         print(f"   ⚠️ Aucune correspondance! Échantillon des clés concurrent:")
         for p in comparison_products[:5]:
             k = _build_key(p, match_mode)
-            print(f"      Conc: marque='{k[0]}' modele='{k[1]}' annee={k[2]} etat='{k[3]}' "
+            print(f"      Conc: marque='{k[0]}' modele='{k[1]}' annee={k[2]} "
                   f"| name='{p.get('name', '')[:50]}'")
 
     print(f"\n📈 Correspondances: {len(matched_products)}/{len(comparison_products)} ({match_rate:.0f}%)")
