@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from "react"
 import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
-import { deepNormalize, normalizeProductGroupKey } from "@/lib/analytics-calculations"
+import { deepNormalize, normalizeProductGroupKey, normalizeProductGroupKeyWithMode, type MatchMode } from "@/lib/analytics-calculations"
 import { getEffectiveStatus } from "@/lib/product-status"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
 
@@ -34,6 +34,7 @@ type PriceComparisonTableProps = {
   competitorsUrls?: string[]
   ignoreColors?: boolean
   stripColorsFromDisplay?: boolean
+  matchMode?: MatchMode
   searchQuery?: string
   onSearchChange?: (query: string) => void
   onToggleColors?: () => void
@@ -185,7 +186,7 @@ function stripColorWords(text: string): string {
   return filtered.join(' ').replace(/\s+/g, ' ').trim() || text
 }
 
-export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }: PriceComparisonTableProps) {
+export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, matchMode = 'exact', searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }: PriceComparisonTableProps) {
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
@@ -233,8 +234,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     const productsWithComparison = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
     const productsRefOnly = products.filter(p => p.prixReference == null || p.prixReference === undefined)
 
-    // Clé alignée avec la page Analyse (normalizeProductGroupKey) pour garantir les mêmes regroupements
-    const getKey = (p: Product) => normalizeProductGroupKey(p as any)
+    const getKey = (p: Product) => normalizeProductGroupKeyWithMode(p as any, matchMode)
 
     // Index des quantités/URLs du site référent (pour ne pas accumuler les quantités des concurrents)
     const refInfoByKey = new Map<string, { quantity: number; groupedUrls: string[] }>()
@@ -347,7 +347,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         groupedUrls: g.groupedUrls,
       }
     })
-  }, [products, competitors])
+  }, [products, competitors, matchMode])
 
   // ── Actions d'export ──
 

@@ -11,7 +11,7 @@ import { getLocalScrapingsCount, migrateLocalScrapingsToSupabase } from "@/lib/l
 import LimitWarning from "./limit-warning"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useLanguage } from "@/contexts/language-context"
-import { KNOWN_BRANDS, normalizeProductGroupKey } from "@/lib/analytics-calculations"
+import { KNOWN_BRANDS, normalizeProductGroupKey, type MatchMode } from "@/lib/analytics-calculations"
 import { getEffectiveStatus } from "@/lib/product-status"
 import PriceComparisonTable from "./price-comparison-table"
 import Celebration from "./celebration"
@@ -234,6 +234,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [shouldStartScraping, setShouldStartScraping] = useState(false)
   const [ignoreColors, setIgnoreColors] = useState(false)
   const [showColorsInNames, setShowColorsInNames] = useState(true)
+  const [matchMode, setMatchMode] = useState<MatchMode>('exact')
   const [showFilters, setShowFilters] = useState(false)
   const [lastScrapingTime, setLastScrapingTime] = useState<Date | null>(null)
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
@@ -356,6 +357,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           if (configRes.ok) {
             const configData = await configRes.json()
             if (typeof configData.ignoreColors === 'boolean') setIgnoreColors(configData.ignoreColors)
+            if (configData.matchMode) setMatchMode(configData.matchMode as MatchMode)
           }
         } catch { /* non critique */ }
       } catch (err: any) {
@@ -917,12 +919,25 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
 
         {/* Tab description */}
-        <div className="px-6 py-3 bg-gray-50/50 dark:bg-white/[0.015] border-b border-gray-100/50 dark:border-white/[0.03]">
+        <div className="px-6 py-3 bg-gray-50/50 dark:bg-white/[0.015] border-b border-gray-100/50 dark:border-white/[0.03] flex items-center justify-between gap-4">
           <p className="text-xs font-normal text-gray-400 dark:text-gray-500">
             {activeTab === "reference" && t("dash.refProducts")}
             {activeTab === "allCompetitors" && t("dash.allCompDesc")}
             {activeTab.startsWith("site-") && `${t("dash.productsOf")} ${extractDomain(activeTab.replace("site-", ""))}`}
           </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">{t("config.matchMode")}</span>
+            <select
+              value={matchMode}
+              onChange={(e) => setMatchMode(e.target.value as MatchMode)}
+              className="text-[11px] pl-2 pr-6 py-1 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-gray-300 dark:focus:ring-white/10"
+            >
+              <option value="exact">{t("config.matchMode.exact")}</option>
+              <option value="base">{t("config.matchMode.base")}</option>
+              <option value="no_year">{t("config.matchMode.no_year")}</option>
+              <option value="flexible">{t("config.matchMode.flexible")}</option>
+            </select>
+          </div>
         </div>
 
         <PriceComparisonTable
@@ -930,6 +945,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))}
           ignoreColors={ignoreColors}
           stripColorsFromDisplay={!showColorsInNames}
+          matchMode={matchMode}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onToggleColors={() => setShowColorsInNames(prev => !prev)}

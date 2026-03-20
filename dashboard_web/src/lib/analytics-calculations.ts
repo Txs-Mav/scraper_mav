@@ -219,6 +219,24 @@ export function normalizeProductGroupKey(p: Product): string {
   return `${marque}|${modele}|${annee || 0}|${p.etat || 'neuf'}`
 }
 
+export type MatchMode = 'exact' | 'base' | 'no_year' | 'flexible'
+
+const TRIM_SUFFIXES = /\b(?:abs|cbs|tcs|ktrc|eps|dps|ps|se|le|dx|lx|sx|ex|sr|gt|st|rs|ss|rr|limited|ltd|sport|touring|trail|adventure|explore|premium|deluxe|elite|plus|pro|base|standard|special|4x4|awd|2wd|4wd|xt|xt-p|x-tp)\b/gi
+
+function stripModelSuffixes(modele: string): string {
+  return modele.replace(TRIM_SUFFIXES, '').replace(/\s+/g, ' ').trim()
+}
+
+export function normalizeProductGroupKeyWithMode(p: Product, mode: MatchMode = 'exact'): string {
+  const fullKey = normalizeProductGroupKey(p)
+  if (mode === 'exact') return fullKey
+
+  const [marque, modele, annee, etat] = fullKey.split('|')
+  const m = (mode === 'base' || mode === 'flexible') ? stripModelSuffixes(modele) : modele
+  const y = (mode === 'no_year' || mode === 'flexible') ? '0' : annee
+  return `${marque}|${m}|${y}|${etat}`
+}
+
 // ─── Interfaces ─────────────────────────────────────────────────────
 
 export interface ScrapeMetadata {
