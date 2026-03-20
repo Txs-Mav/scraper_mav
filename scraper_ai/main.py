@@ -70,7 +70,7 @@ COLOR_KEYWORDS = [
     'matte', 'glossy', 'metallic', 'pearl', 'satin', 'carbon',
     'dark', 'light', 'neon', 'bright',
     'ivory', 'charcoal', 'titanium', 'copper', 'steel', 'platinum', 'graphite',
-    'racing', 'candy', 'phantom', 'midnight', 'arctic', 'cosmic', 'storm',
+    'racing', 'candy', 'phantom', 'midnight', 'cosmic', 'storm',
     # Descripteurs de couleur (souvent dans les noms de véhicules)
     'nouveau', 'nouvelle', 'special', 'édition',
 ]

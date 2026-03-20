@@ -50,7 +50,7 @@ _COLOR_WORDS = {
     'nebuleux', 'nebuleuse',
     'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
     'gray', 'grey', 'silver', 'gold', 'brown', 'matte', 'glossy', 'pearl', 'carbon',
-    'dark', 'light', 'bright', 'midnight', 'arctic', 'cosmic', 'storm', 'candy',
+    'dark', 'light', 'bright', 'midnight', 'cosmic', 'storm', 'candy',
     'ivory', 'charcoal', 'titanium', 'copper', 'steel', 'platinum',
 }
 
@@ -174,28 +174,75 @@ class DBMotoScraper(DedicatedScraper):
             cat_count = 0
             while True:
                 api_url = f"{rest_base}/{cpt}?per_page=100&page={page}&_fields=link"
-                try:
-                    resp = self.session.get(api_url, timeout=15)
-                    if resp.status_code != 200:
-                        break
-                    items = resp.json()
-                    if not items:
-                        break
-                    for item in items:
-                        link = item.get('link', '')
-                        if link:
-                            all_urls.append(link.rstrip('/'))
-                            cat_count += 1
-                    total = resp.headers.get('X-WP-TotalPages', '1')
-                    if page >= int(total):
-                        break
-                    page += 1
-                except Exception:
+                items = self._rest_get_with_retry(api_url)
+                if items is None:
+                    print(f"   ⚠️ [{cpt}] API REST échoué page {page}")
                     break
+                if not items:
+                    break
+                for item in items:
+                    link = item.get('link', '')
+                    if link:
+                        all_urls.append(link.rstrip('/'))
+                        cat_count += 1
+                total_pages = self._last_rest_total_pages or 1
+                if page >= total_pages:
+                    break
+                page += 1
 
             if cat_count:
                 print(f"   📋 [{cpt}] {cat_count} URLs catalogue")
 
+        if not all_urls:
+            print("   ⚠️ API REST 0 résultat — fallback sitemap catalogue")
+            all_urls = self._discover_catalogue_via_sitemaps()
+
+        return all_urls
+
+    _last_rest_total_pages: int = 1
+
+    def _rest_get_with_retry(self, url: str, max_retries: int = 3) -> Optional[list]:
+        """GET avec retry et backoff pour l'API REST WP."""
+        self._last_rest_total_pages = 1
+        for attempt in range(max_retries):
+            try:
+                resp = self.session.get(url, timeout=20)
+                if resp.status_code == 200:
+                    try:
+                        self._last_rest_total_pages = int(
+                            resp.headers.get('X-WP-TotalPages', '1'))
+                    except (ValueError, TypeError):
+                        pass
+                    return resp.json()
+                if resp.status_code in (429, 503):
+                    wait = 2 ** (attempt + 1)
+                    print(f"      ⏳ Rate limit ({resp.status_code}), retry dans {wait}s...")
+                    time.sleep(wait)
+                    continue
+                return None
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"      ⏳ Erreur REST ({e}), retry dans {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"      ❌ REST échoué après {max_retries} tentatives: {e}")
+        return None
+
+    def _discover_catalogue_via_sitemaps(self) -> List[str]:
+        """Fallback : découverte catalogue via sitemaps (filtre les 404)."""
+        sitemap_slugs = {
+            'motorcycle': 'Motocyclette', 'atv': 'VTT',
+            'side-by-side': 'Côte à côte', 'snowmobile': 'Motoneige',
+            'watercraft': 'Motomarine', 'electric-bike': 'Vélo électrique',
+            'boat': 'Bateau',
+        }
+        all_urls: List[str] = []
+        for slug in sitemap_slugs:
+            sitemap_url = f"{self.SITEMAP_BASE}{slug}-sitemap.xml"
+            urls = self._fetch_sitemap_urls(sitemap_url)
+            all_urls.extend(urls)
+        print(f"   📋 Sitemap fallback: {len(all_urls)} URLs catalogue (non vérifiées)")
         return all_urls
 
     def _fetch_sitemap_urls(self, sitemap_url: str) -> List[str]:
