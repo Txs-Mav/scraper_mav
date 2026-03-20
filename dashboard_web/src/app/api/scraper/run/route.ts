@@ -21,13 +21,13 @@ export async function POST(request: Request) {
 
     const userId = user.id
     const body = await request.json()
-    const { referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly } = body
+    const { referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly, matchMode } = body
 
     // --- Proxy vers le backend Railway si on est sur Vercel ---
     if (hasBackend()) {
       try {
         const backendRes = await proxyToBackend('/scraper/run', {
-          body: { userId, referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly },
+          body: { userId, referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly, matchMode: matchMode || 'exact' },
         })
         const data = await backendRes.json()
         if (!backendRes.ok) {
@@ -98,6 +98,11 @@ export async function POST(request: Request) {
     // Ajouter l'option --ignore-colors si demandé (permet plus de matchs)
     if (ignoreColors) {
       args.push('--ignore-colors')
+    }
+
+    // Mode de matching (exact par défaut)
+    if (matchMode && matchMode !== 'exact') {
+      args.push('--match-mode', matchMode)
     }
 
     // NOTE: --inventory-only n'est PLUS passé au Python.

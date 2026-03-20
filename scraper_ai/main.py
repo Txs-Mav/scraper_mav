@@ -4,6 +4,7 @@ Scraping intelligent avec cache Supabase et sélecteurs dynamiques
 """
 import argparse
 import json
+import re
 import time
 import os
 import sys
@@ -372,6 +373,28 @@ def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[st
     return (marque, modele, annee, etat)
 
 
+MATCH_MODES = ('exact', 'base', 'no_year', 'flexible')
+
+_TRIM_SUFFIXES = re.compile(
+    r'\b(?:'
+    r'abs|cbs|tcs|ktrc'                                       # freins/traction
+    r'|eps|dps|ps'                                             # direction assistée
+    r'|se|le|dx|lx|sx|ex|sr|gt|st|rs|ss|rr'                  # trims 2 lettres
+    r'|limited|ltd|sport|touring|trail|adventure|explore'      # trims longs
+    r'|premium|deluxe|elite|plus|pro|base|standard|special'
+    r'|4x4|awd|2wd|4wd'                                       # transmission
+    r'|xt|xt-p|x-tp'                                          # Can-Am trims
+    r')\b',
+    re.I
+)
+
+
+def _strip_model_suffixes(modele: str) -> str:
+    """Retire les suffixes de trim/variante pour obtenir le modèle de base."""
+    base = _TRIM_SUFFIXES.sub('', modele)
+    return re.sub(r'\s+', ' ', base).strip()
+
+
 def _pick_best_ref(ref_matches: List[dict], current_price: float) -> dict:
     """Sélectionne le meilleur produit de référence parmi les candidats (prix le plus proche)."""
     best = None
@@ -390,88 +413,77 @@ def _pick_best_ref(ref_matches: List[dict], current_price: float) -> dict:
 
 def find_matching_products(reference_products: List[dict], comparison_products: List[dict],
                            reference_url: str, comparison_url: str,
-                           ignore_colors: bool = True) -> List[dict]:
+                           ignore_colors: bool = True,
+                           match_mode: str = 'exact') -> List[dict]:
     """
     Trouve les produits du concurrent qui existent aussi dans le site de référence.
 
-    Matching STRICT : marque + modèle + année doivent correspondre.
-    Les couleurs sont ignorées par défaut pour éviter les faux négatifs
-    (un même modèle en couleurs différentes doit quand même matcher).
+    match_mode contrôle la tolérance :
+      exact    — marque + modèle complet + année + état
+      base     — marque + modèle de base (sans suffixes ABS/SE/EPS/Limited…) + année + état
+      no_year  — marque + modèle complet + état (ignore l'année)
+      flexible — marque + modèle de base + état (ignore suffixes ET année)
     """
+    if match_mode not in MATCH_MODES:
+        match_mode = 'exact'
+
+    mode_labels = {
+        'exact': 'marque + modèle + année + état',
+        'base': 'marque + modèle de base + année + état',
+        'no_year': 'marque + modèle + état (toutes années)',
+        'flexible': 'marque + modèle de base + état (toutes années)',
+    }
+
     print(f"\n{'='*60}")
     print(f"🔍 COMPARAISON AVEC LE SITE DE RÉFÉRENCE")
     print(f"{'='*60}")
     print(f"📊 Référence: {reference_url} ({len(reference_products)} produits)")
-    print(
-        f"📊 Concurrent: {comparison_url} ({len(comparison_products)} produits)")
-    print(f"🔒 Matching strict: marque + modèle + année + état")
+    print(f"📊 Concurrent: {comparison_url} ({len(comparison_products)} produits)")
+    print(f"🔒 Mode: {match_mode} — {mode_labels[match_mode]}")
 
-    # Enrichir tous les produits avec l'année avant le matching
-    enriched_ref = 0
-    enriched_comp = 0
     for rp in reference_products:
-        had_year = bool(rp.get('annee'))
         enrich_product_year(rp)
-        if not had_year and rp.get('annee'):
-            enriched_ref += 1
     for cp in comparison_products:
-        had_year = bool(cp.get('annee'))
         enrich_product_year(cp)
-        if not had_year and cp.get('annee'):
-            enriched_comp += 1
-    print(f"   📅 Années enrichies: {enriched_ref} réf, {enriched_comp} conc (depuis name/URL)")
 
-    ref_exact: Dict[Tuple, List[dict]] = {}
+    def _build_key(product, mode):
+        marque, modele, annee, etat = normalize_product_key(product, ignore_colors=ignore_colors)
+        if mode in ('base', 'flexible'):
+            modele = _strip_model_suffixes(modele)
+        if mode in ('no_year', 'flexible'):
+            annee = 0
+        return (marque, modele, annee, etat)
 
+    # Index de référence pour chaque niveau actif
+    ref_index: Dict[Tuple, List[dict]] = {}
     skipped_ref = 0
-    no_year_ref = 0
-    for rp in reference_products:
-        key = normalize_product_key(rp, ignore_colors=ignore_colors)
-        marque, modele, annee, etat = key
 
-        if not modele:
+    for rp in reference_products:
+        key = _build_key(rp, match_mode)
+        if not key[1]:
             skipped_ref += 1
             continue
-        if not annee:
-            no_year_ref += 1
+        ref_index.setdefault(key, []).append(rp)
 
-        if key not in ref_exact:
-            ref_exact[key] = []
-        ref_exact[key].append(rp)
-
-    print(
-        f"   📋 Clés de référence: {len(ref_exact)} (ignorées: {skipped_ref}, sans année: {no_year_ref})")
-    sample_keys = list(ref_exact.keys())[:5]
-    for k in sample_keys:
-        print(f"      Réf: marque='{k[0]}' modele='{k[1]}' annee={k[2]} etat='{k[3]}'")
+    print(f"   📋 Clés de référence: {len(ref_index)} (ignorées: {skipped_ref})")
 
     matched_products = []
     skipped_comp = 0
-    no_year_comp = 0
-    match_levels = {'exact': 0}
+    match_levels: Dict[str, int] = {}
 
     for product in comparison_products:
-        key = normalize_product_key(product, ignore_colors=ignore_colors)
+        key = _build_key(product, match_mode)
         marque, modele, annee, etat = key
 
         if not modele:
             skipped_comp += 1
             continue
-        if not annee:
-            no_year_comp += 1
 
-        current_price = float(product.get('prix', 0) or 0)
-        ref_matches = None
-        match_level = ''
-
-        # Match exact (marque + modele + annee + etat)
-        if key in ref_exact:
-            ref_matches = ref_exact[key]
-            match_level = 'exact'
-
+        ref_matches = ref_index.get(key)
         if not ref_matches:
             continue
 
+        current_price = float(product.get('prix', 0) or 0)
         best_match = _pick_best_ref(ref_matches, current_price)
         ref_price = float(best_match.get('prix', 0) or 0)
 
@@ -479,6 +491,7 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         product['differencePrix'] = (
             current_price - ref_price) if current_price > 0 and ref_price > 0 else None
         product['siteReference'] = reference_url
+        product['matchLevel'] = match_mode
         product['produitReference'] = {
             'name': best_match.get('name'),
             'sourceUrl': best_match.get('sourceUrl'),
@@ -486,34 +499,34 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
             'image': best_match.get('image'),
             'inventaire': best_match.get('inventaire'),
             'kilometrage': best_match.get('kilometrage'),
+            'annee': best_match.get('annee'),
         }
 
         if not product.get('sourceSite'):
             product['sourceSite'] = comparison_url
 
         matched_products.append(product)
-        match_levels[match_level] = match_levels.get(match_level, 0) + 1
+        match_levels[match_mode] = match_levels.get(match_mode, 0) + 1
 
         if product['differencePrix'] is not None:
             diff_str = f"+{product['differencePrix']:.0f}$" if product['differencePrix'] >= 0 else f"{product['differencePrix']:.0f}$"
-            print(
-                f"   ✅ [{match_level}] {marque} {modele} {annee or '?'} ({etat}): {current_price:.0f}$ vs {ref_price:.0f}$ ({diff_str})")
+            print(f"   ✅ [{match_mode}] {marque} {modele} {annee or '*'} ({etat}): "
+                  f"{current_price:.0f}$ vs {ref_price:.0f}$ ({diff_str})")
 
     match_rate = (len(matched_products) / len(comparison_products)
                   * 100) if comparison_products else 0
-    print(f"\n   📋 Concurrent - ignorés (modèle vide): {skipped_comp}, sans année: {no_year_comp}")
-    print(
-        f"   📊 Matching: exact={match_levels['exact']}")
+
+    levels_str = ', '.join(f"{k}={v}" for k, v in match_levels.items())
+    print(f"\n   📊 Matching: {levels_str or 'aucun'}")
 
     if not matched_products and comparison_products:
         print(f"   ⚠️ Aucune correspondance! Échantillon des clés concurrent:")
         for p in comparison_products[:5]:
-            k = normalize_product_key(p, ignore_colors=ignore_colors)
-            print(
-                f"      Conc: marque='{k[0]}' modele='{k[1]}' annee={k[2]} etat='{k[3]}' | name='{p.get('name', '')[:50]}'")
+            k = _build_key(p, match_mode)
+            print(f"      Conc: marque='{k[0]}' modele='{k[1]}' annee={k[2]} etat='{k[3]}' "
+                  f"| name='{p.get('name', '')[:50]}'")
 
-    print(
-        f"\n📈 Correspondances: {len(matched_products)}/{len(comparison_products)} ({match_rate:.0f}%)")
+    print(f"\n📈 Correspondances: {len(matched_products)}/{len(comparison_products)} ({match_rate:.0f}%)")
     print(f"{'='*60}\n")
 
     return matched_products
@@ -689,14 +702,17 @@ Exemples:
                         help='Garder les couleurs lors du matching (par défaut les couleurs sont ignorées)')
     parser.add_argument('--inventory-only', action='store_true',
                         help='Extraire seulement les produits d\'inventaire (exclut les pages catalogue/showroom)')
+    parser.add_argument('--match-mode', choices=MATCH_MODES, default='exact',
+                        help='Mode de matching: exact, base (sans suffixes), no_year, flexible (sans suffixes ni année)')
 
     args = parser.parse_args()
 
     urls = args.urls
     reference_url = args.reference_url
     force_refresh = args.force_refresh
-    ignore_colors = not args.strict_colors  # True par défaut (--ignore-colors est maintenant un no-op)
+    ignore_colors = not args.strict_colors
     inventory_only = args.inventory_only
+    match_mode = args.match_mode
     user_id = args.user_id or os.environ.get('SCRAPER_USER_ID')
 
     # VÉRIFICATION OBLIGATOIRE: L'utilisateur doit être connecté
@@ -764,6 +780,7 @@ Exemples:
     print(f"👤 User ID: {user_id or 'Non connecté (local)'}")
     print(f"📂 Catégories: {categories}")
     print(f"🎨 Ignorer couleurs: {'Oui' if ignore_colors else 'Non'}")
+    print(f"🔗 Mode matching: {match_mode}")
     print(
         f"📦 Inventaire seulement: référence={'Oui' if inventory_only else 'Non'}, concurrents=Non (extraction complète)")
     print(f"{'='*70}\n")
@@ -1026,7 +1043,8 @@ Exemples:
                     comparison_products=competitor_products,
                     reference_url=reference_url,
                     comparison_url=url,
-                    ignore_colors=ignore_colors
+                    ignore_colors=ignore_colors,
+                    match_mode=match_mode
                 )
                 all_matched_products.extend(matched)
 

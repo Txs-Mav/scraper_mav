@@ -115,6 +115,7 @@ class ScraperRunRequest(BaseModel):
     forceRefresh: bool = False
     ignoreColors: bool = False
     inventoryOnly: bool = False
+    matchMode: str = 'exact'
 
 class ScraperAIRunRequest(BaseModel):
     userId: str
@@ -156,6 +157,8 @@ async def scraper_run(body: ScraperRunRequest):
         args.append("--ignore-colors")
     if body.inventoryOnly:
         args.append("--inventory-only")
+    if body.matchMode and body.matchMode != 'exact':
+        args.extend(["--match-mode", body.matchMode])
     args.extend(all_urls)
 
     job_id = str(uuid.uuid4())

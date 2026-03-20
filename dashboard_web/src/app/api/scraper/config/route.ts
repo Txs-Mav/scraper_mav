@@ -57,6 +57,7 @@ export async function GET() {
       categories: config.categories || [],
       ignoreColors: config.ignore_colors || false,
       inventoryOnly: config.filter_catalogue_reference ?? true,
+      matchMode: config.match_mode || 'exact',
       updatedAt: config.updated_at
     })
   } catch (error: any) {
@@ -103,7 +104,8 @@ export async function POST(request: Request) {
       price_difference_filter: body.priceDifferenceFilter ?? null,
       categories: body.categories || [],
       ignore_colors: body.ignoreColors || false,
-      filter_catalogue_reference: body.inventoryOnly || false
+      filter_catalogue_reference: body.inventoryOnly || false,
+      match_mode: body.matchMode || 'exact'
     }
 
     const { data, error } = await supabase
@@ -161,6 +163,7 @@ export async function POST(request: Request) {
         categories: data.categories || [],
         ignoreColors: data.ignore_colors || false,
         inventoryOnly: data.filter_catalogue_reference ?? true,
+        matchMode: data.match_mode || 'exact',
         updatedAt: data.updated_at
       }
     })

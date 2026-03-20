@@ -96,8 +96,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const [urls, setUrls] = useState<string[]>([""])
   const [competitorEnabled, setCompetitorEnabled] = useState<boolean[]>([true])
   const [forceRefresh, setForceRefresh] = useState(false)
-  const [ignoreColors, setIgnoreColors] = useState(false) // Ignorer les couleurs pour le matching
-  const [inventoryOnly, setInventoryOnly] = useState(true) // Extraire seulement l'inventaire réel
+  const [ignoreColors, setIgnoreColors] = useState(false)
+  const [inventoryOnly, setInventoryOnly] = useState(true)
+  const [matchMode, setMatchMode] = useState<string>('exact')
   const [isScraping, setIsScraping] = useState(false)
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(true)
@@ -457,7 +458,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       const response = await fetch("/api/scraper/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ referenceUrl: currentRefUrl, urls: allUrls, forceRefresh, ignoreColors, inventoryOnly, useAI: true }),
+        body: JSON.stringify({ referenceUrl: currentRefUrl, urls: allUrls, forceRefresh, ignoreColors, inventoryOnly, matchMode, useAI: true }),
       })
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -491,6 +492,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
         urls: competitorUrls,
         ignoreColors: ignoreColors,
         inventoryOnly: inventoryOnly,
+        matchMode: matchMode,
         skipAutoScrape: overrides?.skipAutoScrape || false,
       }
       console.log('Saving config:', configData)
@@ -518,6 +520,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
         }
         if (typeof config.ignoreColors === 'boolean') {
           setIgnoreColors(config.ignoreColors)
+        }
+        if (config.matchMode) {
+          setMatchMode(config.matchMode)
         }
         if (typeof config.inventoryOnly === 'boolean') {
           setInventoryOnly(config.inventoryOnly)
@@ -956,6 +961,22 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   {t("config.filterCatalog")}
                 </span>
               </label>
+
+              <div className="pt-1">
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5 px-1">
+                  {t("config.matchMode")}
+                </label>
+                <select
+                  value={matchMode}
+                  onChange={(e) => setMatchMode(e.target.value)}
+                  className="w-full text-sm px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/20"
+                >
+                  <option value="exact">{t("config.matchMode.exact")}</option>
+                  <option value="base">{t("config.matchMode.base")}</option>
+                  <option value="no_year">{t("config.matchMode.no_year")}</option>
+                  <option value="flexible">{t("config.matchMode.flexible")}</option>
+                </select>
+              </div>
 
             </div>
           </div>
