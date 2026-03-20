@@ -235,6 +235,14 @@ export function normalizeProductGroupKeyWithMode(p: Product, mode: MatchMode = '
   return `${marque}|${m}|${y}`
 }
 
+export { stripModelSuffixes }
+
+export function getProductFamilyKey(p: Product): string {
+  const fullKey = normalizeProductGroupKey(p)
+  const [marque, modele] = fullKey.split('|')
+  return `${marque}|${stripModelSuffixes(modele)}`
+}
+
 // ─── Interfaces ─────────────────────────────────────────────────────
 
 export interface ScrapeMetadata {

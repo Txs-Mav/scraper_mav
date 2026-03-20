@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from "react"
 import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
-import { deepNormalize, normalizeProductGroupKey, normalizeProductGroupKeyWithMode, type MatchMode } from "@/lib/analytics-calculations"
+import { deepNormalize, normalizeProductGroupKey, normalizeProductGroupKeyWithMode, getProductFamilyKey, type MatchMode } from "@/lib/analytics-calculations"
 import { getEffectiveStatus } from "@/lib/product-status"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
 
@@ -399,9 +399,54 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     }
   }, [shareEmails, shareSubject, shareMessage, tableData, competitors])
 
+  type TableRow = (typeof tableData)[number]
+  type FamilyGroup = { familyKey: string; familyLabel: string; rows: TableRow[] }
+
+  const familyGroups = useMemo<FamilyGroup[]>(() => {
+    const families = new Map<string, { label: string; rows: TableRow[] }>()
+
+    for (const row of tableData) {
+      const fk = getProductFamilyKey({
+        name: row.name,
+        marque: row.marque,
+        modele: row.modele,
+        prix: row.reference || 0,
+      } as any)
+
+      if (!families.has(fk)) {
+        const [marque, baseModel] = fk.split('|')
+        const label = marque && baseModel
+          ? `${marque.charAt(0).toUpperCase() + marque.slice(1)} ${baseModel.toUpperCase()}`
+          : row.marque || row.name
+        families.set(fk, { label, rows: [] })
+      }
+      families.get(fk)!.rows.push(row)
+    }
+
+    return Array.from(families.values())
+      .map(f => ({ familyKey: f.label, familyLabel: f.label, rows: f.rows }))
+      .sort((a, b) => b.rows.length - a.rows.length)
+  }, [tableData])
+
+  const flatRows = useMemo(() => {
+    const result: Array<{ type: 'family'; label: string; count: number } | { type: 'row'; row: TableRow; globalIdx: number }> = []
+    let globalIdx = 0
+    for (const family of familyGroups) {
+      if (family.rows.length > 1) {
+        result.push({ type: 'family', label: family.familyLabel, count: family.rows.length })
+      }
+      for (const row of family.rows) {
+        result.push({ type: 'row', row, globalIdx })
+        globalIdx++
+      }
+    }
+    return result
+  }, [familyGroups])
+
   const ROWS_PER_PAGE = 50
   const [currentPage, setCurrentPage] = useState(0)
-  const totalPages = Math.max(1, Math.ceil(tableData.length / ROWS_PER_PAGE))
+  const totalRows = flatRows.filter(r => r.type === 'row').length
+  const totalPages = Math.max(1, Math.ceil(totalRows / ROWS_PER_PAGE))
 
   useEffect(() => {
     setCurrentPage(0)
@@ -499,7 +544,24 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   </td>
                 </tr>
               )}
-              {data.map((p, idx) => {
+              {flatRows.slice(
+                currentPage * ROWS_PER_PAGE,
+                currentPage * ROWS_PER_PAGE + ROWS_PER_PAGE + 20
+              ).map((entry, flatIdx) => {
+                if (entry.type === 'family') {
+                  return (
+                    <tr key={`fam-${flatIdx}`} className="bg-gray-50/80 dark:bg-white/[0.02]">
+                      <td colSpan={3 + cols.length} className="px-4 py-1.5 border-b border-gray-200/60 dark:border-white/[0.06]">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                          {entry.label}
+                        </span>
+                        <span className="ml-2 text-[10px] text-gray-300 dark:text-gray-600">{entry.count}</span>
+                      </td>
+                    </tr>
+                  )
+                }
+                const p = entry.row
+                const idx = entry.globalIdx
                 const isUsed = p.etat === 'occasion' || p.etat === 'vehicules_occasion' || p.sourceCategorie === 'occasion' || p.sourceCategorie === 'vehicules_occasion'
                 const hasDetails = (isUsed && p.kilometrage != null) || !!p.inventaire
                 return (
@@ -729,15 +791,15 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
 
       <div id="price-comparison-table">
         {renderTable(
-          tableData.slice(currentPage * ROWS_PER_PAGE, (currentPage + 1) * ROWS_PER_PAGE),
+          tableData,
           t("table.noProductsYet")
         )}
       </div>
 
-      {tableData.length > ROWS_PER_PAGE && (
+      {totalRows > ROWS_PER_PAGE && (
         <div className="flex items-center justify-between mt-4 px-1">
           <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-            {t("table.showing")} {currentPage * ROWS_PER_PAGE + 1} {t("table.to")} {Math.min((currentPage + 1) * ROWS_PER_PAGE, tableData.length)} {t("table.of")} {tableData.length}
+            {t("table.showing")} {currentPage * ROWS_PER_PAGE + 1} {t("table.to")} {Math.min((currentPage + 1) * ROWS_PER_PAGE, totalRows)} {t("table.of")} {totalRows}
           </span>
           <div className="flex items-center gap-1">
             <button

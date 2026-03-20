@@ -962,21 +962,6 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 </span>
               </label>
 
-              <div className="pt-1">
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5 px-1">
-                  {t("config.matchMode")}
-                </label>
-                <select
-                  value={matchMode}
-                  onChange={(e) => setMatchMode(e.target.value)}
-                  className="w-full text-sm px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/20"
-                >
-                  <option value="exact">{t("config.matchMode.exact")}</option>
-                  <option value="base">{t("config.matchMode.base")}</option>
-                  <option value="no_year">{t("config.matchMode.no_year")}</option>
-                  <option value="flexible">{t("config.matchMode.flexible")}</option>
-                </select>
-              </div>
 
             </div>
           </div>
