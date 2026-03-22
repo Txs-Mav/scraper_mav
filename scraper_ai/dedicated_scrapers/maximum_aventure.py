@@ -643,6 +643,59 @@ class MaximumAventureScraper(DedicatedScraper):
     # REGROUPEMENT
     # ================================================================
 
+    @staticmethod
+    def _deep_normalize(text: str) -> str:
+        import unicodedata
+        if not text:
+            return ''
+        text = text.lower().strip()
+        text = unicodedata.normalize('NFKD', text)
+        text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))
+        text = re.sub(r'([a-z])(\d)', r'\1 \2', text)
+        text = re.sub(r'(\d)([a-z])', r'\1 \2', text)
+        text = re.sub(r'[^a-z0-9\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    def _normalize_group_model(self, product: Dict) -> str:
+        """Build a normalized model key for grouping.
+
+        Strips engine specs, equipment packages, quille configs, colors
+        so identical boat models group regardless of configuration.
+        """
+        name = (product.get('name') or '').strip()
+        marque = (product.get('marque') or '').strip()
+        raw_modele = (product.get('modele') or '').strip()
+
+        spec_model = self._deep_normalize(raw_modele) if raw_modele else ''
+
+        name_model = ''
+        if name:
+            name_norm = self._deep_normalize(name)
+            marque_norm = self._deep_normalize(marque) if marque else ''
+
+            if marque_norm and name_norm.startswith(marque_norm + ' '):
+                name_model = name_norm[len(marque_norm):].strip()
+            elif marque_norm and name_norm.startswith(marque_norm):
+                name_model = name_norm[len(marque_norm):].strip()
+            else:
+                name_model = name_norm
+
+            name_model = re.sub(r'\b(?:19|20)\d{2}\b', '', name_model).strip()
+            name_model = re.sub(r'\s+', ' ', name_model).strip()
+
+        group_model = name_model if len(name_model) > len(spec_model) else spec_model
+        if not group_model:
+            group_model = name_model or spec_model
+
+        group_model = re.sub(r'\b\d+\s*hp\s*\w*\b', '', group_model)
+        group_model = re.sub(r'\b(?:full|avec)?\s*\d*\s*quilles?\b', '', group_model)
+        group_model = re.sub(r'\bse\s+package\b', '', group_model)
+        group_model = re.sub(r'\bponton\b', '', group_model)
+        group_model = re.sub(r'\blocation\b', '', group_model)
+
+        return re.sub(r'\s+', ' ', group_model).strip()
+
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
         seen_urls: set = set()
         unique: List[Dict] = []
@@ -657,15 +710,16 @@ class MaximumAventureScraper(DedicatedScraper):
         groups: Dict[tuple, Dict] = {}
 
         for product in unique:
-            marque = product.get('marque', '').lower().strip()
-            modele = product.get('modele', '').lower().strip()
+            marque_norm = self._deep_normalize(product.get('marque', ''))
+            group_model = self._normalize_group_model(product)
             annee = product.get('annee', 0)
             etat = product.get('etat', 'neuf')
 
-            if marque and modele:
-                key = (marque, modele, annee, etat)
+            if marque_norm and group_model:
+                key = (marque_norm, group_model, annee, etat)
             else:
-                key = (product.get('name', '').lower().strip(), annee, etat)
+                fallback = group_model or self._deep_normalize(product.get('name', ''))
+                key = (fallback, annee, etat)
 
             if key not in groups:
                 product['quantity'] = 1
@@ -691,6 +745,31 @@ class MaximumAventureScraper(DedicatedScraper):
     # HELPERS
     # ================================================================
 
+    _MODEL_TOKENS_UPPER = frozenset({
+        'SLS', 'EXS', 'QDH', 'TL', 'DC', 'DH', 'SB', 'SC', 'SE',
+        'HP', 'II', 'III', 'IV', 'LE', 'LX', 'GT', 'GTS', 'SS',
+        'XL', 'XS', 'XT', 'RS', 'FS', 'DX', 'EX', 'FX', 'CX',
+        'ST', 'DLX', 'DL', 'PRO', 'EFI', 'CT', 'SVX', 'LTD',
+    })
+
+    @classmethod
+    def _title_case_name(cls, name: str) -> str:
+        """Title-case a boat name, keeping model codes uppercase."""
+        words = name.split()
+        result = []
+        for w in words:
+            if w.upper() in cls._MODEL_TOKENS_UPPER:
+                result.append(w.upper())
+            elif re.match(r'^[A-Z0-9]+[-/][A-Z0-9]+$', w, re.I):
+                result.append(w.upper())
+            elif re.match(r'^\d+\w*$', w):
+                result.append(w)
+            elif len(w) <= 2 and w.upper() in ('Q', 'S', 'A'):
+                result.append(w.upper())
+            else:
+                result.append(w.capitalize())
+        return ' '.join(result)
+
     @staticmethod
     def _clean_name(name: str) -> str:
         if not name:
@@ -702,5 +781,26 @@ class MaximumAventureScraper(DedicatedScraper):
             '', name, flags=re.I
         )
         name = re.sub(r'\s+[àa]\s+Shawinigan\s*$', '', name, flags=re.I)
-        name = re.sub(r'\s+', ' ', name)
-        return name.strip()
+
+        name = re.sub(
+            r'\s*[-–]\s*(?:'
+            r'(?:FULL\s+)?\d*\s*QUILLES?'
+            r'|\d+\s*HP\s+[A-Z]+'
+            r'|SE\s+PACKAGE'
+            r'|PONTON'
+            r'|LOCATION'
+            r'|SB'
+            r'|AVEC\s+.+'
+            r')\s*$',
+            '', name, flags=re.I
+        )
+
+        name = re.sub(r'\s*\([^)]*\)', '', name)
+
+        name = re.sub(r'\s*[-–]\s*$', '', name)
+
+        name = re.sub(r'\s+', ' ', name).strip()
+
+        name = MaximumAventureScraper._title_case_name(name)
+
+        return name
