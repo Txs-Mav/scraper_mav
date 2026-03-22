@@ -691,7 +691,6 @@ class MaximumAventureScraper(DedicatedScraper):
         group_model = re.sub(r'\b\d+\s*hp\s*\w*\b', '', group_model)
         group_model = re.sub(r'\b(?:full|avec)?\s*\d*\s*quilles?\b', '', group_model)
         group_model = re.sub(r'\bse\s+package\b', '', group_model)
-        group_model = re.sub(r'\bponton\b', '', group_model)
         group_model = re.sub(r'\blocation\b', '', group_model)
 
         return re.sub(r'\s+', ' ', group_model).strip()
@@ -714,12 +713,13 @@ class MaximumAventureScraper(DedicatedScraper):
             group_model = self._normalize_group_model(product)
             annee = product.get('annee', 0)
             etat = product.get('etat', 'neuf')
+            vtype = (product.get('vehicule_type') or '').lower().strip()
 
             if marque_norm and group_model:
-                key = (marque_norm, group_model, annee, etat)
+                key = (marque_norm, group_model, annee, etat, vtype)
             else:
                 fallback = group_model or self._deep_normalize(product.get('name', ''))
-                key = (fallback, annee, etat)
+                key = (fallback, annee, etat, vtype)
 
             if key not in groups:
                 product['quantity'] = 1
@@ -787,7 +787,6 @@ class MaximumAventureScraper(DedicatedScraper):
             r'(?:FULL\s+)?\d*\s*QUILLES?'
             r'|\d+\s*HP\s+[A-Z]+'
             r'|SE\s+PACKAGE'
-            r'|PONTON'
             r'|LOCATION'
             r'|SB'
             r'|AVEC\s+.+'
