@@ -327,6 +327,7 @@ class MotoProGranbyScraper(DedicatedScraper):
 
             self._extract_json_ld(soup, product)
             self._extract_html_specs(soup, product)
+            self._fix_model_brand_prefix(product)
 
             h1 = soup.select_one('h1')
             raw_title = h1.get_text(strip=True) if h1 else ''
@@ -564,6 +565,30 @@ class MotoProGranbyScraper(DedicatedScraper):
     # HELPERS
     # ================================================================
 
+    @staticmethod
+    def _fix_model_brand_prefix(product: Dict) -> None:
+        """Strip brand prefix from model when PowerGO concatenates them,
+        and remove PowerGO SEO suffixes (Custom, Edition).
+
+        PowerGO JSON-LD often returns model="KawasakiKX450X" instead of
+        "KX450X", causing "Kawasaki KawasakiKX450X 2026" when the name
+        is built from marque + modele + annee.
+        """
+        marque = product.get('marque', '')
+        modele = product.get('modele', '')
+        if not modele:
+            return
+        if marque:
+            marque_lower = marque.lower()
+            modele_lower = modele.lower()
+            if modele_lower.startswith(marque_lower) and len(modele) > len(marque):
+                cleaned = modele[len(marque):]
+                if cleaned[0:1].isalnum():
+                    modele = cleaned
+        modele = re.sub(r'\s+(?:Custom|Edition)\b', '', modele, flags=re.I)
+        modele = re.sub(r'\s+', ' ', modele).strip()
+        product['modele'] = modele
+
     def _extract_type_from_url(self, url: str) -> Optional[str]:
         path = urlparse(url).path.lower()
         for slug, label in self._TYPE_MAP_FR.items():
@@ -589,6 +614,7 @@ class MotoProGranbyScraper(DedicatedScraper):
         out: Dict[str, Any] = {}
         self._extract_json_ld(soup, out)
         self._extract_html_specs(soup, out)
+        self._fix_model_brand_prefix(out)
         h1 = soup.select_one('h1')
         if h1:
             out.setdefault('name', self._clean_name(h1.get_text(strip=True)))
@@ -704,5 +730,20 @@ class MotoProGranbyScraper(DedicatedScraper):
             '', name, flags=re.I
         )
         name = re.sub(r'\s*NOUVEAUT[ÉEé]*\s*!+', '', name, flags=re.I)
+        name = re.sub(r'\s+(?:Custom|Edition)\b', '', name, flags=re.I)
+
+        # Fix brand prefix stuck to model: "Kawasaki KawasakiKX450X" → "Kawasaki KX450X"
+        words = name.split()
+        if len(words) >= 2:
+            first_lower = words[0].lower()
+            for i in range(1, len(words)):
+                w_lower = words[i].lower()
+                if (w_lower.startswith(first_lower)
+                        and len(words[i]) > len(words[0])
+                        and words[i][len(words[0]):][0:1].isalnum()):
+                    words[i] = words[i][len(words[0]):]
+                    break
+            name = ' '.join(words)
+
         name = re.sub(r'\s+', ' ', name)
         return name.strip()
