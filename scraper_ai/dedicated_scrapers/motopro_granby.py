@@ -347,7 +347,7 @@ class MotoProGranbyScraper(DedicatedScraper):
             if not product.get('name'):
                 parts = [product.get('marque', ''), product.get('modele', '')]
                 if product.get('annee'):
-                    parts.insert(0, str(product['annee']))
+                    parts.append(str(product['annee']))
                 name = ' '.join(p for p in parts if p)
                 if name:
                     product['name'] = name
@@ -389,8 +389,6 @@ class MotoProGranbyScraper(DedicatedScraper):
                     if item.get('@type') != 'Vehicle':
                         continue
 
-                    if item.get('name'):
-                        out.setdefault('name', self._clean_name(item['name']))
                     if item.get('manufacturer'):
                         out.setdefault('marque', item['manufacturer'])
                     if item.get('model'):
@@ -492,6 +490,9 @@ class MotoProGranbyScraper(DedicatedScraper):
                 parsed = self.clean_mileage(text)
                 if parsed is not None:
                     out.setdefault(field, parsed)
+            elif field == 'vehicule_sous_modele':
+                if not self._is_seo_submodel(text, out.get('modele', '')):
+                    out.setdefault(field, text)
             else:
                 out.setdefault(field, text)
 
@@ -591,6 +592,13 @@ class MotoProGranbyScraper(DedicatedScraper):
         h1 = soup.select_one('h1')
         if h1:
             out.setdefault('name', self._clean_name(h1.get_text(strip=True)))
+        if not out.get('name'):
+            parts = [out.get('marque', ''), out.get('modele', '')]
+            if out.get('annee'):
+                parts.append(str(out['annee']))
+            name = ' '.join(p for p in parts if p)
+            if name:
+                out['name'] = name
         return out if out else None
 
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
@@ -638,6 +646,49 @@ class MotoProGranbyScraper(DedicatedScraper):
         return list(groups.values())
 
     @staticmethod
+    def _is_seo_submodel(submodel: str, model: str) -> bool:
+        """Detect if the spec-submodel value is SEO keyword stuffing.
+
+        PowerGO submodel fields typically repeat model name tokens in various
+        forms (concatenated, uppercase, with related codes) for SEO purposes.
+        E.g. model="Vulcan S ABS", submodel="vulcan s vulcans 650 custom"
+             model="Z500 SE",      submodel="z500 zr500 er500 z zr er 500 se"
+        """
+        if not submodel or not model:
+            return False
+        model_tokens = {t.lower() for t in model.split() if len(t) > 1}
+        if not model_tokens:
+            return False
+
+        model_prefixes = set()
+        for mt in model_tokens:
+            alpha = re.match(r'[a-z]+', mt)
+            if alpha:
+                model_prefixes.add(alpha.group(0))
+
+        sub_tokens = [t.lower() for t in re.sub(r'[!?.]+', '', submodel).split()
+                      if len(t) > 1]
+        if not sub_tokens:
+            return False
+
+        overlap = 0
+        for t in sub_tokens:
+            if t in model_tokens:
+                overlap += 1
+                continue
+            if any(t.startswith(mt) or mt.startswith(t) for mt in model_tokens):
+                overlap += 1
+                continue
+            t_alpha = re.match(r'[a-z]+', t)
+            if t_alpha:
+                tp = t_alpha.group(0)
+                if any(tp.startswith(mp) or mp.startswith(tp)
+                       for mp in model_prefixes):
+                    overlap += 1
+
+        return overlap / len(sub_tokens) >= 0.3
+
+    @staticmethod
     def _clean_name(name: str) -> str:
         if not name:
             return name
@@ -648,5 +699,10 @@ class MotoProGranbyScraper(DedicatedScraper):
             '', name, flags=re.I
         )
         name = re.sub(r'\s+[àa]\s+Granby\s*$', '', name, flags=re.I)
+        name = re.sub(
+            r'\s*(?:FINANCEMENT|FINANCING)\s+\d+%?\s*(?:DISPONIBLE|AVAILABLE)?!*',
+            '', name, flags=re.I
+        )
+        name = re.sub(r'\s*NOUVEAUT[ÉEé]*\s*!+', '', name, flags=re.I)
         name = re.sub(r'\s+', ' ', name)
         return name.strip()
