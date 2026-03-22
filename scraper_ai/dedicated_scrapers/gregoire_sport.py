@@ -307,6 +307,7 @@ class GregoireSportScraper(DedicatedScraper):
 
             self._extract_json_ld(soup, product)
             self._extract_html_specs(soup, product)
+            self._fix_model_brand_prefix(product)
 
             h1 = soup.select_one('h1')
             raw_title = h1.get_text(strip=True) if h1 else ''
@@ -401,6 +402,8 @@ class GregoireSportScraper(DedicatedScraper):
                             pass
 
                     offers = item.get('offers', {})
+                    if isinstance(offers, list) and offers:
+                        offers = offers[0]
                     if isinstance(offers, dict) and offers.get('price'):
                         try:
                             price = float(offers['price'])
@@ -544,6 +547,55 @@ class GregoireSportScraper(DedicatedScraper):
     # HELPERS
     # ================================================================
 
+    _GROUP_COLOR_KEYWORDS = frozenset({
+        'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
+        'gris', 'argent', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
+        'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin',
+        'chrome', 'carbone', 'fonce', 'clair', 'fluo', 'neon', 'acide',
+        'ebene', 'graphite', 'anthracite', 'platine', 'titane',
+        'phantom', 'midnight', 'cosmic', 'storm', 'combat', 'lime', 'sauge',
+        'cristal', 'obsidian', 'racing',
+        'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
+        'gray', 'grey', 'silver', 'gold', 'brown', 'matte', 'glossy',
+        'metallic', 'pearl', 'carbon', 'dark', 'light', 'bright',
+    })
+
+    _COLOR_PATTERNS = re.compile(
+        r'\b(?:'
+        r'noir(?:\s+(?:corbeau|ballistic|mat|m[ée]tallis[ée]|brillant|graphite|phantom|midnight|cosmic))*'
+        r'|blanc(?:\s+(?:perle|[ée]blouissant|nacr[ée]|cristal|brillant|mat))*'
+        r'|rouge(?:\s+(?:grand\s+prix|racing|candy|[ée]carlate|cerise|fluo|extr[eê]me))*'
+        r'|bleu(?:\s+(?:team\s+yamaha|m[ée]tallis[ée]|mat|brillant|fonc[ée]|nuit|royal))*'
+        r'|blue(?:\s+(?:team\s+yamaha))?'
+        r'|vert(?:\s+(?:lime|sauge|fluo|racing|fonc[ée]|mat|m[ée]tallis[ée]))*'
+        r'|gris(?:\s+(?:anthracite|m[ée]tallis[ée]|mat|fonc[ée]|storm|titanium))*'
+        r'|jaune(?:\s+(?:fluo|racing|acide))*'
+        r'|orange(?:\s+(?:fluo|racing|m[ée]tallis[ée]))*'
+        r'|argent(?:\s+(?:m[ée]tallis[ée]))?'
+        r'|bronze(?:\s+(?:m[ée]tallis[ée]))?'
+        r')\b',
+        re.I
+    )
+
+    @staticmethod
+    def _fix_model_brand_prefix(product: Dict) -> None:
+        """Strip brand prefix from model when PowerGO concatenates them,
+        and remove PowerGO SEO suffixes (Custom, Edition)."""
+        marque = product.get('marque', '')
+        modele = product.get('modele', '')
+        if not modele:
+            return
+        if marque:
+            marque_lower = marque.lower()
+            modele_lower = modele.lower()
+            if modele_lower.startswith(marque_lower) and len(modele) > len(marque):
+                cleaned = modele[len(marque):]
+                if cleaned[0:1].isalnum():
+                    modele = cleaned
+        modele = re.sub(r'\s+(?:Custom|Edition)\b', '', modele, flags=re.I)
+        modele = re.sub(r'\s+', ' ', modele).strip()
+        product['modele'] = modele
+
     def _extract_type_from_url(self, url: str) -> Optional[str]:
         path = urlparse(url).path.lower()
         for slug, label in self._TYPE_MAP_FR.items():
@@ -569,10 +621,84 @@ class GregoireSportScraper(DedicatedScraper):
         out: Dict[str, Any] = {}
         self._extract_json_ld(soup, out)
         self._extract_html_specs(soup, out)
+        self._fix_model_brand_prefix(out)
         h1 = soup.select_one('h1')
         if h1:
             out.setdefault('name', self._clean_name(h1.get_text(strip=True)))
         return out if out else None
+
+    # ================================================================
+    # REGROUPEMENT
+    # ================================================================
+
+    @staticmethod
+    def _deep_normalize(text: str) -> str:
+        import unicodedata
+        if not text:
+            return ''
+        text = text.lower().strip()
+        text = unicodedata.normalize('NFKD', text)
+        text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))
+        text = re.sub(r'([a-z])(\d)', r'\1 \2', text)
+        text = re.sub(r'(\d)([a-z])', r'\1 \2', text)
+        text = re.sub(r'[^a-z0-9\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    def _normalize_group_model(self, product: Dict) -> str:
+        """Build a normalized model key for grouping.
+
+        Strips colors, anniversary/edition suffixes, pre-commande,
+        and normalizes across EN/FR variants so identical products
+        with cosmetic name differences get grouped together.
+        """
+        name = (product.get('name') or '').strip()
+        marque = (product.get('marque') or '').strip()
+        couleur = (product.get('couleur') or '').strip()
+        raw_modele = (product.get('modele') or '').strip()
+
+        spec_model = self._deep_normalize(raw_modele) if raw_modele else ''
+
+        name_model = ''
+        if name:
+            name_norm = self._deep_normalize(name)
+            marque_norm = self._deep_normalize(marque) if marque else ''
+
+            if marque_norm and name_norm.startswith(marque_norm + ' '):
+                name_model = name_norm[len(marque_norm):].strip()
+            elif marque_norm and name_norm.startswith(marque_norm):
+                name_model = name_norm[len(marque_norm):].strip()
+            else:
+                name_model = name_norm
+
+            name_model = re.sub(r'\b(?:19|20)\d{2}\b', '', name_model).strip()
+            name_model = re.sub(r'\s+', ' ', name_model).strip()
+
+        group_model = name_model if len(name_model) > len(spec_model) else spec_model
+        if not group_model:
+            group_model = name_model or spec_model
+
+        if couleur:
+            couleur_norm = self._deep_normalize(couleur)
+            if couleur_norm:
+                group_model = group_model.replace(couleur_norm, ' ').strip()
+
+        words = group_model.split()
+        words = [w for w in words if w not in self._GROUP_COLOR_KEYWORDS]
+        group_model = ' '.join(words)
+
+        group_model = re.sub(
+            r'\b\d+\s*(?:th|st|nd|rd|e|eme)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
+            '',
+            group_model,
+        )
+
+        group_model = re.sub(r'\bpre\s*commande\b', '', group_model)
+        group_model = re.sub(r'\bpre\s*order\b', '', group_model)
+        group_model = re.sub(r'\bcustom\b', '', group_model)
+        group_model = re.sub(r'\bedition\b', '', group_model)
+
+        return re.sub(r'\s+', ' ', group_model).strip()
 
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
         seen_urls: set = set()
@@ -588,15 +714,16 @@ class GregoireSportScraper(DedicatedScraper):
         groups: Dict[tuple, Dict] = {}
 
         for product in unique:
-            marque = product.get('marque', '').lower().strip()
-            modele = product.get('modele', '').lower().strip()
+            marque_norm = self._deep_normalize(product.get('marque', ''))
+            group_model = self._normalize_group_model(product)
             annee = product.get('annee', 0)
             etat = product.get('etat', 'neuf')
 
-            if marque and modele:
-                key = (marque, modele, annee, etat)
+            if marque_norm and group_model:
+                key = (marque_norm, group_model, annee, etat)
             else:
-                key = (product.get('name', '').lower().strip(), annee, etat)
+                fallback = group_model or self._deep_normalize(product.get('name', ''))
+                key = (fallback, annee, etat)
 
             if key not in groups:
                 product['quantity'] = 1
@@ -617,6 +744,10 @@ class GregoireSportScraper(DedicatedScraper):
                         pass
 
         return list(groups.values())
+
+    # ================================================================
+    # NETTOYAGE DES NOMS
+    # ================================================================
 
     @staticmethod
     def _fix_mojibake(text: str) -> str:
@@ -651,6 +782,27 @@ class GregoireSportScraper(DedicatedScraper):
         name = re.sub(r"\s+(?:neuf|usag[ée]+)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
         name = re.sub(r"\s+[àa]\s+vendre\s+.*$", '', name, flags=re.I)
         name = re.sub(r'\s*\|\s*Gr[ée]goire\s*Sport.*$', '', name, flags=re.I)
+        name = re.sub(r'\s*[-–]\s*Gr[ée]goire\s*Sport.*$', '', name, flags=re.I)
+        name = re.sub(r'\s*[-–]?\s*(?:Pr[ée]-?commande|Pre-?order)\s*[-–]?\s*', ' ', name, flags=re.I)
+        name = re.sub(
+            r'\s+\d+\s*(?:th|st|nd|rd|e|[èe]me)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
+            '', name, flags=re.I
+        )
+        name = re.sub(r'\s+(?:Custom|Edition)\b', '', name, flags=re.I)
+        name = GregoireSportScraper._COLOR_PATTERNS.sub('', name)
+
+        words = name.split()
+        if len(words) >= 2:
+            first_lower = words[0].lower()
+            for i in range(1, len(words)):
+                w_lower = words[i].lower()
+                if (w_lower.startswith(first_lower)
+                        and len(words[i]) > len(words[0])
+                        and words[i][len(words[0]):][0:1].isalnum()):
+                    words[i] = words[i][len(words[0]):]
+                    break
+            name = ' '.join(words)
+
         name = re.sub(r'\s*[-–]\s*$', '', name)
         name = re.sub(r'\s+', ' ', name)
         return name.strip()
