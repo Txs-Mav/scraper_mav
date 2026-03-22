@@ -488,6 +488,11 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     setCurrentPage(0)
   }, [products, searchQuery])
 
+  useEffect(() => {
+    setExpandedRows(new Set())
+    setDetailRows(new Set())
+  }, [currentPage])
+
   const tableScrollRef = useRef<HTMLDivElement>(null)
   const [canScrollTableRight, setCanScrollTableRight] = useState(false)
 
