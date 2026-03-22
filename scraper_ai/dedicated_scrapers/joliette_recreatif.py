@@ -228,23 +228,27 @@ class JolietteRecreatifScraper(DedicatedScraper):
 
         price_li = item.select_one('.specs li.price')
         if price_li:
-            current_number = price_li.select_one('.current-price .number')
-            old_number = price_li.select_one('.old-price .number')
-            generic_number = price_li.select_one('.value .number, .number')
+            current_price_val = None
+            old_price_val = None
 
-            if current_number:
-                current_price = self.clean_price(current_number.get_text())
-                if current_price:
-                    product['prix'] = current_price
-            elif generic_number:
-                generic_price = self.clean_price(generic_number.get_text())
-                if generic_price:
-                    product['prix'] = generic_price
+            for num_el in price_li.select('.number'):
+                price = self.clean_price(num_el.get_text())
+                if not price:
+                    continue
+                if num_el.find_parent('del'):
+                    if not old_price_val:
+                        old_price_val = price
+                else:
+                    if not current_price_val:
+                        current_price_val = price
 
-            if old_number:
-                old_price = self.clean_price(old_number.get_text())
-                if old_price:
-                    product['prix_original'] = old_price
+            if current_price_val:
+                product['prix'] = current_price_val
+            elif old_price_val:
+                product['prix'] = old_price_val
+
+            if old_price_val and old_price_val != product.get('prix'):
+                product['prix_original'] = old_price_val
 
         km_el = item.select_one('.specs li.km .value .number, .specs li.km .value')
         if km_el:
@@ -303,7 +307,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
                         for key, value in specs.items():
                             if value is not None and (
                                 not product.get(key)
-                                or key in ('marque', 'modele', 'annee', 'vehicule_type', 'vehicule_categorie')
+                                or key in ('marque', 'modele', 'annee', 'vehicule_type',
+                                           'vehicule_categorie', 'prix', 'prix_original')
                             ):
                                 product[key] = value
                         enriched_count += 1
@@ -355,25 +360,29 @@ class JolietteRecreatifScraper(DedicatedScraper):
                 elif 'démo' in cond_text or 'demo' in cond_text:
                     specs['etat'] = 'demonstrateur'
 
-            price_box = soup.select_one('.price')
+            price_box = soup.select_one('#product-price .price')
             if price_box:
-                current_number = price_box.select_one('.current-price .number')
-                old_number = price_box.select_one('.old-price .number')
-                generic_number = price_box.select_one('.value .number, .number')
+                current_price_val = None
+                old_price_val = None
 
-                if current_number:
-                    current_price = self.clean_price(current_number.get_text())
-                    if current_price:
-                        specs['prix'] = current_price
-                elif generic_number:
-                    generic_price = self.clean_price(generic_number.get_text())
-                    if generic_price:
-                        specs['prix'] = generic_price
+                for num_el in price_box.select('.number'):
+                    price = self.clean_price(num_el.get_text())
+                    if not price:
+                        continue
+                    if num_el.find_parent('del') or num_el.find_parent(class_='old-price'):
+                        if not old_price_val:
+                            old_price_val = price
+                    else:
+                        if not current_price_val:
+                            current_price_val = price
 
-                if old_number:
-                    old_price = self.clean_price(old_number.get_text())
-                    if old_price:
-                        specs['prix_original'] = old_price
+                if current_price_val:
+                    specs['prix'] = current_price_val
+                elif old_price_val:
+                    specs['prix'] = old_price_val
+
+                if old_price_val and old_price_val != specs.get('prix'):
+                    specs['prix_original'] = old_price_val
 
             notes_el = soup.select_one('#product-notes')
             if notes_el:

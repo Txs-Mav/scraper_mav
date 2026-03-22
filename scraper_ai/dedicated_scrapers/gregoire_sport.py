@@ -1,17 +1,23 @@
 """
-Scraper dédié pour les sites Motoplex (plateforme PowerGO).
+Scraper dédié pour Grégoire Sport (plateforme PowerGO / Next.js).
 
-Stratégie sitemap + détail:
+Concessionnaire Yamaha, KTM, Suzuki, Arctic Cat, GAS GAS, etc.
+situé à Lourdes-de-Joliette, QC.
+
+Stratégie sitemap + détail :
   1. Sitemap XML (inventory-detail.xml) → découverte de TOUTES les URLs produits
-  2. Pages détail (parallèle) → JSON-LD + specs HTML (nom, marque, modèle, année,
-     couleur, VIN, km, état, prix, type, catégorie, description, image)
+  2. Pages détail (parallèle) → JSON-LD Vehicle + specs HTML
 
-La pagination de ces sites Next.js est 100% client-side JavaScript,
-rendant la pagination serveur impossible. Le sitemap contourne ce problème
-en fournissant la liste complète des produits.
+La pagination de ce site Next.js est 100 % côté client (React Server
+Components + recherche/filtrage JS local).  Le sitemap XML fournit la
+liste complète des produits et contourne cette limitation.
 
-Ce fichier définit MotoplexScraper (St-Eustache), classe de base pour tout
-site PowerGO Motoplex. Mirabel et autres succursales en héritent.
+Le sitemap contient des URLs en français (/fr/) ET en anglais (/en/).
+On utilise les URLs françaises pour la cohérence avec les autres scrapers.
+
+Types de véhicules : Motocyclette, VTT, Côte à côte, Motoneige,
+Bateau, Motomarine, Vélo électrique, Remorque, Moteur hors-bord,
+Équipement mécanique, Voiturette de golf.
 """
 import re
 import json
@@ -25,20 +31,51 @@ from bs4 import BeautifulSoup
 from .base import DedicatedScraper
 
 
-class MotoplexScraper(DedicatedScraper):
+class GregoireSportScraper(DedicatedScraper):
 
-    SITE_NAME = "Motoplex St-Eustache"
-    SITE_SLUG = "motoplex"
-    SITE_URL = "https://www.motoplex.ca/fr/"
-    SITE_DOMAIN = "motoplex.ca"
-    SITE_DOMAIN_ALT = "motoplexsteustache.ca"
+    SITE_NAME = "Grégoire Sport"
+    SITE_SLUG = "gregoire-sport"
+    SITE_URL = "https://www.gregoiresport.com/fr/"
+    SITE_DOMAIN = "gregoiresport.com"
 
-    SITEMAP_URL = "https://www.motoplexsteustache.ca/sitemaps/inventory-detail.xml"
+    SITEMAP_URL = "https://www.gregoiresport.com/sitemaps/inventory-detail.xml"
 
     WORKERS = 12
     DETAIL_TIMEOUT = 12
 
     SEL_SPEC_VALUE = 'span.font-bold'
+
+    _TYPE_MAP_FR = {
+        'motocyclette': 'Motocyclette',
+        'vtt': 'VTT',
+        'cote-a-cote': 'Côte à côte',
+        'motomarine': 'Motomarine',
+        'motoneige': 'Motoneige',
+        'bateau': 'Bateau',
+        'ponton': 'Ponton',
+        'moteur-hors-bord': 'Moteur hors-bord',
+        'remorque': 'Remorque',
+        'scooter': 'Scooter',
+        'velo-electrique': 'Vélo électrique',
+        'equipement-mecanique': 'Équipement mécanique',
+        'voiturette-de-golf': 'Voiturette de golf',
+    }
+
+    _TYPE_MAP_EN = {
+        'motorcycle': 'Motocyclette',
+        'atv': 'VTT',
+        'side-by-side': 'Côte à côte',
+        'watercraft': 'Motomarine',
+        'snowmobile': 'Motoneige',
+        'boat': 'Bateau',
+        'pontoon': 'Ponton',
+        'outboard-motor': 'Moteur hors-bord',
+        'trailer': 'Remorque',
+        'scooter': 'Scooter',
+        'electric-bike': 'Vélo électrique',
+        'power-equipment': 'Équipement mécanique',
+        'golf-carts': 'Voiturette de golf',
+    }
 
     def __init__(self):
         super().__init__()
@@ -59,7 +96,6 @@ class MotoplexScraper(DedicatedScraper):
         print(f"🌐 Site: {self.SITE_URL}")
         print(f"📦 Catégories: {categories}")
 
-        # Phase 1 : découverte via sitemap
         url_map = self._discover_urls_from_sitemap(categories)
 
         if not url_map:
@@ -71,7 +107,6 @@ class MotoplexScraper(DedicatedScraper):
         for cat, urls in url_map.items():
             print(f"   📋 [{cat}]: {len(urls)} URLs")
 
-        # Phase 2 : extraction depuis les pages détail (source unique de données)
         products = self._extract_from_detail_pages(url_map)
 
         if not products:
@@ -81,7 +116,6 @@ class MotoplexScraper(DedicatedScraper):
         if inventory_only:
             products = [p for p in products if p.get('sourceCategorie') != 'catalogue']
 
-        # Phase 3 : regroupement
         pre_group = len(products)
         products = self._group_identical_products(products)
         if pre_group != len(products):
@@ -121,7 +155,13 @@ class MotoplexScraper(DedicatedScraper):
     # ================================================================
 
     def _discover_urls_from_sitemap(self, categories: List[str]) -> Dict[str, List[str]]:
-        """Récupère le sitemap inventory-detail.xml et trie les URLs par catégorie."""
+        """Récupère le sitemap inventory-detail.xml et trie les URLs par catégorie.
+
+        Le sitemap contient des URLs fr et en.  On priorise les URLs
+        françaises (/fr/…/inventaire/…a-vendre-…) mais on accepte
+        aussi les URLs anglaises (/en/…/inventory/…for-sale-…) si
+        le pendant français n'existe pas.
+        """
         try:
             resp = self.session.get(self.SITEMAP_URL, timeout=15)
             if resp.status_code != 200:
@@ -137,31 +177,75 @@ class MotoplexScraper(DedicatedScraper):
         want_neuf = any(c in ('inventaire', 'neuf') for c in categories)
         want_occasion = any(c in ('occasion', 'usage') for c in categories)
 
+        seen_stocks: Dict[str, str] = {}
+
         for url_tag in soup.find_all('url'):
             loc = url_tag.find('loc')
             if not loc:
                 continue
 
             raw_url = loc.text.strip()
-
-            if '/fr/' not in raw_url or '/inventaire/' not in raw_url:
-                continue
-            if 'a-vendre-' not in raw_url:
+            if not self._is_product_url(raw_url):
                 continue
 
-            if '/neuf/' in raw_url and want_neuf:
+            stock = self._extract_stock_from_url(raw_url)
+            is_fr = '/fr/' in raw_url
+
+            if stock and stock in seen_stocks:
+                if is_fr and '/en/' in seen_stocks[stock]:
+                    self._remove_url_from_map(url_map, seen_stocks[stock])
+                else:
+                    continue
+
+            if is_fr:
+                is_new = '/neuf/' in raw_url
+                is_used = '/usage/' in raw_url
+            else:
+                is_new = '/new/' in raw_url
+                is_used = '/used/' in raw_url
+
+            if is_new and want_neuf:
                 url_map.setdefault('inventaire', []).append(raw_url)
-            elif '/usage/' in raw_url and want_occasion:
+                if stock:
+                    seen_stocks[stock] = raw_url
+            elif is_used and want_occasion:
                 url_map.setdefault('occasion', []).append(raw_url)
+                if stock:
+                    seen_stocks[stock] = raw_url
 
         return url_map
+
+    @staticmethod
+    def _extract_stock_from_url(url: str) -> Optional[str]:
+        """Extrait le numéro de stock depuis l'URL (ex: …for-sale-32090/ → 32090)."""
+        match = re.search(r'(?:a-vendre|for-sale)-([a-zA-Z0-9_-]+)/?$', url)
+        if match:
+            return match.group(1).lower()
+        return None
+
+    @staticmethod
+    def _remove_url_from_map(url_map: Dict[str, List[str]], url: str) -> None:
+        for key in url_map:
+            try:
+                url_map[key].remove(url)
+            except ValueError:
+                pass
+
+    def _is_product_url(self, url: str) -> bool:
+        url_lower = url.lower()
+        if self.SITE_DOMAIN not in url_lower:
+            return False
+        if '/fr/' in url_lower:
+            return '/inventaire/' in url_lower and 'a-vendre-' in url_lower
+        if '/en/' in url_lower:
+            return '/inventory/' in url_lower and 'for-sale-' in url_lower
+        return False
 
     # ================================================================
     # PHASE 2 : EXTRACTION DEPUIS LES PAGES DÉTAIL
     # ================================================================
 
     def _extract_from_detail_pages(self, url_map: Dict[str, List[str]]) -> List[Dict]:
-        """Fetch et parse toutes les pages détail en parallèle."""
         tasks: List[tuple] = []
         for cat_key, urls in url_map.items():
             etat = 'neuf' if cat_key == 'inventaire' else 'occasion'
@@ -186,7 +270,6 @@ class MotoplexScraper(DedicatedScraper):
             processed = 0
             for future in as_completed(futures, timeout=900):
                 processed += 1
-                url = futures[future]
                 try:
                     product = future.result(timeout=self.DETAIL_TIMEOUT + 5)
                     if product:
@@ -207,7 +290,6 @@ class MotoplexScraper(DedicatedScraper):
         return products
 
     def _fetch_and_parse_detail(self, url: str, etat: str, source_cat: str) -> Optional[Dict]:
-        """Fetch une page détail et en extrait un produit complet."""
         try:
             resp = self.session.get(url, timeout=self.DETAIL_TIMEOUT, allow_redirects=True)
             if resp.status_code != 200:
@@ -226,7 +308,6 @@ class MotoplexScraper(DedicatedScraper):
             self._extract_json_ld(soup, product)
             self._extract_html_specs(soup, product)
 
-            # Titre brut (h1) : détecter état/km AVANT nettoyage
             h1 = soup.select_one('h1')
             raw_title = h1.get_text(strip=True) if h1 else ''
             if raw_title:
@@ -236,16 +317,9 @@ class MotoplexScraper(DedicatedScraper):
                 if meta.get('kilometrage') and not product.get('kilometrage'):
                     product['kilometrage'] = meta['kilometrage']
 
-            # Prix fallback : div.pg-vehicle-price (quand JSON-LD n'a pas de prix)
             if not product.get('prix'):
-                price_el = soup.select_one('div.pg-vehicle-price, div.pg-vehicle-mobile-price')
-                if price_el:
-                    price_text = price_el.get_text(strip=True)
-                    parsed = self.clean_price(price_text)
-                    if parsed:
-                        product['prix'] = parsed
+                self._extract_price_fallback(soup, product)
 
-            # Nom : JSON-LD name > h1 > construction depuis marque+modele+annee
             if not product.get('name'):
                 if raw_title:
                     product['name'] = self._clean_name(raw_title)
@@ -261,16 +335,9 @@ class MotoplexScraper(DedicatedScraper):
             if not product.get('name'):
                 return None
 
-            # Image principale
             if not product.get('image'):
-                img = soup.select_one('img.pg-vehicle-image, .pg-vehicle-gallery img, '
-                                      'img[src*="cdn.powergo.ca"]')
-                if img:
-                    src = img.get('src') or img.get('data-src', '')
-                    if src:
-                        product['image'] = src if src.startswith('http') else urljoin(url, src)
+                self._extract_image_fallback(soup, url, product)
 
-            # Description
             if not product.get('description'):
                 desc_el = soup.select_one('div.pg-vehicle-description .prose')
                 if desc_el:
@@ -278,7 +345,6 @@ class MotoplexScraper(DedicatedScraper):
                     if desc_text and len(desc_text) > 10:
                         product['description'] = desc_text[:2000]
 
-            # Type véhicule depuis l'URL (/neuf/motocyclette/... ou /usage/vtt/...)
             if not product.get('vehicule_type'):
                 vtype = self._extract_type_from_url(url)
                 if vtype:
@@ -312,7 +378,10 @@ class MotoplexScraper(DedicatedScraper):
                     if item.get('model'):
                         out.setdefault('modele', item['model'])
                     if item.get('vehicleModelDate'):
-                        out.setdefault('annee', int(item['vehicleModelDate']))
+                        try:
+                            out.setdefault('annee', int(item['vehicleModelDate']))
+                        except (ValueError, TypeError):
+                            pass
                     if item.get('color'):
                         out.setdefault('couleur', item['color'])
                     if item.get('sku'):
@@ -334,15 +403,23 @@ class MotoplexScraper(DedicatedScraper):
                     offers = item.get('offers', {})
                     if isinstance(offers, dict) and offers.get('price'):
                         try:
-                            out.setdefault('prix', float(offers['price']))
+                            price = float(offers['price'])
+                            if price > 0:
+                                out.setdefault('prix', price)
                         except (ValueError, TypeError):
                             pass
 
                     img = item.get('image')
+                    if isinstance(img, list) and img:
+                        img = img[0]
                     if isinstance(img, str) and img.startswith('http'):
                         out.setdefault('image', img)
                     elif isinstance(img, dict) and img.get('url', '').startswith('http'):
                         out.setdefault('image', img['url'])
+
+                    desc = item.get('description', '')
+                    if desc and len(desc) > 10:
+                        out.setdefault('description', desc[:2000])
 
                     break
             except (json.JSONDecodeError, TypeError, KeyError, ValueError):
@@ -395,6 +472,43 @@ class MotoplexScraper(DedicatedScraper):
                     out.setdefault('etat', 'neuf')
                 elif 'usag' in cond_text or 'used' in cond_text:
                     out.setdefault('etat', 'occasion')
+                elif 'démo' in cond_text or 'demo' in cond_text:
+                    out.setdefault('etat', 'demonstrateur')
+
+    def _extract_price_fallback(self, soup: BeautifulSoup, out: Dict) -> None:
+        """Prix fallback via le DOM quand le JSON-LD n'a pas de prix."""
+        price_el = soup.select_one(
+            'div.pg-vehicle-price, div.pg-vehicle-mobile-price, '
+            '[class*="price"]'
+        )
+        if not price_el:
+            return
+
+        sale_el = price_el.select_one('.text-sale, .text-red, s, del, [class*="original"]')
+        if sale_el:
+            original_price = self.clean_price(sale_el.get_text(strip=True))
+            if original_price:
+                out.setdefault('prix_original', original_price)
+
+        price_text = price_el.get_text(strip=True)
+        price_text = re.sub(r'(?:Save|Économisez|Rabais)\s*\$?\s*[\d,.\s]+', '', price_text, flags=re.I)
+        parsed = self.clean_price(price_text)
+        if parsed:
+            out.setdefault('prix', parsed)
+
+    def _extract_image_fallback(self, soup: BeautifulSoup, url: str, out: Dict) -> None:
+        img = soup.select_one(
+            'img.pg-vehicle-image, .pg-vehicle-gallery img, '
+            'img[src*="cdn.powergo.ca"], img[srcset*="cdn.powergo.ca"]'
+        )
+        if img:
+            src = img.get('src') or img.get('data-src', '')
+            if not src:
+                srcset = img.get('srcset', '')
+                if srcset:
+                    src = srcset.split(',')[0].split()[0]
+            if src:
+                out['image'] = src if src.startswith('http') else urljoin(url, src)
 
     # ================================================================
     # DÉTECTION ÉTAT / KM DEPUIS LE TITRE
@@ -402,7 +516,6 @@ class MotoplexScraper(DedicatedScraper):
 
     @staticmethod
     def _detect_name_metadata(raw_name: str) -> Dict[str, Any]:
-        """Détecte l'état et le kilométrage depuis le titre brut (avant nettoyage)."""
         meta: Dict[str, Any] = {}
         lower = raw_name.lower()
 
@@ -432,28 +545,16 @@ class MotoplexScraper(DedicatedScraper):
     # ================================================================
 
     def _extract_type_from_url(self, url: str) -> Optional[str]:
-        """Déduit le type de véhicule depuis le chemin URL."""
-        type_map = {
-            'motocyclette': 'Motocyclette',
-            'vtt': 'VTT',
-            'cote-a-cote': 'Côte à côte',
-            'motomarine': 'Motomarine',
-            'motoneige': 'Motoneige',
-            'bateau': 'Bateau',
-            'ponton': 'Ponton',
-            'moteur-hors-bord': 'Moteur hors-bord',
-            'remorque': 'Remorque',
-            'scooter': 'Scooter',
-            'equipement-mecanique': 'Équipement mécanique',
-        }
         path = urlparse(url).path.lower()
-        for slug, label in type_map.items():
+        for slug, label in self._TYPE_MAP_FR.items():
+            if f'/{slug}/' in path:
+                return label
+        for slug, label in self._TYPE_MAP_EN.items():
             if f'/{slug}/' in path:
                 return label
         return None
 
     def discover_product_urls(self, categories: List[str] = None) -> List[str]:
-        """Interface requise par la classe de base."""
         if categories is None:
             categories = ['inventaire', 'occasion']
         url_map = self._discover_urls_from_sitemap(categories)
@@ -465,7 +566,6 @@ class MotoplexScraper(DedicatedScraper):
                 if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
 
     def extract_from_detail_page(self, url: str, html: str, soup: BeautifulSoup) -> Optional[Dict]:
-        """Interface requise par la classe de base."""
         out: Dict[str, Any] = {}
         self._extract_json_ld(soup, out)
         self._extract_html_specs(soup, out)
@@ -474,18 +574,7 @@ class MotoplexScraper(DedicatedScraper):
             out.setdefault('name', self._clean_name(h1.get_text(strip=True)))
         return out if out else None
 
-    def _is_product_url(self, url: str) -> bool:
-        url_lower = url.lower()
-        if self.SITE_DOMAIN not in url_lower and self.SITE_DOMAIN_ALT not in url_lower:
-            return False
-        if '/inventaire/' in url_lower and 'a-vendre-' in url_lower:
-            if any(x in url_lower for x in ['/service/', '/contact/', '/financement/', '/pieces/']):
-                return False
-            return True
-        return False
-
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
-        """Regroupe les produits identiques (marque+modèle+année+état, couleurs ignorées)."""
         seen_urls: set = set()
         unique: List[Dict] = []
         for product in products:
@@ -531,7 +620,6 @@ class MotoplexScraper(DedicatedScraper):
 
     @staticmethod
     def _fix_mojibake(text: str) -> str:
-        """Corrige le mojibake UTF-8 (ex: 'GÃ©NÃ©RATRICE' → 'GÉNÉRATRICE')."""
         try:
             fixed = text.encode('latin-1').decode('utf-8')
             if fixed and not any(c in fixed for c in '\ufffd\x00'):
@@ -544,18 +632,12 @@ class MotoplexScraper(DedicatedScraper):
     def _clean_name(name: str) -> str:
         if not name:
             return name
-        name = MotoplexScraper._fix_mojibake(name)
-        # Annotations entre astérisques: *LIQUIDATION*, *BAS KILOMÉTRAGE*, *744 KM*, etc.
+        name = GregoireSportScraper._fix_mojibake(name)
         name = re.sub(r'\*[^*]+\*', '', name)
-        # Annotations sans astérisques mais avec astérisque ouvrante orpheline: *744 KM
         name = re.sub(r'\*\d+\s*km\b', '', name, flags=re.I)
-        # Caractères parasites: *, +, .
-        name = name.replace('*', '').replace('+', '').replace('.', '')
-        # Contenu entre parenthèses: (2025), (xxx), (Full Load), etc.
+        name = name.replace('*', '').replace('+', '')
         name = re.sub(r'\([^)]*\)', '', name)
-        # "full load" standalone
         name = re.sub(r'\bfull\s+load\b', '', name, flags=re.I)
-        # Mots-clés état/dealer à retirer du nom
         name = re.sub(
             r'\b(?:d[ée]monstrateur|dmonstrateur|d[ée]mo|demo'
             r'|location|usag[ée]e?'
@@ -564,14 +646,11 @@ class MotoplexScraper(DedicatedScraper):
             r'|avec\s+chenilles?|avec\s+cabine'
             r'|chenilles?|cabine)\b',
             '', name, flags=re.I)
-        # Annotations km standalone: "744 KM", "1200 KM" (seulement si précédé de espace/début)
         name = re.sub(r'(?<=\s)\d+\s*km\b', '', name, flags=re.I)
-        # Marque dupliquée: "BMW BMW R1200" → "BMW R1200"
         name = re.sub(r'^(\w+)\s+\1\b', r'\1', name, flags=re.I)
         name = re.sub(r"\s+(?:neuf|usag[ée]+)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
         name = re.sub(r"\s+[àa]\s+vendre\s+.*$", '', name, flags=re.I)
-        name = re.sub(r'\s*\|\s*Motoplex.*$', '', name, flags=re.I)
-        # Tirets orphelins après nettoyage
-        name = re.sub(r'\s*-\s*$', '', name)
+        name = re.sub(r'\s*\|\s*Gr[ée]goire\s*Sport.*$', '', name, flags=re.I)
+        name = re.sub(r'\s*[-–]\s*$', '', name)
         name = re.sub(r'\s+', ' ', name)
         return name.strip()
