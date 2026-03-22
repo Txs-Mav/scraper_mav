@@ -24,6 +24,19 @@ import requests
 from supabase import create_client
 
 
+def _rollback_last_run(supabase, alert_id: str, previous_value):
+    """Restore last_run_at to its previous value so the cron retries next cycle."""
+    try:
+        update_val = previous_value if previous_value else None
+        supabase.table("scraper_alerts") \
+            .update({"last_run_at": update_val}) \
+            .eq("id", alert_id) \
+            .execute()
+        print(f"   🔄 last_run_at restauré → le cron réessaiera au prochain cycle")
+    except Exception as e:
+        print(f"   ⚠️  Impossible de restaurer last_run_at: {e}")
+
+
 def main():
     supabase_url = os.environ.get("SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -111,6 +124,7 @@ def main():
 
         for alert in user_alerts:
             alert_id = alert["id"][:8]
+            full_alert_id = alert["id"]
             reference_url = alert.get("reference_url")
             if not reference_url:
                 site_url = (alert.get("scraper_cache") or {}).get("site_url")
@@ -124,12 +138,31 @@ def main():
             competitor_urls = alert.get("competitor_urls") or []
             categories = alert.get("categories") or ["inventaire", "occasion", "catalogue"]
 
-            print(f"🔄 Alerte {alert_id} (user {short_id}) — {reference_url}")
+            print(f"\n🔄 Alerte {alert_id} (user {short_id}) — {reference_url}")
             print(f"   Concurrents : {len(competitor_urls)} | Catégories : {categories}")
+            for i, comp_url in enumerate(competitor_urls, 1):
+                print(f"   {i}. {comp_url}")
+
+            # Snapshot du dernier scraping AVANT le run (pour vérifier si un nouveau est créé)
+            last_scraping_before = None
+            try:
+                res = supabase.table("scrapings") \
+                    .select("id, created_at") \
+                    .eq("user_id", user_id) \
+                    .eq("reference_url", reference_url) \
+                    .order("created_at", desc=True) \
+                    .limit(1) \
+                    .execute()
+                if res.data:
+                    last_scraping_before = res.data[0]["created_at"]
+            except Exception:
+                pass
 
             all_urls = [reference_url]
             if isinstance(competitor_urls, list):
                 all_urls.extend(u for u in competitor_urls if u != reference_url)
+
+            print(f"   📋 Total URLs à scraper : {len(all_urls)}")
 
             cmd = [
                 sys.executable, "-m", "scraper_ai.main",
@@ -150,12 +183,12 @@ def main():
             }
 
             start = time.time()
+            subprocess_timeout = 1500  # 25 min (was 15 min — needed with 10+ competitor sites)
             try:
                 proc = subprocess.run(
                     cmd,
                     env=env,
-                    timeout=900,
-                    capture_output=True,
+                    timeout=subprocess_timeout,
                     text=True,
                 )
                 elapsed = time.time() - start
@@ -165,16 +198,44 @@ def main():
                     scraping_success += 1
                 else:
                     print(f"   ❌ Scraping échoué (code {proc.returncode}, {elapsed:.0f}s)")
-                    stderr_tail = proc.stderr[-300:] if proc.stderr else ""
-                    if stderr_tail:
-                        print(f"   stderr: {stderr_tail}")
                     scraping_failed += 1
+                    # Rollback last_run_at so cron retries next cycle
+                    _rollback_last_run(supabase, full_alert_id, alert.get("last_run_at"))
+                    continue
             except subprocess.TimeoutExpired:
-                print(f"   ❌ Timeout (15 min)")
+                elapsed = time.time() - start
+                print(f"   ❌ Timeout après {elapsed:.0f}s (limite {subprocess_timeout}s, {len(all_urls)} URLs)")
                 scraping_failed += 1
+                _rollback_last_run(supabase, full_alert_id, alert.get("last_run_at"))
+                continue
             except Exception as e:
                 print(f"   ❌ Erreur: {e}")
                 scraping_failed += 1
+                _rollback_last_run(supabase, full_alert_id, alert.get("last_run_at"))
+                continue
+
+            # Vérifier qu'un nouveau scraping a bien été enregistré dans Supabase
+            time.sleep(2)
+            try:
+                res = supabase.table("scrapings") \
+                    .select("id, created_at") \
+                    .eq("user_id", user_id) \
+                    .eq("reference_url", reference_url) \
+                    .order("created_at", desc=True) \
+                    .limit(1) \
+                    .execute()
+                if res.data:
+                    latest = res.data[0]["created_at"]
+                    if latest != last_scraping_before:
+                        print(f"   💾 Nouveau scraping confirmé dans Supabase ({latest})")
+                    else:
+                        print(f"   ⚠️  ATTENTION: Scraping OK mais aucun nouvel enregistrement dans Supabase!")
+                        print(f"   ⚠️  Dernier scraping toujours à: {latest}")
+                        print(f"   ⚠️  La sauvegarde vers Supabase a probablement échoué")
+                else:
+                    print(f"   ⚠️  ATTENTION: Aucun scraping trouvé dans Supabase pour cette alerte!")
+            except Exception as e:
+                print(f"   ⚠️  Impossible de vérifier le scraping: {e}")
 
     print(f"\n📊 Scraping terminé : {scraping_success} OK, {scraping_failed} échoué(s)")
 
