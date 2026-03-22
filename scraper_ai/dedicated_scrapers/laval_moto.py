@@ -363,6 +363,12 @@ class LavalMotoScraper(DedicatedScraper):
             if not product.get('name'):
                 return None
 
+            couleur = product.get('couleur', '')
+            if couleur and product.get('name'):
+                product['name'] = self._strip_color_from_name(
+                    product['name'], couleur
+                )
+
             product['groupedUrls'] = [product['sourceUrl']]
             return product
 
@@ -764,6 +770,23 @@ class LavalMotoScraper(DedicatedScraper):
 
         return re.sub(r'\s+', ' ', group_model).strip()
 
+    _COLOR_PATTERNS = re.compile(
+        r'\b(?:'
+        r'noir(?:\s+(?:corbeau|ballistic|mat|m[ée]tallis[ée]|brillant|graphite|phantom|midnight|cosmic))*'
+        r'|blanc(?:\s+(?:perle|[ée]blouissant|nacr[ée]|cristal|brillant|mat))*'
+        r'|rouge(?:\s+(?:grand\s+prix|racing|candy|[ée]carlate|cerise|fluo|extr[eê]me))*'
+        r'|bleu(?:\s+(?:team\s+yamaha|m[ée]tallis[ée]|mat|brillant|fonc[ée]|nuit|royal))*'
+        r'|blue(?:\s+(?:team\s+yamaha))?'
+        r'|vert(?:\s+(?:lime|sauge|fluo|racing|fonc[ée]|mat|m[ée]tallis[ée]))*'
+        r'|gris(?:\s+(?:anthracite|m[ée]tallis[ée]|mat|fonc[ée]|storm|titanium))*'
+        r'|jaune(?:\s+(?:fluo|racing|acide))*'
+        r'|orange(?:\s+(?:fluo|racing|m[ée]tallis[ée]))*'
+        r'|argent(?:\s+(?:m[ée]tallis[ée]))?'
+        r'|bronze(?:\s+(?:m[ée]tallis[ée]))?'
+        r')\b',
+        re.I
+    )
+
     @staticmethod
     def _clean_name(name: str) -> str:
         if not name:
@@ -775,7 +798,23 @@ class LavalMotoScraper(DedicatedScraper):
             '', name, flags=re.I
         )
         name = re.sub(r'\s+[àa]\s+Laval\s*$', '', name, flags=re.I)
-        name = re.sub(r'^(?:Pr[ée]-?commande|Pre-?order)\s*[-–]?\s*', '', name, flags=re.I)
-        name = re.sub(r'\s*[-–]?\s*(?:Pr[ée]-?commande|Pre-?order)\s*$', '', name, flags=re.I)
+        name = re.sub(r'\s*[-–]?\s*(?:Pr[ée]-?commande|Pre-?order)\s*[-–]?\s*', ' ', name, flags=re.I)
+        name = re.sub(r'\s*\([^)]*\)', '', name)
+        name = re.sub(
+            r'\s+\d+\s*(?:th|st|nd|rd|e|[èe]me)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
+            '', name, flags=re.I
+        )
+        name = re.sub(r'\s+ELECTRIC\b', '', name)
+        name = LavalMotoScraper._COLOR_PATTERNS.sub('', name)
         name = re.sub(r'\s+', ' ', name)
         return name.strip()
+
+    @staticmethod
+    def _strip_color_from_name(name: str, couleur: str) -> str:
+        """Remove the spec-extracted color value from the display name."""
+        if not couleur or not name:
+            return name
+        escaped = re.escape(couleur)
+        cleaned = re.sub(r'\s+' + escaped + r'\b', '', name, flags=re.I)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned if cleaned else name
