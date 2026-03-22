@@ -20,6 +20,7 @@ from .nadon_sport import NadonSportScraper
 from .rock_moto_sport import RockMotoSportScraper
 from .maximum_aventure import MaximumAventureScraper
 from .laval_moto import LavalMotoScraper
+from .motopro_granby import MotoProGranbyScraper
 
 
 _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
@@ -37,6 +38,7 @@ _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'rock-moto-sport': RockMotoSportScraper,
     'maximum-aventure': MaximumAventureScraper,
     'laval-moto': LavalMotoScraper,
+    'motopro-granby': MotoProGranbyScraper,
 }
 
 _DOMAIN_MAP: Dict[str, str] = {
@@ -56,6 +58,7 @@ _DOMAIN_MAP: Dict[str, str] = {
     'rockmotosport.com': 'rock-moto-sport',
     'maximumaventure.com': 'maximum-aventure',
     'lavalmoto.com': 'laval-moto',
+    'motoprogranby.com': 'motopro-granby',
 }
 
 
