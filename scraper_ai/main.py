@@ -496,6 +496,8 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
             'inventaire': best_match.get('inventaire'),
             'kilometrage': best_match.get('kilometrage'),
             'annee': best_match.get('annee'),
+            'etat': best_match.get('etat'),
+            'sourceCategorie': best_match.get('sourceCategorie'),
         }
 
         if not product.get('sourceSite'):

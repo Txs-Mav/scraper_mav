@@ -22,7 +22,7 @@ type Product = {
   sourceCategorie?: string
   etat?: string
   competitors?: Record<string, number | null>
-  produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string; kilometrage?: number }
+  produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string; kilometrage?: number; etat?: string; sourceCategorie?: string }
   quantity?: number
   inventaire?: string
   groupedUrls?: string[]
@@ -259,8 +259,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           image: p.produitReference?.image || p.image,
           modele: p.modele,
           marque: p.marque,
-          etat: p.etat,
-          sourceCategorie: p.sourceCategorie,
+          etat: p.produitReference?.etat ?? p.etat,
+          sourceCategorie: p.produitReference?.sourceCategorie ?? p.sourceCategorie,
           referenceUrl: p.produitReference?.sourceUrl,
           inventaire: p.produitReference?.inventaire || p.inventaire,
           kilometrage: p.produitReference?.kilometrage ?? p.kilometrage,

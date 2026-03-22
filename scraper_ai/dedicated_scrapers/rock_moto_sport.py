@@ -58,6 +58,7 @@ class RockMotoSportScraper(DedicatedScraper):
     DEALER_CODE = "718"
 
     SITEMAP_USED = "https://www.rockmotosport.com/used-vehicle-1-sitemap.xml"
+    SITEMAP_NEW = "https://www.rockmotosport.com/new-vehicle-1-sitemap.xml"
     SITEMAP_INDEX = "https://www.rockmotosport.com/sitemap_index.xml"
 
     WORKERS = 6
@@ -149,7 +150,8 @@ class RockMotoSportScraper(DedicatedScraper):
         products = self._scrape_via_vms_api(categories)
 
         if not products:
-            print("   ⚠️ API VMS indisponible, fallback sitemap + pages détail")
+            print("   ⚠️ API VMS Convertus indisponible (403), fallback sitemap + pages détail")
+            print("   ℹ️ Cloudflare protège ce site — l'extraction sera lente et partielle")
             products = self._scrape_via_sitemap_and_detail(categories)
 
         if inventory_only:
@@ -409,28 +411,46 @@ class RockMotoSportScraper(DedicatedScraper):
         return self._extract_from_detail_pages(url_map)
 
     def _discover_all_urls(self, categories: List[str]) -> Dict[str, List[tuple]]:
+        want_neuf = any(c in ('inventaire', 'neuf') for c in categories)
         want_occasion = any(c in ('occasion', 'usage') for c in categories)
 
         url_map: Dict[str, List[tuple]] = {}
         seen: set = set()
 
-        if want_occasion:
-            urls = self._discover_from_sitemap()
-            entries = []
+        if want_neuf:
+            urls = self._discover_from_sitemap_source(self.SITEMAP_NEW, 'neuf')
             for u in urls:
                 norm = u.rstrip('/').lower()
                 if norm not in seen:
                     seen.add(norm)
-                    entries.append((u, 'occasion', 'vehicules_occasion'))
-            if entries:
-                url_map['occasion'] = entries
+                    url_map.setdefault('inventaire', []).append((u, 'neuf', 'inventaire'))
+
+        if want_occasion:
+            urls = self._discover_from_sitemap_source(self.SITEMAP_USED, 'occasion')
+            if not urls:
+                urls = self._discover_from_sitemap_index()
+            for u in urls:
+                norm = u.rstrip('/').lower()
+                if norm not in seen:
+                    seen.add(norm)
+                    url_map.setdefault('occasion', []).append((u, 'occasion', 'vehicules_occasion'))
 
         return url_map
 
-    def _discover_from_sitemap(self) -> List[str]:
-        """Parse le sitemap XML pour les véhicules d'occasion."""
+    def _discover_from_sitemap_source(self, sitemap_url: str, label: str) -> List[str]:
+        """Parse un sitemap XML direct pour les véhicules."""
         urls = []
+        resp = self._get(sitemap_url, timeout=15)
+        if resp:
+            for loc in re.findall(r'<loc>(.*?)</loc>', resp.text):
+                if self._VEHICLE_URL_RE.search(loc):
+                    urls.append(loc)
+        print(f"   🗺️ Sitemap [{label}]: {len(urls)} URLs véhicules")
+        return urls
 
+    def _discover_from_sitemap_index(self) -> List[str]:
+        """Fallback: parse le sitemap index pour trouver des sous-sitemaps véhicules."""
+        urls = []
         resp = self._get(self.SITEMAP_INDEX, timeout=15)
         if resp:
             for loc in re.findall(r'<loc>(.*?)</loc>', resp.text):
@@ -440,15 +460,6 @@ class RockMotoSportScraper(DedicatedScraper):
                         for sub_loc in re.findall(r'<loc>(.*?)</loc>', sub_resp.text):
                             if self._VEHICLE_URL_RE.search(sub_loc):
                                 urls.append(sub_loc)
-
-        if not urls:
-            resp = self._get(self.SITEMAP_USED, timeout=15)
-            if resp:
-                for loc in re.findall(r'<loc>(.*?)</loc>', resp.text):
-                    if self._VEHICLE_URL_RE.search(loc):
-                        urls.append(loc)
-
-        print(f"   🗺️ Sitemap: {len(urls)} URLs véhicules")
         return urls
 
     def _extract_from_detail_pages(self, url_map: Dict[str, List[tuple]]) -> List[Dict]:
