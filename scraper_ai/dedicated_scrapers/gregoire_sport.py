@@ -688,8 +688,8 @@ class GregoireSportScraper(DedicatedScraper):
         group_model = ' '.join(words)
 
         group_model = re.sub(
-            r'\b\d+\s*(?:th|st|nd|rd|e|eme)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
-            '',
+            r'\b(\d+)\s*(?:th|st|nd|rd|e|eme)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
+            r'\1 anniversaire',
             group_model,
         )
 
@@ -785,8 +785,8 @@ class GregoireSportScraper(DedicatedScraper):
         name = re.sub(r'\s*[-–]\s*Gr[ée]goire\s*Sport.*$', '', name, flags=re.I)
         name = re.sub(r'\s*[-–]?\s*(?:Pr[ée]-?commande|Pre-?order)\s*[-–]?\s*', ' ', name, flags=re.I)
         name = re.sub(
-            r'\s+\d+\s*(?:th|st|nd|rd|e|[èe]me)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
-            '', name, flags=re.I
+            r'\b(\d+)\s*(?:th|st|nd|rd|e|[èe]me)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
+            r'\1th Anniversary', name, flags=re.I
         )
         name = re.sub(r'\s+(?:Custom|Edition)\b', '', name, flags=re.I)
         name = GregoireSportScraper._COLOR_PATTERNS.sub('', name)

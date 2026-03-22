@@ -801,8 +801,8 @@ class LavalMotoScraper(DedicatedScraper):
         name = re.sub(r'\s*[-–]?\s*(?:Pr[ée]-?commande|Pre-?order)\s*[-–]?\s*', ' ', name, flags=re.I)
         name = re.sub(r'\s*\([^)]*\)', '', name)
         name = re.sub(
-            r'\s+\d+\s*(?:th|st|nd|rd|e|[èe]me)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
-            '', name, flags=re.I
+            r'\b(\d+)\s*(?:th|st|nd|rd|e|[èe]me)\s+(?:annivers\w*|anniv(?:ersary)?)\b',
+            r'\1th Anniversary', name, flags=re.I
         )
         name = re.sub(r'\s+ELECTRIC\b', '', name)
         name = LavalMotoScraper._COLOR_PATTERNS.sub('', name)
