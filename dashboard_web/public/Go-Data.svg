@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#60a5fa"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a5b4fc"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <!-- GO text -->
+  <text x="256" y="240" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="200" fill="white" letter-spacing="-8">GO</text>
+  <!-- Data bars -->
+  <rect x="138" y="340" width="52" height="80" rx="8" fill="url(#bar1)" opacity="0.9"/>
+  <rect x="210" y="310" width="52" height="110" rx="8" fill="url(#bar2)" opacity="0.9"/>
+  <rect x="282" y="290" width="52" height="130" rx="8" fill="url(#bar3)" opacity="0.9"/>
+  <!-- Upward trend line -->
+  <path d="M164 340 L236 310 L308 290 L370 270" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+  <circle cx="370" cy="270" r="8" fill="white" opacity="0.9"/>
+</svg>

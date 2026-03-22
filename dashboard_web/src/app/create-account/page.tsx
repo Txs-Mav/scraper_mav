@@ -158,7 +158,7 @@ function CreateAccountContent() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 group">
             <div className="relative h-8 w-8 flex-shrink-0 rounded-[8px] bg-white dark:bg-[#141419] shadow-sm border border-gray-100 dark:border-white/[0.06] overflow-hidden">
-              <Image src="/Go-Data.png" alt="GO-DATA" fill sizes="32px" className="object-contain" />
+              <Image src="/Go-Data.svg" alt="GO-DATA" fill sizes="32px" className="object-contain" />
             </div>
             <span className="text-[15px] font-semibold text-gray-900 dark:text-white tracking-tight">GO-DATA</span>
           </Link>

@@ -57,7 +57,7 @@ export default function Sidebar() {
               <div className="relative h-10 w-10 flex-shrink-0">
                 <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/70 via-white/30 to-transparent dark:from-white/15 dark:via-white/10 dark:to-transparent" />
                 <Image
-                  src="/Go-Data.png"
+                  src="/Go-Data.svg"
                   alt="Go-Data"
                   fill
                   sizes="40px"

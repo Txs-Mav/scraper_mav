@@ -207,7 +207,7 @@ function ResetPasswordContent() {
           <div className="inline-flex items-center gap-3">
             <div className="relative h-10 w-10 rounded-xl bg-white dark:bg-[#141419] shadow-[0_12px_30px_-18px_rgba(0,0,0,0.45),0_0_0_6px_rgba(255,255,255,0.5)] dark:shadow-[0_12px_30px_-18px_rgba(0,0,0,0.6),0_0_0_6px_rgba(255,255,255,0.06)] overflow-hidden">
               <Image
-                src="/Go-Data.png"
+                src="/Go-Data.svg"
                 alt="Go-Data"
                 fill
                 sizes="40px"

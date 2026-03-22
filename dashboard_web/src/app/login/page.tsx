@@ -96,7 +96,7 @@ function LoginContent() {
         <div className="relative z-10 flex flex-col justify-between w-full p-10 xl:p-14">
           <Link href="/" className="flex items-center gap-2.5">
             <div className="relative h-9 w-9 flex-shrink-0 rounded-[8px] bg-white/10 backdrop-blur-sm overflow-hidden">
-              <Image src="/Go-Data.png" alt="GO-DATA" fill sizes="36px" className="object-contain" />
+              <Image src="/Go-Data.svg" alt="GO-DATA" fill sizes="36px" className="object-contain" />
             </div>
             <span className="text-[15px] font-semibold text-white tracking-tight">GO-DATA</span>
           </Link>
@@ -146,7 +146,7 @@ function LoginContent() {
             <div className="flex items-center gap-2.5 mb-10 lg:hidden">
               <Link href="/" className="flex items-center gap-2.5">
                 <div className="relative h-8 w-8 rounded-[8px] bg-white dark:bg-[#141419] shadow-sm border border-gray-100 dark:border-white/[0.06] overflow-hidden">
-                  <Image src="/Go-Data.png" alt="GO-DATA" fill sizes="32px" className="object-contain" />
+                  <Image src="/Go-Data.svg" alt="GO-DATA" fill sizes="32px" className="object-contain" />
                 </div>
                 <span className="text-[15px] font-semibold text-gray-900 dark:text-white tracking-tight">GO-DATA</span>
               </Link>

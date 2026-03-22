@@ -119,7 +119,7 @@ export default function Home() {
             <div className="relative h-11 w-11 flex-shrink-0 rounded-xl bg-gradient-to-br from-white to-gray-100 dark:from-[#1a1a1f] dark:to-[#0f0f12] shadow-lg shadow-black/5 dark:shadow-black/20 p-0.5">
               <div className="relative h-full w-full rounded-[10px] overflow-hidden">
                 <Image
-                  src="/Go-Data.png"
+                  src="/Go-Data.svg"
                   alt="GO-DATA"
                   fill
                   sizes="44px"
@@ -418,7 +418,7 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <div className="relative h-9 w-9 flex-shrink-0">
                 <Image
-                  src="/Go-Data.png"
+                  src="/Go-Data.svg"
                   alt="GO-DATA"
                   fill
                   sizes="36px"
