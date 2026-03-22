@@ -103,6 +103,19 @@ class LavalMotoScraper(DedicatedScraper):
         'tondeuse': 'Produit mécanique',
     }
 
+    _GROUP_COLOR_KEYWORDS = frozenset({
+        'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
+        'gris', 'argent', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
+        'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin',
+        'chrome', 'carbone', 'fonce', 'clair', 'fluo', 'neon', 'acide',
+        'ebene', 'graphite', 'anthracite', 'platine', 'titane',
+        'phantom', 'midnight', 'cosmic', 'storm', 'combat', 'lime', 'sauge',
+        'cristal', 'obsidian', 'racing',
+        'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
+        'gray', 'grey', 'silver', 'gold', 'brown', 'matte', 'glossy',
+        'metallic', 'pearl', 'carbon', 'dark', 'light', 'bright',
+    })
+
     def __init__(self):
         super().__init__()
 
@@ -632,15 +645,16 @@ class LavalMotoScraper(DedicatedScraper):
         groups: Dict[tuple, Dict] = {}
 
         for product in unique:
-            marque = product.get('marque', '').lower().strip()
-            modele = product.get('modele', '').lower().strip()
+            marque_norm = self._deep_normalize(product.get('marque', ''))
+            group_model = self._normalize_group_model(product)
             annee = product.get('annee', 0)
             etat = product.get('etat', 'neuf')
 
-            if marque and modele:
-                key = (marque, modele, annee, etat)
+            if marque_norm and group_model:
+                key = (marque_norm, group_model, annee, etat)
             else:
-                key = (product.get('name', '').lower().strip(), annee, etat)
+                fallback = group_model or self._deep_normalize(product.get('name', ''))
+                key = (fallback, annee, etat)
 
             if key not in groups:
                 product['quantity'] = 1
@@ -667,6 +681,90 @@ class LavalMotoScraper(DedicatedScraper):
     # ================================================================
 
     @staticmethod
+    def _deep_normalize(text: str) -> str:
+        """Normalisation profonde alignée avec main.py _deep_normalize."""
+        import unicodedata
+        if not text:
+            return ''
+        text = text.lower().strip()
+        text = unicodedata.normalize('NFKD', text)
+        text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))
+        text = re.sub(r'([a-z])(\d)', r'\1 \2', text)
+        text = re.sub(r'(\d)([a-z])', r'\1 \2', text)
+        text = re.sub(r'[^a-z0-9\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        words = text.split()
+        merged: list = []
+        i = 0
+        while i < len(words):
+            if len(words[i]) == 1 and words[i].isalpha():
+                letters = [words[i]]
+                j = i + 1
+                while j < len(words) and len(words[j]) == 1 and words[j].isalpha():
+                    letters.append(words[j])
+                    j += 1
+                merged.append(''.join(letters) if len(letters) > 1 else words[i])
+                i = j
+            else:
+                merged.append(words[i])
+                i += 1
+        return ' '.join(merged)
+
+    def _normalize_group_model(self, product: Dict) -> str:
+        """Build a normalized model key for internal grouping.
+
+        - Extracts variant info from name (e.g. "70th Anniversary")
+        - Strips colors (using the 'couleur' spec field + keyword list)
+        - Normalizes anniversary/ordinal terms across EN/FR
+        - Strips "Pre-commande" / "Pre-order"
+        """
+        name = (product.get('name') or '').strip()
+        marque = (product.get('marque') or '').strip()
+        couleur = (product.get('couleur') or '').strip()
+        raw_modele = (product.get('modele') or '').strip()
+
+        spec_model = self._deep_normalize(raw_modele) if raw_modele else ''
+
+        name_model = ''
+        if name:
+            name_norm = self._deep_normalize(name)
+            marque_norm = self._deep_normalize(marque) if marque else ''
+
+            if marque_norm and name_norm.startswith(marque_norm + ' '):
+                name_model = name_norm[len(marque_norm):].strip()
+            elif marque_norm and name_norm.startswith(marque_norm):
+                name_model = name_norm[len(marque_norm):].strip()
+            else:
+                name_model = name_norm
+
+            name_model = re.sub(r'\b(?:19|20)\d{2}\b', '', name_model).strip()
+            name_model = re.sub(r'\s+', ' ', name_model).strip()
+
+        group_model = name_model if len(name_model) > len(spec_model) else spec_model
+        if not group_model:
+            group_model = name_model or spec_model
+
+        if couleur:
+            couleur_norm = self._deep_normalize(couleur)
+            if couleur_norm:
+                group_model = group_model.replace(couleur_norm, ' ').strip()
+
+        words = group_model.split()
+        words = [w for w in words if w not in self._GROUP_COLOR_KEYWORDS]
+        group_model = ' '.join(words)
+
+        group_model = re.sub(
+            r'(\d+)\s+(?:th|st|nd|rd|e|eme)\s+(?:annivers\w*|anniv)\b',
+            r'\1 anniversaire',
+            group_model,
+        )
+
+        group_model = re.sub(r'\bpre\s*commande\b', '', group_model)
+        group_model = re.sub(r'\bpre\s*order\b', '', group_model)
+
+        return re.sub(r'\s+', ' ', group_model).strip()
+
+    @staticmethod
     def _clean_name(name: str) -> str:
         if not name:
             return name
@@ -677,5 +775,7 @@ class LavalMotoScraper(DedicatedScraper):
             '', name, flags=re.I
         )
         name = re.sub(r'\s+[àa]\s+Laval\s*$', '', name, flags=re.I)
+        name = re.sub(r'^(?:Pr[ée]-?commande|Pre-?order)\s*[-–]?\s*', '', name, flags=re.I)
+        name = re.sub(r'\s*[-–]?\s*(?:Pr[ée]-?commande|Pre-?order)\s*$', '', name, flags=re.I)
         name = re.sub(r'\s+', ' ', name)
         return name.strip()

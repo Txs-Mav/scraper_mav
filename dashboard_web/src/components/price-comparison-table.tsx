@@ -70,8 +70,11 @@ const COLOR_KEYWORDS_NORMALIZED = new Set([
   'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
   'brillant', 'mat', 'metallise', 'metallique',
   'perle', 'nacre', 'satin', 'chrome', 'carbone',
-  'fonce', 'clair', 'fluo', 'neon',
+  'fonce', 'clair', 'fluo', 'neon', 'acide',
   'combat', 'lime', 'sauge', 'cristal', 'obsidian', 'ebony', 'ivory',
+  'crystal', 'racing',
+  'ebene', 'graphite', 'anthracite', 'platine', 'titane',
+  'phantom', 'midnight', 'cosmic', 'storm',
   'petard', 'sommet', 'grisatre',
   'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
   'gray', 'grey', 'silver', 'gold', 'brown',
@@ -179,11 +182,47 @@ function PriceCell({ price, delta }: { price: number | null; delta: number | nul
   )
 }
 
+const KNOWN_BRAND_NAMES = new Set([
+  'yamaha', 'kawasaki', 'honda', 'suzuki', 'ktm', 'husqvarna', 'ducati',
+  'aprilia', 'vespa', 'piaggio', 'triumph', 'bmw', 'harley', 'indian',
+  'polaris', 'cfmoto', 'can-am', 'sea-doo', 'ski-doo', 'beta', 'sherco',
+  'benelli', 'gasgas', 'kymco', 'segway', 'zero',
+])
+
 function stripColorWords(text: string): string {
   if (!text) return text
+
+  const normalizeWord = (w: string) => w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
   const words = text.split(/\s+/)
-  const filtered = words.filter(w => !COLOR_KEYWORDS_NORMALIZED.has(w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')))
-  return filtered.join(' ').replace(/\s+/g, ' ').trim() || text
+  const result: string[] = []
+  let i = 0
+  let colorRunStart = -1
+
+  while (i < words.length) {
+    const norm = normalizeWord(words[i])
+    const isColor = COLOR_KEYWORDS_NORMALIZED.has(norm)
+
+    if (isColor) {
+      if (colorRunStart < 0) colorRunStart = i
+      i++
+      continue
+    }
+
+    if (colorRunStart >= 0) {
+      if (norm === 'team' || KNOWN_BRAND_NAMES.has(norm)) {
+        i++
+        continue
+      }
+      colorRunStart = -1
+    }
+
+    result.push(words[i])
+    i++
+  }
+
+  const cleaned = result.join(' ').replace(/\s+/g, ' ').trim()
+  return cleaned || text
 }
 
 export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, matchMode = 'exact', searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }: PriceComparisonTableProps) {

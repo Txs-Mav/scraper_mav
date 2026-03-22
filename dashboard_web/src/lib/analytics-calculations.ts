@@ -111,6 +111,9 @@ const COLOR_KEYWORDS = new Set([
   'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
   'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin', 'chrome', 'carbone',
   'fonce', 'clair', 'fluo', 'neon', 'combat', 'lime', 'sauge', 'cristal', 'obsidian',
+  'acide', 'crystal', 'racing',
+  'ebene', 'graphite', 'anthracite', 'platine', 'titane',
+  'phantom', 'midnight', 'cosmic', 'storm',
   'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
   'gray', 'grey', 'silver', 'gold', 'brown', 'matte', 'glossy', 'pearl', 'carbon',
   'dark', 'light', 'bright', 'etincelle', 'velocite',
@@ -215,6 +218,15 @@ export function normalizeProductGroupKey(p: Product): string {
 
   modele = removeColors(modele)
   marque = removeColors(marque)
+
+  modele = modele.replace(/\bpre\s*commande\b/gi, '').replace(/\bpre\s*order\b/gi, '').trim()
+
+  modele = modele.replace(
+    /(\d+)\s+(?:th|st|nd|rd|e|eme)\s+(?:annivers\w*|anniv)\b/gi,
+    '$1 anniversaire',
+  )
+
+  modele = modele.replace(/\s+/g, ' ').trim()
 
   return `${marque}|${modele}|${annee || 0}|${p.etat || 'neuf'}`
 }

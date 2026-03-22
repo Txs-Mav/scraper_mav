@@ -944,7 +944,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           products={filteredProducts}
           competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))}
           ignoreColors={ignoreColors}
-          stripColorsFromDisplay={!showColorsInNames}
+          stripColorsFromDisplay={!showColorsInNames || ignoreColors}
           matchMode={matchMode}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}

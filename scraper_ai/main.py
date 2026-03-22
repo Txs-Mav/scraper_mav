@@ -74,6 +74,8 @@ COLOR_KEYWORDS = [
     'racing', 'candy', 'phantom', 'midnight', 'cosmic', 'storm',
     # Descripteurs de couleur (souvent dans les noms de véhicules)
     'nouveau', 'nouvelle', 'special', 'édition',
+    # Modificateurs de couleur véhicules
+    'acide', 'cristal', 'crystal',
 ]
 
 
@@ -360,8 +362,17 @@ def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[st
     _ETAT_STANDALONE = r'\b(?:neuf|new|usage|usagee?|occasion|used|demo|demonstrateur|preowned|pre[\s-]?owned|certifie|certified)\b'
     modele = re.sub(_ETAT_STANDALONE, '', modele, flags=re.I).strip()
 
+    modele = re.sub(r'\bpre\s*commande\b', '', modele, flags=re.I).strip()
+    modele = re.sub(r'\bpre\s*order\b', '', modele, flags=re.I).strip()
+
     if ignore_colors:
         modele = remove_colors_from_string(modele)
+
+    modele = re.sub(
+        r'(\d+)\s+(?:th|st|nd|rd|e|eme)\s+(?:annivers\w*|anniv)\b',
+        r'\1 anniversaire',
+        modele,
+    )
 
     marque = re.sub(r'\s+', ' ', marque).strip()
     modele = re.sub(r'\s+', ' ', modele).strip()
@@ -1164,10 +1175,13 @@ Exemples:
 
     # TOUJOURS sauvegarder localement en backup (peu importe le résultat Supabase)
     output_file = Path(__file__).parent.parent / "scraped_data.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(final_data, f, indent=2, ensure_ascii=False)
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(final_data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
     if not saved_to_supabase:
-        print(f"💾 Sauvegardé localement: {output_file}")
+        print(f"⚠️  ÉCHEC SAUVEGARDE SUPABASE — données locales uniquement: {output_file}")
     else:
         print(f"💾 Backup local: {output_file}")
 
@@ -1249,6 +1263,11 @@ Exemples:
             print(f"   ... et {len(all_products_to_save) - 10} autres")
     else:
         print(f"\n⚠️  Aucun produit extrait.")
+
+    # Exit code non-zero si la sauvegarde Supabase a échoué (signale l'échec au cron)
+    if user_id and not saved_to_supabase:
+        print(f"\n❌ EXIT CODE 2: Sauvegarde Supabase échouée")
+        sys.exit(2)
 
 
 if __name__ == "__main__":
