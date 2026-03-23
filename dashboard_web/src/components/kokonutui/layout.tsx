@@ -31,7 +31,7 @@ export default function Layout({ children }: LayoutProps) {
         <TopNav />
       </header>
       <main className="flex-1 overflow-auto p-6 background-template">
-        <div className="w-full max-w-6xl mx-auto">
+        <div className="w-full max-w-[1800px] mx-auto">
           <Breadcrumbs />
           {children}
         </div>

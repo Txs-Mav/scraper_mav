@@ -573,11 +573,16 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       else lastAnalysisText = t("dash.hoursAgo").replace("{0}", String(Math.floor(diffMin / 60)))
     }
 
-    const nextHour = new Date(now)
-    nextHour.setMinutes(0, 0, 0)
-    nextHour.setHours(nextHour.getHours() + 1)
-    const nextScanMin = Math.max(1, Math.ceil((nextHour.getTime() - now.getTime()) / 60000))
-    nextScanText = t("dash.inMinutes").replace("{0}", String(nextScanMin))
+    const SCAN_INTERVAL_MIN = 40
+    if (lastScrapingTime) {
+      const nextScanTime = new Date(lastScrapingTime.getTime() + SCAN_INTERVAL_MIN * 60000)
+      const nextScanMin = Math.max(1, Math.ceil((nextScanTime.getTime() - now.getTime()) / 60000))
+      nextScanText = nextScanMin <= 0
+        ? t("alerts.now")
+        : t("dash.inMinutes").replace("{0}", String(nextScanMin))
+    } else {
+      nextScanText = t("dash.inMinutes").replace("{0}", "~20")
+    }
 
     return { lastAnalysisText, nextScanText }
   }, [lastScrapingTime, t])
@@ -849,7 +854,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       </div>
 
       {/* ── Produits — section principale, élévation max ── */}
-      <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+      <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
         {/* Tab bar */}
         <div className="px-6 pt-5 pb-0">
           <div className="flex items-center justify-between mb-5">

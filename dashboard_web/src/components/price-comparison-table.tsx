@@ -560,14 +560,14 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           <div style={{ minWidth: Math.max(900, dynamicMinWidth) }}>
             <table className="w-full border-collapse">
               <thead>
-                <tr className="sticky top-0 bg-transparent">
-                  <th className="sticky left-0 bg-transparent px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                <tr className="sticky top-0">
+                  <th className="sticky left-0 z-30 bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
                     {t("table.image")}
                   </th>
-                  <th className="sticky left-[80px] bg-transparent px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
+                  <th className="sticky left-[80px] z-30 bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
                     {t("table.product")}
                   </th>
-                  <th className="sticky left-[260px] bg-transparent px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                  <th className="sticky left-[260px] z-30 bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
                     {t("table.refPrice")}
                   </th>
                   {cols.map(c => (
@@ -575,179 +575,180 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                       <span className="truncate block max-w-[130px] ml-auto">{c.label}</span>
                     </th>
                   ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.length === 0 && (
-                <tr>
-                  <td colSpan={3 + cols.length} className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                    {emptyMessage || t("table.noProducts")}
-                  </td>
                 </tr>
-              )}
-              {flatRows.slice(
-                currentPage * ROWS_PER_PAGE,
-                currentPage * ROWS_PER_PAGE + ROWS_PER_PAGE + 20
-              ).map((entry, flatIdx) => {
-                if (entry.type === 'family') {
+              </thead>
+              <tbody>
+                {data.length === 0 && (
+                  <tr>
+                    <td colSpan={3 + cols.length} className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                      {emptyMessage || t("table.noProducts")}
+                    </td>
+                  </tr>
+                )}
+                {flatRows.slice(
+                  currentPage * ROWS_PER_PAGE,
+                  currentPage * ROWS_PER_PAGE + ROWS_PER_PAGE + 20
+                ).map((entry, flatIdx) => {
+                  if (entry.type === 'family') {
+                    return (
+                      <tr key={`fam-${flatIdx}`} className="bg-gray-50/80 dark:bg-white/[0.02]">
+                        <td colSpan={3 + cols.length} className="px-4 py-1.5 border-b border-gray-200/60 dark:border-white/[0.06]">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            {entry.label}
+                          </span>
+                          <span className="ml-2 text-[10px] text-gray-300 dark:text-gray-600">{entry.count}</span>
+                        </td>
+                      </tr>
+                    )
+                  }
+                  const p = entry.row
+                  const idx = entry.globalIdx
+                  const isUsed = p.etat === 'occasion' || p.etat === 'vehicules_occasion' || p.sourceCategorie === 'occasion' || p.sourceCategorie === 'vehicules_occasion'
+                  const hasDetails = (isUsed && p.kilometrage != null) || !!p.inventaire
                   return (
-                    <tr key={`fam-${flatIdx}`} className="bg-gray-50/80 dark:bg-white/[0.02]">
-                      <td colSpan={3 + cols.length} className="px-4 py-1.5 border-b border-gray-200/60 dark:border-white/[0.06]">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                          {entry.label}
-                        </span>
-                        <span className="ml-2 text-[10px] text-gray-300 dark:text-gray-600">{entry.count}</span>
-                      </td>
-                    </tr>
-                  )
-                }
-                const p = entry.row
-                const idx = entry.globalIdx
-                const isUsed = p.etat === 'occasion' || p.etat === 'vehicules_occasion' || p.sourceCategorie === 'occasion' || p.sourceCategorie === 'vehicules_occasion'
-                const hasDetails = (isUsed && p.kilometrage != null) || !!p.inventaire
-                return (
-                <React.Fragment key={idx}>
-                <tr
-                  className="border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#111117] transition-colors"
-                >
-                  <td className="sticky left-0 bg-transparent px-3 py-2 align-middle">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => hasDetails && toggleDetailRow(idx)}
-                        className={`flex-shrink-0 p-0.5 rounded transition-all ${hasDetails ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] cursor-pointer' : 'text-gray-200 dark:text-gray-700 cursor-default'}`}
-                        disabled={!hasDetails}
-                        title={hasDetails ? (detailRows.has(idx) ? t("table.hideDetails") : t("table.showDetails")) : ''}
+                    <React.Fragment key={idx}>
+                      <tr
+                        className="group border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#111117] transition-colors"
                       >
-                        <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${detailRows.has(idx) ? 'rotate-180' : ''}`} />
-                      </button>
-                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-[#1F1F23] shadow-[0_8px_20px_-14px_rgba(0,0,0,0.4)]">
-                        {p.image ? (
-                          <>
-                            <img
-                              src={p.image}
-                              alt={p.name}
-                              width={48}
-                              height={48}
-                              className="object-cover w-full h-full"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
-                            />
-                            <div className="hidden w-full h-full flex items-center justify-center text-gray-400 text-[10px]">{p.marque?.slice(0, 3) || 'Img'}</div>
-                          </>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Img</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="sticky left-[80px] bg-transparent px-3 py-2 min-w-[280px]">
-                    <div className="flex flex-col gap-0.5">
-                      {p.marque && extractMarque(p.marque) && (
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{extractMarque(p.marque)}</span>
-                      )}
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {(() => {
-                          const rawName = p.displayName || p.name
-                          const displayedName = stripColorsFromDisplay ? stripColorWords(rawName) : rawName
-                          return p.referenceUrl ? (
-                            <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
-                              {displayedName}
-                            </a>
-                          ) : (
-                            <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
-                              {displayedName}
-                            </span>
-                          )
-                        })()}
-                        <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
-                        {p.quantity != null && p.quantity > 1 && (
-                          <button
-                            onClick={() => toggleRowExpand(idx)}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors cursor-pointer"
-                            title={expandedRows.has(idx) ? "Masquer les URLs" : "Voir les URLs individuelles"}
-                          >
-                            x{p.quantity} {expandedRows.has(idx) ? '▲' : '▼'}
-                          </button>
-                        )}
-                      </div>
-                      {p.inventaire && (
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500">#{p.inventaire}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="sticky left-[260px] bg-transparent px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
-                    {p.reference !== null ? (
-                      p.referenceUrl ? (
-                        <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                          {p.reference.toFixed(0)} $
-                        </a>
-                      ) : (
-                        `${p.reference.toFixed(0)} $`
-                      )
-                    ) : "—"}
-                  </td>
-                  {p.prices.map(priceEntry => (
-                    <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-gray-900 dark:text-gray-200 min-w-[130px]">
-                      <div className="flex flex-col items-end gap-0.5">
-                        {priceEntry.url && priceEntry.price !== null ? (
-                          <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                            <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
-                          </a>
-                        ) : (
-                          <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
-                        )}
-                        {priceEntry.etat && priceEntry.price !== null && (
-                          <EtatBadge etat={priceEntry.etat} />
-                        )}
-                      </div>
-                    </td>
-                  ))}
-                </tr>
-                {detailRows.has(idx) && hasDetails && (
-                  <tr className="bg-slate-50/70 dark:bg-slate-900/20 border-b border-gray-100 dark:border-[#1F1F23]">
-                    <td colSpan={3 + cols.length} className="px-4 py-2.5">
-                      <div className="flex flex-wrap gap-x-6 gap-y-1.5 items-center pl-6">
-                        {isUsed && p.kilometrage != null && (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.mileage")}</span>
-                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{p.kilometrage.toLocaleString()} km</span>
+                        <td className="sticky left-0 z-20 bg-white group-hover:bg-gray-50 dark:bg-[#0F0F12] dark:group-hover:bg-[#111117] transition-colors px-3 py-2 align-middle">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => hasDetails && toggleDetailRow(idx)}
+                              className={`flex-shrink-0 p-0.5 rounded transition-all ${hasDetails ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] cursor-pointer' : 'text-gray-200 dark:text-gray-700 cursor-default'}`}
+                              disabled={!hasDetails}
+                              title={hasDetails ? (detailRows.has(idx) ? t("table.hideDetails") : t("table.showDetails")) : ''}
+                            >
+                              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${detailRows.has(idx) ? 'rotate-180' : ''}`} />
+                            </button>
+                            <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-[#1F1F23] shadow-[0_8px_20px_-14px_rgba(0,0,0,0.4)]">
+                              {p.image ? (
+                                <>
+                                  <img
+                                    src={p.image}
+                                    alt={p.name}
+                                    width={48}
+                                    height={48}
+                                    className="object-cover w-full h-full"
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                                  />
+                                  <div className="hidden w-full h-full flex items-center justify-center text-gray-400 text-[10px]">{p.marque?.slice(0, 3) || 'Img'}</div>
+                                </>
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">Img</div>
+                              )}
+                            </div>
                           </div>
-                        )}
-                        {p.inventaire && (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.serialNumber")}</span>
-                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">#{p.inventaire}</span>
+                        </td>
+                        <td className="sticky left-[80px] z-20 bg-white group-hover:bg-gray-50 dark:bg-[#0F0F12] dark:group-hover:bg-[#111117] transition-colors px-3 py-2 min-w-[280px]">
+                          <div className="flex flex-col gap-0.5">
+                            {p.marque && extractMarque(p.marque) && (
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{extractMarque(p.marque)}</span>
+                            )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {(() => {
+                                const rawName = p.displayName || p.name
+                                const displayedName = stripColorsFromDisplay ? stripColorWords(rawName) : rawName
+                                return p.referenceUrl ? (
+                                  <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
+                                    {displayedName}
+                                  </a>
+                                ) : (
+                                  <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
+                                    {displayedName}
+                                  </span>
+                                )
+                              })()}
+                              <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
+                              {p.quantity != null && p.quantity > 1 && (
+                                <button
+                                  onClick={() => toggleRowExpand(idx)}
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors cursor-pointer"
+                                  title={expandedRows.has(idx) ? "Masquer les URLs" : "Voir les URLs individuelles"}
+                                >
+                                  x{p.quantity} {expandedRows.has(idx) ? '▲' : '▼'}
+                                </button>
+                              )}
+                            </div>
+                            {p.inventaire && (
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500">#{p.inventaire}</span>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {expandedRows.has(idx) && p.groupedUrls && p.groupedUrls.length > 0 && (
-                  <tr className="bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-[#1F1F23]">
-                    <td colSpan={3 + cols.length} className="px-4 py-2">
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">URLs regroupées :</span>
-                        {p.groupedUrls.map((url: string, urlIdx: number) => (
-                          <a
-                            key={urlIdx}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[300px]"
-                            title={url}
-                          >
-                            {urlIdx + 1}. {url.split('/').filter(Boolean).pop() || url}
-                          </a>
+                        </td>
+                        <td className="sticky left-[260px] z-20 bg-white group-hover:bg-gray-50 dark:bg-[#0F0F12] dark:group-hover:bg-[#111117] transition-colors px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
+                          {p.reference !== null ? (
+                            p.referenceUrl ? (
+                              <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                {p.reference.toFixed(0)} $
+                              </a>
+                            ) : (
+                              `${p.reference.toFixed(0)} $`
+                            )
+                          ) : "—"}
+                        </td>
+                        {p.prices.map(priceEntry => (
+                          <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-gray-900 dark:text-gray-200 min-w-[130px]">
+                            <div className="flex flex-col items-end gap-0.5">
+                              {priceEntry.url && priceEntry.price !== null ? (
+                                <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                  <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
+                                </a>
+                              ) : (
+                                <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
+                              )}
+                              {priceEntry.etat && priceEntry.price !== null && (
+                                <EtatBadge etat={priceEntry.etat} />
+                              )}
+                            </div>
+                          </td>
                         ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                </React.Fragment>
-              )})}
-            
+                      </tr>
+                      {detailRows.has(idx) && hasDetails && (
+                        <tr className="bg-slate-50/70 dark:bg-slate-900/20 border-b border-gray-100 dark:border-[#1F1F23]">
+                          <td colSpan={3 + cols.length} className="px-4 py-2.5">
+                            <div className="flex flex-wrap gap-x-6 gap-y-1.5 items-center pl-6">
+                              {isUsed && p.kilometrage != null && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.mileage")}</span>
+                                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{p.kilometrage.toLocaleString()} km</span>
+                                </div>
+                              )}
+                              {p.inventaire && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.serialNumber")}</span>
+                                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">#{p.inventaire}</span>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {expandedRows.has(idx) && p.groupedUrls && p.groupedUrls.length > 0 && (
+                        <tr className="bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-[#1F1F23]">
+                          <td colSpan={3 + cols.length} className="px-4 py-2">
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">URLs regroupées :</span>
+                              {p.groupedUrls.map((url: string, urlIdx: number) => (
+                                <a
+                                  key={urlIdx}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[300px]"
+                                  title={url}
+                                >
+                                  {urlIdx + 1}. {url.split('/').filter(Boolean).pop() || url}
+                                </a>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+
               </tbody>
             </table>
           </div>
@@ -762,84 +763,83 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
   }
 
   return (
-    <div className="px-6 pt-4 pb-5">
-      <div className="flex items-center gap-1.5 mb-4">
-          <div className="flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-[#1F1F23] bg-gray-50/50 dark:bg-white/[0.02] p-1">
-            <button
-              type="button"
-              onClick={handlePrint}
-              disabled={tableData.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
-              title={t("table.print")}
-            >
-              <Printer className="h-3.5 w-3.5" />
-              {t("table.print")}
-            </button>
-            <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              disabled={tableData.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
-              title={t("table.excel")}
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              Excel
-            </button>
-          </div>
+    <div className="pt-4 pb-5">
+      <div className="flex items-center gap-1.5 mb-4 px-6">
+        <div className="flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-[#1F1F23] bg-gray-50/50 dark:bg-white/[0.02] p-1">
           <button
             type="button"
-            onClick={() => {
-              setShareResult(null)
-              setShowShareModal(true)
-            }}
+            onClick={handlePrint}
             disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-violet-500/15 hover:shadow-md hover:shadow-violet-500/20 hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            title={t("table.shareByEmail")}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            title={t("table.print")}
           >
-            <Mail className="h-3.5 w-3.5" />
-            {t("table.share")}
+            <Printer className="h-3.5 w-3.5" />
+            {t("table.print")}
           </button>
-          <div className="flex-1" />
-          {onSearchChange && (
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery || ""}
-                onChange={e => onSearchChange(e.target.value)}
-                placeholder={searchPlaceholder || "Rechercher..."}
-                className="w-72 pl-8 pr-7 py-1.5 rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/[0.12] transition"
-              />
-              {searchQuery && (
-                <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          )}
-          {onToggleColors && (
-            <button
-              type="button"
-              onClick={onToggleColors}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04] transition shrink-0"
-            >
-              <Palette className="h-3 w-3" />
-              {stripColorsFromDisplay ? (showColorsLabel || "Afficher couleurs") : (hideColorsLabel || "Masquer couleurs")}
-            </button>
-          )}
+          <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
           <button
             type="button"
-            onClick={() => setGroupByFamily(prev => !prev)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition shrink-0 ${
-              groupByFamily
-                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04]'
-            }`}
+            onClick={handleExportExcel}
+            disabled={tableData.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            title={t("table.excel")}
           >
-            <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
-            {groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Excel
           </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setShareResult(null)
+            setShowShareModal(true)
+          }}
+          disabled={tableData.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-violet-500/15 hover:shadow-md hover:shadow-violet-500/20 hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          title={t("table.shareByEmail")}
+        >
+          <Mail className="h-3.5 w-3.5" />
+          {t("table.share")}
+        </button>
+        <div className="flex-1" />
+        {onSearchChange && (
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery || ""}
+              onChange={e => onSearchChange(e.target.value)}
+              placeholder={searchPlaceholder || "Rechercher..."}
+              className="w-72 pl-8 pr-7 py-1.5 rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/[0.12] transition"
+            />
+            {searchQuery && (
+              <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        )}
+        {onToggleColors && (
+          <button
+            type="button"
+            onClick={onToggleColors}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04] transition shrink-0"
+          >
+            <Palette className="h-3 w-3" />
+            {stripColorsFromDisplay ? (showColorsLabel || "Afficher couleurs") : (hideColorsLabel || "Masquer couleurs")}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setGroupByFamily(prev => !prev)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition shrink-0 ${groupByFamily
+              ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04]'
+            }`}
+        >
+          <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
+          {groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}
+        </button>
       </div>
 
       <div id="price-comparison-table">
@@ -850,7 +850,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       </div>
 
       {totalRows > ROWS_PER_PAGE && (
-        <div className="flex items-center justify-between mt-4 px-1">
+        <div className="flex items-center justify-between mt-4 px-6">
           <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
             {t("table.showing")} {currentPage * ROWS_PER_PAGE + 1} {t("table.to")} {Math.min((currentPage + 1) * ROWS_PER_PAGE, totalRows)} {t("table.of")} {totalRows}
           </span>
@@ -872,11 +872,10 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                       key={page}
                       type="button"
                       onClick={() => setCurrentPage(page)}
-                      className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition ${
-                        page === currentPage
+                      className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition ${page === currentPage
                           ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
                           : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
-                      }`}
+                        }`}
                     >
                       {page + 1}
                     </button>
@@ -994,8 +993,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                 {shareResult && (
                   <div
                     className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${shareResult.success
-                        ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40"
-                        : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40"
+                      ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40"
+                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40"
                       }`}
                   >
                     {shareResult.success ? (
