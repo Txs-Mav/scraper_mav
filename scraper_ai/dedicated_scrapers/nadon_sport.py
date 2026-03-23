@@ -10,8 +10,12 @@ Stratégie listing paginé par sous-catégorie + pages détail :
      Deux patterns d'URLs :
        - Inventaire physique :  …-cs-24988    (stock numérique)
        - Catalogue/commande :  …-cs-na-web-7181  (produits commandables)
-  2. Pages détail (parallèle) → JSON-LD Product + tableaux de specs HTML
-     (kilométrage, couleur, poids, moteur, cylindrée, etc.)
+  2. Produits catalogue : données extraites directement du listing Magento
+     (nom, prix, image) + URL slug (année, type, marque) — aucune requête
+     détail nécessaire.
+  3. Produits inventaire/occasion : pages détail (parallèle) →
+     JSON-LD Product + tableaux de specs HTML (km, couleur, moteur, etc.)
+  4. Regroupement des variantes (couleurs) d'un même modèle.
 
 Le slug URL encode le type, la catégorie, la marque, l'année et le stock :
   /fr/vehicules-d-occasion/moto-custom-harley-flsl-softail-slim-2019-cs-24988
@@ -20,8 +24,8 @@ Le slug URL encode le type, la catégorie, la marque, l'année et le stock :
 import re
 import json
 import time
+import unicodedata
 from typing import Dict, List, Optional, Any
-from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bs4 import BeautifulSoup
@@ -63,8 +67,8 @@ class NadonSportScraper(DedicatedScraper):
 
     PER_PAGE = 36
     MAX_PAGES = 50
-    WORKERS = 12
-    DETAIL_TIMEOUT = 12
+    WORKERS = 20
+    DETAIL_TIMEOUT = 10
 
     _TYPE_MAP = {
         'moto': 'Motocyclette',
@@ -73,6 +77,24 @@ class NadonSportScraper(DedicatedScraper):
         'cac': 'Côte à côte',
         'motoneige': 'Motoneige',
     }
+
+    _BRAND_FIXES = {
+        'Bmw': 'BMW',
+        'Gasgas': 'GasGas',
+    }
+
+    _GROUP_COLOR_KEYWORDS = frozenset({
+        'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
+        'gris', 'argent', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
+        'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin',
+        'chrome', 'carbone', 'fonce', 'clair', 'fluo', 'neon', 'acide',
+        'ebene', 'graphite', 'anthracite', 'platine', 'titane',
+        'phantom', 'midnight', 'cosmic', 'storm', 'combat', 'lime', 'sauge',
+        'cristal', 'obsidian', 'racing', 'dark', 'ice', 'frozen',
+        'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
+        'gray', 'grey', 'silver', 'gold', 'brown', 'matte', 'glossy',
+        'metallic', 'pearl', 'carbon', 'light', 'bright',
+    })
 
     def __init__(self):
         super().__init__()
@@ -104,12 +126,18 @@ class NadonSportScraper(DedicatedScraper):
         for cat, entries in url_map.items():
             print(f"   📋 [{cat}]: {len(entries)} URLs")
 
-        products = self._extract_from_detail_pages(url_map)
+        products = self._extract_products(url_map)
 
         if inventory_only:
             products = [p for p in products if p.get('sourceCategorie') != 'catalogue']
 
-        products = self._deduplicate(products)
+        pre_group = len(products)
+        products = self._group_identical_products(products)
+        if pre_group != len(products):
+            grouped_count = pre_group - len(products)
+            multi = [p for p in products if p.get('quantity', 1) > 1]
+            print(f"\n   📦 Regroupement: {pre_group} → {len(products)} produits "
+                  f"({grouped_count} combinés, {len(multi)} groupes multi-unités)")
 
         elapsed = time.time() - start_time
 
@@ -144,7 +172,8 @@ class NadonSportScraper(DedicatedScraper):
     def _discover_urls_from_listings(self, categories: List[str]) -> Dict[str, List[tuple]]:
         """Parcourt toutes les sous-catégories par marque/type et pagine chacune.
 
-        Retourne {catégorie: [(url, etat, source_cat), ...]}
+        Retourne {catégorie: [(url, etat, source_cat, listing_data), ...]}
+        où listing_data est un dict {name, prix, image, marque} ou None.
         """
         want_neuf = any(c in ('inventaire', 'neuf') for c in categories)
         want_occasion = any(c in ('occasion', 'usage') for c in categories)
@@ -179,6 +208,12 @@ class NadonSportScraper(DedicatedScraper):
         entries: List[tuple] = []
         page_seen: set = set()
 
+        brand_match = re.search(r'/vehicules-neufs/([^/]+)/', base_url)
+        brand = None
+        if brand_match:
+            brand = brand_match.group(1).replace('-', ' ').title()
+            brand = self._BRAND_FIXES.get(brand, brand)
+
         for page in range(1, self.MAX_PAGES + 1):
             url = f'{base_url}?product_list_limit={self.PER_PAGE}&p={page}'
             try:
@@ -198,8 +233,11 @@ class NadonSportScraper(DedicatedScraper):
             if not new_urls:
                 break
 
+            listing_data = self._extract_listing_data(html, brand)
+
             for u in new_urls:
-                entries.append((u, etat, source_cat))
+                ld = listing_data.get(u)
+                entries.append((u, etat, source_cat, ld))
             page_seen.update(new_urls)
             global_seen.update(new_urls)
 
@@ -212,15 +250,125 @@ class NadonSportScraper(DedicatedScraper):
 
         return entries
 
+    def _extract_listing_data(self, html: str, brand: Optional[str] = None) -> Dict[str, Dict]:
+        """Extract product data from Magento listing page product cards.
+
+        This Magento theme has no a.product-item-link; the product name comes
+        from the img alt attribute, the link from a.product-item-photo href.
+
+        Returns {url: {name, prix, image, marque}} for each product on the page.
+        """
+        data_map: Dict[str, Dict] = {}
+        soup = BeautifulSoup(html, 'lxml')
+
+        for item in soup.select('li.product-item'):
+            photo_link = item.select_one('a.product-item-photo')
+            if not photo_link:
+                continue
+
+            href = (photo_link.get('href') or '').split('?')[0].split('#')[0]
+            if not href or not self._PRODUCT_URL_RE.search(href):
+                continue
+
+            listing: Dict[str, Any] = {}
+
+            img_el = item.select_one('img.product-image-photo')
+            if img_el:
+                alt = (img_el.get('alt') or '').strip()
+                if alt:
+                    listing['name'] = self._clean_name(alt)
+                src = img_el.get('src') or img_el.get('data-src', '')
+                if src and src.startswith('http'):
+                    listing['image'] = src
+
+            price_el = item.select_one('[data-price-amount]')
+            if price_el:
+                try:
+                    price = float(price_el['data-price-amount'])
+                    if price > 0:
+                        listing['prix'] = price
+                except (ValueError, TypeError, KeyError):
+                    pass
+
+            if brand:
+                listing['marque'] = brand
+
+            if listing:
+                data_map[href] = listing
+
+        return data_map
+
     # ================================================================
-    # PHASE 2 : EXTRACTION DEPUIS LES PAGES DÉTAIL
+    # PHASE 2 : EXTRACTION (LISTING + DÉTAIL)
     # ================================================================
 
-    def _extract_from_detail_pages(self, url_map: Dict[str, List[tuple]]) -> List[Dict]:
-        tasks: List[tuple] = []
+    def _extract_products(self, url_map: Dict[str, List[tuple]]) -> List[Dict]:
+        """Build products from listing data (catalog) and detail pages (inventory/occasion)."""
+        catalog_tasks: List[tuple] = []
+        detail_tasks: List[tuple] = []
+
         for entries in url_map.values():
-            tasks.extend(entries)
+            for entry in entries:
+                url, etat, source_cat, listing_data = entry
+                is_catalog = 'cs-na-web-' in url
 
+                if is_catalog and listing_data and listing_data.get('name'):
+                    name = listing_data['name']
+                    brand = listing_data.get('marque', '')
+                    if self._is_name_sufficient(name, brand):
+                        catalog_tasks.append(entry)
+                        continue
+
+                detail_tasks.append(entry)
+
+        products: List[Dict] = []
+
+        if catalog_tasks:
+            print(f"\n   ⚡ {len(catalog_tasks)} produits catalogue "
+                  f"extraits du listing (sans requête détail)")
+            for url, etat, source_cat, listing_data in catalog_tasks:
+                product = self._build_product_from_listing(url, etat, source_cat, listing_data)
+                if product:
+                    products.append(product)
+
+        if detail_tasks:
+            detail_products = self._extract_from_detail_pages(detail_tasks)
+            products.extend(detail_products)
+
+        return products
+
+    def _build_product_from_listing(self, url: str, etat: str,
+                                     source_cat: str, listing_data: Dict) -> Optional[Dict]:
+        """Build a product dict from listing page data + URL slug parsing."""
+        product: Dict[str, Any] = {
+            'sourceUrl': url,
+            'sourceSite': self.SITE_URL,
+            'etat': etat,
+            'sourceCategorie': source_cat,
+            'quantity': 1,
+        }
+
+        if listing_data.get('name'):
+            product['name'] = listing_data['name']
+        if listing_data.get('prix'):
+            product['prix'] = listing_data['prix']
+        if listing_data.get('image'):
+            product['image'] = listing_data['image']
+        if listing_data.get('marque'):
+            product['marque'] = listing_data['marque']
+
+        self._extract_from_url_slug(url, product)
+
+        if 'cs-na-web-' in url:
+            product['sourceCategorie'] = 'catalogue'
+
+        if not product.get('name'):
+            return None
+
+        product['groupedUrls'] = [url]
+        return product
+
+    def _extract_from_detail_pages(self, tasks: List[tuple]) -> List[Dict]:
         total = len(tasks)
         workers = min(self.WORKERS, total)
         products: List[Dict] = []
@@ -232,7 +380,7 @@ class NadonSportScraper(DedicatedScraper):
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
                 executor.submit(self._fetch_and_parse_detail, url, etat, source_cat): url
-                for url, etat, source_cat in tasks
+                for url, etat, source_cat, _ in tasks
             }
 
             processed = 0
@@ -361,7 +509,6 @@ class NadonSportScraper(DedicatedScraper):
                 continue
 
     def _extract_specs_table(self, soup: BeautifulSoup, out: Dict) -> None:
-        """Extrait les specs du premier tableau (Couleur, Kilometers, Poids, etc.)."""
         table = soup.select_one(
             'table#product-attribute-specs-table, '
             'table.additional-attributes, '
@@ -417,7 +564,6 @@ class NadonSportScraper(DedicatedScraper):
                 out.setdefault('reservoir', value)
 
     def _extract_from_url_slug(self, url: str, out: Dict) -> None:
-        """Extrait type, catégorie, année et stock depuis le slug URL."""
         slug = url.rstrip('/').split('/')[-1]
 
         stock_match = re.search(r'-cs-((?:na-web-)?\d+[a-z]*)$', slug, re.I)
@@ -479,19 +625,186 @@ class NadonSportScraper(DedicatedScraper):
                 out['annee'] = year_from_name
 
     # ================================================================
+    # REGROUPEMENT DES VARIANTES (COULEURS) D'UN MÊME MODÈLE
+    # ================================================================
+
+    def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
+        seen_urls: set = set()
+        unique: List[Dict] = []
+        for product in products:
+            url = product.get('sourceUrl', '').rstrip('/')
+            if url and url in seen_urls:
+                continue
+            if url:
+                seen_urls.add(url)
+            unique.append(product)
+
+        groups: Dict[tuple, Dict] = {}
+
+        for product in unique:
+            marque_norm = self._deep_normalize(product.get('marque', ''))
+            group_model = self._normalize_group_model(product)
+            annee = product.get('annee', 0)
+            etat = product.get('etat', 'neuf')
+
+            if marque_norm and group_model and len(group_model) >= 3:
+                key = (marque_norm, group_model, annee, etat)
+            else:
+                inv = product.get('inventaire', '')
+                if inv:
+                    key = ('_inv', inv.lower().strip())
+                else:
+                    key = ('_url', product.get('sourceUrl', '').rstrip('/'))
+
+
+            if key not in groups:
+                product['quantity'] = 1
+                product['groupedUrls'] = [product.get('sourceUrl', '')]
+                groups[key] = product
+            else:
+                groups[key]['quantity'] = groups[key].get('quantity', 1) + 1
+                url = product.get('sourceUrl', '')
+                if url:
+                    groups[key].setdefault('groupedUrls', []).append(url)
+                existing_price = groups[key].get('prix')
+                new_price = product.get('prix')
+                if existing_price and new_price:
+                    try:
+                        if float(new_price) < float(existing_price):
+                            groups[key]['prix'] = new_price
+                    except (ValueError, TypeError):
+                        pass
+
+        return list(groups.values())
+
+    @staticmethod
+    def _deep_normalize(text: str) -> str:
+        if not text:
+            return ''
+        text = text.lower().strip()
+        text = unicodedata.normalize('NFKD', text)
+        text = ''.join(c for c in text if not unicodedata.category(c).startswith('M'))
+        text = re.sub(r'([a-z])(\d)', r'\1 \2', text)
+        text = re.sub(r'(\d)([a-z])', r'\1 \2', text)
+        text = re.sub(r'[^a-z0-9\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        words = text.split()
+        merged: list = []
+        i = 0
+        while i < len(words):
+            if len(words[i]) == 1 and words[i].isalpha():
+                letters = [words[i]]
+                j = i + 1
+                while j < len(words) and len(words[j]) == 1 and words[j].isalpha():
+                    letters.append(words[j])
+                    j += 1
+                merged.append(''.join(letters) if len(letters) > 1 else words[i])
+                i = j
+            else:
+                merged.append(words[i])
+                i += 1
+        return ' '.join(merged)
+
+    # Multi-word equipment/option phrases stripped for grouping only (kept in display name)
+    _GROUP_OPTION_RE = re.compile(
+        r'\b(?:'
+        r'(?:m\s+)?pack(?:age)?\s+roue\s+(?:forge[e]?|carbone?|carbon|alliage|magnesium)'
+        r'|valves?\s+fait(?:\s*-?\s*automatique)?'
+        r'|fait\s*-?\s*automatique'
+        r'|comme\s+neuf'
+        r')\b',
+        re.I
+    )
+
+    _GROUP_OPTION_KEYWORDS = frozenset({
+        'automatique', 'automatic',
+        'impeccable', 'parfait', 'excellent', 'mint', 'wow', 'deal', 'aubaine',
+    })
+
+    def _normalize_group_model(self, product: Dict) -> str:
+        """Build a normalized model key stripping brand, year, colors, and options.
+
+        Equipment descriptors (VALVES FAIT, AUTOMATIQUE, PACK ROUE FORGE, etc.)
+        are stripped here so they don't prevent grouping of the same base model,
+        but they remain in the displayed product name.
+
+        Option stripping happens on the raw name BEFORE deep_normalize to avoid
+        the single-letter merge problem (e.g. "S1000R M" → "rm").
+        """
+        name = (product.get('name') or '').strip()
+        marque = (product.get('marque') or '').strip()
+        couleur = (product.get('couleur') or '').strip()
+
+        if not name:
+            return ''
+
+        # Strip options from raw name BEFORE deep_normalize
+        name_stripped = self._GROUP_OPTION_RE.sub(' ', name)
+        name_stripped = ' '.join(
+            w for w in name_stripped.split()
+            if w.lower() not in self._GROUP_OPTION_KEYWORDS
+        )
+
+        name_norm = self._deep_normalize(name_stripped)
+        marque_norm = self._deep_normalize(marque) if marque else ''
+
+        if marque_norm and name_norm.startswith(marque_norm + ' '):
+            model = name_norm[len(marque_norm):].strip()
+        elif marque_norm and name_norm.startswith(marque_norm):
+            model = name_norm[len(marque_norm):].strip()
+        else:
+            model = name_norm
+
+        model = re.sub(r'\b(?:19|20)\d{2}\b', '', model).strip()
+
+        if couleur:
+            couleur_norm = self._deep_normalize(couleur)
+            if couleur_norm:
+                model = model.replace(couleur_norm, ' ').strip()
+
+        words = model.split()
+        words = [w for w in words if w not in self._GROUP_COLOR_KEYWORDS]
+        model = ' '.join(words)
+
+        model = re.sub(r'\s+', ' ', model).strip()
+        return model
+
+    # ================================================================
     # HELPERS
     # ================================================================
+
+    @staticmethod
+    def _is_name_sufficient(name: str, brand: str = '') -> bool:
+        """Check if the product name has enough info beyond brand + year."""
+        cleaned = name
+        if brand:
+            cleaned = re.sub(re.escape(brand), '', cleaned, count=1, flags=re.I)
+        cleaned = re.sub(r'\b\d{4}\b', '', cleaned)
+        cleaned = re.sub(r'[^a-zA-Z0-9]', '', cleaned)
+        return len(cleaned) >= 3
 
     @staticmethod
     def _clean_name(name: str) -> str:
         if not name:
             return name
+
+        # Strip *text* marketing annotations (*IMPECCABLE*, *AUTOMATIQUE*, etc.)
+        name = re.sub(r'\*+([^*]*)\*+', '', name)
+        name = re.sub(r'\*+', '', name)
+
         name = re.sub(r'\bPROMO\s+[\d\s,.]+\$?\s*(?:INCLUS)?\b', '', name, flags=re.I)
         name = re.sub(r'\bCS-(?:NA-WEB-)?\d+[a-z]*\b', '', name, flags=re.I)
         name = re.sub(r'\b(Occasion|Usagé|Neuf)\b', '', name, flags=re.I)
         name = re.sub(r'\ba\s+vendre\b', '', name, flags=re.I)
         name = re.sub(r'\bchez\s+nadon\s+sport\b', '', name, flags=re.I)
+        name = re.sub(r'\s+\d{1,2}\s*$', '', name)
         name = re.sub(r'\(\s*\)', '', name)
+
+        # Strip standalone marketing fluff
+        name = re.sub(
+            r'\b(IMPECCABLE|COMME\s+NEUF|MINT|PARFAIT|EXCELLENT|WOW|DEAL|AUBAINE)\b',
+            '', name, flags=re.I
+        )
 
         dup = re.match(
             r'^(\S+\s+\d{4}\s+)(.+?)\s+\2\s*$',
@@ -511,7 +824,7 @@ class NadonSportScraper(DedicatedScraper):
         url_map = self._discover_urls_from_listings(categories)
         all_urls = []
         for entries in url_map.values():
-            all_urls.extend(u for u, _, _ in entries)
+            all_urls.extend(u for u, _, _, _ in entries)
         seen = set()
         return [u for u in all_urls
                 if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
