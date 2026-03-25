@@ -802,6 +802,17 @@ Exemples:
     if user_id:
         set_global_user(user_id)
 
+    # Normaliser toutes les URLs (ajouter https:// si manquant)
+    def _ensure_protocol(u: str) -> str:
+        u = u.strip()
+        if u and not u.startswith(('http://', 'https://')):
+            u = 'https://' + u
+        return u.rstrip('/')
+
+    urls = [_ensure_protocol(u) for u in urls if u.strip()]
+    if reference_url:
+        reference_url = _ensure_protocol(reference_url)
+
     # Déterminer le site de référence
     if not reference_url and len(urls) > 0:
         reference_url = urls[0]

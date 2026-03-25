@@ -25,6 +25,8 @@ class SupabaseStorage:
     
     def _get_cache_key(self, url: str) -> str:
         """Génère une clé de cache basée sur le domaine de l'URL"""
+        if url and not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
         parsed = urlparse(url)
         domain = parsed.netloc.replace('www.', '')
         return hashlib.md5(domain.encode()).hexdigest()
