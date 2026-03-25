@@ -43,7 +43,7 @@ interface AlertConfig {
 
 const MIN_VALID_PRICE = 1
 
-// ─── GET — Vercel Cron (toutes les heures) ──────────────────────────
+// ─── GET — Vercel Cron (quotidien 08:00 UTC, analyse seule) ─────────
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
@@ -97,13 +97,20 @@ export async function POST(request: Request) {
 
 // ─── Sélection des alertes éligibles ────────────────────────────────
 
-const SCHEDULE_TOLERANCE_MS = 10 * 60_000 // 10 min de tolérance pour absorber les délais de cron
+const SCHEDULE_TOLERANCE_MS = 5 * 60_000 // 5 min de tolérance pour absorber les délais de cron
+
+function getIntervalMs(alert: any): number {
+  if (alert.schedule_interval_minutes) return alert.schedule_interval_minutes * 60_000
+  if (alert.schedule_interval_hours) return alert.schedule_interval_hours * 3600_000
+  return 40 * 60_000 // défaut 40 min
+}
 
 function isAlertDueForCheck(alert: any, now: Date): boolean {
-  if (alert.schedule_type === 'interval' && alert.schedule_interval_hours) {
+  if (alert.schedule_type === 'interval') {
     if (!alert.last_run_at) return true
     const lastRun = new Date(alert.last_run_at)
-    const nextDue = new Date(lastRun.getTime() + alert.schedule_interval_hours * 3600_000 - SCHEDULE_TOLERANCE_MS)
+    const intervalMs = getIntervalMs(alert)
+    const nextDue = new Date(lastRun.getTime() + intervalMs - SCHEDULE_TOLERANCE_MS)
     return now >= nextDue
   }
 
@@ -114,7 +121,7 @@ function isAlertDueForCheck(alert: any, now: Date): boolean {
 
   if (!alert.last_run_at) return true
   const lastRun = new Date(alert.last_run_at)
-  return now >= new Date(lastRun.getTime() + 3600_000 - SCHEDULE_TOLERANCE_MS)
+  return now >= new Date(lastRun.getTime() + 40 * 60_000 - SCHEDULE_TOLERANCE_MS)
 }
 
 // ─── Logique principale ─────────────────────────────────────────────

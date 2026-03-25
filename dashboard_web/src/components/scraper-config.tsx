@@ -2,7 +2,7 @@
 
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, ChevronDown, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck, Trash2 } from "lucide-react"
+import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck } from "lucide-react"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
@@ -27,13 +27,6 @@ function loadScrapingSession(): ScrapingSession | null {
 }
 function clearScrapingSession() {
   try { localStorage.removeItem(SCRAPING_SESSION_KEY) } catch {}
-}
-
-type CachedScraper = {
-  url: string
-  site_name?: string
-  created_at?: string
-  updated_at?: string
 }
 
 type SharedScraper = {
@@ -93,8 +86,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const scrapingLimit = useScrapingLimit()
   const router = useRouter()
   const [referenceUrl, setReferenceUrl] = useState(DEFAULT_REFERENCE_URL)
-  const [urls, setUrls] = useState<string[]>([""])
-  const [competitorEnabled, setCompetitorEnabled] = useState<boolean[]>([true])
+  const [urls, setUrls] = useState<string[]>([])
+  const [competitorEnabled, setCompetitorEnabled] = useState<boolean[]>([])
   const [forceRefresh, setForceRefresh] = useState(false)
   const [ignoreColors, setIgnoreColors] = useState(false)
   const [inventoryOnly, setInventoryOnly] = useState(true)
@@ -109,43 +102,26 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const [logContent, setLogContent] = useState<string[]>([])
   const [showLogs, setShowLogs] = useState(true)
   const logPollingRef = useRef<NodeJS.Timeout | null>(null)
-  const [cachedScrapers, setCachedScrapers] = useState<CachedScraper[]>([])
-  const [showCachedScrapers, setShowCachedScrapers] = useState(false)
+  const [allSharedScrapers, setAllSharedScrapers] = useState<SharedScraper[]>([])
   const [sharedSearchQuery, setSharedSearchQuery] = useState("")
   const [sharedSearchResults, setSharedSearchResults] = useState<SharedScraper[]>([])
   const [isSearchingShared, setIsSearchingShared] = useState(false)
   const sharedSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const addUrl = () => {
-    setUrls([...urls, ""])
-    setCompetitorEnabled(prev => [...prev, true])
-  }
+  const getScraperInfo = useCallback((url: string): SharedScraper | null => {
+    if (!url) return null
+    const domain = getDomain(url)
+    return allSharedScrapers.find(s => s.site_domain === domain) || null
+  }, [allSharedScrapers])
 
   const removeUrl = (index: number) => {
-    if (urls.length > 1) {
-      setUrls(urls.filter((_, i) => i !== index))
-      setCompetitorEnabled(prev => prev.filter((_, i) => i !== index))
-    }
-  }
-
-  const updateUrl = (index: number, value: string) => {
-    const newUrls = [...urls]
-    newUrls[index] = value
-    setUrls(newUrls)
+    setUrls(prev => prev.filter((_, i) => i !== index))
+    setCompetitorEnabled(prev => prev.filter((_, i) => i !== index))
   }
 
   const toggleCompetitorEnabled = (index: number) => {
     setCompetitorEnabled(prev => prev.map((v, i) => (i === index ? !v : v)))
-  }
-
-  const setReferenceFromCompetitor = (index: number) => {
-    const target = urls[index]?.trim()
-    if (!target) return
-    const prevRef = referenceUrl.trim()
-    const newUrls = [...urls]
-    newUrls[index] = prevRef
-    setReferenceUrl(target)
-    setUrls(newUrls)
   }
 
   // Vérifier quels URLs n'ont pas de scraper
@@ -531,45 +507,15 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     } catch { }
   }
 
-  const loadCachedScrapers = async () => {
+  const loadAllSharedScrapers = async () => {
     try {
-      const response = await fetch('/api/scraper-ai/cache')
+      const response = await fetch('/api/shared-scrapers')
       if (response.ok) {
         const data = await response.json()
-        setCachedScrapers(data.scrapers || [])
+        setAllSharedScrapers(data.scrapers || [])
       }
     } catch (error) {
-      console.error('Error loading cached scrapers:', error)
-    }
-  }
-
-  const selectCachedScraper = (scraper: CachedScraper, isReference: boolean = true) => {
-    if (isReference) {
-      setReferenceUrl(scraper.url)
-    } else {
-      // Ajouter comme concurrent
-      const emptyIndex = urls.findIndex(u => !u.trim())
-      if (emptyIndex !== -1) {
-        updateUrl(emptyIndex, scraper.url)
-      } else {
-        setUrls([...urls, scraper.url])
-        setCompetitorEnabled(prev => [...prev, true])
-      }
-    }
-    setShowCachedScrapers(false)
-  }
-
-  const deleteCachedScraper = async (scraper: CachedScraper) => {
-    const params = new URLSearchParams({ url: scraper.url })
-    if (user?.id) params.set('user_id', user.id)
-    try {
-      const response = await fetch(`/api/scraper-ai/cache?${params}`, { method: 'DELETE' })
-      if (response.ok) {
-        removeUrlFromConfig(scraper.url)
-        setCachedScrapers(prev => prev.filter(s => s.url !== scraper.url))
-      }
-    } catch (error) {
-      console.error('Error deleting cached scraper:', error)
+      console.error('Error loading shared scrapers:', error)
     }
   }
 
@@ -602,11 +548,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     if (isReference) {
       setReferenceUrl(scraper.site_url)
     } else {
-      const emptyIndex = urls.findIndex(u => !u.trim())
-      if (emptyIndex !== -1) {
-        updateUrl(emptyIndex, scraper.site_url)
-      } else {
-        setUrls([...urls, scraper.site_url])
+      if (!urls.some(u => getDomain(u) === scraper.site_domain)) {
+        setUrls(prev => [...prev, scraper.site_url])
         setCompetitorEnabled(prev => [...prev, true])
       }
     }
@@ -616,7 +559,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
   useEffect(() => {
     loadConfig()
-    loadCachedScrapers()
+    loadAllSharedScrapers()
 
     const session = loadScrapingSession()
     if (session?.logFile) {
@@ -697,6 +640,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
               <input
+                ref={searchInputRef}
                 type="text"
                 value={sharedSearchQuery}
                 onChange={(e) => handleSharedSearchChange(e.target.value)}
@@ -777,99 +721,43 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
             )}
           </div>
 
-          {/* Scrapers en cache */}
-          {cachedScrapers.length > 0 && (
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setShowCachedScrapers(!showCachedScrapers)}
-                className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02] hover:bg-gray-100/50 dark:hover:bg-white/[0.04] transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Database className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {t("config.scrapersCache")} ({cachedScrapers.length})
-                  </span>
-                </div>
-                <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showCachedScrapers ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showCachedScrapers && (
-                <div className="rounded-xl border border-gray-200/60 dark:border-white/[0.06] overflow-hidden">
-                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-100/60 dark:divide-white/[0.04]">
-                    {cachedScrapers.map((scraper, index) => {
-                      const domain = getDomain(scraper.url)
-                      const isSelected = referenceUrl === scraper.url || urls.includes(scraper.url)
-                      return (
-                        <div
-                          key={index}
-                          className={`flex items-center gap-3 px-3.5 py-3 hover:bg-gray-50/80 dark:hover:bg-white/[0.02] transition-colors ${isSelected ? 'bg-gray-50 dark:bg-white/[0.03]' : ''}`}
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-xs font-semibold text-gray-500 dark:text-gray-400">
-                            {domain.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                              {scraper.site_name || domain}
-                            </p>
-                            <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
-                              {scraper.url}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => selectCachedScraper(scraper, true)}
-                              disabled={referenceUrl === scraper.url}
-                              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${referenceUrl === scraper.url
-                                ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 cursor-default'
-                                : 'bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/[0.1]'
-                                }`}
-                            >
-                              {referenceUrl === scraper.url ? t("config.ref") : t("config.referenceLabel")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectCachedScraper(scraper, false)}
-                              disabled={urls.includes(scraper.url)}
-                              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${urls.includes(scraper.url)
-                                ? 'bg-gray-100 dark:bg-white/[0.04] text-gray-300 dark:text-gray-600 cursor-default'
-                                : 'bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/[0.1]'
-                                }`}
-                            >
-                              {t("config.addCompetitor")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteCachedScraper(scraper)}
-                              className="p-1.5 rounded-md text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                              title={t("config.deleteSite")}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Site de référence */}
           <div className="space-y-2.5">
             <div className="flex items-center gap-2">
-              <Star className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+              <Star className="w-3.5 h-3.5 text-amber-400 dark:text-amber-500" />
               <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.referenceUrl")}</span>
             </div>
-            <input
-              type="url"
-              value={referenceUrl}
-              onChange={(e) => setReferenceUrl(e.target.value)}
-              placeholder="https://votre-site.com"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/[0.12] transition-all placeholder:text-gray-400"
-            />
+            {referenceUrl.trim() ? (() => {
+              const refScraper = getScraperInfo(referenceUrl)
+              return (
+                <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-amber-200/60 dark:border-amber-500/20 bg-amber-50/30 dark:bg-amber-500/[0.03]">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-500/20 dark:to-amber-500/5 flex items-center justify-center text-xs font-bold text-amber-600 dark:text-amber-400">
+                    {(refScraper?.site_name || getDomain(referenceUrl)).charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        {refScraper?.site_name || getDomain(referenceUrl)}
+                      </p>
+                      {refScraper && <BadgeCheck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0" />}
+                    </div>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{getDomain(referenceUrl)}</p>
+                  </div>
+                  <button
+                    onClick={() => setReferenceUrl('')}
+                    className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded-lg transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
+            })() : (
+              <div className="px-3.5 py-4 rounded-xl border border-dashed border-gray-200/60 dark:border-white/[0.06]">
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center">
+                  {t("config.searchUniversal")}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Séparateur */}
@@ -883,7 +771,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.competitorsLabel")}</span>
               </div>
               <button
-                onClick={addUrl}
+                onClick={() => { searchInputRef.current?.focus(); searchInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded-md transition-colors"
               >
                 <Plus className="w-3 h-3" />
@@ -891,40 +779,47 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               </button>
             </div>
 
-            <div className="space-y-1.5">
-              {urls.map((url, index) => {
-                const isReference = url.trim() === referenceUrl.trim() && url.trim() !== ""
-                return (
-                  <div key={index} className="group flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={competitorEnabled[index] && !isReference}
-                      onChange={() => !isReference && toggleCompetitorEnabled(index)}
-                      disabled={isReference}
-                      className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 disabled:opacity-30"
-                    />
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => updateUrl(index, e.target.value)}
-                      placeholder={`https://concurrent-${index + 1}.com`}
-                      className={`flex-1 px-3.5 py-2.5 rounded-xl border bg-white dark:bg-white/[0.02] text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 transition-all placeholder:text-gray-400 ${isReference
-                        ? "border-gray-300 dark:border-white/[0.1] text-gray-500 dark:text-gray-400"
-                        : "border-gray-200/60 dark:border-white/[0.06] text-gray-900 dark:text-white focus:border-gray-300 dark:focus:border-white/[0.12]"
-                        }`}
-                    />
-                    {urls.length > 1 && !isReference && (
+            {urls.filter(u => u.trim()).length > 0 ? (
+              <div className="space-y-1.5">
+                {urls.map((url, index) => {
+                  if (!url.trim()) return null
+                  const scraper = getScraperInfo(url)
+                  return (
+                    <div key={index} className="group flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.02]">
+                      <input
+                        type="checkbox"
+                        checked={competitorEnabled[index] ?? true}
+                        onChange={() => toggleCompetitorEnabled(index)}
+                        className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10"
+                      />
+                      <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
+                        {(scraper?.site_name || getDomain(url)).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {scraper?.site_name || getDomain(url)}
+                          </p>
+                          {scraper && <BadgeCheck className="w-3 h-3 text-violet-500 dark:text-violet-400 flex-shrink-0" />}
+                        </div>
+                      </div>
                       <button
                         onClick={() => removeUrl(index)}
                         className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="px-3.5 py-3 rounded-xl border border-dashed border-gray-200/60 dark:border-white/[0.06]">
+                <p className="text-[13px] text-gray-400 dark:text-gray-500 text-center">
+                  {t("config.searchUniversal")}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Séparateur */}

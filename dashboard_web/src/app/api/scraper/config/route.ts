@@ -239,7 +239,7 @@ async function syncAlertFromConfig(
       schedule_type: 'interval',
       schedule_hour: 0,
       schedule_minute: 0,
-      schedule_interval_hours: 1,
+      schedule_interval_minutes: 40,
       is_active: true,
       email_notification: true,
       watch_price_increase: true,

@@ -232,6 +232,32 @@ def extract_year_from_url(url: str) -> int:
     return 0
 
 
+_NAME_STATUS_TAGS = re.compile(
+    r'\b(?:'
+    r'pr[ée][\s-]?commande|pre[\s-]?order'
+    r'|en\s+stock|in\s+stock|disponible|available'
+    r'|[ée]puis[ée]|sold\s+out|out\s+of\s+stock|indisponible'
+    r'|sur\s+commande|on\s+order'
+    r'|liquidation|clearance'
+    r')\b',
+    re.I
+)
+
+
+def clean_product_name(product: dict) -> None:
+    """Strip status/availability tags from product name (PRE-COMMANDE, EN STOCK, etc.)."""
+    name = product.get('name', '')
+    if not name:
+        return
+    cleaned = _NAME_STATUS_TAGS.sub('', name)
+    # Clean leftover separators around where the tag was, but preserve hyphens inside words (Sea-Doo, MT-07)
+    cleaned = re.sub(r'(?:^[\s\-–—]+|[\s\-–—]+$)', '', cleaned)
+    cleaned = re.sub(r'\s[\-–—]\s', ' ', cleaned)
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
+    if cleaned != name:
+        product['name'] = cleaned
+
+
 def enrich_product_year(product: dict) -> None:
     """Enrichit le produit avec l'année extraite depuis name ou sourceUrl si absente.
 
@@ -1061,12 +1087,14 @@ Exemples:
     # IMPORTANT: Inclure TOUS les produits (référence + TOUS les concurrents, matchés ou non)
     # pour que le dashboard puisse afficher les produits même sans correspondance
 
-    # Enrichir tous les produits avec l'année avant sauvegarde
+    # Enrichir et nettoyer tous les produits avant sauvegarde
     for product in reference_products:
         enrich_product_year(product)
+        clean_product_name(product)
     for competitor_url_key in competitor_urls:
         for product in results.get(competitor_url_key, {}).get('products', []):
             enrich_product_year(product)
+            clean_product_name(product)
 
     # Marquer les produits de référence avec leur source
     # FORCER sourceSite (pas conditionnel) pour éviter tout mélange de données

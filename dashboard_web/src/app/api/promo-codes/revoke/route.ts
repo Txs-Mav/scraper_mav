@@ -55,6 +55,7 @@ export async function POST(request: Request) {
       .update({
         subscription_plan: 'standard',
         promo_code_id: null,
+        subscription_source: null,
       })
       .eq('id', userId)
 

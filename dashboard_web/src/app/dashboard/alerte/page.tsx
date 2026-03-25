@@ -40,6 +40,7 @@ interface Alert {
   schedule_hour: number
   schedule_minute: number
   schedule_interval_hours: number | null
+  schedule_interval_minutes: number | null
   is_active: boolean
   email_notification: boolean
   watch_price_increase: boolean
@@ -108,8 +109,13 @@ function formatDate(dateStr: string, t: (key: TranslationKey) => string, locale:
 }
 
 function formatSchedule(alert: Alert, t: (key: TranslationKey) => string): string {
-  if (alert.schedule_type === 'interval' && alert.schedule_interval_hours) {
-    return t("alerts.everyXHours").replace("{0}", String(alert.schedule_interval_hours))
+  if (alert.schedule_type === 'interval') {
+    const minutes = alert.schedule_interval_minutes || (alert.schedule_interval_hours ? alert.schedule_interval_hours * 60 : 40)
+    if (minutes < 60) {
+      return t("alerts.everyXMinutes").replace("{0}", String(minutes))
+    }
+    const hours = Math.round(minutes / 60)
+    return t("alerts.everyXHours").replace("{0}", String(hours))
   }
   return t("alerts.dailyAt").replace("{0}", formatTime(alert.schedule_hour, alert.schedule_minute))
 }
@@ -335,7 +341,7 @@ export default function AlertePage() {
           competitor_urls: competitorUrls,
           schedule_type: 'interval',
           schedule_hour: 8,
-          schedule_interval_hours: 1,
+          schedule_interval_minutes: 40,
           email_notification: emailNotif,
           watch_price_increase: watchPriceUp,
           watch_price_decrease: watchPriceDown,

@@ -2,12 +2,9 @@ name: Alertes automatisées
 
 on:
   schedule:
-    # Toutes les heures à :07 UTC (évite le pic de charge à :00)
-    - cron: '7 * * * *'
-    # Retry décalé en cas de rate du premier run
-    - cron: '37 * * * *'
+    # Toutes les 20 min (couvre les intervalles 40 min : 00→20→40→60)
+    - cron: '5,25,45 * * * *'
   workflow_dispatch:
-    # Permet de déclencher manuellement depuis l'onglet Actions
 
 jobs:
   alert-check:

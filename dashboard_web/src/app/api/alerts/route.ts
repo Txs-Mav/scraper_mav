@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 import { canAccessOrganisation, getAlertLimit, type PlanId } from '@/lib/plan-restrictions'
 
-const VALID_INTERVALS = [1, 2, 4, 6, 12, 24]
+const VALID_INTERVALS_HOURS = [1, 2, 4, 6, 12, 24]
+const VALID_INTERVALS_MINUTES = [20, 30, 40, 60, 120, 240, 360, 720, 1440]
 const VALID_CATEGORIES = ['inventaire', 'occasion', 'catalogue']
 
 function isValidUrl(str: string): boolean {
@@ -133,10 +134,11 @@ export async function POST(request: Request) {
       reference_url,
       competitor_urls = [],
       categories = VALID_CATEGORIES,
-      schedule_type = 'daily',
+      schedule_type = 'interval',
       schedule_hour = 8,
       schedule_minute = 0,
       schedule_interval_hours,
+      schedule_interval_minutes,
       email_notification = true,
       watch_price_increase = true,
       watch_price_decrease = true,
@@ -159,8 +161,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Heure invalide (0-23)' }, { status: 400 })
       }
     } else if (schedule_type === 'interval') {
-      if (!schedule_interval_hours || !VALID_INTERVALS.includes(schedule_interval_hours)) {
-        return NextResponse.json({ error: `Intervalle invalide. Valeurs acceptées: ${VALID_INTERVALS.join(', ')}` }, { status: 400 })
+      const hasMinutes = schedule_interval_minutes && VALID_INTERVALS_MINUTES.includes(schedule_interval_minutes)
+      const hasHours = schedule_interval_hours && VALID_INTERVALS_HOURS.includes(schedule_interval_hours)
+      if (!hasMinutes && !hasHours) {
+        return NextResponse.json({ error: `Intervalle invalide. Valeurs acceptées (minutes): ${VALID_INTERVALS_MINUTES.join(', ')}` }, { status: 400 })
       }
     } else {
       return NextResponse.json({ error: "schedule_type doit être 'daily' ou 'interval'" }, { status: 400 })
@@ -188,6 +192,10 @@ export async function POST(request: Request) {
       }
     } catch { /* ignore */ }
 
+    const resolvedIntervalMinutes = schedule_type === 'interval'
+      ? (schedule_interval_minutes || (schedule_interval_hours ? schedule_interval_hours * 60 : 40))
+      : null
+
     const insertData: Record<string, any> = {
       user_id: user.id,
       reference_url,
@@ -197,7 +205,8 @@ export async function POST(request: Request) {
       schedule_type,
       schedule_hour: schedule_type === 'daily' ? schedule_hour : 0,
       schedule_minute: schedule_type === 'daily' ? (schedule_minute || 0) : 0,
-      schedule_interval_hours: schedule_type === 'interval' ? schedule_interval_hours : null,
+      schedule_interval_hours: schedule_type === 'interval' ? (schedule_interval_hours || null) : null,
+      schedule_interval_minutes: resolvedIntervalMinutes,
       email_notification: email_notification !== false,
       is_active: true,
       watch_price_increase,

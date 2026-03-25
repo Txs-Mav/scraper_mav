@@ -65,25 +65,28 @@ def main():
     # (b) Alertes « daily » dont l'heure UTC correspond
     result = (
         supabase.table("scraper_alerts")
-        .select("id, user_id, reference_url, competitor_urls, categories, schedule_type, schedule_hour, schedule_interval_hours, last_run_at, scraper_cache_id, scraper_cache(site_url)")
+        .select("id, user_id, reference_url, competitor_urls, categories, schedule_type, schedule_hour, schedule_interval_hours, schedule_interval_minutes, last_run_at, scraper_cache_id, scraper_cache(site_url)")
         .eq("is_active", True)
         .execute()
     )
     all_alerts = result.data or []
 
     now = datetime.now(timezone.utc)
-    tolerance = timedelta(minutes=10)
+    tolerance = timedelta(minutes=5)
     alerts = []
     for a in all_alerts:
         stype = a.get("schedule_type", "daily")
         if stype == "interval":
-            interval_h = a.get("schedule_interval_hours") or 1
+            interval_min = a.get("schedule_interval_minutes")
+            if not interval_min:
+                interval_h = a.get("schedule_interval_hours") or 1
+                interval_min = interval_h * 60
             last_run = a.get("last_run_at")
             if not last_run:
                 alerts.append(a)
             else:
                 last_run_dt = datetime.fromisoformat(last_run.replace("Z", "+00:00"))
-                if now >= last_run_dt + timedelta(hours=interval_h) - tolerance:
+                if now >= last_run_dt + timedelta(minutes=interval_min) - tolerance:
                     alerts.append(a)
         else:
             if a.get("schedule_hour") == current_hour:
@@ -101,10 +104,10 @@ def main():
 
     print(f"📋 {len(alerts)} alerte(s) pour {len(users)} utilisateur(s)\n")
 
-    # ── 2. Verrouiller last_run_at AVANT le scraping pour éviter la dérive ──
-    # On aligne sur le début de l'heure courante pour que le prochain check
-    # à HH+1:07 soit toujours >= last_run_at + 1h (pas de drift possible).
-    cron_start_time = now.replace(minute=0, second=0, microsecond=0)
+    # ── 2. Verrouiller last_run_at AVANT le scraping ──
+    # On utilise l'heure réelle du run pour supporter les intervalles sub-horaires.
+    # Ex: run à 10:25 → last_run_at = 10:25 → prochain check à 10:25 + 40min = 11:05
+    cron_start_time = now.replace(second=0, microsecond=0)
 
     for alert in alerts:
         try:

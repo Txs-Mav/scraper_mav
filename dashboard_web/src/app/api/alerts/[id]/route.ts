@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 
-const VALID_INTERVALS = [1, 2, 4, 6, 12, 24]
+const VALID_INTERVALS_HOURS = [1, 2, 4, 6, 12, 24]
+const VALID_INTERVALS_MINUTES = [20, 30, 40, 60, 120, 240, 360, 720, 1440]
 const VALID_CATEGORIES = ['inventaire', 'occasion', 'catalogue']
 
 function isValidUrl(str: string): boolean {
@@ -49,11 +50,23 @@ export async function PATCH(
     }
     if (body.schedule_hour !== undefined) updates.schedule_hour = body.schedule_hour
     if (body.schedule_minute !== undefined) updates.schedule_minute = body.schedule_minute
-    if (body.schedule_interval_hours !== undefined) {
-      if (body.schedule_interval_hours !== null && !VALID_INTERVALS.includes(body.schedule_interval_hours)) {
-        return NextResponse.json({ error: `Intervalle invalide. Valeurs acceptées: ${VALID_INTERVALS.join(', ')}` }, { status: 400 })
+    if (body.schedule_interval_minutes !== undefined) {
+      if (body.schedule_interval_minutes !== null && !VALID_INTERVALS_MINUTES.includes(body.schedule_interval_minutes)) {
+        return NextResponse.json({ error: `Intervalle invalide. Valeurs acceptées (minutes): ${VALID_INTERVALS_MINUTES.join(', ')}` }, { status: 400 })
+      }
+      updates.schedule_interval_minutes = body.schedule_interval_minutes
+      if (body.schedule_interval_minutes) {
+        updates.schedule_interval_hours = Math.ceil(body.schedule_interval_minutes / 60)
+      }
+    }
+    if (body.schedule_interval_hours !== undefined && body.schedule_interval_minutes === undefined) {
+      if (body.schedule_interval_hours !== null && !VALID_INTERVALS_HOURS.includes(body.schedule_interval_hours)) {
+        return NextResponse.json({ error: `Intervalle invalide. Valeurs acceptées: ${VALID_INTERVALS_HOURS.join(', ')}` }, { status: 400 })
       }
       updates.schedule_interval_hours = body.schedule_interval_hours
+      if (body.schedule_interval_hours) {
+        updates.schedule_interval_minutes = body.schedule_interval_hours * 60
+      }
     }
 
     // Toggle & email
