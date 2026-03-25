@@ -731,11 +731,12 @@ class DBMotoScraper(DedicatedScraper):
             modele = product.get('modele', '').lower().strip()
             annee = product.get('annee', 0)
             etat = product.get('etat', 'neuf')
+            couleur = product.get('couleur', '').lower().strip()
 
             if marque and modele:
-                key = (marque, modele, annee, etat)
+                key = (marque, modele, annee, etat, couleur)
             else:
-                key = (product.get('name', '').lower().strip(), annee, etat)
+                key = (product.get('name', '').lower().strip(), annee, etat, couleur)
 
             if key not in groups:
                 product['quantity'] = 1
