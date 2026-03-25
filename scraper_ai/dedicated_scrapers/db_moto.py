@@ -4,11 +4,11 @@ Scraper dédié pour DB Moto (dbmoto.ca).
 Site WordPress + Yoast SEO + PowerGO CDN (cdn.powergo.ca).
 Concessionnaire Kawasaki, CFMOTO, Arctic Cat, Textron à Ste-Julienne et Châteauguay.
 
-Stratégie multi-sitemap + détail:
-  1. Sitemap index (sitemap.xml) → sous-sitemaps par catégorie
-     - motorcycle, atv, side-by-side, snowmobile, watercraft, electric-bike, boat → catalogue (neuf)
-     - inventory → inventaire en stock (neuf/occasion/démo)
-  2. Pages détail (parallèle):
+Stratégie REST API + détail:
+  1. Découverte via API REST WordPress (fiable, pas de dépendance aux sitemaps):
+     - Catalogue: CPTs motorcycle, atv, side-by-side, snowmobile, watercraft, electric-bike, boat
+     - Inventaire: CPT inventory (fallback sitemap XML si REST échoue)
+  2. Pages détail (parallèle, rate-limit-aware):
      - Catalogue: JSON-LD Vehicle (schema.org) propre
      - Inventaire: JSON-LD Vehicle (parfois cassé) + specs HTML (li.make, li.model, etc.)
 
@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
 from bs4 import BeautifulSoup
 
 from .base import DedicatedScraper
@@ -38,6 +39,8 @@ CATALOGUE_CPTS = {
     'boat': 'Bateau',
 }
 
+INVENTORY_CPT = 'inventory'
+
 _COLOR_WORDS = {
     'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
     'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
@@ -45,7 +48,7 @@ _COLOR_WORDS = {
     'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin', 'chrome', 'carbone',
     'fonce', 'clair', 'fluo', 'neon',
     'ebene', 'graphite', 'anthracite', 'platine', 'titane', 'cuivre', 'acier', 'cobalt',
-    'combat', 'lime', 'sauge', 'cristal', 'obsidian', 'highland',
+    'combat', 'lime', 'sauge', 'cristal', 'obsidian',
     'etincelle', 'velocite', 'bonbon', 'diablo', 'champagne', 'phantom', 'fantome',
     'nebuleux', 'nebuleuse',
     'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
@@ -65,8 +68,9 @@ class DBMotoScraper(DedicatedScraper):
     SITEMAP_INDEX_URL = "https://www.dbmoto.ca/sitemap.xml"
     SITEMAP_BASE = "https://www.dbmoto.ca/fr/"
 
-    WORKERS = 14
-    DETAIL_TIMEOUT = 12
+    WORKERS = 6
+    DETAIL_TIMEOUT = 15
+    REQUEST_DELAY = 0.15
 
     def __init__(self):
         super().__init__()
@@ -105,7 +109,8 @@ class DBMotoScraper(DedicatedScraper):
             return self._empty_result(elapsed)
 
         if inventory_only:
-            products = [p for p in products if p.get('sourceCategorie') != 'catalogue']
+            products = [p for p in products if p.get(
+                'sourceCategorie') != 'catalogue']
 
         pre_group = len(products)
         products = self._group_identical_products(products)
@@ -148,21 +153,56 @@ class DBMotoScraper(DedicatedScraper):
     def _discover_all_urls(self, categories: List[str]) -> Dict[str, List[str]]:
         """Découvre TOUTES les URLs produits.
 
-        Catalogue : API REST WordPress (CPTs motorcycle, atv, etc.) — fiable et complet.
-        Inventaire : sitemap XML.
+        Catalogue : API REST WordPress (CPTs motorcycle, atv, etc.).
+        Inventaire : API REST WordPress (CPT inventory), fallback sitemap XML.
         """
         url_map: Dict[str, List[str]] = {}
 
-        catalogue_urls = self._discover_catalogue_via_rest()
-        if catalogue_urls:
-            url_map['catalogue'] = catalogue_urls
+        want_catalogue = 'catalogue' in categories
+        want_inventaire = 'inventaire' in categories
 
-        sitemap_url = f"{self.SITEMAP_BASE}inventory-sitemap.xml"
-        inv_urls = self._fetch_sitemap_urls(sitemap_url)
-        if inv_urls:
-            url_map['inventaire'] = inv_urls
+        if want_catalogue:
+            catalogue_urls = self._discover_catalogue_via_rest()
+            if catalogue_urls:
+                url_map['catalogue'] = catalogue_urls
+
+        if want_inventaire:
+            inv_urls = self._discover_inventory_via_rest()
+            if not inv_urls:
+                print("   ⚠️ API REST inventaire 0 résultat — fallback sitemap")
+                sitemap_url = f"{self.SITEMAP_BASE}inventory-sitemap.xml"
+                inv_urls = self._fetch_sitemap_urls(sitemap_url)
+            if inv_urls:
+                url_map['inventaire'] = inv_urls
 
         return url_map
+
+    def _discover_inventory_via_rest(self) -> List[str]:
+        """Découvre les URLs inventaire via l'API REST WordPress (CPT inventory)."""
+        all_urls: List[str] = []
+        rest_base = "https://www.dbmoto.ca/wp-json/wp/v2"
+        page = 1
+
+        while True:
+            api_url = f"{rest_base}/{INVENTORY_CPT}?per_page=100&page={page}&_fields=link"
+            items = self._rest_get_with_retry(api_url)
+            if items is None:
+                print(f"   ⚠️ [inventory] API REST échoué page {page}")
+                break
+            if not items:
+                break
+            for item in items:
+                link = item.get('link', '')
+                if link:
+                    all_urls.append(link.rstrip('/'))
+            total_pages = self._last_rest_total_pages or 1
+            if page >= total_pages:
+                break
+            page += 1
+
+        if all_urls:
+            print(f"   📋 [inventory] {len(all_urls)} URLs inventaire (REST API)")
+        return all_urls
 
     def _discover_catalogue_via_rest(self) -> List[str]:
         """Découvre les URLs catalogue via l'API REST WordPress (fiable et complet)."""
@@ -216,7 +256,8 @@ class DBMotoScraper(DedicatedScraper):
                     return resp.json()
                 if resp.status_code in (429, 503):
                     wait = 2 ** (attempt + 1)
-                    print(f"      ⏳ Rate limit ({resp.status_code}), retry dans {wait}s...")
+                    print(
+                        f"      ⏳ Rate limit ({resp.status_code}), retry dans {wait}s...")
                     time.sleep(wait)
                     continue
                 return None
@@ -226,7 +267,8 @@ class DBMotoScraper(DedicatedScraper):
                     print(f"      ⏳ Erreur REST ({e}), retry dans {wait}s...")
                     time.sleep(wait)
                 else:
-                    print(f"      ❌ REST échoué après {max_retries} tentatives: {e}")
+                    print(
+                        f"      ❌ REST échoué après {max_retries} tentatives: {e}")
         return None
 
     def _discover_catalogue_via_sitemaps(self) -> List[str]:
@@ -242,7 +284,8 @@ class DBMotoScraper(DedicatedScraper):
             sitemap_url = f"{self.SITEMAP_BASE}{slug}-sitemap.xml"
             urls = self._fetch_sitemap_urls(sitemap_url)
             all_urls.extend(urls)
-        print(f"   📋 Sitemap fallback: {len(all_urls)} URLs catalogue (non vérifiées)")
+        print(
+            f"   📋 Sitemap fallback: {len(all_urls)} URLs catalogue (non vérifiées)")
         return all_urls
 
     def _fetch_sitemap_urls(self, sitemap_url: str) -> List[str]:
@@ -278,27 +321,37 @@ class DBMotoScraper(DedicatedScraper):
         products: List[Dict] = []
         errors = 0
         start = time.time()
+        self._consecutive_errors = 0
 
-        print(f"\n   🔍 Extraction: {total} pages détail ({workers} workers)...")
+        print(
+            f"\n   🔍 Extraction: {total} pages détail ({workers} workers, "
+            f"delay {self.REQUEST_DELAY}s)...")
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(self._fetch_and_parse_detail, url, cat_key): url
+                executor.submit(self._fetch_and_parse_detail, url, cat_key): (url, cat_key)
                 for url, cat_key in tasks
             }
 
             processed = 0
+            failed_for_retry: List[tuple] = []
+
             for future in as_completed(futures, timeout=900):
                 processed += 1
-                url = futures[future]
+                url, cat_key = futures[future]
                 try:
                     product = future.result(timeout=self.DETAIL_TIMEOUT + 5)
                     if product:
                         products.append(product)
-                    else:
+                        self._consecutive_errors = 0
+                    elif product is None:
                         errors += 1
+                        self._consecutive_errors += 1
+                        failed_for_retry.append((url, cat_key))
                 except Exception:
                     errors += 1
+                    self._consecutive_errors += 1
+                    failed_for_retry.append((url, cat_key))
 
                 if processed % 50 == 0 or processed == total:
                     elapsed = time.time() - start
@@ -306,14 +359,48 @@ class DBMotoScraper(DedicatedScraper):
                     print(f"      📊 [{processed}/{total}] {len(products)} ok, "
                           f"{errors} erreurs — {rate:.1f}/s")
 
+        # Retry des pages échouées (max 100, séquentiel avec délai)
+        if failed_for_retry:
+            retry_batch = failed_for_retry[:100]
+            print(f"\n      🔄 Retry: {len(retry_batch)} pages échouées (séquentiel)...")
+            retry_ok = 0
+            for url, cat_key in retry_batch:
+                time.sleep(0.3)
+                try:
+                    product = self._fetch_and_parse_detail(url, cat_key)
+                    if product:
+                        products.append(product)
+                        retry_ok += 1
+                        errors -= 1
+                except Exception:
+                    pass
+            if retry_ok:
+                print(f"      ✅ Retry: {retry_ok}/{len(retry_batch)} récupérés")
+
         print(f"      ✅ {len(products)}/{total} produits extraits "
               f"({errors} erreurs)")
         return products
 
     def _fetch_and_parse_detail(self, url: str, cat_key: str) -> Optional[Dict]:
+        time.sleep(self.REQUEST_DELAY)
+
         try:
-            resp = self.session.get(url, timeout=self.DETAIL_TIMEOUT, allow_redirects=True)
+            resp = self.session.get(
+                url, timeout=self.DETAIL_TIMEOUT, allow_redirects=True)
+
+            if resp.status_code == 429 or resp.status_code == 503:
+                wait = min(2 ** getattr(self, '_consecutive_errors', 1), 10)
+                print(f"      ⏳ Rate limit ({resp.status_code}) sur {url[-40:]}, "
+                      f"pause {wait}s...")
+                time.sleep(wait)
+                resp = self.session.get(
+                    url, timeout=self.DETAIL_TIMEOUT, allow_redirects=True)
+
+            if resp.status_code == 404:
+                return None
+
             if resp.status_code != 200:
+                print(f"      ⚠️ HTTP {resp.status_code} sur {url[-50:]}")
                 return None
 
             soup = BeautifulSoup(resp.text, 'lxml')
@@ -367,7 +454,14 @@ class DBMotoScraper(DedicatedScraper):
 
             return product
 
-        except Exception:
+        except requests.exceptions.Timeout:
+            print(f"      ⏱️ Timeout {self.DETAIL_TIMEOUT}s sur {url[-50:]}")
+            return None
+        except requests.exceptions.ConnectionError:
+            print(f"      🔌 Connexion refusée sur {url[-50:]}")
+            return None
+        except Exception as e:
+            print(f"      ❌ Erreur inattendue sur {url[-50:]}: {type(e).__name__}")
             return None
 
     # ================================================================
@@ -531,7 +625,8 @@ class DBMotoScraper(DedicatedScraper):
         if out.get('prix'):
             return
 
-        price_section = soup.select_one('section#product-price, section.price-financing')
+        price_section = soup.select_one(
+            'section#product-price, section.price-financing')
         if price_section:
             price_div = price_section.select_one('div.price, .price')
             if price_div:
@@ -560,7 +655,8 @@ class DBMotoScraper(DedicatedScraper):
             if img:
                 src = img.get('src', '')
                 if src:
-                    out['image'] = src if src.startswith('http') else urljoin(url, src)
+                    out['image'] = src if src.startswith(
+                        'http') else urljoin(url, src)
                     return
 
         gallery = soup.select_one('.gallery, .slider')
@@ -569,7 +665,8 @@ class DBMotoScraper(DedicatedScraper):
             if img:
                 src = img.get('src') or img.get('data-src', '')
                 if src and ('powergo' in src or 'dbmoto' in src):
-                    out['image'] = src if src.startswith('http') else urljoin(url, src)
+                    out['image'] = src if src.startswith(
+                        'http') else urljoin(url, src)
                     return
 
         og_img = soup.select_one('meta[property="og:image"]')
@@ -582,7 +679,8 @@ class DBMotoScraper(DedicatedScraper):
         if out.get('description'):
             return
 
-        desc_section = soup.select_one('section#product-description, section.description')
+        desc_section = soup.select_one(
+            'section#product-description, section.description')
         if desc_section:
             prose = desc_section.select_one('.text, .reset-text, p')
             if prose:
@@ -625,7 +723,8 @@ class DBMotoScraper(DedicatedScraper):
         couleur_raw = product.get('couleur', '')
 
         if couleur_raw:
-            couleur_words = {self._normalize_word(w) for w in couleur_raw.split() if w}
+            couleur_words = {self._normalize_word(
+                w) for w in couleur_raw.split() if w}
         else:
             couleur_words = set()
 
@@ -636,7 +735,8 @@ class DBMotoScraper(DedicatedScraper):
             if not val:
                 continue
             tokens = val.split()
-            kept = [t for t in tokens if self._normalize_word(t) not in words_to_strip]
+            kept = [t for t in tokens if self._normalize_word(
+                t) not in words_to_strip]
             cleaned = ' '.join(kept).strip()
             cleaned = re.sub(r'\s+', ' ', cleaned)
             if cleaned:
@@ -684,7 +784,8 @@ class DBMotoScraper(DedicatedScraper):
         if not name:
             return name
         name = re.sub(r'\s*\*\*[^*]+\*\*\s*', ' ', name)
-        name = re.sub(r"\s+(?:neuf|usag[ée]+)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(
+            r"\s+(?:neuf|usag[ée]+)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
         name = re.sub(r"\s+[àa]\s+vendre\s+.*$", '', name, flags=re.I)
         name = re.sub(r'\s*(?:\||-|–)\s*DB\s*Moto.*$', '', name, flags=re.I)
         name = re.sub(r'\s+en\s+vente\s+.*$', '', name, flags=re.I)
@@ -736,7 +837,8 @@ class DBMotoScraper(DedicatedScraper):
             if marque and modele:
                 key = (marque, modele, annee, etat, couleur)
             else:
-                key = (product.get('name', '').lower().strip(), annee, etat, couleur)
+                key = (product.get('name', '').lower().strip(),
+                       annee, etat, couleur)
 
             if key not in groups:
                 product['quantity'] = 1

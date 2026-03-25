@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       try {
         const backendRes = await proxyToBackend('/scraper/run', {
           body: { userId, referenceUrl, urls, forceRefresh, ignoreColors, matchMode: matchMode || 'exact' },
+          timeout: 120_000,
         })
         const data = await backendRes.json()
         if (!backendRes.ok) {

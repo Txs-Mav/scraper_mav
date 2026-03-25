@@ -63,7 +63,7 @@ COLOR_KEYWORDS = [
     'cuivre', 'acier', 'cobalt', 'corail', 'ardoise', 'étain',
     'nebuleux', 'nébuleux', 'nebuleuse', 'nébuleuse',
     'bonbon', 'diablo', 'champagne', 'phantom', 'fantome', 'fantôme',
-    'combat', 'lime', 'sauge', 'cristal', 'obsidian', 'highland',
+    'combat', 'lime', 'sauge', 'cristal', 'obsidian',
     'etincelle', 'étincelle', 'velocite', 'vélocité',
     # Anglais
     'white', 'black', 'red', 'blue', 'green', 'yellow', 'orange', 'pink', 'purple',
@@ -471,7 +471,8 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
     print(f"🔍 COMPARAISON AVEC LE SITE DE RÉFÉRENCE")
     print(f"{'='*60}")
     print(f"📊 Référence: {reference_url} ({len(reference_products)} produits)")
-    print(f"📊 Concurrent: {comparison_url} ({len(comparison_products)} produits)")
+    print(
+        f"📊 Concurrent: {comparison_url} ({len(comparison_products)} produits)")
     print(f"🔒 Mode: {match_mode} — {mode_labels[match_mode]}")
 
     for rp in reference_products:
@@ -480,7 +481,8 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
         enrich_product_year(cp)
 
     def _build_key(product, mode):
-        marque, modele, annee = normalize_product_key(product, ignore_colors=ignore_colors)
+        marque, modele, annee = normalize_product_key(
+            product, ignore_colors=ignore_colors)
         if mode in ('base', 'flexible'):
             modele = _strip_model_suffixes(modele)
         if mode in ('no_year', 'flexible'):
@@ -498,7 +500,8 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
             continue
         ref_index.setdefault(key, []).append(rp)
 
-    print(f"   📋 Clés de référence: {len(ref_index)} (ignorées: {skipped_ref})")
+    print(
+        f"   📋 Clés de référence: {len(ref_index)} (ignorées: {skipped_ref})")
 
     matched_products = []
     skipped_comp = 0
@@ -561,7 +564,8 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
             print(f"      Conc: marque='{k[0]}' modele='{k[1]}' annee={k[2]} "
                   f"| name='{p.get('name', '')[:50]}'")
 
-    print(f"\n📈 Correspondances: {len(matched_products)}/{len(comparison_products)} ({match_rate:.0f}%)")
+    print(
+        f"\n📈 Correspondances: {len(matched_products)}/{len(comparison_products)} ({match_rate:.0f}%)")
     print(f"{'='*60}\n")
 
     return matched_products
@@ -608,11 +612,14 @@ def _save_direct_supabase(supabase_url: str, supabase_key: str, row: dict,
         if resp.status_code in (200, 201):
             data = resp.json()
             record = data[0] if isinstance(data, list) and data else data
-            print(f"☁️  Sauvegardé dans Supabase (ID: {record.get('id', 'N/A')})")
-            _cleanup_old_scrapings(supabase_url, supabase_key, user_id, reference_url, keep=5)
+            print(
+                f"☁️  Sauvegardé dans Supabase (ID: {record.get('id', 'N/A')})")
+            _cleanup_old_scrapings(
+                supabase_url, supabase_key, user_id, reference_url, keep=5)
             return True
         else:
-            print(f"⚠️  Erreur PostgREST ({resp.status_code}): {resp.text[:300]}")
+            print(
+                f"⚠️  Erreur PostgREST ({resp.status_code}): {resp.text[:300]}")
             return False
     except Exception as e:
         print(f"⚠️  Erreur sauvegarde directe: {e}")
@@ -652,7 +659,8 @@ def _cleanup_old_scrapings(supabase_url: str, supabase_key: str,
                 headers={**headers, "Content-Type": "application/json"},
                 timeout=10,
             )
-        print(f"   🧹 Nettoyage: {len(ids_to_delete)} ancien(s) scraping(s) supprimé(s)")
+        print(
+            f"   🧹 Nettoyage: {len(ids_to_delete)} ancien(s) scraping(s) supprimé(s)")
     except Exception as e:
         print(f"   ⚠️  Nettoyage échoué (non bloquant): {e}")
 
@@ -660,7 +668,8 @@ def _cleanup_old_scrapings(supabase_url: str, supabase_key: str,
 def _save_via_api(row: dict, user_id: str) -> bool:
     """Fallback: sauvegarde via l'API Next.js (limite 4.5MB sur Vercel)."""
     import requests
-    api_url = os.environ.get('NEXTJS_API_URL', '').strip() or 'http://localhost:3000'
+    api_url = os.environ.get(
+        'NEXTJS_API_URL', '').strip() or 'http://localhost:3000'
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
@@ -867,7 +876,8 @@ Exemples:
             universal_sites.append(url)
 
     if dedicated_sites:
-        print(f"\n   🔧 {len(dedicated_sites)} site(s) dédié(s) détecté(s) → Phase 3 (parallèle)")
+        print(
+            f"\n   🔧 {len(dedicated_sites)} site(s) dédié(s) détecté(s) → Phase 3 (parallèle)")
         for url in dedicated_sites:
             print(f"      ⚡ {url[:50]}...")
 
@@ -957,7 +967,8 @@ Exemples:
                 for future in as_completed(futures, timeout=total_timeout):
                     url = futures[future]
                     try:
-                        result_url, result_data = future.result(timeout=per_site_timeout)
+                        result_url, result_data = future.result(
+                            timeout=per_site_timeout)
                         results[result_url] = result_data
                         product_count = len(result_data.get('products', []))
                         is_ref = " ⭐" if url == reference_url else ""
@@ -968,7 +979,8 @@ Exemples:
                         results[url] = {"companyInfo": {}, "products": []}
             except TimeoutError:
                 timed_out = [u for f, u in futures.items() if u not in results]
-                print(f"\n   ⚠️  Timeout global Phase 3 — {len(timed_out)} site(s) abandonné(s):")
+                print(
+                    f"\n   ⚠️  Timeout global Phase 3 — {len(timed_out)} site(s) abandonné(s):")
                 for u in timed_out:
                     print(f"      ❌ {u[:50]}")
                     results[u] = {"companyInfo": {}, "products": []}
@@ -993,7 +1005,8 @@ Exemples:
             f"🔄 PHASE 3b: RETRY ({len(retry_list)} sites, cache conservé)")
         print(f"{'='*50}")
         if skipped > 0:
-            print(f"   ⏭️  {skipped} site(s) ignoré(s) pour limiter le temps total")
+            print(
+                f"   ⏭️  {skipped} site(s) ignoré(s) pour limiter le temps total")
 
         for url in retry_list:
             is_ref = " ⭐" if url == reference_url else ""
@@ -1181,7 +1194,8 @@ Exemples:
     # PRIORITÉ 2: Fallback via l'API Next.js si pas de credentials directes
     saved_to_supabase = False
     if user_id:
-        supabase_url = os.environ.get('SUPABASE_URL') or os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '')
+        supabase_url = os.environ.get('SUPABASE_URL') or os.environ.get(
+            'NEXT_PUBLIC_SUPABASE_URL', '')
         supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 
         scraping_row = {
@@ -1209,7 +1223,8 @@ Exemples:
     except Exception:
         pass
     if not saved_to_supabase:
-        print(f"⚠️  ÉCHEC SAUVEGARDE SUPABASE — données locales uniquement: {output_file}")
+        print(
+            f"⚠️  ÉCHEC SAUVEGARDE SUPABASE — données locales uniquement: {output_file}")
     else:
         print(f"💾 Backup local: {output_file}")
 
