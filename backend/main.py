@@ -155,8 +155,9 @@ async def scraper_run(body: ScraperRunRequest):
         args.append("--force-refresh")
     if body.ignoreColors:
         args.append("--ignore-colors")
-    if body.inventoryOnly:
-        args.append("--inventory-only")
+    # NOTE: --inventory-only n'est PLUS passé au Python.
+    # Tous les produits (catalogue + inventaire) sont sauvegardés dans Supabase.
+    # Le filtrage se fait côté comparaison (alerts/check) pour ne pas perdre de données.
     if body.matchMode and body.matchMode != 'exact':
         args.extend(["--match-mode", body.matchMode])
     args.extend(all_urls)

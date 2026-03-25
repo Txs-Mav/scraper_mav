@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     if (hasBackend()) {
       try {
         const backendRes = await proxyToBackend('/scraper/run', {
-          body: { userId, referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly, matchMode: matchMode || 'exact' },
+          body: { userId, referenceUrl, urls, forceRefresh, ignoreColors, matchMode: matchMode || 'exact' },
         })
         const data = await backendRes.json()
         if (!backendRes.ok) {
