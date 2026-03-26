@@ -185,13 +185,26 @@ async function syncAlertFromConfig(
 ): Promise<{ synced: boolean; alertId?: string }> {
   const serviceSupabase = createServiceClient()
 
-  // Check if an alert already exists for this user+reference
-  const { data: existing } = await serviceSupabase
+  const normalizeUrl = (url: string) => {
+    try {
+      const u = new URL(url)
+      return `${u.protocol}//${u.hostname.replace(/^www\./, '').toLowerCase()}${u.pathname.replace(/\/+$/, '')}`
+    } catch {
+      return url.toLowerCase().replace(/\/+$/, '').replace(/^https?:\/\/www\./, 'https://')
+    }
+  }
+
+  // Fetch ALL active alerts for this user to find a match (exact or normalized)
+  const { data: userAlerts } = await serviceSupabase
     .from('scraper_alerts')
     .select('id, reference_url, competitor_urls')
     .eq('user_id', userId)
-    .eq('reference_url', referenceUrl)
-    .single()
+    .eq('is_active', true)
+
+  const normalizedRef = normalizeUrl(referenceUrl)
+  const existing = userAlerts?.find(a =>
+    a.reference_url === referenceUrl || normalizeUrl(a.reference_url) === normalizedRef
+  )
 
   // Read current config to get filter_catalogue_reference
   const { data: currentConfig } = await serviceSupabase
@@ -202,9 +215,11 @@ async function syncAlertFromConfig(
   const filterCatalogue = currentConfig?.filter_catalogue_reference ?? true
 
   if (existing) {
+    // Update the matched alert AND fix reference_url to the canonical form
     const { error } = await serviceSupabase
       .from('scraper_alerts')
       .update({
+        reference_url: referenceUrl,
         competitor_urls: competitorUrls,
         is_active: true,
         filter_catalogue_reference: filterCatalogue,
@@ -216,16 +231,30 @@ async function syncAlertFromConfig(
       return { synced: false }
     }
 
+    // Deactivate ALL other alerts for this user (stale alerts from old configs)
+    const otherAlertIds = (userAlerts || [])
+      .filter(a => a.id !== existing.id)
+      .map(a => a.id)
+    if (otherAlertIds.length > 0) {
+      await serviceSupabase
+        .from('scraper_alerts')
+        .update({ is_active: false })
+        .in('id', otherAlertIds)
+      console.log(`[Config] Deactivated ${otherAlertIds.length} stale alert(s)`)
+    }
+
     console.log(`[Config] Alert updated: ${existing.id}`)
     return { synced: true, alertId: existing.id }
   }
 
-  // Deactivate any existing alerts for this user with a different reference URL
-  await serviceSupabase
-    .from('scraper_alerts')
-    .update({ is_active: false })
-    .eq('user_id', userId)
-    .neq('reference_url', referenceUrl)
+  // No matching alert found — deactivate ALL existing alerts for this user
+  if (userAlerts && userAlerts.length > 0) {
+    await serviceSupabase
+      .from('scraper_alerts')
+      .update({ is_active: false })
+      .eq('user_id', userId)
+    console.log(`[Config] Deactivated ${userAlerts.length} old alert(s)`)
+  }
 
   // Create new alert entry
   const { data: newAlert, error } = await serviceSupabase

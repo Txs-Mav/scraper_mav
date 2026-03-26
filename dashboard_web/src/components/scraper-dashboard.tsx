@@ -600,7 +600,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       const nextScanTime = new Date(lastScrapingTime.getTime() + SCAN_INTERVAL_MIN * 60000)
       const remainingMs = nextScanTime.getTime() - now.getTime()
       if (remainingMs <= 0) {
-        nextScanText = t("dash.scanOverdue" as TranslationKey)
+        nextScanText = t("dash.scanOverdue")
       } else {
         const nextScanMin = Math.ceil(remainingMs / 60000)
         nextScanText = t("dash.inMinutes").replace("{0}", String(nextScanMin))
