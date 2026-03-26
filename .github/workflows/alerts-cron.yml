@@ -6,10 +6,14 @@ on:
     - cron: '5,25,45 * * * *'
   workflow_dispatch:
 
+concurrency:
+  group: alert-cron
+  cancel-in-progress: false
+
 jobs:
   alert-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
 
     steps:
       - name: Checkout du repo

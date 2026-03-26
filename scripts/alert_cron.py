@@ -1,10 +1,11 @@
 """
-Orchestrateur d'alertes automatisées — exécuté par GitHub Actions chaque heure.
+Orchestrateur d'alertes automatisées — exécuté par GitHub Actions toutes les 20 min.
 
 Flow :
   1. Query Supabase : alertes actives éligibles (interval OU daily)
-  2. Pour chaque alerte : utiliser reference_url + competitor_urls de l'alerte, lancer le scraping Python
-  3. Appeler l'API Vercel /api/alerts/check pour détecter les changements et envoyer les emails
+  2. Scraping PARALLÈLE (max 3 workers) de chaque alerte
+  3. last_run_at mis à jour APRÈS scraping réussi (pas avant)
+  4. Appeler l'API Vercel /api/alerts/check pour détecter les changements
 
 Variables d'environnement requises :
   SUPABASE_URL              — URL du projet Supabase
@@ -16,25 +17,90 @@ Variables d'environnement requises :
 
 import os
 import sys
+import signal
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from threading import Lock
 
 import requests
 from supabase import create_client
 
+MAX_WORKERS = 3
+SUBPROCESS_TIMEOUT = 1800  # 30 min per alert
 
-def _rollback_last_run(supabase, alert_id: str, previous_value):
-    """Restore last_run_at to its previous value so the cron retries next cycle."""
+print_lock = Lock()
+
+
+def _log(msg: str):
+    with print_lock:
+        print(msg, flush=True)
+
+
+def _scrape_alert(alert: dict, *, gemini_key: str, app_url: str) -> dict:
+    """Scrape a single alert. Returns a result dict. Thread-safe."""
+    alert_id = alert["id"]
+    short_id = alert_id[:8]
+    user_id = alert["user_id"]
+    user_short = user_id[:8]
+
+    reference_url = alert.get("reference_url")
+    if not reference_url:
+        reference_url = (alert.get("scraper_cache") or {}).get("site_url")
+
+    if not reference_url:
+        _log(f"   ⚠️  Alerte {short_id} (user {user_short}): pas d'URL de référence, skip")
+        return {"alert_id": alert_id, "success": False, "reason": "no_url"}
+
+    competitor_urls = alert.get("competitor_urls") or []
+    categories = alert.get("categories") or ["inventaire", "occasion", "catalogue"]
+
+    _log(f"\n🔄 Alerte {short_id} (user {user_short}) — {reference_url}")
+    _log(f"   Concurrents : {len(competitor_urls)} | Catégories : {categories}")
+
+    all_urls = [reference_url]
+    if isinstance(competitor_urls, list):
+        all_urls.extend(u for u in competitor_urls if u != reference_url)
+
+    _log(f"   📋 Total URLs à scraper : {len(all_urls)}")
+
+    cmd = [
+        sys.executable, "-m", "scraper_ai.main",
+        "--reference", reference_url,
+        "--user-id", user_id,
+    ]
+    if categories:
+        cat_str = ",".join(categories) if isinstance(categories, list) else str(categories)
+        cmd.extend(["--categories", cat_str])
+    cmd.extend(all_urls)
+
+    env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+        "GEMINI_API_KEY": gemini_key,
+        "NEXTJS_API_URL": app_url,
+        "SCRAPER_USER_ID": user_id,
+    }
+
+    start = time.time()
     try:
-        update_val = previous_value if previous_value else None
-        supabase.table("scraper_alerts") \
-            .update({"last_run_at": update_val}) \
-            .eq("id", alert_id) \
-            .execute()
-        print(f"   🔄 last_run_at restauré → le cron réessaiera au prochain cycle")
+        proc = subprocess.run(cmd, env=env, timeout=SUBPROCESS_TIMEOUT, text=True)
+        elapsed = time.time() - start
+
+        if proc.returncode == 0:
+            _log(f"   ✅ Alerte {short_id}: Scraping OK ({elapsed:.0f}s)")
+            return {"alert_id": alert_id, "success": True, "elapsed": elapsed}
+        else:
+            _log(f"   ❌ Alerte {short_id}: Scraping échoué (code {proc.returncode}, {elapsed:.0f}s)")
+            return {"alert_id": alert_id, "success": False, "reason": f"exit_{proc.returncode}"}
+    except subprocess.TimeoutExpired:
+        elapsed = time.time() - start
+        _log(f"   ❌ Alerte {short_id}: Timeout après {elapsed:.0f}s ({len(all_urls)} URLs)")
+        return {"alert_id": alert_id, "success": False, "reason": "timeout"}
     except Exception as e:
-        print(f"   ⚠️  Impossible de restaurer last_run_at: {e}")
+        _log(f"   ❌ Alerte {short_id}: Erreur — {e}")
+        return {"alert_id": alert_id, "success": False, "reason": str(e)}
 
 
 def main():
@@ -61,8 +127,6 @@ def main():
     print(f"🕐 Heure UTC : {current_hour}:00")
 
     # ── 1. Récupérer les alertes actives éligibles ──
-    # (a) Alertes « interval » dont le délai est écoulé depuis last_run_at
-    # (b) Alertes « daily » dont l'heure UTC correspond
     result = (
         supabase.table("scraper_alerts")
         .select("id, user_id, reference_url, competitor_urls, categories, schedule_type, schedule_hour, schedule_interval_hours, schedule_interval_minutes, last_run_at, scraper_cache_id, scraper_cache(site_url)")
@@ -96,204 +160,96 @@ def main():
         print(f"✅ Aucune alerte éligible (vérifié {len(all_alerts)} alerte(s) actives)")
         return
 
-    # Grouper par user_id
-    users: dict[str, list] = {}
-    for alert in alerts:
-        uid = alert["user_id"]
-        users.setdefault(uid, []).append(alert)
+    print(f"📋 {len(alerts)} alerte(s) éligibles — scraping parallèle (max {MAX_WORKERS} workers)\n")
 
-    print(f"📋 {len(alerts)} alerte(s) pour {len(users)} utilisateur(s)\n")
+    # ── 2. Scraping PARALLÈLE ──
+    succeeded_ids: list[str] = []
+    failed_count = 0
+    cron_timestamp = now.replace(second=0, microsecond=0).isoformat()
 
-    # ── 2. Verrouiller last_run_at AVANT le scraping ──
-    # On utilise l'heure réelle du run pour supporter les intervalles sub-horaires.
-    # Ex: run à 10:25 → last_run_at = 10:25 → prochain check à 10:25 + 40min = 11:05
-    cron_start_time = now.replace(second=0, microsecond=0)
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_alert = {
+            executor.submit(
+                _scrape_alert, alert, gemini_key=gemini_key, app_url=app_url
+            ): alert
+            for alert in alerts
+        }
 
-    for alert in alerts:
-        try:
-            supabase.table("scraper_alerts") \
-                .update({"last_run_at": cron_start_time.isoformat()}) \
-                .eq("id", alert["id"]) \
-                .execute()
-        except Exception as e:
-            print(f"⚠️  Impossible de verrouiller last_run_at pour {alert['id'][:8]}: {e}")
+        # SIGTERM handler: cancel pending futures gracefully
+        def _on_sigterm(signum, frame):
+            print("\n⚠️  SIGTERM reçu — annulation des tâches en cours...")
+            executor.shutdown(wait=False, cancel_futures=True)
+            sys.exit(1)
 
-    # ── 3. Pour chaque alerte, lancer le scraping avec ses propres URLs ──
-    scraping_success = 0
-    scraping_failed = 0
+        signal.signal(signal.SIGTERM, _on_sigterm)
+        signal.signal(signal.SIGINT, _on_sigterm)
 
-    for user_id, user_alerts in users.items():
-        short_id = user_id[:8]
+        for future in as_completed(future_to_alert):
+            result = future.result()
+            aid = result["alert_id"]
 
-        for alert in user_alerts:
-            alert_id = alert["id"][:8]
-            full_alert_id = alert["id"]
-            reference_url = alert.get("reference_url")
-            if not reference_url:
-                site_url = (alert.get("scraper_cache") or {}).get("site_url")
-                reference_url = site_url
+            if result["success"]:
+                succeeded_ids.append(aid)
+                # Verrouiller last_run_at APRÈS succès
+                try:
+                    supabase.table("scraper_alerts") \
+                        .update({"last_run_at": cron_timestamp}) \
+                        .eq("id", aid) \
+                        .execute()
+                except Exception as e:
+                    _log(f"   ⚠️  last_run_at non mis à jour pour {aid[:8]}: {e}")
+            else:
+                failed_count += 1
 
-            if not reference_url:
-                print(f"⚠️  Alerte {alert_id} (user {short_id}): pas d'URL de référence, skip")
-                scraping_failed += 1
-                continue
+    print(f"\n📊 Scraping terminé : {len(succeeded_ids)} OK, {failed_count} échoué(s)")
 
-            competitor_urls = alert.get("competitor_urls") or []
-            categories = alert.get("categories") or ["inventaire", "occasion", "catalogue"]
+    # ── 3. Appeler POST /api/alerts/check pour les alertes réussies ──
+    if not succeeded_ids:
+        print("\n⚠️  Aucun scraping réussi — pas d'analyse à effectuer")
+        print(f"\n{'='*60}\n✅ ALERT CRON TERMINÉ\n{'='*60}\n")
+        return
 
-            print(f"\n🔄 Alerte {alert_id} (user {short_id}) — {reference_url}")
-            print(f"   Concurrents : {len(competitor_urls)} | Catégories : {categories}")
-            for i, comp_url in enumerate(competitor_urls, 1):
-                print(f"   {i}. {comp_url}")
-
-            # Snapshot du dernier scraping AVANT le run (pour vérifier si un nouveau est créé)
-            last_scraping_before = None
-            try:
-                res = supabase.table("scrapings") \
-                    .select("id, created_at") \
-                    .eq("user_id", user_id) \
-                    .eq("reference_url", reference_url) \
-                    .order("created_at", desc=True) \
-                    .limit(1) \
-                    .execute()
-                if res.data:
-                    last_scraping_before = res.data[0]["created_at"]
-            except Exception:
-                pass
-
-            all_urls = [reference_url]
-            if isinstance(competitor_urls, list):
-                all_urls.extend(u for u in competitor_urls if u != reference_url)
-
-            print(f"   📋 Total URLs à scraper : {len(all_urls)}")
-
-            cmd = [
-                sys.executable, "-m", "scraper_ai.main",
-                "--reference", reference_url,
-                "--user-id", user_id,
-            ]
-            if categories:
-                cat_str = ",".join(categories) if isinstance(categories, list) else str(categories)
-                cmd.extend(["--categories", cat_str])
-            cmd.extend(all_urls)
-
-            env = {
-                **os.environ,
-                "PYTHONUNBUFFERED": "1",
-                "GEMINI_API_KEY": gemini_key,
-                "NEXTJS_API_URL": app_url,
-                "SCRAPER_USER_ID": user_id,
-            }
-
-            start = time.time()
-            subprocess_timeout = 1500  # 25 min (was 15 min — needed with 10+ competitor sites)
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    env=env,
-                    timeout=subprocess_timeout,
-                    text=True,
-                )
-                elapsed = time.time() - start
-
-                if proc.returncode == 0:
-                    print(f"   ✅ Scraping OK ({elapsed:.0f}s)")
-                    scraping_success += 1
-                else:
-                    print(f"   ❌ Scraping échoué (code {proc.returncode}, {elapsed:.0f}s)")
-                    scraping_failed += 1
-                    # Rollback last_run_at so cron retries next cycle
-                    _rollback_last_run(supabase, full_alert_id, alert.get("last_run_at"))
-                    continue
-            except subprocess.TimeoutExpired:
-                elapsed = time.time() - start
-                print(f"   ❌ Timeout après {elapsed:.0f}s (limite {subprocess_timeout}s, {len(all_urls)} URLs)")
-                scraping_failed += 1
-                _rollback_last_run(supabase, full_alert_id, alert.get("last_run_at"))
-                continue
-            except Exception as e:
-                print(f"   ❌ Erreur: {e}")
-                scraping_failed += 1
-                _rollback_last_run(supabase, full_alert_id, alert.get("last_run_at"))
-                continue
-
-            # Vérifier qu'un nouveau scraping a bien été enregistré dans Supabase
-            time.sleep(2)
-            try:
-                res = supabase.table("scrapings") \
-                    .select("id, created_at") \
-                    .eq("user_id", user_id) \
-                    .eq("reference_url", reference_url) \
-                    .order("created_at", desc=True) \
-                    .limit(1) \
-                    .execute()
-                if res.data:
-                    latest = res.data[0]["created_at"]
-                    if latest != last_scraping_before:
-                        print(f"   💾 Nouveau scraping confirmé dans Supabase ({latest})")
-                    else:
-                        print(f"   ⚠️  ATTENTION: Scraping OK mais aucun nouvel enregistrement dans Supabase!")
-                        print(f"   ⚠️  Dernier scraping toujours à: {latest}")
-                        print(f"   ⚠️  La sauvegarde vers Supabase a probablement échoué")
-                else:
-                    print(f"   ⚠️  ATTENTION: Aucun scraping trouvé dans Supabase pour cette alerte!")
-            except Exception as e:
-                print(f"   ⚠️  Impossible de vérifier le scraping: {e}")
-
-    print(f"\n📊 Scraping terminé : {scraping_success} OK, {scraping_failed} échoué(s)")
-
-    # ── 4. Pour chaque alerte scrapée, appeler POST /api/alerts/check ──
-    # skip_schedule_update=True car last_run_at est déjà verrouillé à l'étape 2
     check_url = f"{app_url}/api/alerts/check"
     check_headers = {
         "Authorization": f"Bearer {cron_secret}",
         "Content-Type": "application/json",
     }
 
+    print(f"\n📡 Analyse de {len(succeeded_ids)} alerte(s) via {check_url}...")
+
     check_ok = 0
     check_failed = 0
     total_changes = 0
 
-    scraped_alert_ids = [
-        a["id"] for a in alerts
-        if (a.get("reference_url") or (a.get("scraper_cache") or {}).get("site_url"))
-    ]
+    for alert_id in succeeded_ids:
+        short_id = alert_id[:8]
+        try:
+            resp = requests.post(
+                check_url,
+                headers=check_headers,
+                json={
+                    "alert_id": alert_id,
+                    "trigger_scraping": False,
+                    "skip_schedule_update": True,
+                },
+                timeout=120,
+            )
 
-    if scraped_alert_ids:
-        print(f"\n📡 Analyse de {len(scraped_alert_ids)} alerte(s) via {check_url}...")
-
-        for alert_id in scraped_alert_ids:
-            short_id = alert_id[:8]
-            try:
-                resp = requests.post(
-                    check_url,
-                    headers=check_headers,
-                    json={
-                        "alert_id": alert_id,
-                        "trigger_scraping": False,
-                        "skip_schedule_update": True,
-                    },
-                    timeout=120,
-                )
-
-                if resp.status_code == 200:
-                    data = resp.json()
-                    changes = data.get("changes_detected", 0)
-                    total_changes += changes
-                    status = f"{changes} changement(s)" if changes else "aucun changement"
-                    print(f"   ✅ Alerte {short_id}: {status}")
-                    check_ok += 1
-                else:
-                    print(f"   ❌ Alerte {short_id}: erreur {resp.status_code} — {resp.text[:200]}")
-                    check_failed += 1
-            except Exception as e:
-                print(f"   ❌ Alerte {short_id}: erreur — {e}")
+            if resp.status_code == 200:
+                data = resp.json()
+                changes = data.get("changes_detected", 0)
+                total_changes += changes
+                status = f"{changes} changement(s)" if changes else "aucun changement"
+                print(f"   ✅ Alerte {short_id}: {status}")
+                check_ok += 1
+            else:
+                print(f"   ❌ Alerte {short_id}: erreur {resp.status_code} — {resp.text[:200]}")
                 check_failed += 1
+        except Exception as e:
+            print(f"   ❌ Alerte {short_id}: erreur — {e}")
+            check_failed += 1
 
-        print(f"\n📊 Analyse terminée : {check_ok} OK, {check_failed} échoué(s), {total_changes} changement(s) total")
-    else:
-        print("\n⚠️  Aucune alerte avec URL valide à analyser")
-
+    print(f"\n📊 Analyse terminée : {check_ok} OK, {check_failed} échoué(s), {total_changes} changement(s) total")
     print(f"\n{'='*60}")
     print(f"✅ ALERT CRON TERMINÉ")
     print(f"{'='*60}\n")
