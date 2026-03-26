@@ -576,10 +576,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     const SCAN_INTERVAL_MIN = 40
     if (lastScrapingTime) {
       const nextScanTime = new Date(lastScrapingTime.getTime() + SCAN_INTERVAL_MIN * 60000)
-      const nextScanMin = Math.max(1, Math.ceil((nextScanTime.getTime() - now.getTime()) / 60000))
-      nextScanText = nextScanMin <= 0
-        ? t("alerts.now")
-        : t("dash.inMinutes").replace("{0}", String(nextScanMin))
+      const remainingMs = nextScanTime.getTime() - now.getTime()
+      if (remainingMs <= 0) {
+        nextScanText = t("dash.scanOverdue" as TranslationKey)
+      } else {
+        const nextScanMin = Math.ceil(remainingMs / 60000)
+        nextScanText = t("dash.inMinutes").replace("{0}", String(nextScanMin))
+      }
     } else {
       nextScanText = t("dash.inMinutes").replace("{0}", "~20")
     }
@@ -738,7 +741,11 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
             {/* Analyze now — secondary button */}
             <button
               type="button"
-              onClick={() => { setIsScrapingActive(true); setShouldStartScraping(true) }}
+              onClick={async () => {
+                try { await fetch('/api/alerts/reset-timers', { method: 'POST' }) } catch {}
+                setIsScrapingActive(true)
+                setShouldStartScraping(true)
+              }}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition-all"
             >
               <Eye className="h-3.5 w-3.5" />
