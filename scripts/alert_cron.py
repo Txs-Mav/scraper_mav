@@ -59,11 +59,24 @@ def _scrape_alert(alert: dict, *, gemini_key: str, app_url: str) -> dict:
     _log(f"\n🔄 Alerte {short_id} (user {user_short}) — {reference_url}")
     _log(f"   Concurrents : {len(competitor_urls)} | Catégories : {categories}")
 
+    def _domain(u: str) -> str:
+        try:
+            from urllib.parse import urlparse
+            return urlparse(u).netloc.replace('www.', '').lower()
+        except Exception:
+            return u.lower()
+
+    ref_domain = _domain(reference_url)
+    seen = {ref_domain}
     all_urls = [reference_url]
     if isinstance(competitor_urls, list):
-        all_urls.extend(u for u in competitor_urls if u != reference_url)
+        for u in competitor_urls:
+            d = _domain(u)
+            if d not in seen:
+                seen.add(d)
+                all_urls.append(u)
 
-    _log(f"   📋 Total URLs à scraper : {len(all_urls)}")
+    _log(f"   📋 Total URLs à scraper : {len(all_urls)} (dédupliqué par domaine)")
 
     cmd = [
         sys.executable, "-m", "scraper_ai.main",

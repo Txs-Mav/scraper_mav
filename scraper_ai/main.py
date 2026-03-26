@@ -802,28 +802,45 @@ Exemples:
     if user_id:
         set_global_user(user_id)
 
-    # Normaliser toutes les URLs (ajouter https:// si manquant)
     def _ensure_protocol(u: str) -> str:
         u = u.strip()
         if u and not u.startswith(('http://', 'https://')):
             u = 'https://' + u
         return u.rstrip('/')
 
+    def _domain_key(u: str) -> str:
+        """Extract normalized domain for dedup (strips www., lowercases)."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(u)
+            return parsed.netloc.replace('www.', '').lower()
+        except Exception:
+            return u.lower()
+
     urls = [_ensure_protocol(u) for u in urls if u.strip()]
     if reference_url:
         reference_url = _ensure_protocol(reference_url)
 
-    # Déterminer le site de référence
     if not reference_url and len(urls) > 0:
         reference_url = urls[0]
 
-    # S'assurer que le site de référence est dans la liste
-    all_urls = list(set(urls))
-    if reference_url and reference_url not in all_urls:
-        all_urls.insert(0, reference_url)
+    # Deduplicate by domain (keeps first occurrence per domain)
+    seen_domains: set[str] = set()
+    unique_urls: list[str] = []
+    for u in urls:
+        dk = _domain_key(u)
+        if dk not in seen_domains:
+            seen_domains.add(dk)
+            unique_urls.append(u)
 
-    # Séparer référence et concurrents
-    competitor_urls = [url for url in all_urls if url != reference_url]
+    all_urls = unique_urls
+    if reference_url:
+        ref_dk = _domain_key(reference_url)
+        if ref_dk not in seen_domains:
+            all_urls.insert(0, reference_url)
+            seen_domains.add(ref_dk)
+
+    competitor_urls = [url for url in all_urls if _domain_key(url) != _domain_key(reference_url)]
 
     print(f"\n{'='*70}")
     print(f"🚀 SCRAPER AI v{PROMPT_VERSION} - SCRAPING INTELLIGENT")
