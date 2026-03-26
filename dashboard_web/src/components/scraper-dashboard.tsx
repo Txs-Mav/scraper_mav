@@ -243,7 +243,21 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [canScrollTabLeft, setCanScrollTabLeft] = useState(false)
   const [canScrollTabRight, setCanScrollTabRight] = useState(false)
 
-  useEffect(() => { setMounted(true); setIsScrapingActive(false); setShouldStartScraping(false) }, [])
+  useEffect(() => {
+    setMounted(true)
+    setShouldStartScraping(false)
+    try {
+      const raw = localStorage.getItem("go-data-scraping-session")
+      if (raw) {
+        const session = JSON.parse(raw)
+        if (session?.logFile && (Date.now() - session.startTime) < 30 * 60_000) {
+          setIsScrapingActive(true)
+          return
+        }
+      }
+    } catch {}
+    setIsScrapingActive(false)
+  }, [])
 
   const checkTabScroll = useCallback(() => {
     const el = tabScrollRef.current
@@ -340,8 +354,6 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         const scrapedAt = data.updatedAt || data.createdAt || data.metadata?.updated_at || data.metadata?.created_at
         if (scrapedAt) {
           setLastScrapingTime(new Date(scrapedAt))
-        } else if (data.products?.length > 0) {
-          setLastScrapingTime(new Date())
         }
         if (data.metadata?.reference_url) {
           try {
@@ -386,9 +398,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
 
   const handleScrapeComplete = () => {
     justCompletedScrapingRef.current = true
-    setRefreshKey(prev => prev + 1)
+    setLastScrapingTime(new Date())
     setShowCelebration(true)
     if (user) localStorage.setItem(`has_scraped_${user.id}`, "true")
+    // Delay to let Supabase commit the new scraping before refreshing
+    setTimeout(() => setRefreshKey(prev => prev + 1), 2000)
+    // Safety-net retry in case the first refresh was too early
+    setTimeout(() => setRefreshKey(prev => prev + 1), 6000)
   }
   const handleRefresh = () => { setRefreshKey(prev => prev + 1) }
 
@@ -570,7 +586,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       const diffMin = Math.floor(diffMs / 60000)
       if (diffMin < 1) lastAnalysisText = t("alerts.now")
       else if (diffMin < 60) lastAnalysisText = t("dash.minutesAgo").replace("{0}", String(diffMin))
-      else lastAnalysisText = t("dash.hoursAgo").replace("{0}", String(Math.floor(diffMin / 60)))
+      else {
+        const hours = Math.floor(diffMin / 60)
+        const mins = diffMin % 60
+        lastAnalysisText = mins > 0
+          ? `${t("dash.hoursAgo").replace("{0}", String(hours))} ${String(mins).padStart(2, "0")}`
+          : t("dash.hoursAgo").replace("{0}", String(hours))
+      }
     }
 
     const SCAN_INTERVAL_MIN = 40

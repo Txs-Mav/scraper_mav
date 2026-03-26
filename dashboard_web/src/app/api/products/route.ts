@@ -27,6 +27,15 @@ export async function GET() {
       .eq('user_id', user.id)
       .maybeSingle()
 
+    const normalizeRefUrl = (url: string) => {
+      try {
+        const u = new URL(url)
+        return `${u.protocol}//${u.hostname.replace(/^www\./, '').toLowerCase()}${u.pathname.replace(/\/+$/, '')}`
+      } catch {
+        return url.toLowerCase().replace(/\/+$/, '').replace(/^https?:\/\/www\./, 'https://')
+      }
+    }
+
     let scrapingsQuery = supabase
       .from('scrapings')
       .select('*')
@@ -40,16 +49,31 @@ export async function GET() {
 
     let { data: scrapings, error } = await scrapingsQuery
 
-    // Fallback si la config active n'a pas encore de scraping.
+    // Fallback 1: exact match failed → try normalized URL comparison
     if ((!scrapings || scrapings.length === 0) && config?.reference_url) {
-      const fallbackResult = await supabase
+      const { data: recentScrapings, error: recentError } = await supabase
         .from('scrapings')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(1)
-      scrapings = fallbackResult.data
-      error = fallbackResult.error
+        .limit(5)
+
+      if (recentScrapings && recentScrapings.length > 0) {
+        const normalizedConfigUrl = normalizeRefUrl(config.reference_url)
+        const matched = recentScrapings.find(
+          (s: any) => normalizeRefUrl(s.reference_url) === normalizedConfigUrl
+        )
+        if (matched) {
+          scrapings = [matched]
+          error = null
+        } else {
+          scrapings = [recentScrapings[0]]
+          error = recentError
+        }
+      } else {
+        scrapings = recentScrapings
+        error = recentError
+      }
     }
 
     if (error) {
