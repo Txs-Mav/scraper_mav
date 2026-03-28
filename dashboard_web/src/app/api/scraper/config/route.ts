@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/supabase/helpers'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
+const DEFAULT_INTERVAL_MINUTES = 40
+
 /**
  * API route pour la configuration du scraper
  * Stockée dans Supabase (table scraper_config) pour les utilisateurs connectés.
@@ -50,6 +52,24 @@ export async function GET() {
       })
     }
 
+    // Fetch the active alert to get last_run_at and interval for the dashboard timer
+    let alertLastRunAt: string | null = null
+    let alertIntervalMinutes: number = DEFAULT_INTERVAL_MINUTES
+    try {
+      const { data: alert } = await supabase
+        .from('scraper_alerts')
+        .select('last_run_at, schedule_interval_minutes')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('last_run_at', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle()
+      if (alert) {
+        alertLastRunAt = alert.last_run_at
+        alertIntervalMinutes = alert.schedule_interval_minutes || DEFAULT_INTERVAL_MINUTES
+      }
+    } catch { /* non-critical */ }
+
     return NextResponse.json({
       referenceUrl: config.reference_url || "",
       urls: config.competitor_urls || [],
@@ -58,7 +78,9 @@ export async function GET() {
       ignoreColors: config.ignore_colors || false,
       inventoryOnly: config.filter_catalogue_reference ?? true,
       matchMode: config.match_mode || 'exact',
-      updatedAt: config.updated_at
+      updatedAt: config.updated_at,
+      alertLastRunAt,
+      alertIntervalMinutes,
     })
   } catch (error: any) {
     console.error('Error reading scraper config:', error)

@@ -237,6 +237,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [matchMode, setMatchMode] = useState<MatchMode>('exact')
   const [showFilters, setShowFilters] = useState(false)
   const [lastScrapingTime, setLastScrapingTime] = useState<Date | null>(null)
+  const [alertLastRunAt, setAlertLastRunAt] = useState<Date | null>(null)
+  const [alertIntervalMinutes, setAlertIntervalMinutes] = useState(40)
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
   const inlineScraperRef = useRef<ScraperConfigHandle | null>(null)
   const tabScrollRef = useRef<HTMLDivElement>(null)
@@ -370,6 +372,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
             const configData = await configRes.json()
             if (typeof configData.ignoreColors === 'boolean') setIgnoreColors(configData.ignoreColors)
             if (configData.matchMode) setMatchMode(configData.matchMode as MatchMode)
+            if (configData.alertLastRunAt) setAlertLastRunAt(new Date(configData.alertLastRunAt))
+            if (configData.alertIntervalMinutes) setAlertIntervalMinutes(configData.alertIntervalMinutes)
           }
         } catch { /* non critique */ }
       } catch (err: any) {
@@ -595,9 +599,12 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
       }
     }
 
-    const SCAN_INTERVAL_MIN = 40
-    if (lastScrapingTime) {
-      const nextScanTime = new Date(lastScrapingTime.getTime() + SCAN_INTERVAL_MIN * 60000)
+    // Use alertLastRunAt (cron start) for next scan calculation — this is what the
+    // cron actually checks for eligibility, not when the scraping data was saved.
+    const baseTime = alertLastRunAt || lastScrapingTime
+    const intervalMin = alertIntervalMinutes
+    if (baseTime) {
+      const nextScanTime = new Date(baseTime.getTime() + intervalMin * 60000)
       const remainingMs = nextScanTime.getTime() - now.getTime()
       if (remainingMs <= 0) {
         nextScanText = t("dash.scanOverdue")
@@ -610,7 +617,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     }
 
     return { lastAnalysisText, nextScanText }
-  }, [lastScrapingTime, t])
+  }, [lastScrapingTime, alertLastRunAt, alertIntervalMinutes, t])
 
   const [monitoringStatus, setMonitoringStatus] = useState(computeMonitoringStatus)
 
@@ -757,7 +764,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
-              {t("dash.autoMonitoring")}
+              {t("dash.autoMonitoring").replace("40", String(alertIntervalMinutes))}
             </div>
 
             {/* Analyze now — secondary button */}
