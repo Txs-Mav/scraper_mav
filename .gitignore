@@ -20,6 +20,9 @@ scraper_logs/
 # Cache
 scraper_cache/
 
+# Password backups (manage_client_password.py)
+tools/.password_backups/
+
 # IDE
 .idea/
 .vscode/
