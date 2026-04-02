@@ -24,6 +24,13 @@ class DedicatedScraper(ABC):
 
     def __init__(self):
         self.session = requests.Session()
+
+        try:
+            import brotli  # noqa: F401
+            accept_enc = 'gzip, deflate, br'
+        except ImportError:
+            accept_enc = 'gzip, deflate'
+
         self.session.headers.update({
             'User-Agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -32,7 +39,7 @@ class DedicatedScraper(ABC):
             ),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
             'Accept-Language': 'fr-CA,fr;q=0.9,en-US;q=0.7,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Encoding': accept_enc,
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
             'Sec-Fetch-Dest': 'document',
