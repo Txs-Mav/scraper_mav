@@ -25,18 +25,28 @@ class DedicatedScraper(ABC):
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'fr-CA,fr;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate',
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/124.0.0.0 Safari/537.36'
+            ),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'fr-CA,fr;q=0.9,en-US;q=0.7,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
         })
         adapter = requests.adapters.HTTPAdapter(
-            pool_connections=20,
-            pool_maxsize=20,
+            pool_connections=10,
+            pool_maxsize=10,
             max_retries=requests.adapters.Retry(
-                total=2, backoff_factor=0.3,
-                status_forcelist=[500, 502, 503, 504]
+                total=4, backoff_factor=1.5,
+                status_forcelist=[500, 502, 503, 504],
+                allowed_methods=["GET", "HEAD"],
             )
         )
         self.session.mount('http://', adapter)

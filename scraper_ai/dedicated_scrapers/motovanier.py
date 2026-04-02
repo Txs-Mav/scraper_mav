@@ -14,10 +14,12 @@ import re
 import json
 import math
 import time
+import threading
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
 from bs4 import BeautifulSoup, Tag
 
 from .base import DedicatedScraper
@@ -44,7 +46,9 @@ class MotoVanierScraper(DedicatedScraper):
     }
 
     PRODUCTS_PER_PAGE = 12
-    WORKERS = 10
+    WORKERS = 5
+    LISTING_MAX_RETRIES = 3
+    LISTING_RETRY_DELAY = 5
 
     SPEC_FIELD_MAP = {
         'cylindrée (cc)': 'cylindree',
@@ -68,6 +72,9 @@ class MotoVanierScraper(DedicatedScraper):
 
     def __init__(self):
         super().__init__()
+        self._request_lock = threading.Lock()
+        self._last_request_time = 0.0
+        self._min_request_interval = 0.15
 
     # ================================================================
     # PIPELINE PRINCIPAL (override)
@@ -157,18 +164,41 @@ class MotoVanierScraper(DedicatedScraper):
 
         return all_products
 
+    def _fetch_listing_with_retry(self, url: str) -> Optional[requests.Response]:
+        """GET une page listing avec retry applicatif et backoff exponentiel."""
+        for attempt in range(1, self.LISTING_MAX_RETRIES + 1):
+            try:
+                resp = self.session.get(url, timeout=30)
+                if resp.status_code == 200:
+                    return resp
+                if resp.status_code >= 500 and attempt < self.LISTING_MAX_RETRIES:
+                    wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1))
+                    print(f"      ⏳ HTTP {resp.status_code} — nouvelle tentative dans {wait}s ({attempt}/{self.LISTING_MAX_RETRIES})")
+                    time.sleep(wait)
+                    continue
+                print(f"      ⚠️ HTTP {resp.status_code} pour {url}")
+                return None
+            except requests.exceptions.RequestException as e:
+                if attempt < self.LISTING_MAX_RETRIES:
+                    wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1))
+                    print(f"      ⏳ Erreur réseau — nouvelle tentative dans {wait}s ({attempt}/{self.LISTING_MAX_RETRIES})")
+                    time.sleep(wait)
+                else:
+                    print(f"      ⚠️ Erreur après {self.LISTING_MAX_RETRIES} tentatives: {e}")
+                    return None
+        return None
+
     def _load_all_listing_pages(self, config: Dict) -> List[Dict]:
         listing_url = config['url']
         etat = config['etat']
         source_cat = config['sourceCategorie']
         all_products = []
 
-        try:
-            resp = self.session.get(listing_url, timeout=20)
-            if resp.status_code != 200:
-                print(f"      ⚠️ HTTP {resp.status_code} pour {listing_url}")
-                return []
+        resp = self._fetch_listing_with_retry(listing_url)
+        if not resp:
+            return []
 
+        try:
             soup = BeautifulSoup(resp.text, 'lxml')
 
             total_products = self._parse_total_products(soup)
@@ -180,13 +210,13 @@ class MotoVanierScraper(DedicatedScraper):
 
             for page in range(2, total_pages + 1):
                 page_url = f"{listing_url}?page={page}"
+                time.sleep(0.5)
                 try:
-                    resp_p = self.session.get(page_url, timeout=20)
-                    if resp_p.status_code != 200:
+                    resp_p = self._fetch_listing_with_retry(page_url)
+                    if not resp_p:
                         break
                     products_p = self._parse_listing_html(resp_p.text, etat, source_cat)
                     all_products.extend(products_p)
-                    time.sleep(0.2)
                 except Exception:
                     break
 
@@ -306,9 +336,19 @@ class MotoVanierScraper(DedicatedScraper):
         print(f"      ✅ {enriched_count}/{total} produits enrichis")
         return products
 
+    def _throttled_get(self, url: str, **kwargs) -> requests.Response:
+        """GET avec throttle pour espacer les requêtes concurrentes."""
+        with self._request_lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_time
+            if elapsed < self._min_request_interval:
+                time.sleep(self._min_request_interval - elapsed)
+            self._last_request_time = time.monotonic()
+        return self.session.get(url, **kwargs)
+
     def _fetch_detail_data(self, url: str) -> Optional[Dict]:
         try:
-            resp = self.session.get(url, timeout=12, allow_redirects=True)
+            resp = self._throttled_get(url, timeout=15, allow_redirects=True)
             if resp.status_code != 200:
                 return None
 
@@ -494,11 +534,11 @@ class MotoVanierScraper(DedicatedScraper):
                 continue
 
             listing_url = config['url']
-            try:
-                resp = self.session.get(listing_url, timeout=20)
-                if resp.status_code != 200:
-                    continue
+            resp = self._fetch_listing_with_retry(listing_url)
+            if not resp:
+                continue
 
+            try:
                 soup = BeautifulSoup(resp.text, 'lxml')
                 total = self._parse_total_products(soup)
                 total_pages = math.ceil(total / self.PRODUCTS_PER_PAGE) if total > 0 else 1
@@ -508,11 +548,11 @@ class MotoVanierScraper(DedicatedScraper):
 
                 for page in range(2, total_pages + 1):
                     page_url = f"{listing_url}?page={page}"
+                    time.sleep(0.5)
                     try:
-                        resp_p = self.session.get(page_url, timeout=20)
-                        if resp_p.status_code == 200:
+                        resp_p = self._fetch_listing_with_retry(page_url)
+                        if resp_p:
                             all_urls.extend(self._extract_urls_from_html(resp_p.text))
-                        time.sleep(0.2)
                     except Exception:
                         break
 
