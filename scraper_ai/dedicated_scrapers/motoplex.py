@@ -121,7 +121,11 @@ class MotoplexScraper(DedicatedScraper):
     # ================================================================
 
     def _discover_urls_from_sitemap(self, categories: List[str]) -> Dict[str, List[str]]:
-        """Récupère le sitemap inventory-detail.xml et trie les URLs par catégorie."""
+        """Récupère le sitemap inventory-detail.xml et trie les URLs par catégorie.
+
+        Utilise plusieurs stratégies de parsing en cascade pour tolérer
+        les différences d'environnement (lxml XML, lxml HTML, html.parser, regex).
+        """
         try:
             resp = self.session.get(self.SITEMAP_URL, timeout=15)
             if resp.status_code != 200:
@@ -131,19 +135,17 @@ class MotoplexScraper(DedicatedScraper):
             print(f"   ⚠️ Erreur sitemap: {e}")
             return {}
 
-        soup = BeautifulSoup(resp.text, 'xml')
-        url_map: Dict[str, List[str]] = {}
+        raw_urls = self._parse_sitemap_locs(resp.text)
 
+        if not raw_urls:
+            print(f"   ⚠️ Sitemap récupéré ({len(resp.text)} chars) mais 0 <loc> extraits")
+            return {}
+
+        url_map: Dict[str, List[str]] = {}
         want_neuf = any(c in ('inventaire', 'neuf') for c in categories)
         want_occasion = any(c in ('occasion', 'usage') for c in categories)
 
-        for url_tag in soup.find_all('url'):
-            loc = url_tag.find('loc')
-            if not loc:
-                continue
-
-            raw_url = loc.text.strip()
-
+        for raw_url in raw_urls:
             if '/fr/' not in raw_url or '/inventaire/' not in raw_url:
                 continue
             if 'a-vendre-' not in raw_url:
@@ -155,6 +157,31 @@ class MotoplexScraper(DedicatedScraper):
                 url_map.setdefault('occasion', []).append(raw_url)
 
         return url_map
+
+    @staticmethod
+    def _parse_sitemap_locs(xml_text: str) -> List[str]:
+        """Extrait les URLs <loc> d'un sitemap XML avec fallback multi-parsers.
+
+        Cascade: xml → lxml → html.parser → regex.
+        """
+        parsers = ['xml', 'lxml', 'html.parser']
+        for parser_name in parsers:
+            try:
+                soup = BeautifulSoup(xml_text, parser_name)
+                locs = soup.find_all('loc')
+                if locs:
+                    urls = [loc.get_text(strip=True) for loc in locs if loc.get_text(strip=True)]
+                    if urls:
+                        return urls
+            except Exception:
+                continue
+
+        loc_pattern = re.compile(r'<loc>\s*(https?://[^<]+?)\s*</loc>', re.I)
+        matches = loc_pattern.findall(xml_text)
+        if matches:
+            return [u.strip() for u in matches]
+
+        return []
 
     # ================================================================
     # PHASE 2 : EXTRACTION DEPUIS LES PAGES DÉTAIL
