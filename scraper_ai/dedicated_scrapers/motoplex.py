@@ -576,8 +576,7 @@ class MotoplexScraper(DedicatedScraper):
         name = re.sub(r'\*[^*]+\*', '', name)
         # Annotations sans astérisques mais avec astérisque ouvrante orpheline: *744 KM
         name = re.sub(r'\*\d+\s*km\b', '', name, flags=re.I)
-        # Caractères parasites: *, +, .
-        name = name.replace('*', '').replace('+', '').replace('.', '')
+        name = name.replace('*', '').replace('.', '')
         # Contenu entre parenthèses: (2025), (xxx), (Full Load), etc.
         name = re.sub(r'\([^)]*\)', '', name)
         # "full load" standalone

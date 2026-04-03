@@ -166,7 +166,7 @@ class PicotteMotosportScraper(MotoplexScraper):
         name = MotoplexScraper._fix_mojibake(name)
         name = re.sub(r'\*[^*]+\*', '', name)
         name = re.sub(r'\*\d+\s*km\b', '', name, flags=re.I)
-        name = name.replace('*', '').replace('+', '').replace('.', '')
+        name = name.replace('*', '').replace('.', '')
         name = re.sub(r'\([^)]*\)', '', name)
         name = re.sub(r'\bfull\s+load\b', '', name, flags=re.I)
         name = re.sub(
