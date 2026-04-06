@@ -277,24 +277,34 @@ def main():
                 for site in batch
             }
 
-            # 1200s (20 min) : certains sites ont 1000+ pages (ex: Nadon Sport ~16 min)
-            for future in as_completed(futures, timeout=1200):
-                site = futures[future]
-                try:
-                    result = future.result(timeout=1200)
-                    _save_site_data(supabase_url, supabase_key, site, result)
-                    if result["success"]:
-                        total_success += 1
-                    else:
+            try:
+                for future in as_completed(futures, timeout=1200):
+                    site = futures[future]
+                    try:
+                        result = future.result(timeout=30)
+                        _save_site_data(supabase_url, supabase_key, site, result)
+                        if result["success"]:
+                            total_success += 1
+                        else:
+                            total_failed += 1
+                            failed_sites.append(site)
+                    except Exception as e:
+                        _log(f"   ❌ {site['site_domain']}: exception — {e}")
+                        _save_site_data(supabase_url, supabase_key, site, {
+                            "success": False, "error": str(e)
+                        })
                         total_failed += 1
                         failed_sites.append(site)
-                except Exception as e:
-                    _log(f"   ❌ {site['site_domain']}: exception — {e}")
-                    _save_site_data(supabase_url, supabase_key, site, {
-                        "success": False, "error": str(e)
-                    })
-                    total_failed += 1
-                    failed_sites.append(site)
+            except TimeoutError:
+                for future, site in futures.items():
+                    if not future.done():
+                        _log(f"   ⏰ {site['site_domain']}: timeout (>20 min) — annulé")
+                        future.cancel()
+                        _save_site_data(supabase_url, supabase_key, site, {
+                            "success": False, "error": "Timeout: scraping exceeded 20 minutes"
+                        })
+                        total_failed += 1
+                        failed_sites.append(site)
 
         if i < len(batches) - 1 and not shutdown:
             wait = spacing_seconds
