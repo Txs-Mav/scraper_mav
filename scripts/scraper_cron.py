@@ -216,14 +216,13 @@ def main():
 
     print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
 
-    # ── 3. Grouper par paires, espacement proportionnel ──
+    # ── 3. Grouper par paires, espacement court ──
     batches = []
     for i in range(0, len(sites), BATCH_SIZE):
         batches.append(sites[i:i + BATCH_SIZE])
 
-    # On a max ~25 min de budget (cron toutes les 30 min, garder une marge)
-    max_run_seconds = 25 * 60
-    spacing_seconds = max_run_seconds / len(batches) if len(batches) > 1 else 0
+    # 60s entre chaque batch (pas de rate limit API, juste poli envers les sites)
+    spacing_seconds = 60
 
     for i, batch in enumerate(batches):
         names = " + ".join(s["site_name"] for s in batch)
