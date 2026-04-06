@@ -994,38 +994,85 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               <div className="px-5 py-3 max-h-48 overflow-y-auto" ref={(el) => { if (el) el.scrollTop = el.scrollHeight }}>
                 <div className="space-y-0.5">
                   {logContent
-                    .filter(line => {
-                      const t = line.trim()
-                      if (!t) return false
-                      if (t.includes('UserWarning') || t.includes('warning_logs') || t.includes('DeprecationWarning')) return false
-                      if (t.includes('site-packages/') || t.includes('show_deprecation_warning')) return false
-                      if (/^[=]{10,}$/.test(t)) return false
-                      if (t.startsWith('File "') || t.startsWith('File \'')) return false
-                      if (/^\w+\(/.test(t) && !t.includes(':')) return false
-                      if (/^\w+\.\w+\(/.test(t) && t.length < 120 && !t.includes('❌') && !t.includes('✅')) return false
-                      return true
-                    })
                     .map(line => {
-                      let t = line.trim()
-                      t = t.replace(/^(📋\s*)?Trace complète de l'erreur\s*:?\s*/i, '')
-                      t = t.replace(/^Traceback \(most recent call last\)\s*:?\s*/, '')
+                      const t = line.trim()
                       if (!t) return null
-                      return t
+                      // Filtrer le bruit technique
+                      if (t.includes('UserWarning') || t.includes('DeprecationWarning') || t.includes('site-packages/')) return null
+                      if (/^[=─]{10,}$/.test(t) || t.startsWith('File "') || t.startsWith('File \'')) return null
+                      if (/^\w+\(/.test(t) && !t.includes(':') && !t.includes('produit')) return null
+                      if (t.includes('Traceback') || t.includes('warning_logs') || t.includes('show_deprecation_warning')) return null
+
+                      // Transformer les messages techniques en texte clair
+                      let clean = t
+                        .replace(/^(📋\s*)?Trace complète de l'erreur\s*:?\s*/i, '')
+
+                      // URLs découvertes → "X pages trouvées"
+                      const urlsMatch = clean.match(/(\d+)\s*URLs?\s*(de produits?\s*)?découvertes?/i)
+                      if (urlsMatch) return `${urlsMatch[1]} pages de produits trouvées`
+
+                      // Extraction: 737 pages detail (12 workers) → "Analyse de 737 pages..."
+                      const extractMatch = clean.match(/Extraction:\s*(\d+)\s*pages?\s*detail/i)
+                      if (extractMatch) return `Analyse de ${extractMatch[1]} pages en cours...`
+
+                      // [100/367] 100 ok, 0 erreurs — 9.4/s → "100 / 367 pages analysées"
+                      const progressMatch = clean.match(/\[(\d+)\/(\d+)\]\s*(\d+)\s*ok/i)
+                      if (progressMatch) return `${progressMatch[1]} / ${progressMatch[2]} pages analysées`
+
+                      // 📊 [...] produits → garder
+                      const productsMatch = clean.match(/(\d+)\s*produits?\s*(extraits?|trouvés?|en)/i)
+                      if (productsMatch) return clean.replace(/📊\s*\[[\d/]+\]\s*/, '')
+
+                      // [occasion]: 181 URLs → "Chargement de 181 produits d'occasion..."
+                      const catMatch = clean.match(/\[(occasion|inventaire|catalogue)\]:\s*(\d+)\s*URLs?/i)
+                      if (catMatch) {
+                        const catLabel = catMatch[1] === 'occasion' ? "d'occasion" : catMatch[1] === 'inventaire' ? 'en inventaire' : 'du catalogue'
+                        return `Chargement de ${catMatch[2]} produits ${catLabel}...`
+                      }
+
+                      // SCRAPING TERMINÉ → "Extraction terminée"
+                      if (/SCRAPING TERMINÉ/i.test(clean)) return 'Extraction terminee'
+
+                      // SITE TERMINÉ: X produits → "Site analysé : X produits"
+                      const siteMatch = clean.match(/SITE TERMINÉ.*?(\d+)\s*produits?/i)
+                      if (siteMatch) return `Site analyse : ${siteMatch[1]} produits`
+
+                      // Sauvegardé dans Supabase → "Données sauvegardées"
+                      if (/Sauvegard[ée].*Supabase/i.test(clean) || /Backup local/i.test(clean)) return 'Donnees sauvegardees'
+
+                      // Temps total → garder propre
+                      const timeMatch = clean.match(/Temps total:\s*([\d.]+)s/i)
+                      if (timeMatch) return `Termine en ${Math.round(parseFloat(timeMatch[1]))} secondes`
+
+                      // Phase 1/2/3 headers → simplifier
+                      if (/PHASE \d/i.test(clean) && /VÉRIFICATION|CRÉATION|EXTRACTION/i.test(clean)) return null
+
+                      // Workers, Gemini, cache technique → cacher
+                      if (/workers?\s*parallèle/i.test(clean) || /cache.*valid/i.test(clean) || /Gemini/i.test(clean)) return null
+                      if (/Résumé:|RÉPARTITION|APERÇU/i.test(clean)) return null
+
+                      // Lignes techniques courtes sans info utile
+                      if (clean.length < 5) return null
+
+                      // Nettoyer les emojis excessifs mais garder le texte
+                      clean = clean.replace(/^[🔄🔧⚡📦📋📊📥📈🌐👤📂🎨🔗🔒⏱️☁️💾⭐🆕♻️💡]+\s*/g, '')
+                      if (!clean || clean.length < 3) return null
+
+                      return clean
                     })
                     .filter((line): line is string => line !== null && line.length > 0)
-                    .slice(-15)
+                    .filter((line, i, arr) => arr.indexOf(line) === i) // déduplique
+                    .slice(-10)
                     .map((line, i) => {
-                      const isError = /Error[:\s]|❌/.test(line)
-                      const isSuccess = /produits extraits|SITE TERMINÉ|SCRAPING TERMINÉ|✅/.test(line)
-                      const isWarning = line.includes('⚠️')
-                      const isProgress = line.includes('📊') || /\d+\/\d+/.test(line)
+                      const isError = /erreur|echou|Error/i.test(line)
+                      const isSuccess = /termin|sauvegard|analys[ée]/i.test(line)
+                      const isProgress = /\d+\s*\/\s*\d+/.test(line) || /en cours/i.test(line)
 
                       return (
                         <div key={i} className={`text-[11px] leading-relaxed py-0.5 ${isError ? 'text-red-600 dark:text-red-400 font-medium' :
                             isSuccess ? 'text-emerald-600 dark:text-emerald-400' :
-                              isWarning ? 'text-amber-600 dark:text-amber-400' :
-                                isProgress ? 'text-blue-600/80 dark:text-blue-400/80' :
-                                  'text-gray-400 dark:text-gray-500'
+                              isProgress ? 'text-blue-600/80 dark:text-blue-400/80' :
+                                'text-gray-400 dark:text-gray-500'
                           }`}>
                           {line}
                         </div>
