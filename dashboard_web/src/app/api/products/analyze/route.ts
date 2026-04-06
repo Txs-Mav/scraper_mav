@@ -3,15 +3,12 @@ import { spawn } from 'child_process'
 import path from 'path'
 import { createClient } from '@/lib/supabase/server'
 import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
-import { isCacheScrapingEnabled } from '@/lib/feature-flags'
-
 /**
  * POST /api/products/analyze
  *
- * Disponible uniquement quand la "méthode du cache" est activée (feature flag).
  * Comparaison rapide depuis les données pré-scrapées (scraped_site_data).
- * Au lieu de scraper en temps réel (3-10 min), on lit les produits déjà
- * scrapés par le cron horaire et on fait la comparaison (~2-5s).
+ * Le cron GitHub Actions scrape tous les sites toutes les 30 min.
+ * Cet endpoint lit les produits déjà scrapés et fait la comparaison (~2-5s).
  */
 export async function POST() {
   try {
@@ -26,13 +23,6 @@ export async function POST() {
     }
 
     const userId = user.id
-
-    if (!isCacheScrapingEnabled(userId)) {
-      return NextResponse.json(
-        { error: 'cache_mode_disabled', message: 'La méthode du cache n\'est pas activée pour cet utilisateur.' },
-        { status: 403 }
-      )
-    }
 
     // Proxy vers le backend si on est sur Vercel/serverless
     if (hasBackend()) {

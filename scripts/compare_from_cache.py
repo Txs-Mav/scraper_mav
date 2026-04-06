@@ -208,6 +208,8 @@ def _save_scrapings(supabase_url: str, supabase_key: str, row: dict) -> bool:
 def main():
     parser = argparse.ArgumentParser(description='Comparaison rapide depuis cache')
     parser.add_argument('--user-id', required=True, help='ID utilisateur')
+    parser.add_argument('--reference', default=None, help='URL de référence (override config DB)')
+    parser.add_argument('--competitors', default=None, help='URLs concurrents séparées par des virgules (override config DB)')
     args = parser.parse_args()
 
     user_id = args.user_id
@@ -223,20 +225,21 @@ def main():
     print(f"⚡ COMPARAISON RAPIDE (méthode du cache)")
     print(f"{'='*60}")
 
-    # ── 1. Config utilisateur ──
+    # ── 1. Config utilisateur (CLI override > DB) ──
     config = _fetch_user_config(supabase_url, supabase_key, user_id)
-    if not config:
-        print("❌ Aucune config trouvée pour cet utilisateur")
-        sys.exit(1)
 
-    reference_url = config.get("reference_url", "").strip()
+    reference_url = (args.reference or (config.get("reference_url", "") if config else "")).strip()
     if not reference_url:
         print("❌ Pas d'URL de référence configurée")
         sys.exit(1)
 
-    competitor_urls = config.get("competitor_urls", []) or []
-    ignore_colors = not config.get("strict_colors", False)
-    match_mode = config.get("match_mode", "exact")
+    if args.competitors is not None:
+        competitor_urls = [u.strip() for u in args.competitors.split(',') if u.strip()]
+    else:
+        competitor_urls = (config.get("competitor_urls", []) if config else []) or []
+
+    ignore_colors = not (config.get("strict_colors", False) if config else False)
+    match_mode = (config.get("match_mode", "exact") if config else "exact")
 
     ref_domain = _domain(reference_url)
     all_domains: Dict[str, str] = {ref_domain: reference_url}

@@ -514,20 +514,15 @@ async function triggerAlertScraping(userId: string, config: ScrapingConfig): Pro
   try {
     let ok = false
 
-    // 1. Backend proxy (production Vercel → Railway)
+    // Toujours utiliser compare_from_cache (lecture depuis scraped_site_data)
+    // Le cron GitHub Actions scrape tous les sites toutes les 30 min,
+    // donc on n'a jamais besoin de re-scraper ici.
     if (hasBackend()) {
-      ok = await triggerViaBackendProxy(userId, config)
-    }
-    // 2. Webhook (custom scraper endpoint)
-    else if (process.env.SCRAPER_WEBHOOK_URL) {
-      ok = await triggerViaWebhook(process.env.SCRAPER_WEBHOOK_URL, userId, config)
-    }
-    // 3. Local Python
-    else {
-      ok = await triggerViaLocalPython(userId, config)
+      ok = await triggerCacheAnalysisViaBackend(userId, config)
+    } else {
+      ok = await triggerCacheAnalysisLocal(userId, config)
     }
 
-    // Après scraping réussi, lier le scraper_cache si absent
     if (ok) {
       await linkScraperCacheToAlerts(userId, config.reference_url)
     }
@@ -539,35 +534,28 @@ async function triggerAlertScraping(userId: string, config: ScrapingConfig): Pro
   }
 }
 
-async function triggerViaBackendProxy(userId: string, config: ScrapingConfig): Promise<boolean> {
+async function triggerCacheAnalysisViaBackend(userId: string, config: ScrapingConfig): Promise<boolean> {
   try {
-    const allUrls = [
-      config.reference_url,
-      ...(config.competitor_urls || []).filter((url) => url && url !== config.reference_url),
-    ]
+    console.log(`[Alert Analysis] Proxy backend → /products/analyze pour ref=${config.reference_url}`)
 
-    console.log(`[Alert Scrape] Proxy backend groupé pour ref=${config.reference_url} + ${allUrls.length - 1} concurrent(s)`)
-
-    const batchRes = await proxyToBackend('/scraper-ai/run', {
+    const res = await proxyToBackend('/products/analyze', {
       body: {
         userId,
-        url: config.reference_url,
-        urls: allUrls,
         referenceUrl: config.reference_url,
-        categories: config.categories,
+        competitorUrls: config.competitor_urls || [],
       },
-      timeout: 30 * 60 * 1000,
+      timeout: 120_000,
     })
-    if (!batchRes.ok) {
-      const text = await batchRes.text().catch(() => '')
-      console.error(`[Alert Scrape] Backend proxy erreur ${batchRes.status}: ${text.slice(0, 200)}`)
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.error(`[Alert Analysis] Backend proxy erreur ${res.status}: ${text.slice(0, 200)}`)
       return false
     }
 
-    console.log(`[Alert Scrape] Backend proxy OK pour user ${userId}`)
+    console.log(`[Alert Analysis] Backend proxy OK pour user ${userId}`)
     return true
   } catch (err: any) {
-    console.error(`[Alert Scrape] Backend proxy erreur:`, err.message)
+    console.error(`[Alert Analysis] Backend proxy erreur:`, err.message)
     return false
   }
 }
@@ -613,82 +601,24 @@ async function linkScraperCacheToAlerts(userId: string, referenceUrl: string): P
   }
 }
 
-async function triggerViaWebhook(
-  webhookUrl: string,
+async function triggerCacheAnalysisLocal(
   userId: string,
   config: ScrapingConfig
 ): Promise<boolean> {
-  try {
-    console.log(`[Alert Scrape] Appel webhook: ${webhookUrl}`)
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15 * 60 * 1000)
-
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(process.env.SCRAPER_WEBHOOK_SECRET
-          ? { Authorization: `Bearer ${process.env.SCRAPER_WEBHOOK_SECRET}` }
-          : {}),
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        reference_url: config.reference_url,
-        competitor_urls: config.competitor_urls || [],
-        categories: config.categories || [],
-      }),
-      signal: controller.signal,
-    })
-
-    clearTimeout(timeout)
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      console.error(`[Alert Scrape] Webhook erreur ${res.status}: ${text.slice(0, 200)}`)
-      return false
-    }
-
-    console.log(`[Alert Scrape] Webhook OK pour user ${userId}`)
-    return true
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      console.warn(`[Alert Scrape] Webhook timeout pour user ${userId}`)
-    } else {
-      console.error(`[Alert Scrape] Webhook erreur:`, err.message)
-    }
-    return false
-  }
-}
-
-async function triggerViaLocalPython(
-  userId: string,
-  config: ScrapingConfig
-): Promise<boolean> {
-  const referenceUrl = config.reference_url
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
-  const args = [
-    '-m', 'scraper_ai.main',
-    '--reference', referenceUrl,
-    '--user-id', userId,
-  ]
+  const scriptPath = path.join(process.cwd(), '..', 'scripts', 'compare_from_cache.py')
+  const args = [scriptPath, '--user-id', userId]
 
-  if (config.categories?.length) {
-    args.push('--categories', config.categories.join(','))
+  if (config.reference_url) {
+    args.push('--reference', config.reference_url)
   }
-
-  // Le référent DOIT être dans les positionnels sinon le script sort immédiatement
-  args.push(referenceUrl)
-
   if (config.competitor_urls?.length) {
-    for (const url of config.competitor_urls) {
-      if (url !== referenceUrl) args.push(url)
-    }
+    args.push('--competitors', config.competitor_urls.join(','))
   }
 
   const workingDir = path.join(process.cwd(), '..')
 
-  console.log(`[Alert Scrape] Commande: ${pythonCmd} ${args.join(' ')}`)
-  console.log(`[Alert Scrape] Répertoire: ${workingDir}`)
+  console.log(`[Alert Analysis] Commande: ${pythonCmd} ${args.join(' ')}`)
 
   return new Promise<boolean>((resolve) => {
     const proc = spawn(pythonCmd, args, {
@@ -698,9 +628,6 @@ async function triggerViaLocalPython(
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
-        GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-        NEXTJS_API_URL: process.env.NEXTJS_API_URL || `http://localhost:${process.env.PORT || process.env.NEXT_DEV_PORT || 3000}`,
-        SCRAPER_USER_ID: userId,
       },
     })
 
@@ -710,8 +637,8 @@ async function triggerViaLocalPython(
     proc.stdout?.on('data', (d) => {
       const text = d.toString()
       stdout += text
-      if (text.includes('✅') || text.includes('❌') || text.includes('📈') || text.includes('ERROR')) {
-        console.log(`[Alert Scrape] ${text.trim()}`)
+      if (text.includes('✅') || text.includes('❌') || text.includes('📊')) {
+        console.log(`[Alert Analysis] ${text.trim()}`)
       }
     })
 
@@ -719,26 +646,26 @@ async function triggerViaLocalPython(
 
     proc.on('close', (code) => {
       if (code === 0) {
-        console.log(`[Alert Scrape] Scraping terminé avec succès pour user ${userId}`)
+        console.log(`[Alert Analysis] Analyse cache terminée pour user ${userId}`)
         resolve(true)
       } else {
-        console.error(`[Alert Scrape] Scraping échoué (code ${code}): ${stderr.slice(-500)}`)
+        console.error(`[Alert Analysis] Analyse échouée (code ${code}): ${stderr.slice(-500)}`)
         resolve(false)
       }
     })
 
     proc.on('error', (err) => {
-      console.warn(`[Alert Scrape] Python non disponible: ${err.message}`)
+      console.warn(`[Alert Analysis] Python non disponible: ${err.message}`)
       resolve(false)
     })
 
     setTimeout(() => {
       if (!proc.killed) {
         proc.kill()
-        console.warn(`[Alert Scrape] Timeout pour user ${userId}`)
+        console.warn(`[Alert Analysis] Timeout pour user ${userId}`)
         resolve(false)
       }
-    }, 15 * 60 * 1000)
+    }, 2 * 60 * 1000)
   })
 }
 
