@@ -22,6 +22,11 @@ class DedicatedScraper(ABC):
     SITE_URL: str = ""
     SITE_DOMAIN: str = ""
 
+    MAX_WORKERS: int = 12
+    HTTP_TIMEOUT: int = 20
+    FUTURE_RESULT_TIMEOUT: int = 30
+    MAX_RETRIES_PER_URL: int = 2
+
     def __init__(self):
         self.session = requests.Session()
 
@@ -48,12 +53,13 @@ class DedicatedScraper(ABC):
             'Sec-Fetch-User': '?1',
         })
         adapter = requests.adapters.HTTPAdapter(
-            pool_connections=10,
-            pool_maxsize=10,
+            pool_connections=20,
+            pool_maxsize=20,
             max_retries=requests.adapters.Retry(
-                total=4, backoff_factor=1.5,
-                status_forcelist=[500, 502, 503, 504],
+                total=4, backoff_factor=1.0,
+                status_forcelist=[429, 500, 502, 503, 504],
                 allowed_methods=["GET", "HEAD"],
+                respect_retry_after_header=True,
             )
         )
         self.session.mount('http://', adapter)
@@ -116,55 +122,135 @@ class DedicatedScraper(ABC):
         }
 
     def _extract_all(self, urls: List[str]) -> List[Dict]:
-        """Extraction parallèle de toutes les URLs."""
+        """Extraction parallèle de toutes les URLs avec retry et concurrence adaptative."""
         all_products = []
         total = len(urls)
         processed = 0
-        workers = min(8, total)
+        workers = min(self.MAX_WORKERS, total)
         extract_start = time.time()
-        pending_count = 0
+        failed_urls: List[str] = []
+        timeout_count = 0
 
-        print(f"\n📥 Extraction de {total} pages ({workers} workers)...")
+        batch_size = min(total, max(workers * 4, 50))
 
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(self._fetch_and_extract, url): url
-                for url in urls
-            }
+        per_url_timeout = max(self.HTTP_TIMEOUT + 15, self.FUTURE_RESULT_TIMEOUT)
+        global_timeout = max(600, total * per_url_timeout // workers)
 
-            try:
-                for future in as_completed(futures, timeout=max(300, total * 3)):
-                    processed += 1
+        print(f"\n📥 Extraction de {total} pages ({workers} workers, timeout HTTP {self.HTTP_TIMEOUT}s)...")
+
+        remaining_urls = list(urls)
+
+        while remaining_urls:
+            batch = remaining_urls[:batch_size]
+            remaining_urls = remaining_urls[batch_size:]
+            batch_timeouts = 0
+            batch_ok = 0
+
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(self._fetch_and_extract, url): url
+                    for url in batch
+                }
+
+                try:
+                    for future in as_completed(futures, timeout=global_timeout):
+                        processed += 1
+                        url = futures[future]
+                        try:
+                            product = future.result(timeout=self.FUTURE_RESULT_TIMEOUT)
+                            if product:
+                                all_products.append(product)
+                            batch_ok += 1
+                        except Exception as e:
+                            err_str = str(e).lower()
+                            if 'timeout' in err_str or 'timed out' in err_str:
+                                batch_timeouts += 1
+                                timeout_count += 1
+                            failed_urls.append(url)
+
+                        if processed % 50 == 0 or processed == total:
+                            elapsed = time.time() - extract_start
+                            rate = processed / elapsed if elapsed > 0 else 0
+                            print(f"   📊 [{processed}/{total}] {len(all_products)} produits — {rate:.1f} URLs/s")
+                except TimeoutError:
+                    pending = len(batch) - (batch_ok + batch_timeouts)
+                    timeout_count += pending
+                    timed_out_urls = [u for f, u in futures.items() if not f.done()]
+                    failed_urls.extend(timed_out_urls)
+                    print(
+                        f"   ⚠️  Batch timeout — {pending} URL(s) abandonnée(s), "
+                        f"{len(all_products)} produit(s) conservé(s)"
+                    )
+                    for future in futures:
+                        future.cancel()
+
+            batch_total = batch_ok + batch_timeouts
+            if batch_total > 0 and batch_timeouts / batch_total > 0.25:
+                old_w = workers
+                workers = max(3, workers * 2 // 3)
+                if workers != old_w:
+                    print(f"   🔽 Throttling ({batch_timeouts} timeouts/{batch_total}) — {old_w}→{workers} workers")
+                batch_size = max(workers * 3, 20)
+                if remaining_urls:
+                    time.sleep(1.0)
+            elif batch_total >= 10 and batch_timeouts / batch_total < 0.05 and workers < self.MAX_WORKERS:
+                old_w = workers
+                workers = min(self.MAX_WORKERS, workers + 2)
+                if workers != old_w:
+                    print(f"   🔼 Serveur stable — {old_w}→{workers} workers")
+
+        if failed_urls and self.MAX_RETRIES_PER_URL > 0:
+            retry_round = 0
+            urls_to_retry = list(failed_urls)
+            failed_urls.clear()
+
+            while urls_to_retry and retry_round < self.MAX_RETRIES_PER_URL:
+                retry_round += 1
+                retry_count = len(urls_to_retry)
+                retry_workers = min(4, retry_count)
+                backoff = 1.5 * retry_round
+                print(f"   🔄 Retry #{retry_round}: {retry_count} URLs ({retry_workers} workers, pause {backoff:.1f}s)...")
+                time.sleep(backoff)
+
+                retry_successes = 0
+                still_failed: List[str] = []
+
+                with ThreadPoolExecutor(max_workers=retry_workers) as executor:
+                    futures = {
+                        executor.submit(self._fetch_and_extract, url): url
+                        for url in urls_to_retry
+                    }
                     try:
-                        product = future.result(timeout=15)
-                        if product:
-                            all_products.append(product)
-                    except Exception:
-                        pass
+                        for future in as_completed(futures, timeout=max(180, retry_count * 8)):
+                            url = futures[future]
+                            try:
+                                product = future.result(timeout=self.FUTURE_RESULT_TIMEOUT + 10)
+                                if product:
+                                    all_products.append(product)
+                                    retry_successes += 1
+                            except Exception:
+                                still_failed.append(url)
+                    except TimeoutError:
+                        still_failed.extend(
+                            u for f, u in futures.items() if not f.done()
+                        )
 
-                    if processed % 25 == 0 or processed == total:
-                        elapsed = time.time() - extract_start
-                        rate = processed / elapsed if elapsed > 0 else 0
-                        print(f"   📊 [{processed}/{total}] {len(all_products)} produits — {rate:.1f} URLs/s")
-            except TimeoutError:
-                pending_count = total - processed
-                print(
-                    f"   ⚠️  Timeout extraction — {pending_count}/{total} URL(s) abandonnée(s), "
-                    f"{len(all_products)} produit(s) déjà extrait(s) conservé(s)"
-                )
-                for future in futures:
-                    future.cancel()
+                print(f"   {'✅' if retry_successes else 'ℹ️'}  Retry #{retry_round}: {retry_successes}/{retry_count} récupérées")
+                urls_to_retry = still_failed
 
+        elapsed = time.time() - extract_start
         unique = self._deduplicate(all_products)
-        if pending_count:
-            print(f"   ⚠️  Extraction partielle: {pending_count} URL(s) n'ont pas répondu à temps")
-        print(f"   ✅ {len(unique)} produits uniques (dédupliqués de {len(all_products)})")
+
+        if timeout_count > 0:
+            print(f"   ⚠️  {timeout_count} timeout(s) au total, {len(failed_urls)} URL(s) définitivement échouée(s)")
+        print(f"   ✅ {len(unique)} produits uniques (dédupliqués de {len(all_products)}) en {elapsed:.1f}s")
         return unique
 
     def _fetch_and_extract(self, url: str) -> Optional[Dict]:
         """Fetch une URL et extrait le produit."""
         try:
-            response = self.session.get(url, timeout=10, allow_redirects=True)
+            response = self.session.get(
+                url, timeout=self.HTTP_TIMEOUT, allow_redirects=True)
             if response.status_code != 200:
                 return None
 
@@ -188,6 +274,8 @@ class DedicatedScraper(ABC):
 
             return product
 
+        except requests.exceptions.Timeout:
+            raise
         except Exception:
             return None
 

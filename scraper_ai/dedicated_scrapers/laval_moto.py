@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Any
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
 from bs4 import BeautifulSoup
 
 from .base import DedicatedScraper
@@ -45,8 +46,8 @@ class LavalMotoScraper(DedicatedScraper):
         'inventory-2': 'https://www.lavalmoto.com/fr/inventory-sitemap2.xml',
     }
 
-    WORKERS = 12
-    DETAIL_TIMEOUT = 12
+    WORKERS = 14
+    DETAIL_TIMEOUT = 20
 
     _TYPE_MAP = {
         'motocyclette': 'Motocyclette',
@@ -285,43 +286,133 @@ class LavalMotoScraper(DedicatedScraper):
         workers = min(self.WORKERS, total)
         products: List[Dict] = []
         errors = 0
+        timeout_count = 0
+        failed_tasks: List[tuple] = []
         start = time.time()
 
-        print(f"\n   🔍 Extraction: {total} pages détail ({workers} workers)...")
+        batch_size = min(total, max(workers * 4, 60))
+        remaining_tasks = list(tasks)
+        processed = 0
 
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(self._fetch_and_parse_detail, url, source_cat): url
-                for url, source_cat in tasks
-            }
+        global_timeout = max(1200, total * 5)
 
-            processed = 0
-            try:
-                for future in as_completed(futures, timeout=900):
-                    processed += 1
+        print(f"\n   🔍 Extraction: {total} pages détail ({workers} workers, "
+              f"HTTP timeout {self.DETAIL_TIMEOUT}s)...")
+
+        while remaining_tasks:
+            batch = remaining_tasks[:batch_size]
+            remaining_tasks = remaining_tasks[batch_size:]
+            batch_timeouts = 0
+            batch_ok = 0
+
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(self._fetch_and_parse_detail, url, source_cat): (url, source_cat)
+                    for url, source_cat in batch
+                }
+
+                try:
+                    for future in as_completed(futures, timeout=global_timeout):
+                        processed += 1
+                        url, source_cat = futures[future]
+                        try:
+                            product = future.result(timeout=self.DETAIL_TIMEOUT + 15)
+                            if product:
+                                products.append(product)
+                                batch_ok += 1
+                            else:
+                                errors += 1
+                                batch_ok += 1
+                        except Exception as e:
+                            err_str = str(e).lower()
+                            if 'timeout' in err_str or 'timed out' in err_str:
+                                batch_timeouts += 1
+                                timeout_count += 1
+                            else:
+                                errors += 1
+                            failed_tasks.append((url, source_cat))
+
+                        if processed % 100 == 0 or processed == total:
+                            elapsed = time.time() - start
+                            rate = processed / elapsed if elapsed > 0 else 0
+                            print(f"      📊 [{processed}/{total}] {len(products)} ok, "
+                                  f"{errors} erreurs — {rate:.1f}/s")
+                except TimeoutError:
+                    timed_out = [(u, c) for f, (u, c) in futures.items() if not f.done()]
+                    failed_tasks.extend(timed_out)
+                    pending = len(timed_out)
+                    timeout_count += pending
+                    print(f"      ⚠️ Timeout — {pending}/{total} URL(s) abandonnée(s), "
+                          f"{len(products)} produit(s) conservé(s)")
+                    for f in futures:
+                        f.cancel()
+
+            batch_total = batch_ok + batch_timeouts
+            if batch_total > 0 and batch_timeouts / batch_total > 0.25:
+                old_w = workers
+                workers = max(4, workers * 2 // 3)
+                if workers != old_w:
+                    print(f"      🔽 Throttling ({batch_timeouts} timeouts/{batch_total}) "
+                          f"— {old_w}→{workers} workers")
+                batch_size = max(workers * 3, 30)
+                if remaining_tasks:
+                    time.sleep(1.0)
+            elif batch_total >= 15 and batch_timeouts / batch_total < 0.05 and workers < self.WORKERS:
+                old_w = workers
+                workers = min(self.WORKERS, workers + 2)
+                if workers != old_w:
+                    print(f"      🔼 Serveur stable — {old_w}→{workers} workers")
+
+        if failed_tasks:
+            max_retry_rounds = 2
+            tasks_to_retry = list(failed_tasks)
+
+            for retry_round in range(1, max_retry_rounds + 1):
+                if not tasks_to_retry:
+                    break
+
+                retry_count = len(tasks_to_retry)
+                retry_workers = min(5, retry_count)
+                backoff = 2.0 * retry_round
+                print(f"      🔄 Retry #{retry_round}: {retry_count} URLs "
+                      f"({retry_workers} workers, pause {backoff:.0f}s)...")
+                time.sleep(backoff)
+
+                retry_successes = 0
+                still_failed: List[tuple] = []
+
+                with ThreadPoolExecutor(max_workers=retry_workers) as executor:
+                    futures = {
+                        executor.submit(self._fetch_and_parse_detail, url, cat): (url, cat)
+                        for url, cat in tasks_to_retry
+                    }
                     try:
-                        product = future.result(timeout=self.DETAIL_TIMEOUT + 5)
-                        if product:
-                            products.append(product)
-                        else:
-                            errors += 1
-                    except Exception:
-                        errors += 1
+                        for future in as_completed(futures, timeout=max(300, retry_count * 10)):
+                            url, cat = futures[future]
+                            try:
+                                product = future.result(timeout=self.DETAIL_TIMEOUT + 20)
+                                if product:
+                                    products.append(product)
+                                    retry_successes += 1
+                            except Exception:
+                                still_failed.append((url, cat))
+                    except TimeoutError:
+                        still_failed.extend(
+                            (u, c) for f, (u, c) in futures.items() if not f.done()
+                        )
 
-                    if processed % 100 == 0 or processed == total:
-                        elapsed = time.time() - start
-                        rate = processed / elapsed if elapsed > 0 else 0
-                        print(f"      📊 [{processed}/{total}] {len(products)} ok, "
-                              f"{errors} erreurs — {rate:.1f}/s")
-            except TimeoutError:
-                pending = total - processed
-                print(f"      ⚠️ Timeout — {pending}/{total} URL(s) abandonnée(s), "
-                      f"{len(products)} produit(s) conservé(s)")
-                for f in futures:
-                    f.cancel()
+                if retry_successes > 0:
+                    print(f"      ✅ Retry #{retry_round}: {retry_successes}/{retry_count} récupérées")
+                else:
+                    print(f"      ℹ️  Retry #{retry_round}: aucune récupérée sur {retry_count}")
 
+                tasks_to_retry = still_failed
+
+        elapsed = time.time() - start
+        if timeout_count > 0:
+            print(f"      ⚠️ {timeout_count} timeout(s) au total")
         print(f"      ✅ {len(products)}/{total} produits extraits "
-              f"({errors} erreurs)")
+              f"({errors} erreurs) en {elapsed:.1f}s")
         return products
 
     def _fetch_and_parse_detail(self, url: str, source_cat: str) -> Optional[Dict]:
@@ -379,6 +470,8 @@ class LavalMotoScraper(DedicatedScraper):
             product['groupedUrls'] = [product['sourceUrl']]
             return product
 
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            raise
         except Exception:
             return None
 

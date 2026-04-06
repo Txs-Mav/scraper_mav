@@ -64,8 +64,11 @@ class IntelligentScraper:
         adapter = requests.adapters.HTTPAdapter(
             pool_connections=30,
             pool_maxsize=30,
-            max_retries=requests.adapters.Retry(total=2, backoff_factor=0.3,
-                                                status_forcelist=[500, 502, 503, 504])
+            max_retries=requests.adapters.Retry(
+                total=3, backoff_factor=0.5,
+                status_forcelist=[429, 500, 502, 503, 504],
+                respect_retry_after_header=True,
+            )
         )
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
@@ -837,11 +840,12 @@ class IntelligentScraper:
         selectors: Dict[str, str],
         base_url: str
     ) -> List[Dict]:
-        """Extrait les produits avec concurrence adaptative.
+        """Extrait les produits avec concurrence adaptative et retry multi-rounds.
 
         Démarre avec un nombre élevé de workers puis réduit automatiquement
-        si le serveur throttle (détecté par un taux de timeout >40%).
+        si le serveur throttle (détecté par un taux de timeout >25%).
         Pour les très gros sites, travaille par batches avec pauses.
+        Retry en 2 rounds avec backoff progressif pour les URLs échouées.
         """
         pre_filter = len(urls)
         urls = [u for u in urls if not self._is_non_product_url(u)]
@@ -855,13 +859,13 @@ class IntelligentScraper:
         extract_start = time.time()
 
         if total < 100:
-            initial_workers = 8
-        elif total < 500:
             initial_workers = 10
+        elif total < 500:
+            initial_workers = 12
         else:
-            initial_workers = 5
+            initial_workers = 8
 
-        batch_size = min(total, max(initial_workers * 3, 30))
+        batch_size = min(total, max(initial_workers * 4, 50))
 
         timeout_count = 0
         success_count = 0
@@ -880,6 +884,8 @@ class IntelligentScraper:
             batch_timeouts = 0
             batch_successes = 0
 
+            batch_timeout = max(300, len(batch) * 25)
+
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {
                     executor.submit(self._extract_from_url, url, selectors, base_url): url
@@ -887,11 +893,11 @@ class IntelligentScraper:
                 }
 
                 try:
-                    for future in as_completed(futures, timeout=180):
+                    for future in as_completed(futures, timeout=batch_timeout):
                         url = futures[future]
                         processed += 1
                         try:
-                            products = future.result(timeout=30)
+                            products = future.result(timeout=45)
                             if products:
                                 all_products.extend(products)
                                 batch_successes += 1
@@ -917,8 +923,10 @@ class IntelligentScraper:
                                 f"      📊 [{processed}/{total}] {len(all_products)} produits — "
                                 f"{rate:.1f} URLs/s — ETA {eta:.0f}s")
                 except TimeoutError:
-                    hung = len(batch) - processed + (total - len(batch) - len(remaining_urls))
-                    print(f"      ⚠️  Batch timeout (180s) — {hung} URLs abandonnées")
+                    timed_out_urls = [u for f, u in futures.items() if not f.done()]
+                    hung = len(timed_out_urls)
+                    failed_urls.extend(timed_out_urls)
+                    print(f"      ⚠️  Batch timeout ({batch_timeout}s) — {hung} URLs abandonnées")
                     timeout_count += hung
 
             batch_total = batch_successes + batch_timeouts
@@ -930,51 +938,62 @@ class IntelligentScraper:
                         f"      🔽 Throttling ({batch_timeouts} timeouts/{batch_total}) — {old_workers}→{workers} workers")
                 batch_size = max(workers * 3, 15)
                 if remaining_urls:
-                    time.sleep(0.5)
+                    time.sleep(1.0)
             elif batch_total >= 8 and batch_timeouts / batch_total < 0.05 and workers < initial_workers:
                 old_workers = workers
-                workers = min(initial_workers, workers + 1)
+                workers = min(initial_workers, workers + 2)
                 if workers != old_workers:
                     print(
                         f"      🔼 Serveur stable — {old_workers}→{workers} workers")
-                batch_size = max(workers * 3, 15)
+                batch_size = max(workers * 4, 30)
 
-        # ── Retry des URLs échouées (timeouts + erreurs) ──
+        # ── Retry multi-round des URLs échouées ──
         if failed_urls:
-            retry_count = len(failed_urls)
-            print(
-                f"      🔄 Retry de {retry_count} URLs échouées (3 workers, timeout 12s)...")
-            retry_workers = min(3, retry_count)
+            urls_to_retry = list(failed_urls)
+            failed_urls.clear()
+            max_retry_rounds = 2
 
-            old_timeout = self.session.timeout if hasattr(
-                self.session, 'timeout') else 8
+            for retry_round in range(1, max_retry_rounds + 1):
+                if not urls_to_retry:
+                    break
 
-            retried = 0
-            retry_successes = 0
-            with ThreadPoolExecutor(max_workers=retry_workers) as executor:
-                futures = {
-                    executor.submit(self._extract_from_url, url, selectors, base_url): url
-                    for url in failed_urls
-                }
-                try:
-                    for future in as_completed(futures, timeout=120):
-                        retried += 1
-                        try:
-                            products = future.result(timeout=15)
-                            if products:
-                                all_products.extend(products)
-                                retry_successes += 1
-                        except Exception:
-                            pass
-                except TimeoutError:
-                    print(f"      ⚠️  Retry timeout (120s) — arrêt des retries restants")
-
-            if retry_successes > 0:
+                retry_count = len(urls_to_retry)
+                retry_workers = min(5, retry_count)
+                backoff = 2.0 * retry_round
                 print(
-                    f"      ✅ Retry: {retry_successes}/{retry_count} URLs récupérées")
-            else:
-                print(
-                    f"      ℹ️  Retry: aucune URL récupérée sur {retry_count}")
+                    f"      🔄 Retry #{retry_round}: {retry_count} URLs ({retry_workers} workers, pause {backoff:.0f}s)...")
+                time.sleep(backoff)
+
+                retry_successes = 0
+                still_failed: List[str] = []
+                retry_timeout = max(180, retry_count * 10)
+
+                with ThreadPoolExecutor(max_workers=retry_workers) as executor:
+                    futures = {
+                        executor.submit(self._extract_from_url, url, selectors, base_url): url
+                        for url in urls_to_retry
+                    }
+                    try:
+                        for future in as_completed(futures, timeout=retry_timeout):
+                            url = futures[future]
+                            try:
+                                products = future.result(timeout=45)
+                                if products:
+                                    all_products.extend(products)
+                                    retry_successes += 1
+                            except Exception:
+                                still_failed.append(url)
+                    except TimeoutError:
+                        still_failed.extend(
+                            u for f, u in futures.items() if not f.done())
+                        print(f"      ⚠️  Retry #{retry_round} timeout ({retry_timeout}s)")
+
+                if retry_successes > 0:
+                    print(f"      ✅ Retry #{retry_round}: {retry_successes}/{retry_count} URLs récupérées")
+                else:
+                    print(f"      ℹ️  Retry #{retry_round}: aucune URL récupérée sur {retry_count}")
+
+                urls_to_retry = still_failed
 
         elapsed = time.time() - extract_start
         rate = total / elapsed if elapsed > 0 else 0
@@ -1115,7 +1134,7 @@ class IntelligentScraper:
         - etat (neuf, occasion, demonstrateur)
         """
         try:
-            response = self.session.get(url, timeout=15, allow_redirects=True)
+            response = self.session.get(url, timeout=25, allow_redirects=True)
             if response.status_code != 200:
                 return []
 

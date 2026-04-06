@@ -593,37 +593,54 @@ def scrape_site_wrapper(args: tuple) -> Tuple[str, dict]:
 
 def _save_direct_supabase(supabase_url: str, supabase_key: str, row: dict,
                           user_id: str, reference_url: str) -> bool:
-    """Sauvegarde directement dans Supabase via PostgREST (pas de limite 4.5MB Vercel)."""
+    """Sauvegarde directement dans Supabase via PostgREST (pas de limite 4.5MB Vercel).
+
+    Retry jusqu'à 3 fois avec backoff en cas d'erreur réseau.
+    """
     import requests
-    try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-        }
-        print(f"   💾 Sauvegarde directe Supabase (PostgREST, pas de limite de taille)...")
-        resp = requests.post(
-            f"{supabase_url}/rest/v1/scrapings",
-            json=row,
-            headers=headers,
-            timeout=60,
-        )
-        if resp.status_code in (200, 201):
-            data = resp.json()
-            record = data[0] if isinstance(data, list) and data else data
-            print(
-                f"☁️  Sauvegardé dans Supabase (ID: {record.get('id', 'N/A')})")
-            _cleanup_old_scrapings(
-                supabase_url, supabase_key, user_id, reference_url, keep=5)
-            return True
-        else:
-            print(
-                f"⚠️  Erreur PostgREST ({resp.status_code}): {resp.text[:300]}")
-            return False
-    except Exception as e:
-        print(f"⚠️  Erreur sauvegarde directe: {e}")
-        return False
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+    product_count = len(row.get('products', []))
+    save_timeout = max(60, min(180, product_count // 5))
+    max_attempts = 3
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            print(f"   💾 Sauvegarde directe Supabase (PostgREST, {product_count} produits, "
+                  f"timeout {save_timeout}s, tentative {attempt}/{max_attempts})...")
+            resp = requests.post(
+                f"{supabase_url}/rest/v1/scrapings",
+                json=row,
+                headers=headers,
+                timeout=save_timeout,
+            )
+            if resp.status_code in (200, 201):
+                data = resp.json()
+                record = data[0] if isinstance(data, list) and data else data
+                print(
+                    f"☁️  Sauvegardé dans Supabase (ID: {record.get('id', 'N/A')})")
+                _cleanup_old_scrapings(
+                    supabase_url, supabase_key, user_id, reference_url, keep=5)
+                return True
+            else:
+                print(
+                    f"⚠️  Erreur PostgREST ({resp.status_code}): {resp.text[:300]}")
+                if resp.status_code < 500:
+                    return False
+        except Exception as e:
+            print(f"⚠️  Tentative {attempt}/{max_attempts} échouée: {e}")
+
+        if attempt < max_attempts:
+            wait = attempt * 5
+            save_timeout = min(save_timeout + 30, 240)
+            print(f"   ⏳ Nouvelle tentative dans {wait}s (timeout → {save_timeout}s)...")
+            time.sleep(wait)
+
+    return False
 
 
 def _cleanup_old_scrapings(supabase_url: str, supabase_key: str,
@@ -888,10 +905,10 @@ Exemples:
         f"\n   📊 Résumé: {len(sites_with_cache)} en cache, {len(sites_without_cache)} à créer")
 
     # =====================================================
-    # PHASE 2: CRÉATION DES SCRAPERS UNIVERSELS (SÉQUENTIEL)
+    # PHASE 2: CRÉATION DES SCRAPERS (PARALLÈLE ~50%)
     # =====================================================
-    # Les scrapers dédiés (pas de Gemini) sont envoyés en Phase 3 (parallèle)
-    # Seuls les scrapers universels (Gemini) restent séquentiels ici
+    # Les scrapers dédiés sont envoyés en Phase 3 (parallèle)
+    # Les sites sans scraper dédié passent par ici en parallèle
     phase2_results: dict = {}
 
     has_registry = DedicatedScraperRegistry is not None
@@ -910,46 +927,55 @@ Exemples:
             print(f"      ⚡ {url[:50]}...")
 
     if universal_sites:
+        max_p2_workers = min(max(len(universal_sites) // 2, 2), len(universal_sites))
         print(f"\n{'='*50}")
-        print(f"🔧 PHASE 2: CRÉATION DES SCRAPERS UNIVERSELS (séquentiel)")
+        print(f"🔧 PHASE 2: CRÉATION DES SCRAPERS (parallèle ×{max_p2_workers})")
         print(f"{'='*50}")
+        est_seconds = (len(universal_sites) * 45 + max_p2_workers - 1) // max_p2_workers
         print(
-            f"   ⏱️  Estimation: ~{len(universal_sites) * 45}s ({len(universal_sites)} sites × ~45s)")
-        print(f"   💡 Traitement un par un pour éviter les limites API Gemini\n")
+            f"   ⏱️  Estimation: ~{est_seconds}s "
+            f"({len(universal_sites)} sites, {max_p2_workers} workers)")
+        print(f"   💡 Concurrence à ~50% pour limiter la charge\n")
 
         failed_sites: list = []
+        completed_count = 0
+        per_site_timeout_p2 = 300
 
-        for i, url in enumerate(universal_sites, 1):
-            site_start = time.time()
-            site_inv_only = inventory_only if url == reference_url else False
-            print(
-                f"\n   [{i}/{len(universal_sites)}] 🔄 Création du scraper pour {url[:50]}..."
-                f" {'(inventaire)' if site_inv_only else '(complet)'}")
+        with ThreadPoolExecutor(max_workers=max_p2_workers) as pool:
+            futures = {}
+            for url in universal_sites:
+                site_inv_only = inventory_only if url == reference_url else False
+                future = pool.submit(
+                    scrape_site_wrapper,
+                    (url, user_id, True, categories, site_inv_only)
+                )
+                futures[future] = url
+
             try:
-                scraper = IntelligentScraper(user_id=user_id)
-                result = scraper.scrape(
-                    url, force_refresh=True, categories=categories, inventory_only=site_inv_only)
-                product_count = len(result.get('products', []))
-                site_elapsed = time.time() - site_start
-                if product_count == 0:
-                    print(
-                        f"   [{i}/{len(universal_sites)}] ⚠️  Scraper créé mais 0 produits ({site_elapsed:.0f}s) - sera re-tenté en phase 3")
-                    failed_sites.append(url)
-                else:
-                    print(
-                        f"   [{i}/{len(universal_sites)}] ✅ Scraper créé: {product_count} produits extraits ({site_elapsed:.0f}s)")
-                    phase2_results[url] = {
-                        "companyInfo": {},
-                        "products": result.get('products', []),
-                        "metadata": result.get('metadata', {})
-                    }
-            except Exception as e:
-                print(f"   [{i}/{len(universal_sites)}] ❌ Erreur: {e}")
-                failed_sites.append(url)
-
-            if i < len(universal_sites):
-                print(f"   ⏳ Pause de 2s avant le prochain site...")
-                time.sleep(2)
+                for future in as_completed(futures, timeout=per_site_timeout_p2 * len(universal_sites)):
+                    url = futures[future]
+                    completed_count += 1
+                    try:
+                        result_url, result_data = future.result(timeout=per_site_timeout_p2)
+                        product_count = len(result_data.get('products', []))
+                        if product_count == 0:
+                            print(
+                                f"   [{completed_count}/{len(universal_sites)}] ⚠️  {url[:50]}... → 0 produits - sera re-tenté en phase 3")
+                            failed_sites.append(url)
+                        else:
+                            print(
+                                f"   [{completed_count}/{len(universal_sites)}] ✅ {url[:50]}... → {product_count} produits")
+                            phase2_results[url] = result_data
+                    except Exception as e:
+                        print(f"   [{completed_count}/{len(universal_sites)}] ❌ {url[:50]}... → Erreur: {e}")
+                        failed_sites.append(url)
+            except TimeoutError:
+                timed_out = [u for f, u in futures.items()
+                             if u not in phase2_results and u not in failed_sites]
+                print(f"\n   ⚠️  Timeout Phase 2 — {len(timed_out)} site(s) abandonné(s):")
+                for u in timed_out:
+                    print(f"      ❌ {u[:50]}")
+                    failed_sites.append(u)
 
     # =====================================================
     # PHASE 3: EXTRACTION (PARALLÈLE)
@@ -981,7 +1007,9 @@ Exemples:
     if sites_needing_extraction:
         per_site_timeout = 300
         total_timeout = per_site_timeout * len(sites_needing_extraction)
-        with ThreadPoolExecutor(max_workers=min(len(sites_needing_extraction), 10)) as pool:
+        max_p3_workers = min(max(len(sites_needing_extraction) // 2, 2), len(sites_needing_extraction))
+        print(f"   ⚙️  Workers: {max_p3_workers} (~50% de {len(sites_needing_extraction)} sites)\n")
+        with ThreadPoolExecutor(max_workers=max_p3_workers) as pool:
             futures = {}
             for url in sites_needing_extraction:
                 site_inv_only = inventory_only if url == reference_url else False
@@ -1036,26 +1064,31 @@ Exemples:
             print(
                 f"   ⏭️  {skipped} site(s) ignoré(s) pour limiter le temps total")
 
-        for url in retry_list:
-            is_ref = " ⭐" if url == reference_url else ""
-            site_inv_only = inventory_only if url == reference_url else False
-            print(f"   🔄 Retry: {url[:50]}...{is_ref}")
-            try:
-                scraper = IntelligentScraper(user_id=user_id)
-                retry_result = scraper.scrape(
-                    url, force_refresh=False, categories=categories, inventory_only=site_inv_only)
-                retry_count = len(retry_result.get('products', []))
-                if retry_count > 0:
-                    results[url] = retry_result
-                    print(f"   ✅ Retry réussi: {retry_count} produits{is_ref}")
-                else:
-                    print(
-                        f"   ⚠️  Retry: toujours 0 produits pour {url[:50]}...{is_ref}")
-            except Exception as e:
-                print(f"   ❌ Retry échoué: {e}")
+        max_retry_workers = min(max(len(retry_list) // 2, 2), len(retry_list))
+        print(f"   🚀 {len(retry_list)} sites en parallèle ({max_retry_workers} workers)\n")
+        with ThreadPoolExecutor(max_workers=max_retry_workers) as pool:
+            retry_futures = {}
+            for url in retry_list:
+                site_inv_only = inventory_only if url == reference_url else False
+                future = pool.submit(
+                    scrape_site_wrapper,
+                    (url, user_id, False, categories, site_inv_only)
+                )
+                retry_futures[future] = url
 
-            if url != retry_list[-1]:
-                time.sleep(2)
+            for future in as_completed(retry_futures, timeout=300 * len(retry_list)):
+                url = retry_futures[future]
+                is_ref = " ⭐" if url == reference_url else ""
+                try:
+                    _, result_data = future.result(timeout=300)
+                    retry_count = len(result_data.get('products', []))
+                    if retry_count > 0:
+                        results[url] = result_data
+                        print(f"   ✅ Retry réussi: {url[:50]}... → {retry_count} produits{is_ref}")
+                    else:
+                        print(f"   ⚠️  Retry: toujours 0 produits pour {url[:50]}...{is_ref}")
+                except Exception as e:
+                    print(f"   ❌ Retry échoué: {url[:50]}... → {e}")
 
     # Signaler les sites ignorés à cause d'erreurs de code
     code_error_sites = [
