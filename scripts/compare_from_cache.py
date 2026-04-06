@@ -72,6 +72,47 @@ def _fetch_user_config(supabase_url: str, supabase_key: str, user_id: str) -> di
 
 
 STALE_THRESHOLD_HOURS = 2
+CRON_LOCK_DOMAIN = '__cron_lock__'
+CRON_LOCK_TIMEOUT_MINUTES = 45
+
+
+def _is_cron_running(supabase_url: str, supabase_key: str) -> bool:
+    """Vérifie si le cron scraper est actuellement en cours d'exécution.
+
+    Lit la ligne sentinelle __cron_lock__ dans scraped_site_data.
+    Retourne True si status='running' et scraped_at < 45 min (pas un lock périmé).
+    """
+    try:
+        resp = requests.get(
+            f"{supabase_url}/rest/v1/scraped_site_data",
+            params={
+                "select": "status,scraped_at",
+                "site_domain": f"eq.{CRON_LOCK_DOMAIN}",
+            },
+            headers=_headers(supabase_key),
+            timeout=5,
+        )
+        if resp.status_code != 200 or not resp.json():
+            return False
+
+        row = resp.json()[0]
+        if row.get("status") != "running":
+            return False
+
+        scraped_at = row.get("scraped_at", "")
+        if not scraped_at:
+            return False
+
+        from datetime import datetime as dt, timezone as tz, timedelta
+        lock_time = dt.fromisoformat(scraped_at.replace("Z", "+00:00"))
+        age = dt.now(tz.utc) - lock_time
+        if age > timedelta(minutes=CRON_LOCK_TIMEOUT_MINUTES):
+            print(f"   ⚠️  Cron lock trouvé mais périmé ({age.total_seconds()/60:.0f} min) — ignoré")
+            return False
+
+        return True
+    except Exception:
+        return False
 
 
 def _fetch_site_products(supabase_url: str, supabase_key: str, domain: str) -> tuple[List[dict], bool]:
@@ -149,7 +190,8 @@ def _save_fallback_to_cache(supabase_url: str, supabase_key: str,
                             domain: str, site_url: str,
                             products: List[dict], metadata: dict, elapsed: float):
     """Stocke les produits scrapés en fallback dans scraped_site_data pour le futur."""
-    now = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
+    from datetime import datetime as dt, timezone as tz
+    now = dt.now(tz.utc).isoformat()
     row = {
         "site_url": site_url,
         "site_domain": domain,
@@ -253,10 +295,15 @@ def main():
     print(f"🔗 Sites à charger: {len(all_domains)}\n")
 
     # ── 2. Charger les produits (cache → fallback scrape si manquant ou stale) ──
+    cron_running = _is_cron_running(supabase_url, supabase_key)
+    if cron_running:
+        print("🔒 Cron en cours d'exécution — fallback scraping désactivé (utilisation du cache existant)")
+
     site_products: Dict[str, List[dict]] = {}
     cache_hits = 0
     fallback_scrapes = 0
     stale_refreshed = 0
+    skipped_cron = 0
 
     for domain, url in all_domains.items():
         products, is_stale = _fetch_site_products(supabase_url, supabase_key, domain)
@@ -270,41 +317,52 @@ def main():
             print(f"   ✅ {domain}: {len(products)} produits (cache frais)")
 
         elif products and is_stale:
-            # Données existantes mais vieilles → tenter un re-scrape, sinon garder l'ancien
-            print(f"   ⏳ {domain}: cache stale (>{STALE_THRESHOLD_HOURS}h) → tentative de refresh...")
-            fresh_products = _fallback_scrape(domain, url, supabase_url, supabase_key)
-            if fresh_products:
-                for p in fresh_products:
-                    if not p.get('sourceSite'):
-                        p['sourceSite'] = url
-                site_products[domain] = fresh_products
-                stale_refreshed += 1
-                print(f"   ✅ {domain}: rafraîchi → {len(fresh_products)} produits")
-            else:
-                # Re-scrape échoué → utiliser l'ancien cache quand même
+            if cron_running:
                 for p in products:
                     if not p.get('sourceSite'):
                         p['sourceSite'] = url
                 site_products[domain] = products
                 cache_hits += 1
-                print(f"   ⚠️  {domain}: refresh échoué, ancien cache utilisé ({len(products)} produits)")
+                skipped_cron += 1
+                print(f"   🔒 {domain}: cache stale mais cron en cours — {len(products)} produits (ancien cache)")
+            else:
+                print(f"   ⏳ {domain}: cache stale (>{STALE_THRESHOLD_HOURS}h) → tentative de refresh...")
+                fresh_products = _fallback_scrape(domain, url, supabase_url, supabase_key)
+                if fresh_products:
+                    for p in fresh_products:
+                        if not p.get('sourceSite'):
+                            p['sourceSite'] = url
+                    site_products[domain] = fresh_products
+                    stale_refreshed += 1
+                    print(f"   ✅ {domain}: rafraîchi → {len(fresh_products)} produits")
+                else:
+                    for p in products:
+                        if not p.get('sourceSite'):
+                            p['sourceSite'] = url
+                    site_products[domain] = products
+                    cache_hits += 1
+                    print(f"   ⚠️  {domain}: refresh échoué, ancien cache utilisé ({len(products)} produits)")
 
         else:
-            # Aucune donnée → fallback scraping
-            print(f"   ❌ {domain}: aucun cache → scraping temps-réel...")
-            fallback_products = _fallback_scrape(domain, url, supabase_url, supabase_key)
-            if fallback_products:
-                for p in fallback_products:
-                    if not p.get('sourceSite'):
-                        p['sourceSite'] = url
-                site_products[domain] = fallback_products
-                fallback_scrapes += 1
+            if cron_running:
+                skipped_cron += 1
+                print(f"   🔒 {domain}: aucun cache mais cron en cours — ignoré (sera disponible après le cron)")
             else:
-                print(f"   ❌ {domain}: aucun produit disponible")
+                print(f"   ❌ {domain}: aucun cache → scraping temps-réel...")
+                fallback_products = _fallback_scrape(domain, url, supabase_url, supabase_key)
+                if fallback_products:
+                    for p in fallback_products:
+                        if not p.get('sourceSite'):
+                            p['sourceSite'] = url
+                    site_products[domain] = fallback_products
+                    fallback_scrapes += 1
+                else:
+                    print(f"   ❌ {domain}: aucun produit disponible")
 
     print(f"\n📊 Cache frais: {cache_hits} | Stale rafraîchi: {stale_refreshed} | "
           f"Fallback: {fallback_scrapes} | "
-          f"Indisponible: {len(all_domains) - cache_hits - fallback_scrapes - stale_refreshed}")
+          f"Indisponible: {len(all_domains) - cache_hits - fallback_scrapes - stale_refreshed}"
+          + (f" | Skippé (cron): {skipped_cron}" if skipped_cron else ""))
 
     # ── 3. Vérifier le site de référence ──
     reference_products = site_products.get(ref_domain, [])

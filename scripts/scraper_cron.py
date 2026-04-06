@@ -39,6 +39,8 @@ from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
 SMALL_BATCH_SIZE = 5
 STALE_THRESHOLD_MINUTES = 50
+CRON_LOCK_DOMAIN = '__cron_lock__'
+CRON_LOCK_TIMEOUT_MINUTES = 45
 
 # Sites connus pour avoir beaucoup de pages (>300 produits, >5 min de scraping)
 # Ces sites sont toujours scrapés en paires de 2, jamais en batch de 5
@@ -57,6 +59,44 @@ def _log(msg: str):
     with print_lock:
         ts = datetime.now(timezone.utc).strftime('%H:%M:%S')
         print(f"[{ts}] {msg}", flush=True)
+
+
+def _set_cron_lock(supabase_url: str, supabase_key: str, status: str):
+    """Upsert un verrou dans scraped_site_data pour signaler que le cron tourne.
+
+    compare_from_cache.py vérifie ce verrou pour éviter de lancer des
+    fallback scrapes pendant que le cron est en cours.
+    """
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
+    now = datetime.now(timezone.utc).isoformat()
+    row = {
+        "site_domain": CRON_LOCK_DOMAIN,
+        "site_url": "internal://cron-lock",
+        "status": status,
+        "scraped_at": now,
+        "updated_at": now,
+        "product_count": 0,
+        "products": [],
+    }
+    try:
+        resp = http_requests.post(
+            f"{supabase_url}/rest/v1/scraped_site_data",
+            json=row,
+            headers=headers,
+            params={"on_conflict": "site_domain"},
+            timeout=10,
+        )
+        if resp.status_code in (200, 201):
+            _log(f"🔒 Cron lock → {status}")
+        else:
+            _log(f"⚠️  Cron lock ({status}): PostgREST {resp.status_code}")
+    except Exception as e:
+        _log(f"⚠️  Cron lock ({status}): {e}")
 
 
 def _scrape_single_site(slug: str, site_url: str, site_domain: str) -> dict:
@@ -270,48 +310,63 @@ def main():
     print(f"   Gros sites connus par 2, petits par {SMALL_BATCH_SIZE}")
     print(f"{'='*70}")
 
-    # ── 1. Lire tous les shared_scrapers actifs ──
-    result = (
-        supabase.table("shared_scrapers")
-        .select("id, site_name, site_slug, site_url, site_domain, scraper_module")
-        .eq("is_active", True)
-        .order("site_slug")
-        .execute()
-    )
-    all_sites = result.data or []
+    _set_cron_lock(supabase_url, supabase_key, "running")
 
-    if not all_sites:
-        print("✅ Aucun scraper universel actif trouvé")
-        return
-
-    print(f"\n📋 {len(all_sites)} sites universels actifs")
-
-    # ── 1b. Enrichir avec le product_count connu (pour le batching) ──
+    should_compare = False
     try:
-        domains = [s["site_domain"] for s in all_sites]
-        cached = (
-            supabase.table("scraped_site_data")
-            .select("site_domain, product_count")
-            .in_("site_domain", domains)
+        # ── 1. Lire tous les shared_scrapers actifs ──
+        result = (
+            supabase.table("shared_scrapers")
+            .select("id, site_name, site_slug, site_url, site_domain, scraper_module")
+            .eq("is_active", True)
+            .order("site_slug")
             .execute()
         )
-        pc_map = {r["site_domain"]: r.get("product_count", 0) or 0 for r in (cached.data or [])}
-        for site in all_sites:
-            site["_known_product_count"] = pc_map.get(site["site_domain"], 0)
-        all_sites.sort(key=lambda s: s["_known_product_count"], reverse=True)
-    except Exception as e:
-        _log(f"⚠️  Erreur lecture product_count: {e}")
+        all_sites = result.data or []
 
-    # ── 2. Filtrer : ne garder que les sites "stale" (>50 min ou en erreur) ──
-    sites = _get_stale_sites(supabase, all_sites)
+        if not all_sites:
+            print("✅ Aucun scraper universel actif trouvé")
+            return
 
-    if not sites:
-        print(f"✅ Tous les {len(all_sites)} sites sont à jour — rien à scraper")
-        _run_user_comparisons(supabase, supabase_url, supabase_key)
-        return
+        print(f"\n📋 {len(all_sites)} sites universels actifs")
 
-    print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
+        # ── 1b. Enrichir avec le product_count connu (pour le batching) ──
+        try:
+            domains = [s["site_domain"] for s in all_sites]
+            cached = (
+                supabase.table("scraped_site_data")
+                .select("site_domain, product_count")
+                .in_("site_domain", domains)
+                .execute()
+            )
+            pc_map = {r["site_domain"]: r.get("product_count", 0) or 0 for r in (cached.data or [])}
+            for site in all_sites:
+                site["_known_product_count"] = pc_map.get(site["site_domain"], 0)
+            all_sites.sort(key=lambda s: s["_known_product_count"], reverse=True)
+        except Exception as e:
+            _log(f"⚠️  Erreur lecture product_count: {e}")
 
+        # ── 2. Filtrer : ne garder que les sites "stale" (>50 min ou en erreur) ──
+        sites = _get_stale_sites(supabase, all_sites)
+
+        if not sites:
+            print(f"✅ Tous les {len(all_sites)} sites sont à jour — rien à scraper")
+            should_compare = True
+            return
+
+        print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
+
+        had_success = _run_scraping(supabase_url, supabase_key, sites)
+        should_compare = had_success
+
+    finally:
+        _set_cron_lock(supabase_url, supabase_key, "idle")
+        if should_compare:
+            _run_user_comparisons(supabase, supabase_url, supabase_key)
+
+
+def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
+    """Exécute les batches de scraping. Retourne True si au moins 1 site a réussi."""
     # ── 3. Grouper : gros sites connus par 2, le reste par 5 ──
     large = [s for s in sites if s["site_domain"] in KNOWN_LARGE_DOMAINS]
     small = [s for s in sites if s["site_domain"] not in KNOWN_LARGE_DOMAINS]
@@ -447,9 +502,7 @@ def main():
     print(f"   Durée: {elapsed_total / 60:.1f} min")
     print(f"{'='*70}\n")
 
-    # ── 6. Comparaison automatique pour chaque utilisateur avec des alertes actives ──
-    if total_success > 0 and not shutdown:
-        _run_user_comparisons(supabase, supabase_url, supabase_key)
+    return total_success > 0 and not shutdown
 
 
 if __name__ == "__main__":
