@@ -267,7 +267,7 @@ def main():
     print(f"\n{'='*70}")
     print(f"🔄 SCRAPER CRON — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"   Double couverture : toutes les 30 min, scrape si stale >{STALE_THRESHOLD_MINUTES} min")
-    print(f"   Gros sites (>{LARGE_SITE_THRESHOLD} produits) par 2, petits par {SMALL_BATCH_SIZE}")
+    print(f"   Gros sites connus par 2, petits par {SMALL_BATCH_SIZE}")
     print(f"{'='*70}")
 
     # ── 1. Lire tous les shared_scrapers actifs ──
