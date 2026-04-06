@@ -209,6 +209,22 @@ def main():
 
     print(f"\n📋 {len(all_sites)} sites universels actifs")
 
+    # ── 1b. Enrichir avec le product_count connu (pour le batching) ──
+    try:
+        domains = [s["site_domain"] for s in all_sites]
+        cached = (
+            supabase.table("scraped_site_data")
+            .select("site_domain, product_count")
+            .in_("site_domain", domains)
+            .execute()
+        )
+        pc_map = {r["site_domain"]: r.get("product_count", 0) or 0 for r in (cached.data or [])}
+        for site in all_sites:
+            site["_known_product_count"] = pc_map.get(site["site_domain"], 0)
+        all_sites.sort(key=lambda s: s["_known_product_count"], reverse=True)
+    except Exception as e:
+        _log(f"⚠️  Erreur lecture product_count: {e}")
+
     # ── 2. Filtrer : ne garder que les sites "stale" (>50 min ou en erreur) ──
     sites = _get_stale_sites(supabase, all_sites)
 
@@ -218,10 +234,13 @@ def main():
 
     print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
 
-    # ── 3. Grouper dynamiquement : gros sites par 2, petits sites par 5 ──
+    # ── 3. Grouper dynamiquement : gros/inconnus par 2, petits confirmés par 5 ──
     # Les sites sont déjà triés par taille décroissante (gros en premier)
-    large = [s for s in sites if s.get("_known_product_count", 0) >= LARGE_SITE_THRESHOLD]
-    small = [s for s in sites if s.get("_known_product_count", 0) < LARGE_SITE_THRESHOLD]
+    # IMPORTANT: les sites sans product_count connu (=0, première fois) sont traités
+    # comme potentiellement gros → paire de 2 par précaution
+    large = [s for s in sites if s.get("_known_product_count", 0) >= LARGE_SITE_THRESHOLD
+             or s.get("_known_product_count", 0) == 0]
+    small = [s for s in sites if 0 < s.get("_known_product_count", 0) < LARGE_SITE_THRESHOLD]
 
     batches: list[list[dict]] = []
     for i in range(0, len(large), 2):
