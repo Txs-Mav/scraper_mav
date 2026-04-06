@@ -2,7 +2,7 @@
 
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck } from "lucide-react"
+import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck, Square } from "lucide-react"
 import { logActivity } from "@/hooks/use-activity-tracker"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
@@ -58,6 +58,7 @@ const SCRAPING_STEPS: Omit<ScrapingStep, 'status'>[] = [
 
 export interface ScraperConfigHandle {
   runScrape: () => Promise<void>
+  stopScrape: () => Promise<void>
   saveConfig: () => Promise<void>
   /** Retire une URL de la config (référence ou concurrent) quand un scraper est supprimé du cache */
   removeUrlFromConfig: (urlOrDomain: string) => void
@@ -94,6 +95,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const [inventoryOnly, setInventoryOnly] = useState(true)
   const [matchMode, setMatchMode] = useState<string>('exact')
   const [isScraping, setIsScraping] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(true)
   const [elapsedTime, setElapsedTime] = useState(0)
@@ -462,6 +464,32 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     }
   }
 
+  const handleStop = async () => {
+    setIsStopping(true)
+    try {
+      await fetch('/api/scraper/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logFile: currentLogFile }),
+      })
+    } catch (e) {
+      console.error('Error stopping scraper:', e)
+    }
+    if (logPollingRef.current) {
+      clearInterval(logPollingRef.current)
+      logPollingRef.current = null
+    }
+    setLogContent(prev => [...prev, t('dash.extractionStopped')])
+    setScrapeStatus('error')
+    setIsScraping(false)
+    setIsStopping(false)
+    clearScrapingSession()
+    setScrapingSteps(prev => prev.map(s =>
+      s.status === 'active' ? { ...s, status: 'error' } : s
+    ))
+    onScrapeComplete?.()
+  }
+
   const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[]; skipAutoScrape?: boolean }) => {
     try {
       const refUrl = overrides?.referenceUrl ?? referenceUrl.trim()
@@ -616,7 +644,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     onAppliedRemovedCacheUrls?.()
   }, [pendingRemovedCacheUrls, onAppliedRemovedCacheUrls, removeUrlFromConfig])
 
-  useImperativeHandle(ref, () => ({ runScrape: handleScrape, saveConfig, removeUrlFromConfig }), [handleScrape, removeUrlFromConfig])
+  useImperativeHandle(ref, () => ({ runScrape: handleScrape, stopScrape: handleStop, saveConfig, removeUrlFromConfig }), [handleScrape, handleStop, removeUrlFromConfig])
 
   const shouldShowLogsTerminal = isScraping || scrapeStatus
 
@@ -935,15 +963,27 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   </p>
                 </div>
               </div>
-              {logContent.length > 0 && (
-                <button
-                  onClick={() => setShowLogs(prev => !prev)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
-                >
-                  <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${showLogs ? 'rotate-90' : ''}`} />
-                  Logs
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {isScraping && (
+                  <button
+                    onClick={handleStop}
+                    disabled={isStopping}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 border border-red-200/60 dark:border-red-500/20 transition-all disabled:opacity-50"
+                  >
+                    {isStopping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+                    {isStopping ? t('dash.stoppingExtraction') : t('dash.stopExtraction')}
+                  </button>
+                )}
+                {logContent.length > 0 && (
+                  <button
+                    onClick={() => setShowLogs(prev => !prev)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+                  >
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${showLogs ? 'rotate-90' : ''}`} />
+                    Logs
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Étapes de progression */}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Settings2, BarChart3, Zap, Radar, Clock, Eye, Palette, Loader2 } from "lucide-react"
+import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Settings2, BarChart3, Zap, Radar, Clock, Eye, Palette, Loader2, Square } from "lucide-react"
 import Image from "next/image"
 import ScraperConfig, { ScraperConfigHandle } from "./scraper-config"
 import AIAgent from "./ai-agent"
@@ -832,13 +832,23 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           </div>
         )}
         {isScrapingActive && (
-          <ScraperConfig
-            ref={inlineScraperRef}
-            onScrapeStart={() => setIsScrapingActive(true)}
-            onScrapeComplete={() => { setIsScrapingActive(false); handleScrapeComplete() }}
-            hideHeader showLaunchButton={false} logsOnlyMode={true}
-            onReferenceUrlChange={(_, domain) => setConfiguredReferenceSite(domain)}
-          />
+          <>
+            <ScraperConfig
+              ref={inlineScraperRef}
+              onScrapeStart={() => setIsScrapingActive(true)}
+              onScrapeComplete={() => { setIsScrapingActive(false); handleScrapeComplete() }}
+              hideHeader showLaunchButton={false} logsOnlyMode={true}
+              onReferenceUrlChange={(_, domain) => setConfiguredReferenceSite(domain)}
+            />
+            <button
+              type="button"
+              onClick={() => inlineScraperRef.current?.stopScrape()}
+              className="w-full mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-red-200/60 dark:border-red-500/20 bg-red-50/50 dark:bg-red-950/10 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/30 transition-all"
+            >
+              <Square className="h-3.5 w-3.5" />
+              {t("dash.stopExtraction")}
+            </button>
+          </>
         )}
       </div>
 
