@@ -2,10 +2,11 @@
 Orchestrateur d'alertes automatisées — exécuté par GitHub Actions toutes les 20 min.
 
 Flow :
-  1. Query Supabase : alertes actives éligibles (interval OU daily)
-  2. Scraping PARALLÈLE (max 3 workers) de chaque alerte
-  3. last_run_at mis à jour APRÈS scraping réussi (pas avant)
-  4. Appeler l'API Vercel /api/alerts/check pour détecter les changements
+  1. Vérifie si le mode cache est activé → si oui, SKIP (scraping géré par scraper_cron.py)
+  2. Query Supabase : alertes actives éligibles (interval OU daily)
+  3. Scraping PARALLÈLE (max 3 workers) de chaque alerte
+  4. last_run_at mis à jour APRÈS scraping réussi (pas avant)
+  5. Appeler l'API Vercel /api/alerts/check pour détecter les changements
 
 Variables d'environnement requises :
   SUPABASE_URL              — URL du projet Supabase
@@ -26,6 +27,12 @@ from threading import Lock
 
 import requests
 from supabase import create_client
+
+# Importer le flag cache mode
+try:
+    from cache_mode import CACHE_MODE_ENABLED
+except ImportError:
+    CACHE_MODE_ENABLED = False
 
 MAX_WORKERS = 3
 SUBPROCESS_TIMEOUT = 1800  # 30 min per alert
@@ -117,6 +124,17 @@ def _scrape_alert(alert: dict, *, gemini_key: str, app_url: str) -> dict:
 
 
 def main():
+    # ── Mode cache : skip le scraping par utilisateur ──
+    if CACHE_MODE_ENABLED:
+        print(f"\n{'='*60}")
+        print(f"🔔 ALERT CRON — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+        print(f"{'='*60}")
+        print(f"⏭️  MODE CACHE ACTIVÉ — scraping par utilisateur désactivé")
+        print(f"   Le scraper_cron.py gère le scraping centralisé (toutes les 30 min)")
+        print(f"   Les utilisateurs récupèrent les données depuis scraped_site_data")
+        print(f"{'='*60}\n")
+        return
+
     supabase_url = os.environ.get("SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     app_url = os.environ.get("APP_URL", "").rstrip("/")

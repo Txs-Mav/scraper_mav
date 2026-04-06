@@ -3,6 +3,7 @@
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck } from "lucide-react"
+import { logActivity } from "@/hooks/use-activity-tracker"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
@@ -307,8 +308,10 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           fullContent.includes('AUTHENTIFICATION REQUISE')
         if (isError) {
           setScrapeStatus('error')
+          logActivity("scrape_complete", { metadata: { success: false, elapsed_seconds: elapsedTime } })
         } else {
           setScrapeStatus('success')
+          logActivity("scrape_complete", { metadata: { success: true, elapsed_seconds: elapsedTime } })
           onScrapeComplete?.()
         }
       }
@@ -425,6 +428,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     setScrapeStatus(null)
     setScrapingSteps(SCRAPING_STEPS.map((step, idx) => ({ ...step, status: idx === 0 ? 'active' : 'pending' })))
     onScrapeStart?.()
+    logActivity("scrape_start", { metadata: { sites: allUrls.length, competitors: otherUrls.length, reference: getDomain(currentRefUrl) } })
 
     try {
       // Sauvegarder la config AVANT le scrape avec les valeurs locales résolues
@@ -566,6 +570,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       const ageMs = Date.now() - session.startTime
       if (ageMs < 30 * 60_000) {
         setCurrentLogFile(session.logFile)
+        setElapsedTime(Math.floor(ageMs / 1000))
         setIsScraping(true)
         setScrapeStatus(null)
         setScrapingSteps(SCRAPING_STEPS.map(s => ({ ...s, status: 'active' as const })))

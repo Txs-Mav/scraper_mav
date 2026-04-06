@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Settings2, BarChart3, Zap, Radar, Clock, Eye, Palette } from "lucide-react"
+import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Settings2, BarChart3, Zap, Radar, Clock, Eye, Palette, Loader2 } from "lucide-react"
 import Image from "next/image"
 import ScraperConfig, { ScraperConfigHandle } from "./scraper-config"
 import AIAgent from "./ai-agent"
@@ -17,6 +17,7 @@ import PriceComparisonTable from "./price-comparison-table"
 import Celebration from "./celebration"
 import { DashboardSkeleton } from "./skeleton-loader"
 import { toast } from "sonner"
+import { isCacheScrapingEnabled } from "@/lib/feature-flags"
 
 interface Product {
   name: string
@@ -184,6 +185,8 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const scrapingLimit = useScrapingLimit()
   const { t, locale } = useLanguage()
 
+  const cacheMode = useMemo(() => isCacheScrapingEnabled(user?.id), [user?.id])
+
   const vehicleTypeLabelsTr = useMemo(() => ({
     moto: t("vt.moto"), vtt: t("vt.vtt"), "cote-a-cote": t("vt.sxs"),
     motoneige: t("vt.snowmobile"), motomarine: t("vt.watercraft"), "3-roues": t("vt.threeWheel"),
@@ -236,6 +239,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [showColorsInNames, setShowColorsInNames] = useState(true)
   const [matchMode, setMatchMode] = useState<MatchMode>('exact')
   const [showFilters, setShowFilters] = useState(false)
+  const [refreshingFromCron, setRefreshingFromCron] = useState(false)
   const [lastScrapingTime, setLastScrapingTime] = useState<Date | null>(null)
   const [alertLastRunAt, setAlertLastRunAt] = useState<Date | null>(null)
   const [alertIntervalMinutes, setAlertIntervalMinutes] = useState(40)
@@ -764,22 +768,67 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
-              {t("dash.autoMonitoring").replace("40", String(alertIntervalMinutes))}
+              {cacheMode ? t("dash.autoMonitoringCron") : t("dash.autoMonitoring").replace("40", String(alertIntervalMinutes))}
             </div>
 
-            {/* Analyze now — secondary button */}
-            <button
-              type="button"
-              onClick={async () => {
-                try { await fetch('/api/alerts/reset-timers', { method: 'POST' }) } catch {}
-                setIsScrapingActive(true)
-                setShouldStartScraping(true)
-              }}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition-all"
-            >
-              <Eye className="h-3.5 w-3.5" />
-              {t("dash.analyzeNow")}
-            </button>
+            {cacheMode ? (
+              <>
+                {/* CACHE MODE : lecture instantanée depuis les données pré-scrapées */}
+                <button
+                  type="button"
+                  disabled={refreshingFromCron}
+                  onClick={async () => {
+                    setRefreshingFromCron(true)
+                    try {
+                      const res = await fetch('/api/products/analyze', { method: 'POST' })
+                      const data = await res.json()
+                      if (data.success) {
+                        toast.success(t("dash.dataRefreshed"), { duration: 3000 })
+                        setTimeout(() => setRefreshKey(prev => prev + 1), 1000)
+                      } else {
+                        toast.warning(t("dash.noCachedData"), { duration: 5000 })
+                        setRefreshKey(prev => prev + 1)
+                      }
+                    } catch {
+                      setRefreshKey(prev => prev + 1)
+                    } finally {
+                      setTimeout(() => setRefreshingFromCron(false), 2000)
+                    }
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition-all disabled:opacity-50"
+                >
+                  {refreshingFromCron ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                  {t("dash.analyzeNow")}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try { await fetch('/api/alerts/reset-timers', { method: 'POST' }) } catch {}
+                    setIsScrapingActive(true)
+                    setShouldStartScraping(true)
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all"
+                >
+                  <Zap className="h-3 w-3" />
+                  {t("dash.forceScrape")}
+                </button>
+              </>
+            ) : (
+              /* MODE CLASSIQUE : scraping parallèle en temps réel */
+              <button
+                type="button"
+                onClick={async () => {
+                  try { await fetch('/api/alerts/reset-timers', { method: 'POST' }) } catch {}
+                  setIsScrapingActive(true)
+                  setShouldStartScraping(true)
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition-all"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                {t("dash.analyzeNow")}
+              </button>
+            )}
           </div>
         )}
         {isScrapingActive && (
