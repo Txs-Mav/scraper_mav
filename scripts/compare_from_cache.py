@@ -238,7 +238,7 @@ def main():
     else:
         competitor_urls = (config.get("competitor_urls", []) if config else []) or []
 
-    ignore_colors = not (config.get("strict_colors", False) if config else False)
+    ignore_colors = (config.get("ignore_colors", False) if config else False)
     match_mode = (config.get("match_mode", "exact") if config else "exact")
 
     ref_domain = _domain(reference_url)

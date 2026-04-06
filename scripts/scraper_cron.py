@@ -307,6 +307,7 @@ def main():
 
     if not sites:
         print(f"✅ Tous les {len(all_sites)} sites sont à jour — rien à scraper")
+        _run_user_comparisons(supabase, supabase_url, supabase_key)
         return
 
     print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
