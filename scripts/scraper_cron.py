@@ -37,7 +37,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
-BATCH_SIZE = 2
+LARGE_SITE_THRESHOLD = 300   # >300 produits connus = gros site (paire de 2)
+SMALL_BATCH_SIZE = 5         # petits sites en parallèle par 5
 STALE_THRESHOLD_MINUTES = 50
 MAX_RETRY_ROUNDS = 2
 print_lock = Lock()
@@ -138,20 +139,17 @@ def _save_site_data(supabase_url: str, supabase_key: str, site: dict, scrape_res
 
 
 def _get_stale_sites(supabase, sites: list) -> list:
-    """Filtre les sites stale et les trie par taille décroissante (gros sites en premier).
-
-    Les gros sites (ex: Nadon 1000+ pages, Illimitées 1900+ pages) passent en premier
-    pour avoir le maximum de temps disponible.
-    """
+    """Filtre les sites dont le cache est vieux de >STALE_THRESHOLD_MINUTES ou inexistant."""
     threshold = datetime.now(timezone.utc) - timedelta(minutes=STALE_THRESHOLD_MINUTES)
     threshold_iso = threshold.isoformat()
 
     domains = [s["site_domain"] for s in sites]
 
+    # Lire l'état actuel de scraped_site_data pour tous les domaines
     try:
         result = (
             supabase.table("scraped_site_data")
-            .select("site_domain, scraped_at, status, product_count")
+            .select("site_domain, scraped_at, status")
             .in_("site_domain", domains)
             .execute()
         )
@@ -165,9 +163,6 @@ def _get_stale_sites(supabase, sites: list) -> list:
     for site in sites:
         domain = site["site_domain"]
         row = cached.get(domain)
-        # Attacher le product_count connu pour le tri
-        site["_known_product_count"] = (row or {}).get("product_count", 0) or 0
-
         if not row:
             stale.append(site)
         elif row.get("status") != "success":
@@ -179,10 +174,6 @@ def _get_stale_sites(supabase, sites: list) -> list:
 
     if fresh:
         _log(f"   ✅ {len(fresh)} site(s) frais (<{STALE_THRESHOLD_MINUTES} min), skippés")
-
-    # Trier par taille décroissante : les gros sites passent en premier
-    stale.sort(key=lambda s: s.get("_known_product_count", 0), reverse=True)
-
     return stale
 
 
@@ -199,6 +190,7 @@ def main():
     print(f"\n{'='*70}")
     print(f"🔄 SCRAPER CRON — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"   Double couverture : toutes les 30 min, scrape si stale >{STALE_THRESHOLD_MINUTES} min")
+    print(f"   Gros sites (>{LARGE_SITE_THRESHOLD} produits) par 2, petits par {SMALL_BATCH_SIZE}")
     print(f"{'='*70}")
 
     # ── 1. Lire tous les shared_scrapers actifs ──
@@ -226,18 +218,25 @@ def main():
 
     print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
 
-    # ── 3. Grouper par paires, espacement court ──
-    batches = []
-    for i in range(0, len(sites), BATCH_SIZE):
-        batches.append(sites[i:i + BATCH_SIZE])
+    # ── 3. Grouper dynamiquement : gros sites par 2, petits sites par 5 ──
+    # Les sites sont déjà triés par taille décroissante (gros en premier)
+    large = [s for s in sites if s.get("_known_product_count", 0) >= LARGE_SITE_THRESHOLD]
+    small = [s for s in sites if s.get("_known_product_count", 0) < LARGE_SITE_THRESHOLD]
 
-    # 60s entre chaque batch (pas de rate limit API, juste poli envers les sites)
-    spacing_seconds = 60
+    batches: list[list[dict]] = []
+    for i in range(0, len(large), 2):
+        batches.append(large[i:i + 2])
+    for i in range(0, len(small), SMALL_BATCH_SIZE):
+        batches.append(small[i:i + SMALL_BATCH_SIZE])
+
+    spacing_seconds = 30
+
+    print(f"   {len(large)} gros site(s) (par 2) + {len(small)} petit(s) (par {SMALL_BATCH_SIZE})")
+    print(f"   → {len(batches)} batches, {spacing_seconds}s entre chaque\n")
 
     for i, batch in enumerate(batches):
-        names = " + ".join(s["site_name"] for s in batch)
-        t_min = (i * spacing_seconds) / 60
-        print(f"   Batch {i} (min ~{t_min:.0f}): {names}")
+        names = " + ".join(f"{s['site_name']} ({s.get('_known_product_count', '?')})" for s in batch)
+        print(f"   Batch {i}: {names}")
 
     print()
 
@@ -267,7 +266,7 @@ def main():
         _log(f"📦 BATCH {i}/{len(batches) - 1}: {names}")
         _log(f"{'─'*50}")
 
-        with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+        with ThreadPoolExecutor(max_workers=len(batch)) as executor:
             futures = {
                 executor.submit(
                     _scrape_single_site,
