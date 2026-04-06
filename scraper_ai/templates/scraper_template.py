@@ -2410,23 +2410,27 @@ def scrape(base_url: str) -> Dict[str, Any]:
             future_to_url[future] = url
 
         # Traiter les résultats au fur et à mesure
-        for future in as_completed(future_to_url):
-            url = future_to_url[future]
-            try:
-                product = future.result()
-                if product:
-                    products.append(product)
-                    # Compter la méthode utilisée (approximation basée sur la taille du HTML)
-                    # Les produits avec Selenium ont souvent plus de données
-                    if product.get('image') and len(product.get('image', '')) > 50:
-                        selenium_count += 1
+        try:
+            for future in as_completed(future_to_url, timeout=max(300, len(valid_urls) * 3)):
+                url = future_to_url[future]
+                try:
+                    product = future.result(timeout=15)
+                    if product:
+                        products.append(product)
+                        if product.get('image') and len(product.get('image', '')) > 50:
+                            selenium_count += 1
+                        else:
+                            requests_count += 1
                     else:
-                        requests_count += 1
-                else:
+                        errors_count += 1
+                except Exception as e:
+                    print(f"      ❌ Erreur pour {{url[:80]}}: {{e}}")
                     errors_count += 1
-            except Exception as e:
-                print(f"      ❌ Erreur pour {{url[:80]}}: {{e}}")
-                errors_count += 1
+        except TimeoutError:
+            pending = len(future_to_url) - (len(products) + errors_count)
+            print(f"      ⚠️ Timeout — {{pending}} URL(s) abandonnée(s), {{len(products)}} produit(s) conservé(s)")
+            for f in future_to_url:
+                f.cancel()
 
     # Filtrer les produits valides
     print(f"\\n🔍 Filtrage des produits valides...")

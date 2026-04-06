@@ -314,24 +314,31 @@ class MotoVanierScraper(DedicatedScraper):
             }
 
             processed = 0
-            for future in as_completed(futures, timeout=600):
-                processed += 1
-                url = futures[future]
-                try:
-                    detail = future.result(timeout=15)
-                    if detail:
-                        product = url_to_product[url]
-                        for key, val in detail.items():
-                            if val and not product.get(key):
-                                product[key] = val
-                        enriched_count += 1
-                except Exception:
-                    pass
+            try:
+                for future in as_completed(futures, timeout=600):
+                    processed += 1
+                    url = futures[future]
+                    try:
+                        detail = future.result(timeout=15)
+                        if detail:
+                            product = url_to_product[url]
+                            for key, val in detail.items():
+                                if val and not product.get(key):
+                                    product[key] = val
+                            enriched_count += 1
+                    except Exception:
+                        pass
 
-                if processed % 25 == 0 or processed == total:
-                    elapsed = time.time() - start
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    print(f"      📊 [{processed}/{total}] {enriched_count} enrichis — {rate:.1f}/s")
+                    if processed % 25 == 0 or processed == total:
+                        elapsed = time.time() - start
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        print(f"      📊 [{processed}/{total}] {enriched_count} enrichis — {rate:.1f}/s")
+            except TimeoutError:
+                pending = total - processed
+                print(f"      ⚠️ Timeout — {pending}/{total} URL(s) abandonnée(s), "
+                      f"{enriched_count} produit(s) enrichis conservé(s)")
+                for f in futures:
+                    f.cancel()
 
         print(f"      ✅ {enriched_count}/{total} produits enrichis")
         return products

@@ -336,28 +336,35 @@ class DBMotoScraper(DedicatedScraper):
             processed = 0
             failed_for_retry: List[tuple] = []
 
-            for future in as_completed(futures, timeout=900):
-                processed += 1
-                url, cat_key = futures[future]
-                try:
-                    product = future.result(timeout=self.DETAIL_TIMEOUT + 5)
-                    if product:
-                        products.append(product)
-                        self._consecutive_errors = 0
-                    elif product is None:
+            try:
+                for future in as_completed(futures, timeout=900):
+                    processed += 1
+                    url, cat_key = futures[future]
+                    try:
+                        product = future.result(timeout=self.DETAIL_TIMEOUT + 5)
+                        if product:
+                            products.append(product)
+                            self._consecutive_errors = 0
+                        elif product is None:
+                            errors += 1
+                            self._consecutive_errors += 1
+                            failed_for_retry.append((url, cat_key))
+                    except Exception:
                         errors += 1
                         self._consecutive_errors += 1
                         failed_for_retry.append((url, cat_key))
-                except Exception:
-                    errors += 1
-                    self._consecutive_errors += 1
-                    failed_for_retry.append((url, cat_key))
 
-                if processed % 50 == 0 or processed == total:
-                    elapsed = time.time() - start
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    print(f"      📊 [{processed}/{total}] {len(products)} ok, "
-                          f"{errors} erreurs — {rate:.1f}/s")
+                    if processed % 50 == 0 or processed == total:
+                        elapsed = time.time() - start
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        print(f"      📊 [{processed}/{total}] {len(products)} ok, "
+                              f"{errors} erreurs — {rate:.1f}/s")
+            except TimeoutError:
+                pending = total - processed
+                print(f"      ⚠️ Timeout — {pending}/{total} URL(s) abandonnée(s), "
+                      f"{len(products)} produit(s) conservé(s)")
+                for f in futures:
+                    f.cancel()
 
         # Retry des pages échouées (max 100, séquentiel avec délai)
         if failed_for_retry:

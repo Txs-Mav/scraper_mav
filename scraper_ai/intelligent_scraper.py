@@ -518,16 +518,20 @@ class IntelligentScraper:
 
             with ThreadPoolExecutor(max_workers=6) as pool:
                 future_map = {pool.submit(_test_listing, u): u for u in candidate_urls}
-                for future in as_completed(future_map, timeout=20):
-                    try:
-                        result = future.result(timeout=6)
-                        if result:
-                            listing_url = result
-                            for f in future_map:
-                                f.cancel()
-                            break
-                    except Exception:
-                        continue
+                try:
+                    for future in as_completed(future_map, timeout=20):
+                        try:
+                            result = future.result(timeout=6)
+                            if result:
+                                listing_url = result
+                                for f in future_map:
+                                    f.cancel()
+                                break
+                        except Exception:
+                            continue
+                except TimeoutError:
+                    for f in future_map:
+                        f.cancel()
 
             if not listing_url:
                 print(f"      ⚠️  Aucune page listing trouvée → fallback sitemap")

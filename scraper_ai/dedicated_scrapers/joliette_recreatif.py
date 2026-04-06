@@ -78,7 +78,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
         products = self._enrich_from_detail_pages(products)
 
         if inventory_only:
-            products = [p for p in products if p.get('sourceCategorie') != 'catalogue']
+            products = [p for p in products if p.get(
+                'sourceCategorie') != 'catalogue']
 
         pre_group = len(products)
         products = self._group_identical_products(products)
@@ -153,19 +154,23 @@ class JolietteRecreatifScraper(DedicatedScraper):
 
             total_pages = 1
             total_rows = 0
-            fwp_match = re.search(r'FWP_JSON\s*=\s*({.*?});', response.text, re.DOTALL)
+            fwp_match = re.search(
+                r'FWP_JSON\s*=\s*({.*?});', response.text, re.DOTALL)
             if fwp_match:
                 try:
                     fwp_data = json.loads(fwp_match.group(1))
-                    pager = fwp_data.get('preload_data', {}).get('settings', {}).get('pager', {})
+                    pager = fwp_data.get('preload_data', {}).get(
+                        'settings', {}).get('pager', {})
                     total_pages = max(1, int(pager.get('total_pages', 1)))
                     total_rows = int(pager.get('total_rows', 0))
                 except (json.JSONDecodeError, TypeError, ValueError, KeyError):
                     pass
 
-            print(f"      📊 FacetWP: {total_rows or '?'} produits, {total_pages} page(s)")
+            print(
+                f"      📊 FacetWP: {total_rows or '?'} produits, {total_pages} page(s)")
 
-            page_products = self._parse_listing_html(response.text, listing_url, etat, source_cat)
+            page_products = self._parse_listing_html(
+                response.text, listing_url, etat, source_cat)
             all_products.extend(page_products)
 
             for page in range(2, total_pages + 1):
@@ -178,7 +183,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
                     if response_p.status_code != 200:
                         break
                     all_products.extend(
-                        self._parse_listing_html(response_p.text, listing_url, etat, source_cat)
+                        self._parse_listing_html(
+                            response_p.text, listing_url, etat, source_cat)
                     )
                     time.sleep(0.3)
                 except Exception:
@@ -194,7 +200,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
         products = []
 
         for item in soup.select('.product-list .item'):
-            product = self._parse_listing_item(item, base_url, etat, source_cat)
+            product = self._parse_listing_item(
+                item, base_url, etat, source_cat)
             if product and product.get('name') and product.get('sourceUrl'):
                 products.append(product)
 
@@ -211,7 +218,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
         if not href:
             return None
 
-        product['sourceUrl'] = href if href.startswith('http') else urljoin(base_url, href)
+        product['sourceUrl'] = href if href.startswith(
+            'http') else urljoin(base_url, href)
         if not self._is_product_url(product['sourceUrl']):
             return None
 
@@ -224,7 +232,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
         if img:
             src = img.get('src') or img.get('data-src', '')
             if src:
-                product['image'] = src if src.startswith('http') else urljoin(base_url, src)
+                product['image'] = src if src.startswith(
+                    'http') else urljoin(base_url, src)
 
         price_li = item.select_one('.specs li.price')
         if price_li:
@@ -250,7 +259,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
             if old_price_val and old_price_val != product.get('prix'):
                 product['prix_original'] = old_price_val
 
-        km_el = item.select_one('.specs li.km .value .number, .specs li.km .value')
+        km_el = item.select_one(
+            '.specs li.km .value .number, .specs li.km .value')
         if km_el:
             km_val = self.clean_mileage(km_el.get_text(strip=True))
             if km_val is not None:
@@ -286,7 +296,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
         enriched_count = 0
         start = time.time()
 
-        print(f"\n   🔍 Enrichissement: {total} pages détail ({workers} workers)...")
+        print(
+            f"\n   🔍 Enrichissement: {total} pages détail ({workers} workers)...")
 
         url_to_product = {p['sourceUrl']: p for p in products}
 
@@ -297,35 +308,44 @@ class JolietteRecreatifScraper(DedicatedScraper):
             }
 
             processed = 0
-            for future in as_completed(futures, timeout=max(900, total * 4)):
-                processed += 1
-                url = futures[future]
-                try:
-                    specs = future.result(timeout=self.DETAIL_TIMEOUT + 5)
-                    if specs:
-                        product = url_to_product[url]
-                        for key, value in specs.items():
-                            if value is not None and (
-                                not product.get(key)
-                                or key in ('marque', 'modele', 'annee', 'vehicule_type',
-                                           'vehicule_categorie', 'prix', 'prix_original')
-                            ):
-                                product[key] = value
-                        enriched_count += 1
-                except Exception:
-                    pass
+            try:
+                for future in as_completed(futures, timeout=max(900, total * 4)):
+                    processed += 1
+                    url = futures[future]
+                    try:
+                        specs = future.result(timeout=self.DETAIL_TIMEOUT + 5)
+                        if specs:
+                            product = url_to_product[url]
+                            for key, value in specs.items():
+                                if value is not None and (
+                                    not product.get(key)
+                                    or key in ('marque', 'modele', 'annee', 'vehicule_type',
+                                               'vehicule_categorie', 'prix', 'prix_original')
+                                ):
+                                    product[key] = value
+                            enriched_count += 1
+                    except Exception:
+                        pass
 
-                if processed % 50 == 0 or processed == total:
-                    elapsed = time.time() - start
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    print(f"      📊 [{processed}/{total}] {enriched_count} enrichis — {rate:.1f}/s")
+                    if processed % 50 == 0 or processed == total:
+                        elapsed = time.time() - start
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        print(
+                            f"      📊 [{processed}/{total}] {enriched_count} enrichis — {rate:.1f}/s")
+            except TimeoutError:
+                pending = total - processed
+                print(f"      ⚠️ Timeout — {pending}/{total} URL(s) abandonnée(s), "
+                      f"{enriched_count} produit(s) enrichis conservé(s)")
+                for f in futures:
+                    f.cancel()
 
         print(f"      ✅ {enriched_count}/{total} produits enrichis")
         return products
 
     def _fetch_detail_specs(self, url: str) -> Optional[Dict]:
         try:
-            response = self.session.get(url, timeout=self.DETAIL_TIMEOUT, allow_redirects=True)
+            response = self.session.get(
+                url, timeout=self.DETAIL_TIMEOUT, allow_redirects=True)
             if response.status_code != 200:
                 return None
 
@@ -350,7 +370,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
                 else:
                     specs[field] = text
 
-            cond_el = soup.select_one('#product-specs-overview li.condition .value')
+            cond_el = soup.select_one(
+                '#product-specs-overview li.condition .value')
             if cond_el:
                 cond_text = cond_el.get_text(strip=True).lower()
                 if 'neuf' in cond_text or 'new' in cond_text:
@@ -387,7 +408,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
             notes_el = soup.select_one('#product-notes')
             if notes_el:
                 description = notes_el.get_text(' ', strip=True)
-                description = re.sub(r'^Notes\s+Notes\s*:?\s*', '', description, flags=re.I)
+                description = re.sub(
+                    r'^Notes\s+Notes\s*:?\s*', '', description, flags=re.I)
                 if description and len(description) > 20:
                     specs['description'] = description[:2000]
 
@@ -418,7 +440,8 @@ class JolietteRecreatifScraper(DedicatedScraper):
             try:
                 response = self.session.get(bulk_url, timeout=30)
                 if response.status_code == 200:
-                    all_urls.extend(self._extract_product_urls_from_html(response.text, listing_url))
+                    all_urls.extend(self._extract_product_urls_from_html(
+                        response.text, listing_url))
             except Exception:
                 pass
 
@@ -499,8 +522,11 @@ class JolietteRecreatifScraper(DedicatedScraper):
         if not name:
             return name
         name = re.sub(r"\s+-\s+Pr[ée]-commander.*$", '', name, flags=re.I)
-        name = re.sub(r"\s+[àa]\s+vendre\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
-        name = re.sub(r"\s*d['’]?occasion\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
-        name = re.sub(r'\s*\|\s*Joliette\s+R[ée]cr[ée]atif.*$', '', name, flags=re.I)
+        name = re.sub(r"\s+[àa]\s+vendre\s+[àa]\s+[\w\s.-]+$",
+                      '', name, flags=re.I)
+        name = re.sub(
+            r"\s*d['’]?occasion\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
+        name = re.sub(
+            r'\s*\|\s*Joliette\s+R[ée]cr[ée]atif.*$', '', name, flags=re.I)
         name = re.sub(r'\s+', ' ', name)
         return name.strip()

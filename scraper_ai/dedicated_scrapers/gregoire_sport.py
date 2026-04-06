@@ -268,22 +268,29 @@ class GregoireSportScraper(DedicatedScraper):
             }
 
             processed = 0
-            for future in as_completed(futures, timeout=900):
-                processed += 1
-                try:
-                    product = future.result(timeout=self.DETAIL_TIMEOUT + 5)
-                    if product:
-                        products.append(product)
-                    else:
+            try:
+                for future in as_completed(futures, timeout=900):
+                    processed += 1
+                    try:
+                        product = future.result(timeout=self.DETAIL_TIMEOUT + 5)
+                        if product:
+                            products.append(product)
+                        else:
+                            errors += 1
+                    except Exception:
                         errors += 1
-                except Exception:
-                    errors += 1
 
-                if processed % 100 == 0 or processed == total:
-                    elapsed = time.time() - start
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    print(f"      📊 [{processed}/{total}] {len(products)} ok, "
-                          f"{errors} erreurs — {rate:.1f}/s")
+                    if processed % 100 == 0 or processed == total:
+                        elapsed = time.time() - start
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        print(f"      📊 [{processed}/{total}] {len(products)} ok, "
+                              f"{errors} erreurs — {rate:.1f}/s")
+            except TimeoutError:
+                pending = total - processed
+                print(f"      ⚠️ Timeout — {pending}/{total} URL(s) abandonnée(s), "
+                      f"{len(products)} produit(s) conservé(s)")
+                for f in futures:
+                    f.cancel()
 
         print(f"      ✅ {len(products)}/{total} produits extraits "
               f"({errors} erreurs)")

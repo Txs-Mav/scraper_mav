@@ -197,22 +197,33 @@ def main():
         signal.signal(signal.SIGTERM, _on_sigterm)
         signal.signal(signal.SIGINT, _on_sigterm)
 
-        for future in as_completed(future_to_alert):
-            result = future.result()
-            aid = result["alert_id"]
-
-            if result["success"]:
-                succeeded_ids.append(aid)
-                # Verrouiller last_run_at APRÈS succès
+        try:
+            for future in as_completed(future_to_alert, timeout=max(3600, len(alerts) * 600)):
                 try:
-                    supabase.table("scraper_alerts") \
-                        .update({"last_run_at": cron_timestamp}) \
-                        .eq("id", aid) \
-                        .execute()
+                    result = future.result(timeout=1800)
                 except Exception as e:
-                    _log(f"   ⚠️  last_run_at non mis à jour pour {aid[:8]}: {e}")
-            else:
-                failed_count += 1
+                    _log(f"   ❌ Future error: {e}")
+                    failed_count += 1
+                    continue
+                aid = result["alert_id"]
+
+                if result["success"]:
+                    succeeded_ids.append(aid)
+                    try:
+                        supabase.table("scraper_alerts") \
+                            .update({"last_run_at": cron_timestamp}) \
+                            .eq("id", aid) \
+                            .execute()
+                    except Exception as e:
+                        _log(f"   ⚠️  last_run_at non mis à jour pour {aid[:8]}: {e}")
+                else:
+                    failed_count += 1
+        except TimeoutError:
+            pending = len(future_to_alert) - (len(succeeded_ids) + failed_count)
+            _log(f"   ⚠️ Timeout global — {pending} alerte(s) abandonnée(s)")
+            failed_count += pending
+            for f in future_to_alert:
+                f.cancel()
 
     print(f"\n📊 Scraping terminé : {len(succeeded_ids)} OK, {failed_count} échoué(s)")
 
