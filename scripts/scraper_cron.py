@@ -37,9 +37,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
-LARGE_SITE_THRESHOLD = 300   # >300 produits connus = gros site (paire de 2)
-SMALL_BATCH_SIZE = 5         # petits sites en parallèle par 5
+SMALL_BATCH_SIZE = 5
 STALE_THRESHOLD_MINUTES = 50
+
+# Sites connus pour avoir beaucoup de pages (>300 produits, >5 min de scraping)
+# Ces sites sont toujours scrapés en paires de 2, jamais en batch de 5
+KNOWN_LARGE_DOMAINS = {
+    'motosillimitees.com',    # ~1900 produits, ~15 min
+    'nadonsport.com',         # ~1000 produits, ~16 min
+    'gregoiresport.com',      # ~500 produits, ~5 min
+    'mathiassports.com',      # ~400 produits, ~4 min
+    'mvmmotosport.com',       # ~300 produits, ~3 min
+}
 MAX_RETRY_ROUNDS = 2
 print_lock = Lock()
 
@@ -177,6 +186,74 @@ def _get_stale_sites(supabase, sites: list) -> list:
     return stale
 
 
+def _run_user_comparisons(supabase, supabase_url: str, supabase_key: str):
+    """Après le scraping, lance compare_from_cache pour chaque utilisateur avec des alertes actives."""
+    import subprocess
+
+    try:
+        result = (
+            supabase.table("scraper_alerts")
+            .select("user_id, reference_url, competitor_urls")
+            .eq("is_active", True)
+            .not_("reference_url", "is", "null")
+            .execute()
+        )
+        alerts = result.data or []
+    except Exception as e:
+        _log(f"⚠️  Erreur lecture scraper_alerts: {e}")
+        return
+
+    if not alerts:
+        _log("ℹ️  Aucune alerte active — pas de comparaison à lancer")
+        return
+
+    users_seen = set()
+    unique_alerts = []
+    for alert in alerts:
+        uid = alert["user_id"]
+        if uid not in users_seen:
+            users_seen.add(uid)
+            unique_alerts.append(alert)
+
+    _log(f"\n{'─'*50}")
+    _log(f"📊 COMPARAISONS : {len(unique_alerts)} utilisateur(s)")
+    _log(f"{'─'*50}")
+
+    compare_script = str(SCRIPT_DIR / "compare_from_cache.py")
+
+    for alert in unique_alerts:
+        uid = alert["user_id"]
+        ref_url = alert.get("reference_url", "")
+        competitors = alert.get("competitor_urls") or []
+
+        if not ref_url:
+            continue
+
+        cmd = [sys.executable, compare_script, "--user-id", uid, "--reference", ref_url]
+        if competitors:
+            cmd.extend(["--competitors", ",".join(competitors)])
+
+        _log(f"   🔄 User {uid[:8]}... — ref={ref_url}")
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env={**os.environ, "SUPABASE_URL": supabase_url, "SUPABASE_SERVICE_ROLE_KEY": supabase_key},
+            )
+            if proc.returncode == 0:
+                _log(f"   ✅ User {uid[:8]}... — comparaison OK")
+            else:
+                last_lines = (proc.stdout or proc.stderr or "").strip().split("\n")[-3:]
+                _log(f"   ⚠️  User {uid[:8]}... — code {proc.returncode}: {' | '.join(last_lines)}")
+        except subprocess.TimeoutExpired:
+            _log(f"   ⏰ User {uid[:8]}... — timeout (>2 min)")
+        except Exception as e:
+            _log(f"   ❌ User {uid[:8]}... — {e}")
+
+
 def main():
     supabase_url = os.environ.get("SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -234,13 +311,9 @@ def main():
 
     print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
 
-    # ── 3. Grouper dynamiquement : gros/inconnus par 2, petits confirmés par 5 ──
-    # Les sites sont déjà triés par taille décroissante (gros en premier)
-    # IMPORTANT: les sites sans product_count connu (=0, première fois) sont traités
-    # comme potentiellement gros → paire de 2 par précaution
-    large = [s for s in sites if s.get("_known_product_count", 0) >= LARGE_SITE_THRESHOLD
-             or s.get("_known_product_count", 0) == 0]
-    small = [s for s in sites if 0 < s.get("_known_product_count", 0) < LARGE_SITE_THRESHOLD]
+    # ── 3. Grouper : gros sites connus par 2, le reste par 5 ──
+    large = [s for s in sites if s["site_domain"] in KNOWN_LARGE_DOMAINS]
+    small = [s for s in sites if s["site_domain"] not in KNOWN_LARGE_DOMAINS]
 
     batches: list[list[dict]] = []
     for i in range(0, len(large), 2):
@@ -372,6 +445,10 @@ def main():
         print(f"   → Sera re-tenté dans 30 min par le prochain cron")
     print(f"   Durée: {elapsed_total / 60:.1f} min")
     print(f"{'='*70}\n")
+
+    # ── 6. Comparaison automatique pour chaque utilisateur avec des alertes actives ──
+    if total_success > 0 and not shutdown:
+        _run_user_comparisons(supabase, supabase_url, supabase_key)
 
 
 if __name__ == "__main__":
