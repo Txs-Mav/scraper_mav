@@ -138,17 +138,20 @@ def _save_site_data(supabase_url: str, supabase_key: str, site: dict, scrape_res
 
 
 def _get_stale_sites(supabase, sites: list) -> list:
-    """Filtre les sites dont le cache est vieux de >STALE_THRESHOLD_MINUTES ou inexistant."""
+    """Filtre les sites stale et les trie par taille décroissante (gros sites en premier).
+
+    Les gros sites (ex: Nadon 1000+ pages, Illimitées 1900+ pages) passent en premier
+    pour avoir le maximum de temps disponible.
+    """
     threshold = datetime.now(timezone.utc) - timedelta(minutes=STALE_THRESHOLD_MINUTES)
     threshold_iso = threshold.isoformat()
 
     domains = [s["site_domain"] for s in sites]
 
-    # Lire l'état actuel de scraped_site_data pour tous les domaines
     try:
         result = (
             supabase.table("scraped_site_data")
-            .select("site_domain, scraped_at, status")
+            .select("site_domain, scraped_at, status, product_count")
             .in_("site_domain", domains)
             .execute()
         )
@@ -162,6 +165,9 @@ def _get_stale_sites(supabase, sites: list) -> list:
     for site in sites:
         domain = site["site_domain"]
         row = cached.get(domain)
+        # Attacher le product_count connu pour le tri
+        site["_known_product_count"] = (row or {}).get("product_count", 0) or 0
+
         if not row:
             stale.append(site)
         elif row.get("status") != "success":
@@ -173,6 +179,10 @@ def _get_stale_sites(supabase, sites: list) -> list:
 
     if fresh:
         _log(f"   ✅ {len(fresh)} site(s) frais (<{STALE_THRESHOLD_MINUTES} min), skippés")
+
+    # Trier par taille décroissante : les gros sites passent en premier
+    stale.sort(key=lambda s: s.get("_known_product_count", 0), reverse=True)
+
     return stale
 
 
@@ -268,10 +278,11 @@ def main():
                 for site in batch
             }
 
-            for future in as_completed(futures, timeout=600):
+            # 1200s (20 min) : certains sites ont 1000+ pages (ex: Nadon Sport ~16 min)
+            for future in as_completed(futures, timeout=1200):
                 site = futures[future]
                 try:
-                    result = future.result(timeout=300)
+                    result = future.result(timeout=1200)
                     _save_site_data(supabase_url, supabase_key, site, result)
                     if result["success"]:
                         total_success += 1
