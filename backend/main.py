@@ -366,6 +366,58 @@ except Exception as e:
         })
 
 
+class CacheAnalyzeRequest(BaseModel):
+    userId: str
+
+
+@app.post("/products/analyze", dependencies=[Depends(verify_secret)])
+async def products_analyze(body: CacheAnalyzeRequest):
+    """Compare products using pre-scraped data from scraped_site_data (no live scraping)."""
+    script = str(PROJECT_ROOT / "scripts" / "compare_from_cache.py")
+
+    env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+    }
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-u", script, "--user-id", body.userId],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+
+        logs = [l for l in (proc.stdout or "").split("\n") if l.strip()][-20:]
+
+        if proc.returncode == 0:
+            return {
+                "success": True,
+                "message": "Comparaison terminée depuis les données pré-scrapées",
+                "source": "scraped_site_data",
+                "logs": logs,
+            }
+        else:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": "no_cached_data",
+                    "message": "Aucune donnée pré-scrapée disponible.",
+                    "logs": logs[-10:],
+                },
+            )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, detail={
+            "error": "timeout",
+            "message": "La comparaison a pris trop de temps (>120s)",
+        })
+
+
 @app.get("/health")
 async def health():
     active_jobs = sum(1 for j in jobs.values() if not j.is_complete)

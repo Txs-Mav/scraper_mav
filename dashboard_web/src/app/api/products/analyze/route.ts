@@ -42,8 +42,8 @@ export async function POST() {
     const projectRoot = path.resolve(process.cwd(), '..')
     const pythonScript = path.join(projectRoot, 'scripts', 'compare_from_cache.py')
 
-    const env: Record<string, string> = {
-      ...process.env as Record<string, string>,
+    const env = {
+      ...process.env,
       PYTHONUNBUFFERED: '1',
     }
 

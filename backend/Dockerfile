@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 RUN playwright install chromium --with-deps
 
 COPY scraper_ai/ /app/scraper_ai/
+COPY scripts/ /app/scripts/
 COPY backend/ /app/backend/
 COPY .env* /app/
 
