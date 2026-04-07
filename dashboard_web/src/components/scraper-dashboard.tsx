@@ -239,7 +239,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
   const [refreshingFromCron, setRefreshingFromCron] = useState(false)
   const [lastScrapingTime, setLastScrapingTime] = useState<Date | null>(null)
   const [alertLastRunAt, setAlertLastRunAt] = useState<Date | null>(null)
-  const [alertIntervalMinutes, setAlertIntervalMinutes] = useState(40)
+  const [alertIntervalMinutes, setAlertIntervalMinutes] = useState(60)
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
   const inlineScraperRef = useRef<ScraperConfigHandle | null>(null)
   const tabScrollRef = useRef<HTMLDivElement>(null)
@@ -614,7 +614,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         nextScanText = t("dash.inMinutes").replace("{0}", String(nextScanMin))
       }
     } else {
-      nextScanText = t("dash.inMinutes").replace("{0}", "~20")
+      nextScanText = t("dash.inMinutes").replace("{0}", "~60")
     }
 
     return { lastAnalysisText, nextScanText }
@@ -741,33 +741,6 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
 
         {!isScrapingActive && (
           <div className="space-y-4">
-            {/* Monitoring status */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-gray-50/80 dark:bg-white/[0.02] border border-gray-100/60 dark:border-white/[0.04]">
-                <Clock className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
-                <div>
-                  <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t("dash.lastAnalysis")}</p>
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 tabular-nums">{monitoringStatus.lastAnalysisText}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-gray-50/80 dark:bg-white/[0.02] border border-gray-100/60 dark:border-white/[0.04]">
-                <Radar className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />
-                <div>
-                  <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t("dash.nextScan")}</p>
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 tabular-nums">{monitoringStatus.nextScanText}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Auto-monitoring badge */}
-            <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              {t("dash.autoMonitoringCron")}
-            </div>
-
             <button
               type="button"
               disabled={refreshingFromCron}
