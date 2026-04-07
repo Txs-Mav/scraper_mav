@@ -34,7 +34,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scraper_ai.main import (
+from scraper_ai.comparison import (
     find_matching_products,
     enrich_product_year,
     clean_product_name,
