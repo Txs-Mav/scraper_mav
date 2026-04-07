@@ -25,19 +25,33 @@ export async function GET(request: Request) {
       supabase = await createClient()
     }
 
-    const { data, error } = await supabase
-      .from('shared_scrapers')
-      .select('id, site_name, site_slug, site_url, site_domain, search_keywords, scraper_module, description, categories, vehicle_types, extracted_fields, is_active, logo_url, version, last_verified_at')
-      .eq('is_active', true)
-      .order('site_name', { ascending: true })
+    const [scrapersResult, hiddenResult] = await Promise.all([
+      supabase
+        .from('shared_scrapers')
+        .select('id, site_name, site_slug, site_url, site_domain, search_keywords, scraper_module, description, categories, vehicle_types, extracted_fields, is_active, logo_url, version, last_verified_at')
+        .eq('is_active', true)
+        .order('site_name', { ascending: true }),
+      supabase
+        .from('scraped_site_data')
+        .select('site_domain')
+        .contains('metadata', { temporarily_hidden: true }),
+    ])
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (scrapersResult.error) {
+      return NextResponse.json({ error: scrapersResult.error.message }, { status: 500 })
     }
 
+    const hiddenDomains = new Set(
+      (hiddenResult.data || []).map((r: { site_domain: string }) => r.site_domain)
+    )
+
+    const scrapers = (scrapersResult.data || []).filter(
+      (s: { site_domain: string }) => !hiddenDomains.has(s.site_domain)
+    )
+
     return NextResponse.json({
-      scrapers: data || [],
-      count: data?.length || 0
+      scrapers,
+      count: scrapers.length
     })
   } catch (error: any) {
     console.error('Error fetching shared scrapers:', error)

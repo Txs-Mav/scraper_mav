@@ -138,7 +138,7 @@ def _scrape_single_site(slug: str, site_url: str, site_domain: str) -> dict:
 def _save_site_data(supabase_url: str, supabase_key: str, site: dict, scrape_result: dict):
     """Upsert les produits dans scraped_site_data.
 
-    Succès → écrase tout. Erreur → ne touche PAS products/product_count.
+    Succès → écrase tout + efface le flag hidden. Erreur → ne touche PAS products/product_count.
     """
     headers = {
         "apikey": supabase_key,
@@ -150,13 +150,14 @@ def _save_site_data(supabase_url: str, supabase_key: str, site: dict, scrape_res
     now = datetime.now(timezone.utc).isoformat()
 
     if scrape_result["success"]:
+        metadata = {**scrape_result.get("metadata", {}), "temporarily_hidden": False}
         row = {
             "site_url": site["site_url"],
             "site_domain": site["site_domain"],
             "shared_scraper_id": site["id"],
             "products": scrape_result["products"],
             "product_count": len(scrape_result["products"]),
-            "metadata": scrape_result.get("metadata", {}),
+            "metadata": metadata,
             "scraped_at": now,
             "scrape_duration_seconds": round(scrape_result.get("elapsed", 0), 1),
             "status": "success",
@@ -188,6 +189,48 @@ def _save_site_data(supabase_url: str, supabase_key: str, site: dict, scrape_res
             _log(f"   ⚠️  {site['site_domain']}: erreur PostgREST ({resp.status_code}): {resp.text[:200]}")
     except Exception as e:
         _log(f"   ⚠️  {site['site_domain']}: erreur sauvegarde — {e}")
+
+
+def _hide_failing_sites(supabase_url: str, supabase_key: str, sites: list[dict]):
+    """Marque les sites en échec répété comme temporarily_hidden dans scraped_site_data.
+
+    Le dashboard exclut ces sites de la barre de recherche jusqu'au prochain
+    scraping réussi (qui remet temporarily_hidden à false).
+    """
+    if not sites:
+        return
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
+    now = datetime.now(timezone.utc).isoformat()
+
+    for site in sites:
+        domain = site["site_domain"]
+        row = {
+            "site_url": site["site_url"],
+            "site_domain": domain,
+            "shared_scraper_id": site["id"],
+            "metadata": {"temporarily_hidden": True, "hidden_at": now},
+            "updated_at": now,
+        }
+        try:
+            resp = http_requests.post(
+                f"{supabase_url}/rest/v1/scraped_site_data",
+                json=row,
+                headers=headers,
+                params={"on_conflict": "site_domain"},
+                timeout=10,
+            )
+            if resp.status_code in (200, 201):
+                _log(f"   🙈 {domain}: caché de la recherche (échec après {MAX_RETRY_ROUNDS} retries)")
+            else:
+                _log(f"   ⚠️  {domain}: erreur hide ({resp.status_code})")
+        except Exception as e:
+            _log(f"   ⚠️  {domain}: erreur hide — {e}")
 
 
 def _get_stale_sites(supabase, sites: list) -> list:
@@ -506,6 +549,9 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
             recovered = len(still_failed) - len(next_failed)
             _log(f"   🔄 Retry #{retry_round}: {recovered}/{len(still_failed)} récupéré(s)")
             still_failed = next_failed
+
+        if still_failed:
+            _hide_failing_sites(supabase_url, supabase_key, still_failed)
 
         failed_sites = still_failed
 
