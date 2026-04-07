@@ -75,6 +75,7 @@ class MotoVanierScraper(DedicatedScraper):
         self._request_lock = threading.Lock()
         self._last_request_time = 0.0
         self._min_request_interval = 0.15
+        self._session_warmed = False
 
     # ================================================================
     # PIPELINE PRINCIPAL (override)
@@ -164,14 +165,33 @@ class MotoVanierScraper(DedicatedScraper):
 
         return all_products
 
+    def _warm_session(self):
+        """Visite la page d'accueil pour obtenir les cookies PrestaShop."""
+        if self._session_warmed:
+            return
+        try:
+            self.session.headers['Referer'] = self.SITE_URL
+            resp = self.session.get(self.SITE_URL, timeout=15)
+            if resp.status_code == 200:
+                print(f"      🍪 Session réchauffée (cookies PrestaShop)")
+            else:
+                print(f"      ⚠️ Warm-up: HTTP {resp.status_code}")
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"      ⚠️ Warm-up échoué: {e}")
+        self._session_warmed = True
+
     def _fetch_listing_with_retry(self, url: str) -> Optional[requests.Response]:
         """GET une page listing avec retry applicatif et backoff exponentiel."""
+        self._warm_session()
+
         for attempt in range(1, self.LISTING_MAX_RETRIES + 1):
             try:
                 resp = self.session.get(url, timeout=30)
                 if resp.status_code == 200:
                     return resp
-                if resp.status_code >= 500 and attempt < self.LISTING_MAX_RETRIES:
+                retryable = resp.status_code >= 500 or resp.status_code == 403
+                if retryable and attempt < self.LISTING_MAX_RETRIES:
                     wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1))
                     print(f"      ⏳ HTTP {resp.status_code} — nouvelle tentative dans {wait}s ({attempt}/{self.LISTING_MAX_RETRIES})")
                     time.sleep(wait)
