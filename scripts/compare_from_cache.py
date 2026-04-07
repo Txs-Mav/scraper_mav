@@ -44,9 +44,14 @@ from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
 def _domain(url: str) -> str:
     try:
-        return urlparse(url).netloc.replace('www.', '').lower()
+        if url and not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        netloc = urlparse(url).netloc
+        if not netloc:
+            return url.lower().split('/')[0].replace('www.', '')
+        return netloc.replace('www.', '').lower()
     except Exception:
-        return url.lower()
+        return url.lower().replace('www.', '').split('/')[0]
 
 
 def _headers(supabase_key: str) -> dict:

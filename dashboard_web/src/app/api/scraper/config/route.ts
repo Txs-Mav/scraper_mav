@@ -115,8 +115,15 @@ export async function POST(request: Request) {
     const prevRefUrl = prevConfig?.reference_url || ''
     const prevCompetitors: string[] = prevConfig?.competitor_urls || []
 
-    const newRefUrl = (body.referenceUrl || '').trim()
-    const newCompetitors: string[] = (body.urls || []).map((u: string) => u.trim()).filter(Boolean)
+    const ensureProtocol = (url: string) => {
+      const trimmed = url.trim()
+      if (!trimmed) return trimmed
+      if (/^https?:\/\//i.test(trimmed)) return trimmed
+      return `https://${trimmed}`
+    }
+
+    const newRefUrl = ensureProtocol(body.referenceUrl || '')
+    const newCompetitors: string[] = (body.urls || []).map((u: string) => ensureProtocol(u)).filter(Boolean)
     const skipAutoScrape = body.skipAutoScrape === true
 
     const configData = {
