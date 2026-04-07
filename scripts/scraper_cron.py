@@ -5,8 +5,9 @@ Stratégie "double couverture" pour ~100% de fiabilité :
   - Le cron tourne toutes les 30 min
   - Mais ne scrape QUE les sites dont les données sont vieilles de >50 min
   - Si un site échoue à :00, il sera re-tenté à :30 (2 chances par heure)
-  - Sites groupés par paires, étalés sur ~25 min max (pas 60)
-  - 2 rounds de retry après tous les batches
+  - TOUS les sites scrapés en parallèle (8 workers max, pas de batches séquentiels)
+  - Durée totale ≈ durée du site le plus lent (~16 min) au lieu de la somme
+  - 2 rounds de retry en parallèle après le scraping principal
 
 Règle de persistance :
   - Succès  → UPSERT complet (products, product_count, status, scraped_at)
@@ -37,20 +38,22 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
-SMALL_BATCH_SIZE = 5
 STALE_THRESHOLD_MINUTES = 50
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45
 
-# Sites connus pour avoir beaucoup de pages (>300 produits, >5 min de scraping)
-# Ces sites sont toujours scrapés en paires de 2, jamais en batch de 5
 KNOWN_LARGE_DOMAINS = {
     'motosillimitees.com',    # ~1900 produits, ~15 min
     'nadonsport.com',         # ~1000 produits, ~16 min
+    'motoducharme.com',       # ~850 produits, ~10 min
     'gregoiresport.com',      # ~500 produits, ~5 min
     'mathiassports.com',      # ~400 produits, ~4 min
     'mvmmotosport.com',       # ~300 produits, ~3 min
 }
+
+MAX_CONCURRENT_SITES = 8
+LARGE_SITE_TIMEOUT = 1200   # 20 min
+SMALL_SITE_TIMEOUT = 600    # 10 min
 MAX_RETRY_ROUNDS = 2
 print_lock = Lock()
 
@@ -307,7 +310,7 @@ def main():
     print(f"\n{'='*70}")
     print(f"🔄 SCRAPER CRON — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"   Double couverture : toutes les 30 min, scrape si stale >{STALE_THRESHOLD_MINUTES} min")
-    print(f"   Gros sites connus par 2, petits par {SMALL_BATCH_SIZE}")
+    print(f"   Tous les sites en parallèle ({MAX_CONCURRENT_SITES} workers max)")
     print(f"{'='*70}")
 
     _set_cron_lock(supabase_url, supabase_key, "running")
@@ -366,138 +369,154 @@ def main():
 
 
 def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
-    """Exécute les batches de scraping. Retourne True si au moins 1 site a réussi."""
-    # ── 3. Grouper : gros sites connus par 2, le reste par 5 ──
+    """Exécute TOUS les sites en parallèle. Retourne True si au moins 1 a réussi."""
     large = [s for s in sites if s["site_domain"] in KNOWN_LARGE_DOMAINS]
     small = [s for s in sites if s["site_domain"] not in KNOWN_LARGE_DOMAINS]
 
-    batches: list[list[dict]] = []
-    for i in range(0, len(large), 2):
-        batches.append(large[i:i + 2])
-    for i in range(0, len(small), SMALL_BATCH_SIZE):
-        batches.append(small[i:i + SMALL_BATCH_SIZE])
+    workers = min(MAX_CONCURRENT_SITES, len(sites))
+    print(f"   {len(large)} gros site(s) + {len(small)} petit(s)")
+    print(f"   → {workers} workers parallèles (tous les sites en même temps)\n")
 
-    spacing_seconds = 30
-
-    print(f"   {len(large)} gros site(s) (par 2) + {len(small)} petit(s) (par {SMALL_BATCH_SIZE})")
-    print(f"   → {len(batches)} batches, {spacing_seconds}s entre chaque\n")
-
-    for i, batch in enumerate(batches):
-        names = " + ".join(f"{s['site_name']} ({s.get('_known_product_count', '?')})" for s in batch)
-        print(f"   Batch {i}: {names}")
-
+    for s in sites:
+        kind = "🔴 gros" if s["site_domain"] in KNOWN_LARGE_DOMAINS else "🟢 petit"
+        pc = s.get('_known_product_count', '?')
+        timeout = LARGE_SITE_TIMEOUT if s["site_domain"] in KNOWN_LARGE_DOMAINS else SMALL_SITE_TIMEOUT
+        print(f"   {kind}: {s['site_name']} ({pc} produits, timeout {timeout // 60} min)")
     print()
 
     shutdown = False
 
     def _on_sigterm(signum, frame):
         nonlocal shutdown
-        print("\n⚠️  SIGTERM reçu — arrêt après le batch en cours...")
+        print("\n⚠️  SIGTERM reçu — arrêt en cours...")
         shutdown = True
 
     signal.signal(signal.SIGTERM, _on_sigterm)
     signal.signal(signal.SIGINT, _on_sigterm)
 
-    # ── 4. Exécuter les batches ──
     total_success = 0
     total_failed = 0
     failed_sites: list[dict] = []
     cron_start = time.time()
 
-    for i, batch in enumerate(batches):
-        if shutdown:
-            _log(f"⚠️  Arrêt demandé — {len(batches) - i} batch(es) restant(es) ignorée(s)")
-            break
+    _log(f"{'─'*50}")
+    _log(f"🚀 Lancement de {len(sites)} sites en parallèle ({workers} workers)")
+    _log(f"{'─'*50}")
 
-        names = " + ".join(s["site_name"] for s in batch)
-        _log(f"\n{'─'*50}")
-        _log(f"📦 BATCH {i}/{len(batches) - 1}: {names}")
-        _log(f"{'─'*50}")
+    site_timeouts: dict[str, int] = {}
+    for s in sites:
+        site_timeouts[s["site_domain"]] = (
+            LARGE_SITE_TIMEOUT if s["site_domain"] in KNOWN_LARGE_DOMAINS
+            else SMALL_SITE_TIMEOUT
+        )
 
-        with ThreadPoolExecutor(max_workers=len(batch)) as executor:
-            futures = {
-                executor.submit(
-                    _scrape_single_site,
-                    site["site_slug"],
-                    site["site_url"],
-                    site["site_domain"],
-                ): site
-                for site in batch
-            }
+    global_timeout = max(site_timeouts.values()) + 120
 
-            try:
-                for future in as_completed(futures, timeout=1200):
-                    site = futures[future]
-                    try:
-                        result = future.result(timeout=30)
-                        _save_site_data(supabase_url, supabase_key, site, result)
-                        if result["success"]:
-                            total_success += 1
-                        else:
-                            total_failed += 1
-                            failed_sites.append(site)
-                    except Exception as e:
-                        _log(f"   ❌ {site['site_domain']}: exception — {e}")
-                        _save_site_data(supabase_url, supabase_key, site, {
-                            "success": False, "error": str(e)
-                        })
-                        total_failed += 1
-                        failed_sites.append(site)
-            except TimeoutError:
-                for future, site in futures.items():
-                    if not future.done():
-                        _log(f"   ⏰ {site['site_domain']}: timeout (>20 min) — annulé")
-                        future.cancel()
-                        _save_site_data(supabase_url, supabase_key, site, {
-                            "success": False, "error": "Timeout: scraping exceeded 20 minutes"
-                        })
-                        total_failed += 1
-                        failed_sites.append(site)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(
+                _scrape_single_site,
+                site["site_slug"],
+                site["site_url"],
+                site["site_domain"],
+            ): site
+            for site in sites
+        }
 
-        if i < len(batches) - 1 and not shutdown:
-            wait = spacing_seconds
-            _log(f"   💤 Pause de {wait / 60:.1f} min...")
-            sleep_start = time.time()
-            while time.time() - sleep_start < wait:
+        try:
+            for future in as_completed(futures, timeout=global_timeout):
                 if shutdown:
                     break
-                time.sleep(min(5, wait - (time.time() - sleep_start)))
+                site = futures[future]
+                domain = site["site_domain"]
+                per_site_to = min(30, site_timeouts.get(domain, SMALL_SITE_TIMEOUT))
+                try:
+                    result = future.result(timeout=per_site_to)
+                    _save_site_data(supabase_url, supabase_key, site, result)
+                    if result["success"]:
+                        total_success += 1
+                    else:
+                        total_failed += 1
+                        failed_sites.append(site)
+                except Exception as e:
+                    _log(f"   ❌ {domain}: exception — {e}")
+                    _save_site_data(supabase_url, supabase_key, site, {
+                        "success": False, "error": str(e)
+                    })
+                    total_failed += 1
+                    failed_sites.append(site)
+        except TimeoutError:
+            for future, site in futures.items():
+                if not future.done():
+                    timeout_min = site_timeouts.get(site["site_domain"], SMALL_SITE_TIMEOUT) // 60
+                    _log(f"   ⏰ {site['site_domain']}: timeout global (>{timeout_min} min) — annulé")
+                    future.cancel()
+                    _save_site_data(supabase_url, supabase_key, site, {
+                        "success": False,
+                        "error": f"Timeout: scraping exceeded {timeout_min} minutes",
+                    })
+                    total_failed += 1
+                    failed_sites.append(site)
 
-    # ── 5. RETRY : 2 rounds pour les sites échoués ──
-    still_failed = list(failed_sites)
-    for retry_round in range(1, MAX_RETRY_ROUNDS + 1):
-        if not still_failed or shutdown:
-            break
-
-        _log(f"\n{'─'*50}")
-        _log(f"🔄 RETRY #{retry_round}: {len(still_failed)} site(s)")
-        _log(f"{'─'*50}")
-        time.sleep(5 * retry_round)
-
-        next_failed = []
-        for site in still_failed:
-            if shutdown:
+    if shutdown:
+        _log("⚠️  Arrêt demandé — retry ignoré")
+    else:
+        still_failed = list(failed_sites)
+        for retry_round in range(1, MAX_RETRY_ROUNDS + 1):
+            if not still_failed:
                 break
-            result = _scrape_single_site(site["site_slug"], site["site_url"], site["site_domain"])
-            _save_site_data(supabase_url, supabase_key, site, result)
-            if result["success"]:
-                total_success += 1
-                total_failed -= 1
-            else:
-                next_failed.append(site)
 
-        recovered = len(still_failed) - len(next_failed)
-        _log(f"   🔄 Retry #{retry_round}: {recovered}/{len(still_failed)} récupéré(s)")
-        still_failed = next_failed
+            _log(f"\n{'─'*50}")
+            _log(f"🔄 RETRY #{retry_round}: {len(still_failed)} site(s) en parallèle")
+            _log(f"{'─'*50}")
+            time.sleep(5 * retry_round)
+
+            next_failed = []
+            retry_workers = min(MAX_CONCURRENT_SITES, len(still_failed))
+
+            with ThreadPoolExecutor(max_workers=retry_workers) as executor:
+                retry_futures = {
+                    executor.submit(
+                        _scrape_single_site,
+                        site["site_slug"],
+                        site["site_url"],
+                        site["site_domain"],
+                    ): site
+                    for site in still_failed
+                }
+
+                try:
+                    for future in as_completed(retry_futures, timeout=LARGE_SITE_TIMEOUT):
+                        site = retry_futures[future]
+                        try:
+                            result = future.result(timeout=30)
+                            _save_site_data(supabase_url, supabase_key, site, result)
+                            if result["success"]:
+                                total_success += 1
+                                total_failed -= 1
+                            else:
+                                next_failed.append(site)
+                        except Exception:
+                            next_failed.append(site)
+                except TimeoutError:
+                    for f, s in retry_futures.items():
+                        if not f.done():
+                            next_failed.append(s)
+
+            recovered = len(still_failed) - len(next_failed)
+            _log(f"   🔄 Retry #{retry_round}: {recovered}/{len(still_failed)} récupéré(s)")
+            still_failed = next_failed
+
+        failed_sites = still_failed
 
     elapsed_total = time.time() - cron_start
 
     print(f"\n{'='*70}")
     print(f"✅ SCRAPER CRON TERMINÉ")
     print(f"   {total_success}/{len(sites)} OK, {total_failed} échoué(s)")
-    if still_failed:
+    if failed_sites:
         print(f"   ⚠️  Sites encore en erreur (ancien cache conservé): "
-              f"{', '.join(s['site_domain'] for s in still_failed)}")
+              f"{', '.join(s['site_domain'] for s in failed_sites)}")
         print(f"   → Sera re-tenté dans 30 min par le prochain cron")
     print(f"   Durée: {elapsed_total / 60:.1f} min")
     print(f"{'='*70}\n")
