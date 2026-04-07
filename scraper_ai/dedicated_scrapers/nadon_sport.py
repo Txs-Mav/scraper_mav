@@ -69,6 +69,9 @@ class NadonSportScraper(DedicatedScraper):
     MAX_PAGES = 50
     WORKERS = 20
     DETAIL_TIMEOUT = 10
+    LISTING_TIMEOUT = 12
+    LISTING_WORKERS = 6
+    DISCOVERY_TIMEOUT = 300
 
     _TYPE_MAP = {
         'moto': 'Motocyclette',
@@ -175,36 +178,75 @@ class NadonSportScraper(DedicatedScraper):
         Retourne {catégorie: [(url, etat, source_cat, listing_data), ...]}
         où listing_data est un dict {name, prix, image, marque} ou None.
         """
+        from threading import Lock
+
         want_neuf = any(c in ('inventaire', 'neuf') for c in categories)
         want_occasion = any(c in ('occasion', 'usage') for c in categories)
 
         url_map: Dict[str, List[tuple]] = {}
         global_seen: set = set()
+        seen_lock = Lock()
 
+        tasks: List[tuple] = []
         if want_neuf:
-            neuf_entries: List[tuple] = []
             for listing_url in self._NEUF_SUBCATEGORIES:
-                new_entries = self._paginate_listing(
-                    listing_url, 'neuf', 'inventaire', global_seen
-                )
-                neuf_entries.extend(new_entries)
-            if neuf_entries:
-                url_map['inventaire'] = neuf_entries
-
+                tasks.append((listing_url, 'neuf', 'inventaire'))
         if want_occasion:
-            occasion_entries: List[tuple] = []
             for listing_url in self._OCCASION_URLS:
-                new_entries = self._paginate_listing(
-                    listing_url, 'occasion', 'vehicules_occasion', global_seen
-                )
-                occasion_entries.extend(new_entries)
-            if occasion_entries:
-                url_map['occasion'] = occasion_entries
+                tasks.append((listing_url, 'occasion', 'vehicules_occasion'))
+
+        if not tasks:
+            return url_map
+
+        total_tasks = len(tasks)
+        workers = min(self.LISTING_WORKERS, total_tasks)
+        print(f"\n   🔍 Découverte: {total_tasks} sous-catégories ({workers} workers, "
+              f"timeout global {self.DISCOVERY_TIMEOUT}s)...")
+
+        discovery_start = time.time()
+        results: List[tuple] = []
+
+        def _paginate_task(args):
+            listing_url, etat, source_cat = args
+            entries = self._paginate_listing(listing_url, etat, source_cat, global_seen, seen_lock)
+            label = listing_url.split('/fr/')[-1] if '/fr/' in listing_url else listing_url
+            elapsed = time.time() - discovery_start
+            print(f"      ✅ {label}: {len(entries)} produits ({elapsed:.0f}s)")
+            return (etat, source_cat, entries)
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_paginate_task, t): t for t in tasks}
+            try:
+                for future in as_completed(futures, timeout=self.DISCOVERY_TIMEOUT):
+                    try:
+                        result = future.result(timeout=30)
+                        results.append(result)
+                    except Exception as e:
+                        url = futures[future][0]
+                        label = url.split('/fr/')[-1] if '/fr/' in url else url
+                        print(f"      ⚠️ {label}: erreur — {e}")
+            except TimeoutError:
+                pending = sum(1 for f in futures if not f.done())
+                print(f"      ⏰ Timeout découverte: {pending}/{total_tasks} sous-catégorie(s) abandonnée(s)")
+                for f in futures:
+                    f.cancel()
+
+        for etat, source_cat, entries in results:
+            cat_key = 'inventaire' if etat == 'neuf' else 'occasion'
+            url_map.setdefault(cat_key, []).extend(entries)
+
+        elapsed = time.time() - discovery_start
+        total_urls = sum(len(v) for v in url_map.values())
+        print(f"   📋 Découverte terminée: {total_urls} URLs en {elapsed:.0f}s")
 
         return url_map
 
     def _paginate_listing(self, base_url: str, etat: str, source_cat: str,
-                          global_seen: set) -> List[tuple]:
+                          global_seen: set, seen_lock=None) -> List[tuple]:
+        from threading import Lock
+        if seen_lock is None:
+            seen_lock = Lock()
+
         entries: List[tuple] = []
         page_seen: set = set()
 
@@ -214,14 +256,23 @@ class NadonSportScraper(DedicatedScraper):
             brand = brand_match.group(1).replace('-', ' ').title()
             brand = self._BRAND_FIXES.get(brand, brand)
 
+        consecutive_failures = 0
+
         for page in range(1, self.MAX_PAGES + 1):
             url = f'{base_url}?product_list_limit={self.PER_PAGE}&p={page}'
             try:
-                resp = self.session.get(url, timeout=15, allow_redirects=True)
+                resp = self.session.get(url, timeout=self.LISTING_TIMEOUT, allow_redirects=True)
                 if resp.status_code != 200:
-                    break
+                    consecutive_failures += 1
+                    if consecutive_failures >= 2:
+                        break
+                    continue
+                consecutive_failures = 0
             except Exception:
-                break
+                consecutive_failures += 1
+                if consecutive_failures >= 2:
+                    break
+                continue
 
             html = resp.text
 
@@ -229,9 +280,12 @@ class NadonSportScraper(DedicatedScraper):
                 r'href="(https://www\.nadonsport\.com/fr/[^"?#]*-cs-(?:na-web-)?\d+[a-z]*)"',
                 html
             ))
-            new_urls = product_urls - page_seen - global_seen
-            if not new_urls:
-                break
+
+            with seen_lock:
+                new_urls = product_urls - page_seen - global_seen
+                if not new_urls:
+                    break
+                global_seen.update(new_urls)
 
             listing_data = self._extract_listing_data(html, brand)
 
@@ -239,7 +293,6 @@ class NadonSportScraper(DedicatedScraper):
                 ld = listing_data.get(u)
                 entries.append((u, etat, source_cat, ld))
             page_seen.update(new_urls)
-            global_seen.update(new_urls)
 
             items_match = re.search(r'Items\s+\d+-(\d+)\s+of\s+(\d+)', html)
             if items_match:

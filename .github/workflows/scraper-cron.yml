@@ -1,9 +1,8 @@
-name: Scraping automatique (double couverture)
+name: Scraping automatique (toutes les heures)
 
 on:
   schedule:
-    # Toutes les 30 min — le script ne scrape que les sites stale (>50 min)
-    - cron: '0,30 * * * *'
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 concurrency:

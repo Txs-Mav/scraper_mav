@@ -537,7 +537,19 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
     else if (activeTab.startsWith("site-")) filtered = productsBySite.grouped[activeTab.replace("site-", "")] || []
     else filtered = [...products]
 
-    if (searchQuery) { const q = searchQuery.toLowerCase(); filtered = filtered.filter(p => p.name?.toLowerCase().includes(q) || getEffectiveMarque(p).toLowerCase().includes(q) || p.modele?.toLowerCase().includes(q)) }
+    if (searchQuery) {
+      const tokens = searchQuery.toLowerCase().split(/\s+/).filter(Boolean)
+      filtered = filtered.filter(p => {
+        const name = (p.name || "").toLowerCase()
+        const marque = getEffectiveMarque(p).toLowerCase()
+        const modele = (p.modele || "").toLowerCase()
+        const annee = p.annee ? String(p.annee) : ""
+        const site = (p.sourceSite || "").toLowerCase()
+        return tokens.every(tok =>
+          name.includes(tok) || marque.includes(tok) || modele.includes(tok) || annee === tok || site.includes(tok)
+        )
+      })
+    }
     if (selectedSite !== "all") filtered = filtered.filter(p => extractDomain(p.sourceSite || "") === selectedSite)
     if (selectedMarque !== "all") filtered = filtered.filter(p => getEffectiveMarque(p) === selectedMarque)
     if (selectedCategory !== "all") filtered = filtered.filter(p => inferVehicleType(p) === selectedCategory)
@@ -664,45 +676,54 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
 
       <LimitWarning type="scrapings" current={scrapingLimit.current} limit={scrapingLimit.limit} plan={user?.subscription_plan || null} isAuthenticated={!!user} />
 
-      {/* spacer */}
-      <div className="h-1" />
+      {/* ── Header unifié : KPI + Surveillance ── */}
+      <div data-onboarding="scrape" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] overflow-hidden">
 
-      {/* ── KPI ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {/* Hero — Produits */}
-        <div className="col-span-2 md:col-span-1 relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-indigo-600 dark:from-blue-600 dark:to-indigo-700 shadow-lg shadow-blue-600/10 dark:shadow-blue-900/20">
-          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
-          <div className="relative flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-200/70 mb-1.5">{t("dash.products")}</p>
-              <p className="text-4xl font-black text-white tabular-nums leading-none tracking-tight">{displayResultCount}</p>
+        {/* KPI row */}
+        <div className="grid grid-cols-4 divide-x divide-gray-200/50 dark:divide-white/[0.06]">
+          {/* Produits — hero */}
+          <div className="relative p-5 bg-gradient-to-br from-blue-600 to-indigo-600 dark:from-blue-600 dark:to-indigo-700 overflow-hidden">
+            <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-white/10" />
+            <div className="relative">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-200/70 mb-1">{t("dash.products")}</p>
+              <p className="text-3xl font-black text-white tabular-nums leading-none tracking-tight">{displayResultCount}</p>
             </div>
-            <div className="p-2.5 rounded-xl bg-white/15">
-              <Search className="h-5 w-5 text-white/80" />
+          </div>
+
+          {/* Référence */}
+          <div className="p-5 flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t("dash.reference")}</p>
             </div>
+            <p className={`font-extrabold text-gray-800 dark:text-gray-100 leading-tight ${(configuredReferenceSite || referenceSite || "").length > 16 ? 'text-sm' : 'text-lg'}`}>
+              {configuredReferenceSite || referenceSite || "—"}
+            </p>
+          </div>
+
+          {/* Concurrents */}
+          <div className="p-5 flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
+              <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t("dash.competitors")}</p>
+            </div>
+            <p className="text-3xl font-extrabold text-gray-800 dark:text-gray-100 tabular-nums leading-none tracking-tight">
+              {Object.keys(productsBySite.otherSites).length}
+            </p>
+          </div>
+
+          {/* Comparés */}
+          <div className="p-5 flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t("dash.compared")}</p>
+            </div>
+            <p className="text-3xl font-extrabold text-gray-800 dark:text-gray-100 tabular-nums leading-none tracking-tight">
+              {comparedUniqueCount}
+            </p>
           </div>
         </div>
 
-        {/* Secondary KPIs — muted, lighter */}
-        {[
-          { label: t("dash.reference"), value: configuredReferenceSite || referenceSite || "—", icon: Star, accent: "text-amber-500 dark:text-amber-400", dot: "bg-amber-400" },
-          { label: t("dash.competitors"), value: Object.keys(productsBySite.otherSites).length, icon: Globe, accent: "text-purple-500 dark:text-purple-400", dot: "bg-purple-400" },
-          { label: t("dash.compared"), value: comparedUniqueCount, icon: ArrowRightLeft, accent: "text-emerald-500 dark:text-emerald-400", dot: "bg-emerald-400" },
-        ].map((s, i) => {
-          const Icon = s.icon
-          return (
-            <div key={i} className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">{s.label}</p>
-                </div>
-                <Icon className={`h-3.5 w-3.5 ${s.accent} opacity-50`} />
-              </div>
-              <p className={`font-extrabold text-gray-800 dark:text-gray-100 leading-none ${typeof s.value === 'string' && s.value.length > 12 ? 'text-sm font-bold' : 'text-3xl tabular-nums tracking-tight'}`}>{s.value}</p>
-            </div>
-          )
-        })}
       </div>
 
       {/* Notification */}
@@ -717,72 +738,9 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       )}
 
-      {/* ── Surveillance du marché ── */}
-      <div data-onboarding="scrape" className="relative rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/20">
-              <Radar className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">{t("dash.marketMonitoring")}</h2>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                {t("dash.monitoringDesc").replace("{0}", String(competitorEntries.length))}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button data-onboarding="config" type="button" onClick={() => setShowScraperConfig(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] transition">
-              <Settings2 className="h-3 w-3" />
-              {t("dash.configuration")}
-            </button>
-          </div>
-        </div>
-
-        {!isScrapingActive && (
-          <div className="space-y-4">
-            <button
-              type="button"
-              disabled={refreshingFromCron}
-              onClick={async () => {
-                setRefreshingFromCron(true)
-                try {
-                  const res = await fetch('/api/products/analyze', { method: 'POST' })
-                  const data = await res.json()
-                  if (data.success) {
-                    toast.success(t("dash.dataRefreshed"), { duration: 3000 })
-                    setTimeout(() => setRefreshKey(prev => prev + 1), 1000)
-                  } else {
-                    toast.warning(t("dash.noCachedData"), { duration: 5000 })
-                    setRefreshKey(prev => prev + 1)
-                  }
-                } catch {
-                  setRefreshKey(prev => prev + 1)
-                } finally {
-                  setTimeout(() => setRefreshingFromCron(false), 2000)
-                }
-              }}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.03] text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white transition-all disabled:opacity-50"
-            >
-              {refreshingFromCron ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
-              {t("dash.analyzeNow")}
-            </button>
-          </div>
-        )}
-        {isScrapingActive && (
-          <ScraperConfig
-            ref={inlineScraperRef}
-            onScrapeStart={() => setIsScrapingActive(true)}
-            onScrapeComplete={() => { setIsScrapingActive(false); handleScrapeComplete() }}
-            hideHeader showLaunchButton={false} logsOnlyMode={true}
-            onReferenceUrlChange={(_, domain) => setConfiguredReferenceSite(domain)}
-          />
-        )}
-      </div>
-
       {/* ── Empty state ── */}
       {products.length === 0 && !isScrapingActive && (
-        <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] p-10 text-center">
+        <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] p-10 text-center">
           <div className="max-w-md mx-auto">
             <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 flex items-center justify-center mb-5">
               <Radar className="h-7 w-7 text-emerald-500 dark:text-emerald-400" />
@@ -803,62 +761,120 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       )}
 
-      {/* ── Filtres — visuellement en retrait ── */}
-      <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white/40 dark:bg-white/[0.015] backdrop-blur-sm overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setShowFilters(!showFilters)}
-          className="w-full flex items-center justify-between px-5 py-3.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-        >
-          <span className="flex items-center gap-2.5">
-            <Search className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
-            <span className="text-base font-extrabold tracking-tight">{t("dash.filters")}</span>
-            {hasActiveFilters && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
-          </span>
-          <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} />
-        </button>
+      {/* ── Surveillance + Filtres — côte à côte ── */}
+      <div className="flex items-start gap-3">
+        {/* Surveillance du marché — compact */}
+        <div data-onboarding="scrape" className="shrink-0 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] px-4 py-3 flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{t("dash.marketMonitoring")}</span>
+          </div>
+          <div className="w-px h-4 bg-gray-200/60 dark:bg-white/[0.08]" />
+          <button data-onboarding="config" type="button" onClick={() => setShowScraperConfig(true)} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors">
+            <Settings2 className="h-3 w-3" />
+            {t("dash.configuration")}
+          </button>
+          <button
+            type="button"
+            disabled={refreshingFromCron}
+            onClick={async () => {
+              setRefreshingFromCron(true)
+              try {
+                const res = await fetch('/api/products/analyze', { method: 'POST' })
+                const data = await res.json()
+                if (data.success) {
+                  toast.success(t("dash.dataRefreshed"), { duration: 3000 })
+                  setTimeout(() => setRefreshKey(prev => prev + 1), 1000)
+                } else {
+                  toast.warning(t("dash.noCachedData"), { duration: 5000 })
+                  setRefreshKey(prev => prev + 1)
+                }
+              } catch {
+                setRefreshKey(prev => prev + 1)
+              } finally {
+                setTimeout(() => setRefreshingFromCron(false), 2000)
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50"
+          >
+            {refreshingFromCron ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+            {t("dash.analyzeNow")}
+          </button>
+        </div>
 
-        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${showFilters ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="px-5 pb-5 space-y-4 border-t border-gray-200/30 dark:border-white/[0.04] pt-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[
-                { label: t("dash.site"), value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: t("dash.allSites") },
-                { label: t("dash.brand"), value: selectedMarque, onChange: setSelectedMarque, options: uniqueMarques, all: t("dash.allBrands") },
-                { label: t("dash.state"), value: selectedEtat, onChange: setSelectedEtat, options: uniqueEtats, all: t("dash.allStates"), labelMap: { ...etatLabelsTr, ...sourceCategorieLabelsTr } as Record<string, string> },
-                { label: t("dash.category"), value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: t("dash.allCategories"), labelMap: vehicleTypeLabelsTr },
-                { label: t("dash.product"), value: selectedProduct, onChange: setSelectedProduct, options: uniqueProductsNames, all: t("dash.allProducts") },
-                { label: t("dash.competitiveness"), value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: t("dash.all"), labelMap: competitiviteLabelsTr },
-              ].map(f => (
-                <div key={f.label}>
-                  <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 mb-1.5">{f.label}</p>
-                  <select
-                    value={f.value}
-                    onChange={e => f.onChange(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition"
-                  >
-                    <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>
-                      {f.all}
-                    </option>
-                    {f.options.map(o => (
-                      <option key={o} value={o} style={{ backgroundColor: "#ffffff", color: "#111827" }}>
-                        {((f as any).labelMap as Record<string, string> | undefined)?.[o as string] || o}
+        {/* Filtres — prend le reste de l'espace */}
+        <div className="flex-1 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowFilters(!showFilters)}
+            className="w-full flex items-center justify-between px-5 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+          >
+            <span className="flex items-center gap-2.5">
+              <Search className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+              <span className="text-xs font-extrabold tracking-tight">{t("dash.filters")}</span>
+              {hasActiveFilters && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
+            </span>
+            <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${showFilters ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="px-5 pb-5 space-y-4 border-t border-gray-200/30 dark:border-white/[0.04] pt-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  { label: t("dash.site"), value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: t("dash.allSites") },
+                  { label: t("dash.brand"), value: selectedMarque, onChange: setSelectedMarque, options: uniqueMarques, all: t("dash.allBrands") },
+                  { label: t("dash.state"), value: selectedEtat, onChange: setSelectedEtat, options: uniqueEtats, all: t("dash.allStates"), labelMap: { ...etatLabelsTr, ...sourceCategorieLabelsTr } as Record<string, string> },
+                  { label: t("dash.category"), value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: t("dash.allCategories"), labelMap: vehicleTypeLabelsTr },
+                  { label: t("dash.product"), value: selectedProduct, onChange: setSelectedProduct, options: uniqueProductsNames, all: t("dash.allProducts") },
+                  { label: t("dash.competitiveness"), value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: t("dash.all"), labelMap: competitiviteLabelsTr },
+                ].map(f => (
+                  <div key={f.label}>
+                    <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 mb-1.5">{f.label}</p>
+                    <select
+                      value={f.value}
+                      onChange={e => f.onChange(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition"
+                    >
+                      <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>
+                        {f.all}
                       </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-
-            {hasActiveFilters && (
-              <div className="flex justify-end pt-3 border-t border-gray-200/30 dark:border-white/[0.04]">
-                <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">
-                  <RotateCcw className="h-3 w-3" /> Reset
-                </button>
+                      {f.options.map(o => (
+                        <option key={o} value={o} style={{ backgroundColor: "#ffffff", color: "#111827" }}>
+                          {((f as any).labelMap as Record<string, string> | undefined)?.[o as string] || o}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
               </div>
-            )}
+
+              {hasActiveFilters && (
+                <div className="flex justify-end pt-3 border-t border-gray-200/30 dark:border-white/[0.04]">
+                  <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">
+                    <RotateCcw className="h-3 w-3" /> Reset
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Inline scraping active */}
+      {isScrapingActive && (
+        <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] p-5">
+          <ScraperConfig
+            ref={inlineScraperRef}
+            onScrapeStart={() => setIsScrapingActive(true)}
+            onScrapeComplete={() => { setIsScrapingActive(false); handleScrapeComplete() }}
+            hideHeader showLaunchButton={false} logsOnlyMode={true}
+            onReferenceUrlChange={(_, domain) => setConfiguredReferenceSite(domain)}
+          />
+        </div>
+      )}
 
       {/* ── Produits — section principale, élévation max ── */}
       <div data-onboarding="analyze" className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
@@ -930,34 +946,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           </div>
         </div>
 
-        {/* Tab description */}
-        <div className="px-6 py-3 bg-gray-50/50 dark:bg-white/[0.015] border-b border-gray-100/50 dark:border-white/[0.03] flex items-center justify-between gap-4">
-          <p className="text-xs font-normal text-gray-400 dark:text-gray-500">
-            {activeTab === "reference" && t("dash.refProducts")}
-            {activeTab === "allCompetitors" && t("dash.allCompDesc")}
-            {activeTab.startsWith("site-") && `${t("dash.productsOf")} ${extractDomain(activeTab.replace("site-", ""))}`}
-          </p>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">{t("config.matchMode")}</span>
-            <select
-              value={matchMode}
-              onChange={(e) => setMatchMode(e.target.value as MatchMode)}
-              className="text-[11px] pl-2 pr-6 py-1 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-gray-300 dark:focus:ring-white/10"
-            >
-              <option value="exact">{t("config.matchMode.exact")}</option>
-              <option value="base">{t("config.matchMode.base")}</option>
-              <option value="no_year">{t("config.matchMode.no_year")}</option>
-              <option value="flexible">{t("config.matchMode.flexible")}</option>
-            </select>
-          </div>
-        </div>
-
         <PriceComparisonTable
           products={filteredProducts}
           competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))}
           ignoreColors={ignoreColors}
           stripColorsFromDisplay={!showColorsInNames || ignoreColors}
           matchMode={matchMode}
+          onMatchModeChange={(mode) => setMatchMode(mode as MatchMode)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onToggleColors={() => setShowColorsInNames(prev => !prev)}

@@ -35,6 +35,7 @@ type PriceComparisonTableProps = {
   ignoreColors?: boolean
   stripColorsFromDisplay?: boolean
   matchMode?: MatchMode
+  onMatchModeChange?: (mode: string) => void
   searchQuery?: string
   onSearchChange?: (query: string) => void
   onToggleColors?: () => void
@@ -225,7 +226,7 @@ function stripColorWords(text: string): string {
   return cleaned || text
 }
 
-export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, matchMode = 'exact', searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }: PriceComparisonTableProps) {
+export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, matchMode = 'exact', onMatchModeChange, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }: PriceComparisonTableProps) {
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
@@ -763,8 +764,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
   }
 
   return (
-    <div className="pt-4 pb-5">
-      <div className="flex items-center gap-1.5 mb-4 px-6">
+    <div className="pb-5">
+      <div className="flex items-center gap-1.5 px-6 py-3 border-b border-gray-100/50 dark:border-white/[0.03]">
         <div className="flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-[#1F1F23] bg-gray-50/50 dark:bg-white/[0.02] p-1">
           <button
             type="button"
@@ -831,7 +832,13 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         )}
         <button
           type="button"
-          onClick={() => setGroupByFamily(prev => !prev)}
+          onClick={() => {
+            setGroupByFamily(prev => {
+              const next = !prev
+              if (!next && onMatchModeChange) onMatchModeChange('exact')
+              return next
+            })
+          }}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition shrink-0 ${groupByFamily
               ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04]'
@@ -840,6 +847,18 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
           {groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}
         </button>
+        {groupByFamily && onMatchModeChange && (
+          <select
+            value={matchMode}
+            onChange={(e) => onMatchModeChange(e.target.value)}
+            className="text-[11px] pl-2 pr-6 py-1.5 rounded-lg border border-gray-200/70 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:focus:ring-white/10 shrink-0"
+          >
+            <option value="exact">{t("config.matchMode.exact")}</option>
+            <option value="base">{t("config.matchMode.base")}</option>
+            <option value="no_year">{t("config.matchMode.no_year")}</option>
+            <option value="flexible">{t("config.matchMode.flexible")}</option>
+          </select>
+        )}
       </div>
 
       <div id="price-comparison-table">

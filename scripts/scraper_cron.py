@@ -1,11 +1,10 @@
 """
-Scraping automatique — exécuté par GitHub Actions toutes les 30 min.
+Scraping automatique — exécuté par GitHub Actions toutes les heures.
 
-Stratégie "double couverture" pour ~100% de fiabilité :
-  - Le cron tourne toutes les 30 min
-  - Mais ne scrape QUE les sites dont les données sont vieilles de >50 min
-  - Si un site échoue à :00, il sera re-tenté à :30 (2 chances par heure)
-  - TOUS les sites scrapés en parallèle (8 workers max, pas de batches séquentiels)
+Stratégie :
+  - Le cron tourne toutes les heures
+  - Ne scrape QUE les sites dont les données sont vieilles de >55 min
+  - TOUS les sites scrapés en parallèle (8 workers max)
   - Durée totale ≈ durée du site le plus lent (~16 min) au lieu de la somme
   - 2 rounds de retry en parallèle après le scraping principal
 
@@ -38,7 +37,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
-STALE_THRESHOLD_MINUTES = 50
+STALE_THRESHOLD_MINUTES = 55
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45
 
@@ -352,7 +351,7 @@ def main():
 
     print(f"\n{'='*70}")
     print(f"🔄 SCRAPER CRON — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"   Double couverture : toutes les 30 min, scrape si stale >{STALE_THRESHOLD_MINUTES} min")
+    print(f"   Intervalle : toutes les heures, scrape si stale >{STALE_THRESHOLD_MINUTES} min")
     print(f"   Tous les sites en parallèle ({MAX_CONCURRENT_SITES} workers max)")
     print(f"{'='*70}")
 
@@ -572,7 +571,7 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
     if failed_sites:
         print(f"   ⚠️  Sites encore en erreur (ancien cache conservé): "
               f"{', '.join(s['site_domain'] for s in failed_sites)}")
-        print(f"   → Sera re-tenté dans 30 min par le prochain cron")
+        print(f"   → Sera re-tenté dans 1h par le prochain cron")
     print(f"   Durée: {elapsed_total / 60:.1f} min")
     print(f"{'='*70}\n")
 
