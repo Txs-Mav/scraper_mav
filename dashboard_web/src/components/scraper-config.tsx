@@ -179,19 +179,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   }, [referenceUrl]) // Pas besoin de onReferenceUrlChange dans les deps car on veut juste réagir aux changements d'URL
 
   const getTimeEstimate = () => {
-    const activeUrls = urls.filter((url, idx) => competitorEnabled[idx] && url.trim() !== "")
-    const otherUrls = activeUrls.filter(url => url.trim() !== "" && url.trim() !== referenceUrl.trim())
-    const totalSites = referenceUrl.trim() ? 1 + otherUrls.length : otherUrls.length
-    const sitesWithScraper = totalSites - urlsWithoutScraper.length
-    const newSites = urlsWithoutScraper.length
-    // Sites avec cache: ~30-60s (re-extraction), Nouveaux: ~3-8 min (exploration + extraction)
-    const minSeconds = (sitesWithScraper * 30) + (newSites * 180)
-    const maxSeconds = (sitesWithScraper * 90) + (newSites * 480)
-    const avgSeconds = Math.round((minSeconds + maxSeconds) / 2)
-    if (avgSeconds < 60) return { text: `~${avgSeconds}s`, seconds: avgSeconds }
-    const minMin = Math.max(1, Math.ceil(minSeconds / 60))
-    const maxMin = Math.ceil(maxSeconds / 60)
-    return { text: `${minMin}-${maxMin} min`, seconds: avgSeconds }
+    return { text: '~5s', seconds: 5 }
   }
 
   useEffect(() => {
@@ -421,10 +409,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     setIsScraping(true)
     setElapsedTime(0)
     setLogContent([
-      `🚀 Démarrage du scraping...`,
+      `Chargement des données pré-scrapées...`,
       `📍 Site de référence: ${getDomain(currentRefUrl)}`,
       `📊 ${allUrls.length} site(s) à analyser (${otherUrls.length} concurrent${otherUrls.length > 1 ? 's' : ''})`,
-      ...otherUrls.map((u, i) => `   ${i + 1}. ${getDomain(u)}`)
     ])
     setCurrentLogFile(null)
     setScrapeStatus(null)
@@ -433,34 +420,37 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     logActivity("scrape_start", { metadata: { sites: allUrls.length, competitors: otherUrls.length, reference: getDomain(currentRefUrl) } })
 
     try {
-      // Sauvegarder la config AVANT le scrape avec les valeurs locales résolues
-      // (le state React n'est peut-être pas encore à jour si la config a été chargée via fallback)
       await saveConfig({ referenceUrl: currentRefUrl, urls: otherUrls, skipAutoScrape: true })
 
-      const response = await fetch("/api/scraper/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ referenceUrl: currentRefUrl, urls: allUrls, forceRefresh, ignoreColors, inventoryOnly, matchMode, useAI: true }),
-      })
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || errorData.error || "Erreur lors du scraping")
-      }
+      setScrapingSteps(prev => prev.map((s, i) =>
+        i <= 1 ? { ...s, status: i === 0 ? 'completed' : 'active' } : s
+      ))
+      setLogContent(prev => [...prev, `Comparaison en cours...`])
+
+      const response = await fetch("/api/products/analyze", { method: "POST" })
       const data = await response.json()
-      if (data.logFile) {
-        setCurrentLogFile(data.logFile)
-        saveScrapingSession({ logFile: data.logFile, startTime: Date.now(), referenceUrl: currentRefUrl })
-        setLogContent(prev => [...prev, `✅ Scraping lancé avec succès (${allUrls.length} sites)`, `📄 Fichier de logs: ${data.logFile.split('/').pop()}`])
+
+      if (data.success) {
+        setScrapingSteps(SCRAPING_STEPS.map(s => ({ ...s, status: 'completed' })))
+        setLogContent(prev => [
+          ...prev,
+          ...(data.logs || []),
+          `✅ Comparaison terminée`,
+        ])
+        setScrapeStatus('success')
+        logActivity("scrape_complete", { metadata: { success: true, elapsed_seconds: elapsedTime, source: 'cache' } })
+        onScrapeComplete?.()
       } else {
-        setLogContent(prev => [...prev, `⚠️ Pas de fichier de logs retourné`])
+        throw new Error(data.message || data.error || "Aucune donnée disponible")
       }
     } catch (error: any) {
-      console.error('Erreur scraping:', error)
+      console.error('Erreur analyse:', error)
       setLogContent(prev => [...prev, `❌ Erreur: ${error.message}`])
       setScrapeStatus('error')
+      setScrapingSteps(prev => prev.map(s => s.status === 'active' ? { ...s, status: 'error' } : s))
+    } finally {
       setIsScraping(false)
       clearScrapingSession()
-      setScrapingSteps(prev => prev.map(s => s.status === 'active' ? { ...s, status: 'error' } : s))
     }
   }
 
