@@ -440,6 +440,7 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
     total_success = 0
     total_failed = 0
     failed_sites: list[dict] = []
+    timed_out_domains: set = set()
     cron_start = time.time()
 
     _log(f"{'─'*50}")
@@ -500,11 +501,18 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
                     })
                     total_failed += 1
                     failed_sites.append(site)
+                    timed_out_domains.add(site["site_domain"])
 
     if shutdown:
         _log("⚠️  Arrêt demandé — retry ignoré")
     else:
-        still_failed = list(failed_sites)
+        retryable = [s for s in failed_sites if s["site_domain"] not in timed_out_domains]
+        skipped = [s for s in failed_sites if s["site_domain"] in timed_out_domains]
+        if skipped:
+            _log(f"\n   ⏭️  {len(skipped)} site(s) timeout — pas de retry immédiat "
+                 f"({', '.join(s['site_domain'] for s in skipped)})")
+
+        still_failed = list(retryable)
         for retry_round in range(1, MAX_RETRY_ROUNDS + 1):
             if not still_failed:
                 break
@@ -550,6 +558,7 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
             _log(f"   🔄 Retry #{retry_round}: {recovered}/{len(still_failed)} récupéré(s)")
             still_failed = next_failed
 
+        still_failed.extend(skipped)
         if still_failed:
             _hide_failing_sites(supabase_url, supabase_key, still_failed)
 

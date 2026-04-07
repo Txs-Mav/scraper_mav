@@ -20,6 +20,7 @@ import re
 import json
 import math
 import time
+import random
 import threading
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin
@@ -67,9 +68,10 @@ class MotoDucharmeScraper(DedicatedScraper):
     }
 
     PRODUCTS_PER_PAGE = 36
-    WORKERS = 8
+    WORKERS = 6
     LISTING_MAX_RETRIES = 3
     LISTING_RETRY_DELAY = 4
+    TIME_BUDGET_SECONDS = 1050  # ~17.5 min — marge avant le timeout cron de 20 min
 
     SPEC_FIELD_MAP = {
         'cylindrée': 'cylindree',
@@ -127,14 +129,21 @@ class MotoDucharmeScraper(DedicatedScraper):
         super().__init__()
         self._request_lock = threading.Lock()
         self._last_request_time = 0.0
-        self._min_request_interval = 0.12
+        self._min_request_interval = 0.35
+        self._scrape_start_time = 0.0
+        self._shutdown = threading.Event()
 
     # ================================================================
     # PIPELINE PRINCIPAL (override)
     # ================================================================
 
+    def _time_remaining(self) -> float:
+        return max(0, self.TIME_BUDGET_SECONDS - (time.time() - self._scrape_start_time))
+
     def scrape(self, categories: List[str] = None, inventory_only: bool = False) -> Dict[str, Any]:
         start_time = time.time()
+        self._scrape_start_time = start_time
+        self._shutdown.clear()
 
         if categories is None:
             categories = ['inventaire', 'occasion']
@@ -144,6 +153,7 @@ class MotoDucharmeScraper(DedicatedScraper):
         print(f"{'='*70}")
         print(f"🌐 Site: {self.SITE_URL}")
         print(f"📦 Catégories: {categories}")
+        print(f"⏱️  Budget temps: {self.TIME_BUDGET_SECONDS}s ({self.TIME_BUDGET_SECONDS/60:.1f} min)")
 
         product_urls = self._discover_all_product_urls(categories)
 
@@ -152,6 +162,39 @@ class MotoDucharmeScraper(DedicatedScraper):
             return self._empty_result(elapsed)
 
         products = self._extract_from_detail_pages(product_urls)
+
+        extracted_urls = {p.get('sourceUrl', '').rstrip('/').lower() for p in products}
+        listing_fallback = 0
+        for entry in product_urls:
+            url_norm = entry['url'].rstrip('/').lower()
+            if url_norm not in extracted_urls and entry.get('name'):
+                fb = {
+                    'sourceUrl': entry['url'],
+                    'sourceSite': self.SITE_URL,
+                    'name': entry['name'],
+                    'etat': entry.get('etat', 'neuf'),
+                    'sourceCategorie': entry.get('sourceCategorie', 'inventaire'),
+                    'quantity': 1,
+                    'groupedUrls': [entry['url']],
+                }
+                if entry.get('prix'):
+                    fb['prix'] = entry['prix']
+                if entry.get('image'):
+                    fb['image'] = entry['image']
+                year = self.clean_year(entry['name'])
+                if year:
+                    fb['annee'] = year
+                brand = self._guess_brand(entry['name'], entry['url'])
+                if brand:
+                    fb['marque'] = brand
+                vtype = self._extract_type_from_url(entry['url'])
+                if vtype:
+                    fb['vehicule_type'] = vtype
+                products.append(fb)
+                listing_fallback += 1
+
+        if listing_fallback > 0:
+            print(f"\n   📋 Fallback listing: {listing_fallback} produits récupérés sans page détail")
 
         if inventory_only:
             products = [p for p in products if p.get('sourceCategorie') != 'catalogue']
@@ -255,8 +298,11 @@ class MotoDucharmeScraper(DedicatedScraper):
         all_entries.extend(entries_p1)
 
         for page in range(2, total_pages + 1):
+            if self._time_remaining() < 120:
+                print(f"      ⏱️  Budget temps bas — arrêt pagination à page {page}/{total_pages}")
+                break
             page_url = f"{listing_url}?p={page}"
-            time.sleep(0.4)
+            time.sleep(0.25)
             try:
                 resp_p = self._fetch_with_retry(page_url)
                 if not resp_p:
@@ -387,14 +433,18 @@ class MotoDucharmeScraper(DedicatedScraper):
     # ================================================================
 
     def _extract_from_detail_pages(self, url_entries: List[Dict]) -> List[Dict]:
-        """Fetch et parse toutes les pages détail en parallèle."""
+        """Fetch et parse toutes les pages détail en parallèle avec budget temps."""
         total = len(url_entries)
         workers = min(self.WORKERS, total)
         products: List[Dict] = []
         errors = 0
+        consecutive_errors = 0
         start = time.time()
 
-        print(f"\n   🔍 Extraction: {total} pages détail ({workers} workers)...")
+        remaining = self._time_remaining()
+        detail_budget = max(120, remaining - 30)
+        print(f"\n   🔍 Extraction: {total} pages détail ({workers} workers, "
+              f"budget {detail_budget:.0f}s)")
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
@@ -404,36 +454,60 @@ class MotoDucharmeScraper(DedicatedScraper):
 
             processed = 0
             try:
-                for future in as_completed(futures, timeout=max(600, total * 3)):
+                for future in as_completed(futures, timeout=detail_budget):
                     processed += 1
                     try:
-                        product = future.result(timeout=20)
+                        product = future.result(timeout=15)
                         if product:
                             products.append(product)
+                            consecutive_errors = 0
                         else:
                             errors += 1
+                            consecutive_errors += 1
                     except Exception:
                         errors += 1
+                        consecutive_errors += 1
 
-                    if processed % 50 == 0 or processed == total:
+                    if consecutive_errors >= 30:
+                        pending = total - processed
+                        error_pct = errors / processed * 100
+                        print(f"      ⚠️ Trop d'erreurs consécutives ({consecutive_errors}) — "
+                              f"{error_pct:.0f}% erreurs, {pending} URL(s) abandonnées")
+                        self._shutdown.set()
+                        for f in futures:
+                            f.cancel()
+                        break
+
+                    if processed % 100 == 0 or processed == total:
                         elapsed = time.time() - start
                         rate = processed / elapsed if elapsed > 0 else 0
                         print(f"      📊 [{processed}/{total}] {len(products)} ok, "
                               f"{errors} erreurs — {rate:.1f}/s")
+
+                    if self._time_remaining() < 20:
+                        pending = total - processed
+                        print(f"      ⏱️  Budget temps épuisé — {pending} URL(s) restantes ignorées")
+                        self._shutdown.set()
+                        for f in futures:
+                            f.cancel()
+                        break
             except TimeoutError:
                 pending = total - processed
-                print(f"      ⚠️ Timeout — {pending} URL(s) abandonnée(s)")
+                print(f"      ⚠️ Timeout extraction — {pending} URL(s) abandonnée(s)")
+                self._shutdown.set()
                 for f in futures:
                     f.cancel()
 
-        print(f"      ✅ {len(products)}/{total} produits extraits ({errors} erreurs)")
+        elapsed = time.time() - start
+        print(f"      ✅ {len(products)}/{total} produits extraits "
+              f"({errors} erreurs) en {elapsed:.1f}s")
         return products
 
     def _fetch_and_parse_detail(self, entry: Dict) -> Optional[Dict]:
         """Fetch une page détail et en extrait un produit complet."""
         url = entry['url']
         try:
-            resp = self._throttled_get(url, timeout=15, allow_redirects=True)
+            resp = self._throttled_get(url, timeout=10, allow_redirects=True)
             if resp.status_code != 200:
                 return None
 
@@ -759,11 +833,15 @@ class MotoDucharmeScraper(DedicatedScraper):
     # ================================================================
 
     def _throttled_get(self, url: str, **kwargs) -> requests.Response:
+        if self._shutdown.is_set() or self._time_remaining() < 5:
+            self._shutdown.set()
+            raise TimeoutError("Budget temps épuisé")
         with self._request_lock:
             now = time.monotonic()
+            interval = self._min_request_interval + random.uniform(0, 0.15)
             elapsed = now - self._last_request_time
-            if elapsed < self._min_request_interval:
-                time.sleep(self._min_request_interval - elapsed)
+            if elapsed < interval:
+                time.sleep(interval - elapsed)
             self._last_request_time = time.monotonic()
         return self.session.get(url, **kwargs)
 
