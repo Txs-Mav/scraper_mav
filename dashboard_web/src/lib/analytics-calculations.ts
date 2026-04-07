@@ -215,6 +215,12 @@ export function normalizeProductGroupKey(p: Product): string {
 
   modele = modele.replace(/^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+/i, '').trim()
   modele = modele.replace(/^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+/i, '').trim()
+  modele = modele.replace(/^(?:motomarine|watercraft|jet\s*ski|personal\s+watercraft|pwc)\s+/i, '').trim()
+  modele = modele.replace(/^(?:ponton|pontoon|bateau|boat|embarcation)\s+/i, '').trim()
+  modele = modele.replace(/^(?:moteur\s+hors[\s-]?bord|outboard|hors[\s-]?bord)\s+/i, '').trim()
+  modele = modele.replace(/^(?:sportive|routiere|routière|touring|adventure|aventure|cruiser|custom|standard|naked|enduro|supermoto|trail|dual[\s-]?sport|double[\s-]?usage|sport[\s-]?touring|grand[\s-]?touring|retro)\s+/i, '').trim()
+  modele = modele.replace(/^(?:3[\s-]?roues|three[\s-]?wheel|trike)\s+/i, '').trim()
+  modele = modele.replace(/^(?:velo[\s-]?electrique|e[\s-]?bike|ebike)\s+/i, '').trim()
 
   modele = removeColors(modele)
   marque = removeColors(marque)

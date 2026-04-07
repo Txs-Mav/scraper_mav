@@ -120,12 +120,12 @@ def _is_cron_running(supabase_url: str, supabase_key: str) -> bool:
         return False
 
 
-def _fetch_site_products(supabase_url: str, supabase_key: str, domain: str) -> tuple[List[dict], bool]:
-    """Lit les produits pré-scrapés. Retourne (products, is_stale).
+def _fetch_site_products(supabase_url: str, supabase_key: str, domain: str) -> tuple[List[dict], bool, int]:
+    """Lit les produits pré-scrapés. Retourne (products, is_stale, age_minutes).
     
-    Retourne ([], False) si rien n'existe.
-    Retourne (products, True) si les données existent mais sont vieilles de >2h.
-    Retourne (products, False) si les données sont fraîches.
+    Retourne ([], False, 0) si rien n'existe.
+    Retourne (products, True, age) si les données existent mais sont vieilles de >2h.
+    Retourne (products, False, age) si les données sont fraîches.
     """
     resp = requests.get(
         f"{supabase_url}/rest/v1/scraped_site_data",
@@ -137,27 +137,28 @@ def _fetch_site_products(supabase_url: str, supabase_key: str, domain: str) -> t
         timeout=15,
     )
     if resp.status_code != 200 or not resp.json():
-        return [], False
+        return [], False, 0
     row = resp.json()[0]
     if row.get("status") != "success":
-        return [], False
+        return [], False, 0
     products = row.get("products", [])
     if not products:
-        return [], False
+        return [], False, 0
 
-    # Vérifier la fraîcheur
     scraped_at = row.get("scraped_at", "")
     is_stale = False
+    age_min = 0
     if scraped_at:
         try:
             from datetime import datetime as dt, timezone as tz, timedelta
             scraped_dt = dt.fromisoformat(scraped_at.replace("Z", "+00:00"))
             age = dt.now(tz.utc) - scraped_dt
+            age_min = int(age.total_seconds() / 60)
             is_stale = age > timedelta(hours=STALE_THRESHOLD_HOURS)
         except Exception:
             pass
 
-    return products, is_stale
+    return products, is_stale, age_min
 
 
 def _fallback_scrape(domain: str, site_url: str, supabase_url: str, supabase_key: str) -> List[dict]:
@@ -311,7 +312,7 @@ def main():
     skipped_cron = 0
 
     for domain, url in all_domains.items():
-        products, is_stale = _fetch_site_products(supabase_url, supabase_key, domain)
+        products, is_stale, age_min = _fetch_site_products(supabase_url, supabase_key, domain)
 
         if products and not is_stale:
             for p in products:
@@ -319,7 +320,7 @@ def main():
                     p['sourceSite'] = url
             site_products[domain] = products
             cache_hits += 1
-            print(f"   ✅ {domain}: {len(products)} produits (cache frais)")
+            print(f"   ✅ {domain}: {len(products)} produits (cache {age_min} min)")
 
         elif products and is_stale:
             if cron_running:
@@ -329,9 +330,9 @@ def main():
                 site_products[domain] = products
                 cache_hits += 1
                 skipped_cron += 1
-                print(f"   🔒 {domain}: cache stale mais cron en cours — {len(products)} produits (ancien cache)")
+                print(f"   🔒 {domain}: cache stale ({age_min} min) mais cron en cours — {len(products)} produits")
             else:
-                print(f"   ⏳ {domain}: cache stale (>{STALE_THRESHOLD_HOURS}h) → tentative de refresh...")
+                print(f"   ⏳ {domain}: cache stale ({age_min} min, >{STALE_THRESHOLD_HOURS}h) → tentative de refresh...")
                 fresh_products = _fallback_scrape(domain, url, supabase_url, supabase_key)
                 if fresh_products:
                     for p in fresh_products:
@@ -346,7 +347,7 @@ def main():
                             p['sourceSite'] = url
                     site_products[domain] = products
                     cache_hits += 1
-                    print(f"   ⚠️  {domain}: refresh échoué, ancien cache utilisé ({len(products)} produits)")
+                    print(f"   ⚠️  {domain}: refresh échoué, ancien cache utilisé ({len(products)} produits, {age_min} min)")
 
         else:
             if cron_running:

@@ -49,14 +49,20 @@ class NadonSportScraper(DedicatedScraper):
         f'{_BASE}/vehicules-neufs/yamaha/vtt',
         f'{_BASE}/vehicules-neufs/yamaha/cotes-a-cotes',
         f'{_BASE}/vehicules-neufs/yamaha/produits-mecaniques',
+        f'{_BASE}/vehicules-neufs/yamaha/motomarines',
+        f'{_BASE}/vehicules-neufs/yamaha/bateaux',
+        f'{_BASE}/vehicules-neufs/yamaha/moteurs-hors-bord',
         f'{_BASE}/vehicules-neufs/kawasaki/motocyclettes',
         f'{_BASE}/vehicules-neufs/kawasaki/vtt',
         f'{_BASE}/vehicules-neufs/kawasaki/cotes-a-cotes',
+        f'{_BASE}/vehicules-neufs/kawasaki/motomarines',
         f'{_BASE}/vehicules-neufs/gasgas/motocyclettes',
         f'{_BASE}/vehicules-neufs/husqvarna/motocyclettes',
         f'{_BASE}/vehicules-neufs/polaris/vtt',
         f'{_BASE}/vehicules-neufs/polaris/cotes-a-cotes',
         f'{_BASE}/vehicules-neufs/polaris/motoneiges',
+        f'{_BASE}/vehicules-neufs/polaris/pontons',
+        f'{_BASE}/vehicules-neufs/polaris/bateaux',
     ]
 
     _OCCASION_URLS = [
@@ -79,6 +85,11 @@ class NadonSportScraper(DedicatedScraper):
         'vtt': 'VTT',
         'cac': 'Côte à côte',
         'motoneige': 'Motoneige',
+        'motomarine': 'Motomarine',
+        'jet-ski': 'Motomarine',
+        'bateau': 'Bateau',
+        'ponton': 'Ponton',
+        'hors-bord': 'Moteur hors-bord',
     }
 
     _BRAND_FIXES = {
@@ -672,6 +683,10 @@ class NadonSportScraper(DedicatedScraper):
                 '/motoneiges/': 'Motoneige',
                 '/produits-mecaniques/': 'Produit mécanique',
                 '/velos-electriques/': 'Vélo électrique',
+                '/motomarines/': 'Motomarine',
+                '/bateaux/': 'Bateau',
+                '/pontons/': 'Ponton',
+                '/moteurs-hors-bord/': 'Moteur hors-bord',
             }
             for path_frag, vtype in path_type_map.items():
                 if path_frag in path:

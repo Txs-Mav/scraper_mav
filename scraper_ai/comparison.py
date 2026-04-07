@@ -339,6 +339,12 @@ def normalize_product_key(product: dict, ignore_colors: bool = True) -> Tuple[st
     _CATEGORY_PREFIX_PATTERNS = [
         r'^(?:c[oô]te\s+[aà]\s+c[oô]te|cote\s+a\s+cote|side\s*by\s*side|sxs)\s+',
         r'^(?:vtt|atv|quad|motoneige|snowmobile|moto|scooter)\s+',
+        r'^(?:motomarine|watercraft|jet\s*ski|personal\s+watercraft|pwc)\s+',
+        r'^(?:ponton|pontoon|bateau|boat|embarcation)\s+',
+        r'^(?:moteur\s+hors[\s-]?bord|outboard|hors[\s-]?bord)\s+',
+        r'^(?:sportive|routiere|routière|touring|adventure|aventure|cruiser|custom|standard|naked|enduro|supermoto|trail|dual[\s-]?sport|double[\s-]?usage|sport[\s-]?touring|grand[\s-]?touring|retro)\s+',
+        r'^(?:3[\s-]?roues|three[\s-]?wheel|trike)\s+',
+        r'^(?:velo[\s-]?electrique|e[\s-]?bike|ebike)\s+',
     ]
     for pattern in _CATEGORY_PREFIX_PATTERNS:
         modele = re.sub(pattern, '', modele, flags=re.I).strip()

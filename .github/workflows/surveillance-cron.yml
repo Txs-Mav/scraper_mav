@@ -1,0 +1,40 @@
+name: Surveillance du marché
+
+on:
+  schedule:
+    - cron: '30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: surveillance-cron
+  cancel-in-progress: false
+
+jobs:
+  refresh-comparisons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scraper_ai/requirements.txt
+
+      - name: Installer les dépendances Python
+        run: |
+          pip install -r scraper_ai/requirements.txt
+          pip install requests
+
+      - name: Rafraîchir les comparaisons depuis le cache
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          AI_PROVIDER: genai
+        run: python scripts/surveillance_cron.py
