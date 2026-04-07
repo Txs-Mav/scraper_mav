@@ -849,29 +849,13 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-gray-200/30 dark:border-white/[0.04]">
-              <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 mr-1.5">{t("dash.sort")}</span>
-              {[
-                { value: "marque", label: t("dash.brand") }, { value: "site", label: t("dash.site") },
-                { value: "prix", label: t("dash.price") }, { value: "annee", label: t("dash.year") }, { value: "name", label: t("name") },
-              ].map(o => (
-                <button key={o.value} type="button"
-                  onClick={() => { if (sortBy === o.value) setSortOrder(sortOrder === "asc" ? "desc" : "asc"); else { setSortBy(o.value as typeof sortBy); setSortOrder("asc") } }}
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
-                    sortBy === o.value
-                      ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                      : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/[0.04]"
-                  }`}
-                >
-                  {o.label}{sortBy === o.value && <span className="text-[10px] opacity-70">{sortOrder === "asc" ? "↑" : "↓"}</span>}
-                </button>
-              ))}
-              {hasActiveFilters && (
-                <button type="button" onClick={resetFilters} className="ml-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">
+            {hasActiveFilters && (
+              <div className="flex justify-end pt-3 border-t border-gray-200/30 dark:border-white/[0.04]">
+                <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">
                   <RotateCcw className="h-3 w-3" /> Reset
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
