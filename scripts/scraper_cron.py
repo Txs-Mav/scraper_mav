@@ -290,10 +290,11 @@ def _run_user_comparisons(supabase, supabase_url: str, supabase_key: str):
             supabase.table("scraper_alerts")
             .select("user_id, reference_url, competitor_urls")
             .eq("is_active", True)
-            .not_("reference_url", "is", "null")
+            .neq("reference_url", "null")
             .execute()
         )
         alerts = result.data or []
+        alerts = [a for a in alerts if a.get("reference_url")]
     except Exception as e:
         _log(f"⚠️  Erreur lecture scraper_alerts: {e}")
         return

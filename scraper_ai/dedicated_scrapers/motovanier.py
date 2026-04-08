@@ -169,16 +169,28 @@ class MotoVanierScraper(DedicatedScraper):
         """Visite la page d'accueil pour obtenir les cookies PrestaShop."""
         if self._session_warmed:
             return
-        try:
-            self.session.headers['Referer'] = self.SITE_URL
-            resp = self.session.get(self.SITE_URL, timeout=15)
-            if resp.status_code == 200:
-                print(f"      🍪 Session réchauffée (cookies PrestaShop)")
-            else:
-                print(f"      ⚠️ Warm-up: HTTP {resp.status_code}")
-            time.sleep(0.5)
-        except Exception as e:
-            print(f"      ⚠️ Warm-up échoué: {e}")
+        self.session.headers.update({
+            'Referer': self.SITE_URL,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'DNT': '1',
+            'Sec-CH-UA': '"Chromium";v="131", "Not A(Brand";v="24"',
+            'Sec-CH-UA-Mobile': '?0',
+            'Sec-CH-UA-Platform': '"Windows"',
+        })
+        for attempt in range(3):
+            try:
+                resp = self.session.get(self.SITE_URL, timeout=15)
+                if resp.status_code == 200:
+                    print(f"      🍪 Session réchauffée (cookies PrestaShop)")
+                    time.sleep(1)
+                    self._session_warmed = True
+                    return
+                print(f"      ⚠️ Warm-up: HTTP {resp.status_code} (tentative {attempt+1}/3)")
+                time.sleep(3 * (attempt + 1))
+            except Exception as e:
+                print(f"      ⚠️ Warm-up échoué: {e}")
+                time.sleep(3)
         self._session_warmed = True
 
     def _fetch_listing_with_retry(self, url: str) -> Optional[requests.Response]:

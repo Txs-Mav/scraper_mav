@@ -68,7 +68,7 @@ class MotoDucharmeScraper(DedicatedScraper):
     }
 
     PRODUCTS_PER_PAGE = 36
-    WORKERS = 6
+    WORKERS = 3
     LISTING_MAX_RETRIES = 3
     LISTING_RETRY_DELAY = 4
     TIME_BUDGET_SECONDS = 1050  # ~17.5 min — marge avant le timeout cron de 20 min
@@ -129,7 +129,7 @@ class MotoDucharmeScraper(DedicatedScraper):
         super().__init__()
         self._request_lock = threading.Lock()
         self._last_request_time = 0.0
-        self._min_request_interval = 0.35
+        self._min_request_interval = 0.8
         self._scrape_start_time = 0.0
         self._shutdown = threading.Event()
 

@@ -133,12 +133,12 @@ function changeTypeLabel(type: string, t: (key: TranslationKey) => string): stri
 
 function changeTypeIcon(type: string) {
   switch (type) {
-    case 'price_increase': return <TrendingUp className="h-4 w-4 text-red-500" />
-    case 'price_decrease': return <TrendingDown className="h-4 w-4 text-green-500" />
-    case 'new_product': return <Package className="h-4 w-4 text-blue-500" />
-    case 'removed_product': return <PackageMinus className="h-4 w-4 text-orange-500" />
-    case 'stock_change': return <RefreshCw className="h-4 w-4 text-purple-500" />
-    default: return <Bell className="h-4 w-4 text-gray-500" />
+    case 'price_increase': return <TrendingUp className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+    case 'price_decrease': return <TrendingDown className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+    case 'new_product': return <Package className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+    case 'removed_product': return <PackageMinus className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+    case 'stock_change': return <RefreshCw className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+    default: return <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
   }
 }
 
@@ -505,37 +505,22 @@ export default function AlertePage() {
   return (
     <Layout>
       <div className="space-y-4">
-        {/* ── KPI Hero + Secondary ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="col-span-2 md:col-span-1 relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-emerald-600 to-teal-600 dark:from-emerald-600 dark:to-teal-700 shadow-lg shadow-emerald-600/10 dark:shadow-emerald-900/20">
-            <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-200/70 mb-1.5">{t("alerts.activeAlerts")}</p>
-                <p className="text-4xl font-black text-white tabular-nums leading-none tracking-tight">{activeAlerts}</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-white/15">
-                <Radar className="h-5 w-5 text-white/80" />
-              </div>
-            </div>
-          </div>
-
+        {/* ── KPI ── */}
+        <div className="grid grid-cols-4 gap-3">
           {[
-            { label: t("alerts.unread"), value: unreadCount, icon: Activity, accent: "text-amber-500 dark:text-amber-400", dot: "bg-amber-400" },
-            { label: t("alerts.upTrend"), value: priceIncreases, icon: TrendingUp, accent: "text-red-500 dark:text-red-400", dot: "bg-red-400", valueColor: "text-red-600 dark:text-red-400" },
-            { label: t("alerts.downTrend"), value: priceDecreases, icon: TrendingDown, accent: "text-green-500 dark:text-green-400", dot: "bg-green-400", valueColor: "text-green-600 dark:text-green-400" },
+            { label: t("alerts.activeAlerts"), value: activeAlerts, icon: Radar },
+            { label: t("alerts.unread"), value: unreadCount, icon: Activity },
+            { label: t("alerts.upTrend"), value: priceIncreases, icon: TrendingUp },
+            { label: t("alerts.downTrend"), value: priceDecreases, icon: TrendingDown },
           ].map((s, i) => {
             const Icon = s.icon
             return (
-              <div key={i} className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5 flex flex-col justify-between group hover:shadow-md hover:-translate-y-0.5 transition-all">
+              <div key={i} className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5 flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-                    <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">{s.label}</p>
-                  </div>
-                  <Icon className={`h-3.5 w-3.5 ${s.accent} opacity-50`} />
+                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">{s.label}</p>
+                  <Icon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 opacity-50" />
                 </div>
-                <p className={`text-3xl font-extrabold leading-none tabular-nums tracking-tight ${'valueColor' in s && s.valueColor ? s.valueColor : 'text-gray-800 dark:text-gray-100'}`}>{s.value}</p>
+                <p className="text-3xl font-extrabold leading-none tabular-nums tracking-tight text-gray-800 dark:text-gray-100">{s.value}</p>
               </div>
             )
           })}
@@ -612,12 +597,12 @@ export default function AlertePage() {
 
                         {/* Meta line: auto-monitoring, email, competitors count */}
                         <div className="flex flex-wrap items-center gap-2.5 mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-                          <span className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400">
+                          <span className="flex items-center gap-1">
                             <Radar className="h-3 w-3" />
                             {locale === 'fr' ? 'Auto' : 'Auto'}
                           </span>
                           {alert.email_notification ? (
-                            <span className="flex items-center gap-1 text-blue-500"><Mail className="h-3 w-3" /> Email</span>
+                            <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> Email</span>
                           ) : (
                             <span className="flex items-center gap-1"><MailX className="h-3 w-3" /> {t("alerts.noEmail")}</span>
                           )}
@@ -643,7 +628,7 @@ export default function AlertePage() {
                         {competitors.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                             {competitors.map((url, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                              <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.04] text-[10px] font-medium text-gray-500 dark:text-gray-400">
                                 <Globe className="h-2.5 w-2.5" />
                                 {getHostname(url)}
                               </span>
@@ -700,11 +685,10 @@ export default function AlertePage() {
         <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.04] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <Activity className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
               <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
                 {t("alerts.detectedChanges")}
                 {unreadCount > 0 && (
-                  <span className="ml-2 px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[11px] font-semibold tabular-nums">{unreadCount}</span>
+                  <span className="ml-2 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.05] text-gray-600 dark:text-gray-400 text-[11px] font-semibold tabular-nums">{unreadCount}</span>
                 )}
               </h2>
             </div>
@@ -754,12 +738,7 @@ export default function AlertePage() {
                               {changeTypeLabel(change.change_type, t)}
                             </span>
                             {isPriceChange && change.percentage_change !== null && (
-                              <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums ${
-                                isIncrease
-                                  ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                                  : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
-                              }`}>
-                                {isIncrease ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+                              <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums bg-gray-100 dark:bg-white/[0.05] text-gray-700 dark:text-gray-300">
                                 {isIncrease ? '+' : ''}{change.percentage_change}%
                                 {diff !== undefined && <span className="ml-0.5">({diff > 0 ? '+' : ''}{diff.toFixed(2)} $)</span>}
                               </span>
@@ -779,7 +758,7 @@ export default function AlertePage() {
 
                           <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400 dark:text-gray-500">
                             {displaySite && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium shrink-0">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.04] text-gray-500 dark:text-gray-400 font-medium shrink-0">
                                 <Globe className="h-2.5 w-2.5" />
                                 {displaySite}
                               </span>
@@ -788,7 +767,7 @@ export default function AlertePage() {
                               <span className="flex items-center gap-1.5 tabular-nums">
                                 <span className="line-through opacity-60">{change.old_value}</span>
                                 <span className="text-gray-300 dark:text-gray-600">&rarr;</span>
-                                <span className={`font-semibold ${isIncrease ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                                <span className="font-semibold text-gray-900 dark:text-white">
                                   {change.new_value}
                                 </span>
                               </span>
