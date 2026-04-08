@@ -85,20 +85,30 @@ def _set_cron_lock(supabase_url: str, supabase_key: str, status: str):
         "product_count": 0,
         "products": [],
     }
-    try:
-        resp = http_requests.post(
-            f"{supabase_url}/rest/v1/scraped_site_data",
-            json=row,
-            headers=headers,
-            params={"on_conflict": "site_domain"},
-            timeout=10,
-        )
-        if resp.status_code in (200, 201):
-            _log(f"🔒 Cron lock → {status}")
-        else:
+    for attempt in range(3):
+        try:
+            resp = http_requests.post(
+                f"{supabase_url}/rest/v1/scraped_site_data",
+                json=row,
+                headers=headers,
+                params={"on_conflict": "site_domain"},
+                timeout=15,
+            )
+            if resp.status_code in (200, 201):
+                _log(f"🔒 Cron lock → {status}")
+                return
+            if resp.status_code == 503 and attempt < 2:
+                _log(f"⚠️  Cron lock ({status}): PostgREST 503 — retry {attempt+1}/3")
+                time.sleep(10)
+                continue
             _log(f"⚠️  Cron lock ({status}): PostgREST {resp.status_code}")
-    except Exception as e:
-        _log(f"⚠️  Cron lock ({status}): {e}")
+            return
+        except Exception as e:
+            if attempt < 2:
+                _log(f"⚠️  Cron lock ({status}): {e} — retry {attempt+1}/3")
+                time.sleep(10)
+            else:
+                _log(f"⚠️  Cron lock ({status}): {e}")
 
 
 def _scrape_single_site(slug: str, site_url: str, site_domain: str) -> dict:
@@ -359,15 +369,25 @@ def main():
 
     should_compare = False
     try:
-        # ── 1. Lire tous les shared_scrapers actifs ──
-        result = (
-            supabase.table("shared_scrapers")
-            .select("id, site_name, site_slug, site_url, site_domain, scraper_module")
-            .eq("is_active", True)
-            .order("site_slug")
-            .execute()
-        )
-        all_sites = result.data or []
+        # ── 1. Lire tous les shared_scrapers actifs (avec retry si Supabase cold start) ──
+        all_sites = []
+        for attempt in range(3):
+            try:
+                result = (
+                    supabase.table("shared_scrapers")
+                    .select("id, site_name, site_slug, site_url, site_domain, scraper_module")
+                    .eq("is_active", True)
+                    .order("site_slug")
+                    .execute()
+                )
+                all_sites = result.data or []
+                break
+            except Exception as e:
+                if attempt < 2:
+                    _log(f"⚠️  Supabase pas prêt (tentative {attempt+1}/3): {e}")
+                    time.sleep(10 * (attempt + 1))
+                else:
+                    raise
 
         if not all_sites:
             print("✅ Aucun scraper universel actif trouvé")
