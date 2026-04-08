@@ -61,6 +61,29 @@ const CATEGORY_PREFIXES = [
   /^(?:3[\s-]?roues|three[\s-]?wheel|trike)\s+/i,
 ]
 
+const COLOR_WORDS = new Set([
+  'blanc', 'noir', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'rose', 'violet',
+  'gris', 'argent', 'or', 'bronze', 'beige', 'marron', 'brun', 'turquoise',
+  'kaki', 'sable', 'ivoire', 'creme',
+  'brillant', 'mat', 'metallise', 'metallique', 'perle', 'nacre', 'satin',
+  'chrome', 'carbone', 'fonce', 'clair', 'fluo', 'neon',
+  'ebene', 'graphite', 'anthracite', 'platine', 'titane', 'cuivre', 'acier',
+  'cobalt', 'corail', 'ardoise', 'bonbon', 'diablo', 'champagne',
+  'phantom', 'fantome', 'combat', 'lime', 'sauge', 'cristal', 'obsidian',
+  'etincelle', 'velocite',
+  'white', 'black', 'red', 'blue', 'green', 'yellow', 'pink', 'purple',
+  'gray', 'grey', 'silver', 'gold', 'brown',
+  'matte', 'glossy', 'metallic', 'pearl', 'carbon',
+  'dark', 'light', 'neon', 'bright',
+  'ivory', 'charcoal', 'titanium', 'copper', 'steel', 'platinum',
+  'racing', 'candy', 'midnight', 'cosmic', 'storm', 'crystal',
+])
+
+function removeColors(text: string): string {
+  if (!text) return ''
+  return text.split(' ').filter(w => !COLOR_WORDS.has(w)).join(' ').replace(/\s+/g, ' ').trim() || text
+}
+
 function buildMatchKey(product: any): string {
   let rawMarque = String(product.marque || '').replace(/^(?:manufacturier|fabricant|marque)\s*:\s*/i, '').trim()
   let rawModele = String(product.modele || '').replace(/^(?:modèle|modele|model)\s*:\s*/i, '').trim()
@@ -112,9 +135,18 @@ function buildMatchKey(product: any): string {
   }
 
   marque = BRAND_ALIASES[marque] || marque
+
+  // Dealer noise
+  modele = modele.replace(/\b(?:en\s+vente|disponible|neuf|usage|usagee?|occasion)\s+(?:a|chez|au)\b.*/i, '').trim()
+  modele = modele.replace(/\bd'?occasion\s+(?:a|chez|au)\b.*/i, '').trim()
+  modele = modele.replace(/\b(?:a)\s+vendre\s+(?:a|chez|au)\b.*/i, '').trim()
+  modele = modele.replace(/\b(?:concessionnaire|dealer|showroom|magasin|succursale)\b.*/i, '').trim()
+  modele = modele.replace(/\b\w+\s+(?:motosport|motorsport|powersports?)\s*$/i, '').trim()
+
   for (const rx of CATEGORY_PREFIXES) modele = modele.replace(rx, '').trim()
-  modele = modele.replace(/\b(?:neuf|new|usage|usagee?|occasion|used|demo|demonstrateur)\b/gi, '').trim()
+  modele = modele.replace(/\b(?:neuf|new|usage|usagee?|occasion|used|demo|demonstrateur|preowned|pre\s*owned|certifie|certified)\b/gi, '').trim()
   modele = modele.replace(/\bpre\s*commande\b/gi, '').replace(/\bpre\s*order\b/gi, '').trim()
+  modele = removeColors(modele)
   modele = modele.replace(/\s+/g, ' ').trim()
 
   return `${marque}|${modele}|${annee}`
