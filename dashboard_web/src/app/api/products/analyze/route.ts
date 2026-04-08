@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 import { deepNormalize, KNOWN_BRANDS } from '@/lib/analytics-calculations'
+
+export const maxDuration = 30
 
 /**
  * POST /api/products/analyze
  *
  * Comparaison rapide depuis les données pré-scrapées (scraped_site_data).
- * Tente d'abord le backend Railway, puis fallback direct via Supabase
- * avec matching intégré.
+ * Exécute le matching directement via Supabase (~2-5s).
  */
 export async function POST() {
   try {
@@ -23,22 +23,7 @@ export async function POST() {
       )
     }
 
-    const userId = user.id
-
-    if (hasBackend()) {
-      try {
-        const backendRes = await proxyToBackend('/products/analyze', {
-          body: { userId },
-          timeout: 120_000,
-        })
-        const data = await backendRes.json()
-        return NextResponse.json(data, { status: backendRes.status })
-      } catch (err) {
-        console.warn('[analyze] Backend failed, falling back to direct Supabase:', err)
-      }
-    }
-
-    return await analyzeFromCache(userId)
+    return await analyzeFromCache(user.id)
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
