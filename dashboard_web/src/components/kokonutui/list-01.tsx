@@ -89,11 +89,7 @@ export default function List01({ totalBalance = "$26,540.25", accounts = ACCOUNT
             >
               <div className="flex items-center gap-2">
                 <div
-                  className={cn("p-1.5 rounded-lg", {
-                    "bg-emerald-100 dark:bg-emerald-900/30": account.type === "savings",
-                    "bg-emerald-100 dark:bg-emerald-900/30": account.type === "checking",
-                    "bg-emerald-100 dark:bg-emerald-900/30": account.type === "investment",
-                  })}
+                  className={cn("p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30")}
                 >
                   {account.type === "savings" && (
                     <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
