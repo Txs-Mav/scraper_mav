@@ -128,9 +128,9 @@ export default function CommandSearch() {
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-start justify-center pt-[15vh] px-4"
       onClick={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
     >
-      <div className="w-full max-w-lg bg-white dark:bg-[#0F0F12] rounded-2xl shadow-2xl shadow-black/20 border border-gray-200 dark:border-gray-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="w-full max-w-lg bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/20 border border-[var(--color-border-secondary)] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Input */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--color-border-tertiary)]">
           <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />
           <input
             ref={inputRef}
@@ -138,9 +138,9 @@ export default function CommandSearch() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Rechercher une page ou action..."
-            className="flex-1 text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none"
+            className="flex-1 text-sm bg-transparent text-[var(--color-text-primary)] placeholder-gray-400 focus:outline-none"
           />
-          <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-white/[0.06] text-[11px] font-medium text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700">
+          <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-white/[0.06] text-[11px] font-medium text-[var(--color-text-secondary)] border border-[var(--color-border-secondary)]">
             esc
           </kbd>
         </div>
@@ -150,13 +150,13 @@ export default function CommandSearch() {
           {allFiltered.length === 0 ? (
             <div className="px-5 py-8 text-center">
               <Search className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Aucun résultat pour &quot;{query}&quot;</p>
+              <p className="text-sm text-[var(--color-text-secondary)]">Aucun résultat pour &quot;{query}&quot;</p>
             </div>
           ) : (
             <>
               {pages.length > 0 && (
                 <div className="px-3 pt-2 pb-1">
-                  <p className="px-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                  <p className="px-2 text-[11px] font-semibold uppercase tracking-widest text-[var(--color-text-secondary)]">
                     Pages
                   </p>
                 </div>
@@ -173,29 +173,29 @@ export default function CommandSearch() {
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors ${
                       selectedIndex === globalIdx
-                        ? "bg-blue-50 dark:bg-blue-950/30"
-                        : "hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                        ? "bg-emerald-50 dark:bg-emerald-950/30"
+                        : "hover:bg-[var(--color-background-hover)]"
                     }`}
                   >
                     <div className={`p-2 rounded-xl ${
                       selectedIndex === globalIdx
-                        ? "bg-blue-100 dark:bg-blue-900/40"
+                        ? "bg-emerald-100 dark:bg-emerald-900/40"
                         : "bg-gray-100 dark:bg-white/[0.06]"
                     }`}>
                       <Icon className={`h-4 w-4 ${
                         selectedIndex === globalIdx
-                          ? "text-blue-600 dark:text-blue-400"
-                          : "text-gray-500 dark:text-gray-400"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-[var(--color-text-secondary)]"
                       }`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{item.label}</p>
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">{item.label}</p>
                       {item.description && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
+                        <p className="text-xs text-[var(--color-text-secondary)] truncate">{item.description}</p>
                       )}
                     </div>
                     {selectedIndex === globalIdx && (
-                      <ArrowRight className="h-4 w-4 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+                      <ArrowRight className="h-4 w-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
                     )}
                   </button>
                 )
@@ -203,7 +203,7 @@ export default function CommandSearch() {
 
               {actions.length > 0 && (
                 <div className="px-3 pt-3 pb-1">
-                  <p className="px-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                  <p className="px-2 text-[11px] font-semibold uppercase tracking-widest text-[var(--color-text-secondary)]">
                     Actions
                   </p>
                 </div>
@@ -220,29 +220,29 @@ export default function CommandSearch() {
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors ${
                       selectedIndex === globalIdx
-                        ? "bg-blue-50 dark:bg-blue-950/30"
-                        : "hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                        ? "bg-emerald-50 dark:bg-emerald-950/30"
+                        : "hover:bg-[var(--color-background-hover)]"
                     }`}
                   >
                     <div className={`p-2 rounded-xl ${
                       selectedIndex === globalIdx
-                        ? "bg-blue-100 dark:bg-blue-900/40"
+                        ? "bg-emerald-100 dark:bg-emerald-900/40"
                         : "bg-gray-100 dark:bg-white/[0.06]"
                     }`}>
                       <Icon className={`h-4 w-4 ${
                         selectedIndex === globalIdx
-                          ? "text-blue-600 dark:text-blue-400"
-                          : "text-gray-500 dark:text-gray-400"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-[var(--color-text-secondary)]"
                       }`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{item.label}</p>
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">{item.label}</p>
                       {item.description && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
+                        <p className="text-xs text-[var(--color-text-secondary)] truncate">{item.description}</p>
                       )}
                     </div>
                     {selectedIndex === globalIdx && (
-                      <ArrowRight className="h-4 w-4 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+                      <ArrowRight className="h-4 w-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
                     )}
                   </button>
                 )
@@ -252,7 +252,7 @@ export default function CommandSearch() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/[0.02]">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]">
           <div className="flex items-center gap-3 text-[11px] text-gray-400">
             <span className="flex items-center gap-1">
               <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-white/[0.08] font-mono">↑↓</kbd>

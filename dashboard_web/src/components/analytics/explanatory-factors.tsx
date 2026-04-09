@@ -47,7 +47,7 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
   }
 
   return (
-    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
         {t("ap.factors")}
       </h3>
@@ -64,31 +64,31 @@ export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps
             {stats.usage}
           </div>
         </div>
-        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Package className="h-5 w-5 text-green-600 dark:text-green-400" />
-            <span className="text-sm font-semibold text-green-800 dark:text-green-300">
+            <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
               {t("ap.inventory")}
             </span>
           </div>
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
             {stats.inventaire}
           </div>
         </div>
-        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">
+            <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
               {t("ap.catalogue")}
             </span>
           </div>
-          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
             {stats.catalogue}
           </div>
         </div>
-        <div className="bg-gray-50 dark:bg-[#1F1F23] rounded-lg p-4">
+        <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Tag className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+            <Tag className="h-5 w-5 text-gray-500 dark:text-[#B0B0B0]" />
             <span className="text-sm font-semibold text-gray-800 dark:text-gray-300">
               {t("ap.total")}
             </span>

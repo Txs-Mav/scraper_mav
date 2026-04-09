@@ -21,11 +21,11 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
   const getOpportunityIcon = (type: string) => {
     switch (type) {
       case 'augmentation':
-        return <TrendingUp className="h-5 w-5 text-green-500" />
+        return <TrendingUp className="h-5 w-5 text-[#3B6D11]" />
       case 'baisse':
-        return <TrendingDown className="h-5 w-5 text-blue-500" />
+        return <TrendingDown className="h-5 w-5 text-emerald-500" />
       case 'marge':
-        return <DollarSign className="h-5 w-5 text-purple-500" />
+        return <DollarSign className="h-5 w-5 text-emerald-500" />
       default:
         return <Lightbulb className="h-5 w-5 text-yellow-500" />
     }
@@ -34,13 +34,13 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
   const getOpportunityColor = (type: string) => {
     switch (type) {
       case 'augmentation':
-        return 'border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-900/20'
+        return 'border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE] dark:bg-[#3B6D11]/15'
       case 'baisse':
-        return 'border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900/20'
+        return 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20'
       case 'marge':
-        return 'border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-900/20'
+        return 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20'
       default:
-        return 'border-gray-200 dark:border-gray-900 bg-gray-50 dark:bg-gray-900/20'
+        return 'border-gray-200 dark:border-[#3A3A3A] bg-gray-50 dark:bg-[#2A2A2A]'
     }
   }
 
@@ -61,13 +61,13 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
   const sortedOpportunities = [...opportunites].sort((a, b) => b.impactPotentiel - a.impactPotentiel)
 
   return (
-    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
         {t("ap.opportunityDetection")}
       </h3>
 
       {sortedOpportunities.length === 0 ? (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-8 text-gray-500 dark:text-[#B0B0B0]">
           {t("ap.noOpportunities")}
         </div>
       ) : (
@@ -85,15 +85,15 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                       {getOpportunityLabel(opp.type)}
                     </span>
                   </div>
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">
                     {opp.produit}
                     {opp.categorie && (
-                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-50 dark:bg-[#2A2A2A] text-gray-500 dark:text-[#B0B0B0]">
                         {opp.categorie}
                       </span>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="text-sm text-gray-500 dark:text-[#B0B0B0]">
                     {opp.recommandation}
                   </div>
                 </div>

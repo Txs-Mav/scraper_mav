@@ -32,7 +32,7 @@ const PLANS = [
     period: " $ / mois",
     description: "Pour les professionnels qui veulent automatiser leur veille prix",
     icon: Zap,
-    color: "from-blue-500 to-blue-600",
+    color: "from-emerald-500 to-emerald-600",
     features: [
       "Scrapings illimités",
       "8 scrapers en cache",
@@ -49,7 +49,7 @@ const PLANS = [
     period: " $ / mois",
     description: "Solution complète pour les équipes et entreprises exigeantes",
     icon: Crown,
-    color: "from-purple-500 to-purple-600",
+    color: "from-teal-500 to-teal-600",
     features: [
       "Tout du plan Pro",
       "Scrapers en cache illimités",
@@ -104,7 +104,7 @@ export default function PaymentsPage() {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-600 dark:text-gray-400" />
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--color-text-secondary)]" />
         </div>
       </Layout>
     )
@@ -231,10 +231,10 @@ export default function PaymentsPage() {
     <Layout>
       <div className="container mx-auto px-4 py-12 max-w-7xl">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white mb-4">
+          <h1 className="text-4xl md:text-5xl font-extrabold text-[var(--color-text-primary)] mb-4">
             Choisissez votre plan
           </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+          <p className="text-lg text-[var(--color-text-secondary)] max-w-2xl mx-auto">
             Sélectionnez le plan qui correspond le mieux à vos besoins
           </p>
         </div>
@@ -254,8 +254,8 @@ export default function PaymentsPage() {
 
         {/* Code promo */}
         {!user.promo_code_id && (
-          <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border border-blue-200 dark:border-blue-900 rounded-xl">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <div className="mb-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-900 rounded-xl">
+            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-2">
               Code promo (optionnel)
             </label>
             <div className="flex gap-2">
@@ -290,7 +290,7 @@ export default function PaymentsPage() {
                     }
                   }
                 }}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-4 py-2 border border-[var(--color-border-secondary)] rounded-lg bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="PROMO2024-XXXXXX"
               />
               {validatingPromo && (
@@ -333,22 +333,22 @@ export default function PaymentsPage() {
                 return plan.id === "standard"
                   ? "border-gray-500"
                   : plan.id === "pro"
-                    ? "border-blue-500"
-                    : "border-purple-500"
+                    ? "border-emerald-500"
+                    : "border-teal-500"
               }
               return plan.id === "standard"
                 ? "border-gray-300 dark:border-gray-700"
                 : plan.id === "pro"
-                  ? "border-blue-300 dark:border-blue-700"
-                  : "border-purple-300 dark:border-purple-700"
+                  ? "border-emerald-300 dark:border-emerald-700"
+                  : "border-teal-300 dark:border-teal-700"
             }
 
             const getHoverBorderColor = () => {
               return plan.id === "standard"
                 ? "hover:border-gray-500 dark:hover:border-gray-500"
                 : plan.id === "pro"
-                  ? "hover:border-blue-500 dark:hover:border-blue-500"
-                  : "hover:border-purple-500 dark:hover:border-purple-500"
+                  ? "hover:border-emerald-500 dark:hover:border-emerald-500"
+                  : "hover:border-teal-500 dark:hover:border-teal-500"
             }
 
             return (
@@ -357,11 +357,11 @@ export default function PaymentsPage() {
                 className={`relative rounded-2xl border-2 transition-all duration-300 ${getBorderColor()} ${getHoverBorderColor()} ${isCurrent
                     ? "shadow-xl scale-105"
                     : "shadow-lg hover:shadow-xl hover:scale-[1.02]"
-                  } bg-white dark:bg-white/[0.025] overflow-hidden h-full flex flex-col`}
+                  } bg-[var(--color-background-primary)] overflow-hidden h-full flex flex-col`}
               >
                 {isCurrent && (
                   <div className="absolute top-4 right-4 z-10">
-                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-500 text-white">
+                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500 text-white">
                       Plan actuel
                     </span>
                   </div>
@@ -369,7 +369,7 @@ export default function PaymentsPage() {
 
                 {plan.highlighted && !isCurrent && (
                   <div className="absolute top-4 right-4 z-10">
-                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300">
                       Populaire
                     </span>
                   </div>
@@ -383,10 +383,10 @@ export default function PaymentsPage() {
                       <Icon className="h-6 w-6" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                      <h3 className="text-xl font-bold text-[var(--color-text-primary)]">
                         {plan.name}
                       </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-sm text-[var(--color-text-secondary)]">
                         {plan.description}
                       </p>
                     </div>
@@ -394,10 +394,10 @@ export default function PaymentsPage() {
 
                   <div className="mb-6">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-extrabold text-gray-900 dark:text-white">
+                      <span className="text-4xl font-extrabold text-[var(--color-text-primary)]">
                         {plan.price}
                       </span>
-                      <span className="text-lg text-gray-600 dark:text-gray-400">
+                      <span className="text-lg text-[var(--color-text-secondary)]">
                         {plan.period}
                       </span>
                     </div>
@@ -407,7 +407,7 @@ export default function PaymentsPage() {
                     {plan.features.map((feature, idx) => (
                       <li key={idx} className="flex items-start gap-2">
                         <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                        <span className="text-sm text-[var(--color-text-primary)]">
                           {feature}
                         </span>
                       </li>
@@ -432,9 +432,9 @@ export default function PaymentsPage() {
                     onClick={() => handlePlanSelect(plan.id)}
                     disabled={isCurrent || isProcessing || isStandardDisabled}
                     className={`w-full py-3 px-4 rounded-xl font-semibold transition-all duration-200 ${isCurrent || isStandardDisabled
-                        ? "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 cursor-not-allowed"
+                        ? "bg-gray-100 dark:bg-gray-800 text-[var(--color-text-secondary)] cursor-not-allowed"
                         : plan.highlighted
-                          ? "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                          ? "bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
                           : "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100"
                       }`}
                   >
@@ -462,7 +462,7 @@ export default function PaymentsPage() {
           })}
         </div>
 
-        <div className="text-center text-sm text-gray-600 dark:text-gray-400">
+        <div className="text-center text-sm text-[var(--color-text-secondary)]">
           <p>
             Tous les plans incluent un support par email. Les paiements sont sécurisés via{" "}
             <span className="font-semibold">Stripe</span>.

@@ -90,12 +90,12 @@ export default function PendingPaymentPage() {
 
   if (isLoading || processing) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-[#0F0F12] dark:via-[#0F0F12] dark:to-[#1A0F1F]">
-        <Loader2 className="h-12 w-12 animate-spin text-blue-600 mb-4" />
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-[var(--color-background-primary)] dark:via-[var(--color-background-primary)] dark:to-[#1A0F1F]">
+        <Loader2 className="h-12 w-12 animate-spin text-emerald-600 mb-4" />
+        <h1 className="text-xl font-semibold text-[var(--color-text-primary)] mb-2">
           Préparation de votre paiement...
         </h1>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-[var(--color-text-secondary)]">
           Vous allez être redirigé vers Stripe pour finaliser votre abonnement.
         </p>
       </div>
@@ -118,13 +118,13 @@ export default function PendingPaymentPage() {
                   setError(null)
                   window.location.reload()
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
               >
                 Réessayer
               </button>
               <button
                 onClick={() => router.push("/dashboard")}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-[var(--color-text-primary)] rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
               >
                 Aller au dashboard
               </button>

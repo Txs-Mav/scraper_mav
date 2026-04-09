@@ -25,32 +25,32 @@ export default function ActionableRecommendations({ opportunites }: Recommendati
   const getRecommendationIcon = (type: string) => {
     switch (type) {
       case 'augmentation':
-        return <TrendingUp className="h-5 w-5 text-green-500" />
+        return <TrendingUp className="h-5 w-5 text-[#3B6D11]" />
       case 'baisse':
-        return <TrendingDown className="h-5 w-5 text-blue-500" />
+        return <TrendingDown className="h-5 w-5 text-emerald-500" />
       default:
-        return <Target className="h-5 w-5 text-purple-500" />
+        return <Target className="h-5 w-5 text-emerald-500" />
     }
   }
 
   const getRecommendationColor = (type: string) => {
     switch (type) {
       case 'augmentation':
-        return 'border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-900/20'
+        return 'border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE] dark:bg-[#3B6D11]/15'
       case 'baisse':
-        return 'border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900/20'
+        return 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20'
       default:
-        return 'border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-900/20'
+        return 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20'
     }
   }
 
   if (sortedRecommendations.length === 0) {
     return (
-      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           {t("ap.recommendations")}
         </h3>
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-8 text-gray-500 dark:text-[#B0B0B0]">
           {t("ap.noRecommendations")}
         </div>
       </div>
@@ -58,11 +58,11 @@ export default function ActionableRecommendations({ opportunites }: Recommendati
   }
 
   return (
-    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
         {t("ap.recommendations")}
       </h3>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+      <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-4">
         {t("ap.recommendationsDesc")}
       </p>
       <div className="space-y-4">
@@ -80,11 +80,11 @@ export default function ActionableRecommendations({ opportunites }: Recommendati
                   <span className="text-sm font-semibold text-gray-900 dark:text-white">
                     {rec.produit}
                   </span>
-                  <span className="text-xs text-gray-600 dark:text-gray-400">
+                  <span className="text-xs text-gray-500 dark:text-[#B0B0B0]">
                     {t("ap.impact")} {rec.impactPotentiel.toFixed(0)}$
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <div className="flex items-center gap-2 text-sm text-gray-900 dark:text-white">
                   <ArrowRight className="h-4 w-4" />
                   <span>{rec.recommandation}</span>
                 </div>

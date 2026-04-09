@@ -41,7 +41,7 @@ function DetailTooltip({ active, payload }: any) {
   if (!active || !payload?.[0]) return null
   const d = payload[0].payload
   return (
-    <div className="bg-[#0F0F12] border border-[#2B2B30] rounded-xl px-4 py-3 shadow-2xl">
+    <div className="bg-[#1c1e20] border border-[#343638] rounded-xl px-4 py-3 shadow-2xl">
       <p className="text-sm font-medium text-white mb-1.5">{d.fullSite}</p>
       <div className="space-y-1 text-xs">
         <div className="flex justify-between gap-6">
@@ -52,7 +52,7 @@ function DetailTooltip({ active, payload }: any) {
         </div>
         <div className="flex justify-between gap-6">
           <span className="text-gray-400">{t("ap.gap")}</span>
-          <span className={`font-bold ${d.ecart > 2 ? 'text-emerald-400' : d.ecart < -2 ? 'text-red-400' : 'text-gray-400'}`}>
+          <span className={`font-bold ${d.ecart > 2 ? 'text-[#3B6D11]' : d.ecart < -2 ? 'text-[#A32D2D]' : 'text-gray-400'}`}>
             {d.ecart > 0 ? '+' : ''}{d.ecart.toFixed(1)}%
           </span>
         </div>
@@ -71,14 +71,14 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
 
   if (categories.length === 0) {
     return (
-      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Layers className="h-5 w-5 text-violet-500" />
+          <Layers className="h-5 w-5 text-emerald-500" />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {t("ap.categoryAnalysis")}
           </h3>
         </div>
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-8 text-gray-500 dark:text-[#B0B0B0]">
           {t("ap.noCategoryData")}
         </div>
       </div>
@@ -86,26 +86,26 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
   }
 
   const getEcartColor = (ecart: number) => {
-    if (ecart < -2) return 'text-emerald-600 dark:text-emerald-400'
-    if (ecart > 2) return 'text-red-600 dark:text-red-400'
+    if (ecart < -2) return 'text-[#3B6D11] dark:text-[#3B6D11]'
+    if (ecart > 2) return 'text-[#A32D2D] dark:text-[#A32D2D]'
     return 'text-gray-500'
   }
 
   const getEcartIcon = (ecart: number) => {
-    if (ecart < -2) return <TrendingDown className="h-4 w-4 text-emerald-500" />
-    if (ecart > 2) return <TrendingUp className="h-4 w-4 text-red-500" />
+    if (ecart < -2) return <TrendingDown className="h-4 w-4 text-[#3B6D11]" />
+    if (ecart > 2) return <TrendingUp className="h-4 w-4 text-[#A32D2D]" />
     return <Minus className="h-4 w-4 text-gray-400" />
   }
 
   return (
-    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
       <div className="flex items-center gap-2 mb-1">
-        <Layers className="h-5 w-5 text-violet-500" />
+        <Layers className="h-5 w-5 text-emerald-500" />
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.categoryAnalysis")}
         </h3>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-500 mb-5">
+      <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-5">
         {t("ap.categoryDesc")}
       </p>
 
@@ -123,12 +123,12 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
               onClick={() => setExpandedCategory(isExpanded ? null : cat.categorie)}
               className={`text-left rounded-xl p-4 border transition-all hover:shadow-sm ${
                 isExpanded
-                  ? 'ring-2 ring-violet-500/40 border-violet-300 dark:border-violet-800'
+                  ? 'ring-2 ring-emerald-500/40 border-emerald-300 dark:border-emerald-800'
                   : isGood
                   ? 'border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-900/10'
                   : isBad
-                  ? 'border-red-200/70 dark:border-red-900/40 bg-red-50/50 dark:bg-red-900/10'
-                  : 'border-gray-200 dark:border-[#2B2B30] bg-gray-50/50 dark:bg-[#1A1A1E]'
+                  ? 'border-[#A32D2D]/20 dark:border-[#A32D2D]/30 bg-[#FCEBEB]/50 dark:bg-[#A32D2D]/15'
+                  : 'border-gray-200 dark:border-[#3A3A3A] bg-gray-50 dark:bg-[#2A2A2A]'
               }`}
             >
               <div className="flex items-center justify-between mb-1.5">
@@ -173,14 +173,14 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
           }))
 
         return (
-          <div className="border border-gray-200 dark:border-[#2B2B30] rounded-xl overflow-hidden">
+          <div className="border border-gray-200 dark:border-[#3A3A3A] rounded-xl overflow-hidden">
             {/* Header */}
-            <div className="bg-gray-50 dark:bg-[#141417] px-5 py-3 border-b border-gray-200 dark:border-[#2B2B30]">
+            <div className="bg-gray-50 dark:bg-[#2A2A2A] px-5 py-3 border-b border-gray-200 dark:border-[#3A3A3A]">
               <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
                 {categoryLabels[cat.categorie] || cat.categorie}
               </h4>
               <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
-                <span>{t("ap.yourAvgPrice")} <strong className="text-blue-600 dark:text-blue-400">{cat.prixMoyenReference > 0 ? `${cat.prixMoyenReference.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
+                <span>{t("ap.yourAvgPrice")} <strong className="text-emerald-600 dark:text-emerald-400">{cat.prixMoyenReference > 0 ? `${cat.prixMoyenReference.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
                 <span>{t("ap.compAvgPrice")} <strong className="text-gray-900 dark:text-white">{cat.prixMoyenConcurrents > 0 ? `${cat.prixMoyenConcurrents.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
               </div>
             </div>
@@ -230,7 +230,7 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                     <span>{t("ap.expensiveLegend")}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-sm bg-red-400" />
+                    <div className="w-2 h-2 rounded-sm bg-[#A32D2D]" />
                     <span>{t("ap.cheaperLegend")}</span>
                   </div>
                 </div>
@@ -239,10 +239,10 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
 
             {/* Compact table */}
             {cat.detailParDetaillant.length > 0 && (
-              <div className="border-t border-gray-200 dark:border-[#2B2B30]">
+              <div className="border-t border-gray-200 dark:border-[#3A3A3A]">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-50/50 dark:bg-[#141417]">
+                    <tr className="bg-gray-50 dark:bg-[#2A2A2A]">
                       <th className="text-left py-2 px-5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
                         {t("ap.competitor")}
                       </th>
@@ -261,7 +261,7 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                     {cat.detailParDetaillant.map((det, i) => (
                       <tr
                         key={i}
-                        className="border-t border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50/50 dark:hover:bg-[#1A1A1E]"
+                        className="border-t border-gray-100 dark:border-[#2E2E2E] hover:hover:bg-gray-50 dark:hover:bg-[#333333]"
                       >
                         <td className="py-2 px-5 text-sm text-gray-900 dark:text-white">
                           {det.site}
@@ -270,8 +270,8 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                           {det.prixMoyen.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$
                         </td>
                         <td className={`py-2 px-4 text-sm text-right font-semibold tabular-nums ${
-                          det.ecartPourcentage > 2 ? 'text-emerald-600 dark:text-emerald-400'
-                            : det.ecartPourcentage < -2 ? 'text-red-600 dark:text-red-400'
+                          det.ecartPourcentage > 2 ? 'text-[#3B6D11] dark:text-[#3B6D11]'
+                            : det.ecartPourcentage < -2 ? 'text-[#A32D2D] dark:text-[#A32D2D]'
                             : 'text-gray-500'
                         }`}>
                           {det.ecartPourcentage >= 0 ? '+' : ''}

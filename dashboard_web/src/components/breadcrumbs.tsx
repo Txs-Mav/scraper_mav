@@ -35,13 +35,13 @@ export default function Breadcrumbs() {
       {crumbs.map((crumb, i) => (
         <span key={crumb.href} className="flex items-center gap-1.5">
           {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-gray-300 dark:text-gray-600" />}
-          {i === 0 && <Home className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 mr-0.5" />}
+          {i === 0 && <Home className="h-3.5 w-3.5 text-[var(--color-text-secondary)] mr-0.5" />}
           {crumb.isLast ? (
-            <span className="font-medium text-gray-900 dark:text-white">{crumb.label}</span>
+            <span className="font-medium text-[var(--color-text-primary)]">{crumb.label}</span>
           ) : (
             <Link
               href={crumb.href}
-              className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className="text-[var(--color-text-secondary)] hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
             >
               {crumb.label}
             </Link>

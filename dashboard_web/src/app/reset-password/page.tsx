@@ -189,10 +189,10 @@ function ResetPasswordContent() {
 
   if (validating) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-[#0F0F12] dark:via-[#0F0F12] dark:to-[#1A0F1F] px-4">
-        <div className="max-w-md w-full space-y-8 bg-white dark:bg-[#1F1F23] p-8 rounded-2xl border border-gray-200 dark:border-[#2B2B30] shadow-xl">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-[#1c1e20] dark:via-[#1c1e20] dark:to-[#1A0F1F] px-4">
+        <div className="max-w-md w-full space-y-8 bg-white dark:bg-[#2a2c2e] p-8 rounded-2xl border border-gray-200 dark:border-[#343638] shadow-xl">
           <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400" />
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-600 dark:text-emerald-400" />
             <p className="text-sm text-gray-600 dark:text-gray-400">Validation du lien...</p>
           </div>
         </div>
@@ -201,11 +201,11 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-[#0F0F12] dark:via-[#0F0F12] dark:to-[#1A0F1F] px-4">
-      <div className="max-w-md w-full space-y-8 bg-white dark:bg-[#1F1F23] p-8 rounded-2xl border border-gray-200 dark:border-[#2B2B30] shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-[#1c1e20] dark:via-[#1c1e20] dark:to-[#1A0F1F] px-4">
+      <div className="max-w-md w-full space-y-8 bg-white dark:bg-[#2a2c2e] p-8 rounded-2xl border border-gray-200 dark:border-[#343638] shadow-xl">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="inline-flex items-center gap-3">
-            <div className="relative h-10 w-10 rounded-xl bg-white dark:bg-[#141419] shadow-[0_12px_30px_-18px_rgba(0,0,0,0.45),0_0_0_6px_rgba(255,255,255,0.5)] dark:shadow-[0_12px_30px_-18px_rgba(0,0,0,0.6),0_0_0_6px_rgba(255,255,255,0.06)] overflow-hidden">
+            <div className="relative h-10 w-10 rounded-xl bg-white dark:bg-[#1c1e20] shadow-[0_12px_30px_-18px_rgba(0,0,0,0.45),0_0_0_6px_rgba(255,255,255,0.5)] dark:shadow-[0_12px_30px_-18px_rgba(0,0,0,0.6),0_0_0_6px_rgba(255,255,255,0.06)] overflow-hidden">
               <Image
                 src="/Go-Data.svg"
                 alt="Go-Data"
@@ -266,7 +266,7 @@ function ResetPasswordContent() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-[#343638] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="••••••••"
                     minLength={6}
                   />
@@ -302,7 +302,7 @@ function ResetPasswordContent() {
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-[#2B2B30] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-[#343638] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="••••••••"
                     minLength={6}
                   />
@@ -325,7 +325,7 @@ function ResetPasswordContent() {
               <button
                 type="submit"
                 disabled={loading || password.length < 6 || password !== confirmPassword}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
               >
                 {loading ? (
                   <>
@@ -341,7 +341,7 @@ function ResetPasswordContent() {
             <div className="text-center">
               <Link
                 href="/login"
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-sm text-emerald-600 dark:text-emerald-400 hover:underline"
               >
                 Retour à la connexion
               </Link>
@@ -356,10 +356,10 @@ function ResetPasswordContent() {
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-[#0F0F12] dark:via-[#0F0F12] dark:to-[#1A0F1F] px-4">
-        <div className="max-w-md w-full space-y-8 bg-white dark:bg-[#1F1F23] p-8 rounded-2xl border border-gray-200 dark:border-[#2B2B30] shadow-xl">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-[#1c1e20] dark:via-[#1c1e20] dark:to-[#1A0F1F] px-4">
+        <div className="max-w-md w-full space-y-8 bg-white dark:bg-[#2a2c2e] p-8 rounded-2xl border border-gray-200 dark:border-[#343638] shadow-xl">
           <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400" />
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-600 dark:text-emerald-400" />
             <p className="text-sm text-gray-600 dark:text-gray-400">Chargement...</p>
           </div>
         </div>

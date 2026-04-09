@@ -91,16 +91,16 @@ export default function List01({ totalBalance = "$26,540.25", accounts = ACCOUNT
                 <div
                   className={cn("p-1.5 rounded-lg", {
                     "bg-emerald-100 dark:bg-emerald-900/30": account.type === "savings",
-                    "bg-blue-100 dark:bg-blue-900/30": account.type === "checking",
-                    "bg-purple-100 dark:bg-purple-900/30": account.type === "investment",
+                    "bg-emerald-100 dark:bg-emerald-900/30": account.type === "checking",
+                    "bg-emerald-100 dark:bg-emerald-900/30": account.type === "investment",
                   })}
                 >
                   {account.type === "savings" && (
                     <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   )}
-                  {account.type === "checking" && <QrCode className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                  {account.type === "checking" && <QrCode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
                   {account.type === "investment" && (
-                    <ArrowUpRight className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   )}
                   {account.type === "debt" && <CreditCard className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />}
                 </div>

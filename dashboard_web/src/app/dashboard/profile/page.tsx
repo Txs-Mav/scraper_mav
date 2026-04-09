@@ -25,7 +25,7 @@ export default function ProfilePage() {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-600 dark:text-gray-400" />
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--color-text-secondary)]" />
         </div>
       </Layout>
     )
@@ -53,14 +53,14 @@ export default function ProfilePage() {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white leading-tight mb-8">
+        <h1 className="text-4xl md:text-5xl font-extrabold text-[var(--color-text-primary)] leading-tight mb-8">
           {t("profilePage.title")}
         </h1>
 
         <BlocTemplate innerClassName="p-6 max-w-2xl">
           <div className="flex items-center gap-6 mb-6">
             <div className="relative">
-              <div className="w-24 h-24 rounded-full ring-4 ring-gray-200 dark:ring-[#2B2B30] overflow-hidden bg-gray-100 dark:bg-[#1F1F23] flex items-center justify-center">
+              <div className="w-24 h-24 rounded-full ring-4 ring-[var(--color-border-secondary)] overflow-hidden bg-[var(--color-background-secondary)] flex items-center justify-center">
                 {displayAvatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={displayAvatar} alt={user.name} className="w-full h-full object-cover" />
@@ -68,14 +68,14 @@ export default function ProfilePage() {
                   <User className="h-10 w-10 text-gray-400" />
                 )}
               </div>
-              <div className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#0F0F12]" />
+              <div className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-emerald-500 ring-2 ring-[var(--color-background-primary)]" />
             </div>
 
             <div className="flex-1">
-              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+              <h2 className="text-2xl font-semibold text-[var(--color-text-primary)]">
                 {user.name}
               </h2>
-              <p className="text-gray-600 dark:text-gray-400">{user.email}</p>
+              <p className="text-[var(--color-text-secondary)]">{user.email}</p>
               <div className="mt-2">
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-200">
                   {displayRole}
@@ -84,21 +84,21 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-6 space-y-4">
+          <div className="border-t border-[var(--color-border-secondary)] pt-6 space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label className="text-sm font-medium text-[var(--color-text-primary)]">
                 {t("profilePage.role")}
               </label>
-              <p className="text-gray-900 dark:text-white mt-1">
+              <p className="text-[var(--color-text-primary)] mt-1">
                 {displayRole}
               </p>
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label className="text-sm font-medium text-[var(--color-text-primary)]">
                 {t("profilePage.plan")}
               </label>
-              <p className="text-gray-900 dark:text-white mt-1">
+              <p className="text-[var(--color-text-primary)] mt-1">
                 {user.subscription_plan
                   ? subscriptionLabels[user.subscription_plan] || user.subscription_plan
                   : t("profilePage.none")}
@@ -106,10 +106,10 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label className="text-sm font-medium text-[var(--color-text-primary)]">
                 {t("profilePage.registeredAt")}
               </label>
-              <p className="text-gray-900 dark:text-white mt-1">
+              <p className="text-[var(--color-text-primary)] mt-1">
                 {new Date(user.created_at).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-FR', {
                   year: "numeric",
                   month: "long",
@@ -119,17 +119,17 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-6 mt-6">
-            <div className="flex flex-col gap-4 rounded-2xl border border-gray-200/70 bg-gray-50/70 p-4 dark:border-[#1F1F23] dark:bg-[#141418] sm:flex-row sm:items-center sm:justify-between">
+          <div className="border-t border-[var(--color-border-secondary)] pt-6 mt-6">
+            <div className="flex flex-col gap-4 rounded-2xl border border-[var(--color-border-secondary)] bg-gray-50/70 p-4 dark:bg-[#141418] sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <div className="rounded-xl bg-white p-2 text-gray-500 shadow-sm dark:bg-[#1B1B20] dark:text-gray-400">
+                <div className="rounded-xl bg-white p-2 text-[var(--color-text-secondary)] shadow-sm dark:bg-[#1B1B20]">
                   <Globe className="h-4 w-4" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  <p className="text-sm font-medium text-[var(--color-text-primary)]">
                     {t("settings.language")}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
                     {t("settings.languageDesc")}
                   </p>
                 </div>
@@ -139,10 +139,10 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-6 mt-6 flex flex-wrap gap-4">
+          <div className="border-t border-[var(--color-border-secondary)] pt-6 mt-6 flex flex-wrap gap-4">
             <Link
               href="/dashboard/settings"
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-[#1F1F23] rounded-lg text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#2B2B30] transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--color-background-secondary)] rounded-lg text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition-colors"
             >
               <Settings className="h-4 w-4" />
               {t("profilePage.settings")}
@@ -150,7 +150,7 @@ export default function ProfilePage() {
             {isMainAccount && (
               <Link
                 href="/dashboard/subscription"
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
               >
                 <CreditCard className="h-4 w-4" />
                 {t("profilePage.subscription")}

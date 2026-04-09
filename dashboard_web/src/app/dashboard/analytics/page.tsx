@@ -237,7 +237,7 @@ export default function AnalyticsPage() {
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <Lock className="h-12 w-12 text-amber-500" />
           <p className="text-lg font-medium text-gray-900 dark:text-white">{t("analytics.accessDenied")}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{t("analytics.redirecting")}</p>
+          <p className="text-sm text-gray-500 dark:text-[#B0B0B0]">{t("analytics.redirecting")}</p>
         </div>
       </Layout>
     )
@@ -261,11 +261,11 @@ export default function AnalyticsPage() {
         {/* ── KPI Hero + Secondary ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {/* Hero — Produits analysés */}
-          <div className="col-span-2 md:col-span-1 relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-violet-600 to-purple-600 dark:from-violet-600 dark:to-purple-700 shadow-lg shadow-violet-600/10 dark:shadow-violet-900/20">
+          <div className="col-span-2 md:col-span-1 relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-emerald-600 to-teal-600 dark:from-emerald-600 dark:to-teal-700 shadow-lg shadow-emerald-600/10 dark:shadow-emerald-900/20">
             <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
             <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-200/70 mb-1.5">{t("analytics.productsAnalyzed")}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-200/70 mb-1.5">{t("analytics.productsAnalyzed")}</p>
                 <p className="text-4xl font-black text-white tabular-nums leading-none tracking-tight">{displayAnalytics.produits.length}</p>
               </div>
               <div className="p-2.5 rounded-xl bg-white/15">
@@ -278,19 +278,19 @@ export default function AnalyticsPage() {
           {[
             { label: t("analytics.retailers"), value: displayAnalytics.detailleurs.length, icon: Store, accent: "text-emerald-500 dark:text-emerald-400", dot: "bg-emerald-400" },
             { label: t("analytics.opportunities"), value: displayAnalytics.opportunites.length, icon: TrendingUp, accent: "text-amber-500 dark:text-amber-400", dot: "bg-amber-400" },
-            { label: t("analytics.scrapes"), value: displayAnalytics.stats.nombreScrapes, icon: RefreshCw, accent: "text-rose-500 dark:text-rose-400", dot: "bg-rose-400" },
+            { label: t("analytics.scrapes"), value: displayAnalytics.stats.nombreScrapes, icon: RefreshCw, accent: "text-emerald-500 dark:text-emerald-400", dot: "bg-emerald-400" },
           ].map((s, i) => {
             const Icon = s.icon
             return (
-              <div key={i} className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5 flex flex-col justify-between group hover:shadow-md hover:-translate-y-0.5 transition-all">
+              <div key={i} className="rounded-2xl border border-gray-200 dark:border-[#3A3A3A] bg-white dark:bg-[#222222] backdrop-blur-sm p-5 flex flex-col justify-between group hover:shadow-md hover:-translate-y-0.5 transition-all">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-                    <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">{s.label}</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-[#B0B0B0] tracking-wide">{s.label}</p>
                   </div>
                   <Icon className={`h-3.5 w-3.5 ${s.accent} opacity-50`} />
                 </div>
-                <p className="text-3xl font-extrabold text-gray-800 dark:text-gray-100 leading-none tabular-nums tracking-tight">{s.value}</p>
+                <p className="text-3xl font-extrabold text-gray-900 dark:text-white leading-none tabular-nums tracking-tight">{s.value}</p>
               </div>
             )
           })}
@@ -298,51 +298,46 @@ export default function AnalyticsPage() {
 
         {/* ── Semantic mini-stats — Competitive vs Non-competitive ── */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl border border-green-200/50 dark:border-green-900/30 bg-green-50/50 dark:bg-green-950/10 px-4 py-3 flex items-center gap-3">
-            <div className="h-2 w-2 rounded-full bg-green-500" />
-            <p className="text-xs font-medium text-green-700 dark:text-green-400"><span className="tabular-nums font-bold text-sm">{competitifCount}</span> {t("analytics.competitive")}</p>
+          <div className="rounded-xl border border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE] dark:bg-[#3B6D11]/15 px-4 py-3 flex items-center gap-3">
+            <div className="h-2 w-2 rounded-full bg-[#3B6D11]" />
+            <p className="text-xs font-medium text-[#27500A] dark:text-[#3B6D11]"><span className="tabular-nums font-bold text-sm">{competitifCount}</span> {t("analytics.competitive")}</p>
           </div>
-          <div className="rounded-xl border border-red-200/50 dark:border-red-900/30 bg-red-50/50 dark:bg-red-950/10 px-4 py-3 flex items-center gap-3">
-            <div className="h-2 w-2 rounded-full bg-red-500" />
-            <p className="text-xs font-medium text-red-700 dark:text-red-400"><span className="tabular-nums font-bold text-sm">{nonCompetitifCount}</span> {t("analytics.aboveMarket")}</p>
+          <div className="rounded-xl border border-[#A32D2D]/20 dark:border-[#A32D2D]/30 bg-[#FCEBEB] dark:bg-[#A32D2D]/15 px-4 py-3 flex items-center gap-3">
+            <div className="h-2 w-2 rounded-full bg-[#A32D2D]" />
+            <p className="text-xs font-medium text-[#791F1F] dark:text-[#A32D2D]"><span className="tabular-nums font-bold text-sm">{nonCompetitifCount}</span> {t("analytics.aboveMarket")}</p>
           </div>
         </div>
 
-        {/* ── Actions — recessed ── */}
-        <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white/40 dark:bg-white/[0.015] backdrop-blur-sm p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02] p-1">
-              <button
-                onClick={() => printCurrentPage(t("analytics.title"))}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition"
-                title={t("analytics.printAction")}
-              >
-                <Printer className="h-3.5 w-3.5" />
-                {t("analytics.printAction")}
-              </button>
-              <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
-              <button
-                onClick={() => loadAnalytics(true)}
-                disabled={refreshing}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                {t("analytics.refreshAction")}
-              </button>
-              <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
-              <button
-                onClick={handleReset}
-                disabled={refreshing || loading}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-400 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 hover:text-red-600 dark:hover:text-red-400 transition disabled:opacity-50"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {t("analytics.resetAction")}
-              </button>
-            </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-normal text-gray-400 dark:text-gray-500">
-              <Calendar className="h-3 w-3" />
-              <span className="tabular-nums">{t("analytics.data")} {dataAsOf ? formatDate(dataAsOf) : t("analytics.na")} | {t("analytics.updated")} {lastUpdated ? formatDate(lastUpdated) : formatDate(new Date())}</span>
-            </div>
+        {/* ── Actions toolbar ── */}
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-gray-50 dark:bg-[#2A2A2A] px-4 py-2.5">
+          <button
+            onClick={() => printCurrentPage(t("analytics.title"))}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/50 transition"
+            title={t("analytics.printAction")}
+          >
+            <Printer className="h-3.5 w-3.5" />
+            {t("analytics.printAction")}
+          </button>
+          <button
+            onClick={() => loadAnalytics(true)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {t("analytics.refreshAction")}
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={refreshing || loading}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/20 hover:border-red-500/50 transition disabled:opacity-50"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            {t("analytics.resetAction")}
+          </button>
+          <div className="w-px h-5 bg-gray-100 dark:bg-[#2E2E2E] mx-1" />
+          <div className="flex items-center gap-1.5 text-[11px] font-normal text-gray-400 dark:text-[#707070]">
+            <Calendar className="h-3 w-3" />
+            <span className="tabular-nums">{t("analytics.data")} {dataAsOf ? formatDate(dataAsOf) : t("analytics.na")} | {t("analytics.updated")} {lastUpdated ? formatDate(lastUpdated) : formatDate(new Date())}</span>
           </div>
         </div>
 
@@ -354,13 +349,13 @@ export default function AnalyticsPage() {
 
         {/* Empty state */}
         {displayAnalytics.stats.nombreScrapes === 0 && displayAnalytics.produits.length === 0 && (
-          <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-10 text-center">
+          <div className="rounded-2xl border border-gray-200 dark:border-[#3A3A3A] bg-white dark:bg-[#222222] backdrop-blur-sm p-10 text-center">
             <div className="max-w-md mx-auto">
-              <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/20 flex items-center justify-center mb-5">
-                <Package className="h-7 w-7 text-violet-500 dark:text-violet-400" />
+              <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 flex items-center justify-center mb-5">
+                <Package className="h-7 w-7 text-emerald-500 dark:text-emerald-400" />
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t("analytics.noData")}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+              <p className="text-sm text-gray-500 dark:text-[#B0B0B0] leading-relaxed">
                 {t("analytics.noDataDesc")}
               </p>
             </div>

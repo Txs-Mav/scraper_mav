@@ -642,13 +642,13 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     <div className="space-y-6">
       {/* Alerte temps estimé (masquer en mode logs only) */}
       {!isLogsOnlyMode && urlsWithoutScraper.length > 0 && !isScraping && (
-        <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-gray-50/80 dark:bg-white/[0.02] border border-gray-200/60 dark:border-white/[0.06]">
+        <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-[var(--color-background-secondary)] border border-[var(--color-border-secondary)]">
           <Clock className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">
               {t("config.firstAnalysis")}
             </p>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+            <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">
               {urlsWithoutScraper.length} {t("config.sitesToAnalyze")}
             </p>
           </div>
@@ -661,48 +661,48 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           {/* Barre de recherche scrapers universels */}
           <div className="relative">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-secondary)] pointer-events-none" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={sharedSearchQuery}
                 onChange={(e) => handleSharedSearchChange(e.target.value)}
                 placeholder={t("config.searchUniversal")}
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:focus:ring-violet-400/20 focus:border-violet-300 dark:focus:border-violet-500/30 transition-all placeholder:text-gray-400"
+                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:focus:ring-emerald-400/20 focus:border-emerald-300 dark:focus:border-emerald-500/30 transition-all placeholder:text-[var(--color-text-tertiary)]"
               />
               {isSearchingShared && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-violet-500 animate-spin" />
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-emerald-500 animate-spin" />
               )}
             </div>
 
             {sharedSearchQuery.trim().length >= 2 && (
-              <div className="mt-1.5 rounded-xl border border-violet-200/60 dark:border-violet-500/20 bg-white dark:bg-[#18181b] overflow-hidden shadow-lg shadow-violet-500/5">
-                <div className="px-3 py-2 bg-violet-50/50 dark:bg-violet-500/[0.06] border-b border-violet-100/60 dark:border-violet-500/10 flex items-center gap-2">
-                  <Sparkles className="w-3 h-3 text-violet-500 dark:text-violet-400" />
-                  <span className="text-[11px] font-medium text-violet-600 dark:text-violet-400">
+              <div className="mt-1.5 rounded-xl border border-emerald-200/60 dark:border-emerald-500/20 bg-[var(--color-background-primary)] overflow-hidden shadow-lg shadow-emerald-500/5">
+                <div className="px-3 py-2 bg-emerald-50/50 dark:bg-emerald-500/[0.06] border-b border-emerald-100/60 dark:border-emerald-500/10 flex items-center gap-2">
+                  <Sparkles className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
+                  <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                     {t("config.universalScrapers")}
                   </span>
                 </div>
                 {sharedSearchResults.length > 0 ? (
-                  <div className="max-h-52 overflow-y-auto divide-y divide-gray-100/60 dark:divide-white/[0.04]">
+                  <div className="max-h-52 overflow-y-auto divide-y divide-[var(--color-border-tertiary)]">
                     {sharedSearchResults.map((shared) => {
                       const isUsed = referenceUrl.includes(shared.site_domain) || urls.some(u => u.includes(shared.site_domain))
                       return (
                         <div
                           key={shared.id}
-                          className={`flex items-center gap-3 px-3.5 py-3 hover:bg-violet-50/50 dark:hover:bg-violet-500/[0.04] transition-colors ${isUsed ? 'bg-violet-50/30 dark:bg-violet-500/[0.03]' : ''}`}
+                          className={`flex items-center gap-3 px-3.5 py-3 hover:bg-emerald-50/50 dark:hover:bg-emerald-500/[0.04] transition-colors ${isUsed ? 'bg-emerald-50/30 dark:bg-emerald-500/[0.03]' : ''}`}
                         >
-                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-100 to-violet-50 dark:from-violet-500/20 dark:to-violet-500/5 flex items-center justify-center text-xs font-bold text-violet-600 dark:text-violet-400">
+                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-500/20 dark:to-emerald-500/5 flex items-center justify-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
                             {shared.site_name.charAt(0)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
                                 {shared.site_name}
                               </p>
-                              <BadgeCheck className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 flex-shrink-0" />
+                              <BadgeCheck className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
                             </div>
-                            <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+                            <p className="text-[11px] text-[var(--color-text-secondary)] truncate">
                               {shared.site_domain}
                               {shared.description && ` · ${shared.description.slice(0, 50)}`}
                             </p>
@@ -713,8 +713,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                               onClick={() => selectSharedScraper(shared, true)}
                               disabled={referenceUrl.includes(shared.site_domain)}
                               className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${referenceUrl.includes(shared.site_domain)
-                                ? 'bg-violet-600 dark:bg-violet-500 text-white cursor-default'
-                                : 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/20'
+                                ? 'bg-emerald-600 dark:bg-emerald-500 text-white cursor-default'
+                                : 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/20'
                                 }`}
                             >
                               {referenceUrl.includes(shared.site_domain) ? t("config.ref") : t("config.referenceLabel")}
@@ -724,8 +724,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                               onClick={() => selectSharedScraper(shared, false)}
                               disabled={urls.some(u => u.includes(shared.site_domain))}
                               className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${urls.some(u => u.includes(shared.site_domain))
-                                ? 'bg-gray-100 dark:bg-white/[0.04] text-gray-300 dark:text-gray-600 cursor-default'
-                                : 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/20'
+                                ? 'bg-[var(--color-background-primary)] text-gray-300 dark:text-gray-600 cursor-default'
+                                : 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/20'
                                 }`}
                             >
                               {t("config.addCompetitor")}
@@ -737,7 +737,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   </div>
                 ) : !isSearchingShared ? (
                   <div className="px-3.5 py-4 text-center">
-                    <p className="text-xs text-gray-400 dark:text-gray-500">{t("config.noResultsSearch")}</p>
+                    <p className="text-xs text-[var(--color-text-secondary)]">{t("config.noResultsSearch")}</p>
                   </div>
                 ) : null}
               </div>
@@ -748,7 +748,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           <div className="space-y-2.5">
             <div className="flex items-center gap-2">
               <Star className="w-3.5 h-3.5 text-amber-400 dark:text-amber-500" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.referenceUrl")}</span>
+              <span className="text-sm font-medium text-[var(--color-text-primary)]">{t("config.referenceUrl")}</span>
             </div>
             {referenceUrl.trim() ? (() => {
               const refScraper = getScraperInfo(referenceUrl)
@@ -759,24 +759,24 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
                         {refScraper?.site_name || getDomain(referenceUrl)}
                       </p>
                       {refScraper && <BadgeCheck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0" />}
                     </div>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{getDomain(referenceUrl)}</p>
+                    <p className="text-[11px] text-[var(--color-text-secondary)] truncate">{getDomain(referenceUrl)}</p>
                   </div>
                   <button
                     onClick={() => setReferenceUrl('')}
-                    className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded-lg transition-colors"
+                    className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-[var(--color-text-secondary)] rounded-lg transition-colors"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )
             })() : (
-              <div className="px-3.5 py-4 rounded-xl border border-dashed border-gray-200/60 dark:border-white/[0.06]">
-                <p className="text-sm text-gray-400 dark:text-gray-500 text-center">
+              <div className="px-3.5 py-4 rounded-xl border border-dashed border-[var(--color-border-secondary)]">
+                <p className="text-sm text-[var(--color-text-secondary)] text-center">
                   {t("config.searchUniversal")}
                 </p>
               </div>
@@ -784,18 +784,18 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           </div>
 
           {/* Séparateur */}
-          <div className="h-px bg-gray-100 dark:bg-white/[0.04]" />
+          <div className="h-px bg-[var(--color-background-primary)]" />
 
           {/* Sites concurrents */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Globe className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.competitorsLabel")}</span>
+                <Globe className="w-3.5 h-3.5 text-[var(--color-text-secondary)]" />
+                <span className="text-sm font-medium text-[var(--color-text-primary)]">{t("config.competitorsLabel")}</span>
               </div>
               <button
                 onClick={() => { searchInputRef.current?.focus(); searchInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded-md transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] rounded-md transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 {t("config.add")}
@@ -808,27 +808,27 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   if (!url.trim()) return null
                   const scraper = getScraperInfo(url)
                   return (
-                    <div key={index} className="group flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.02]">
+                    <div key={index} className="group flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]">
                       <input
                         type="checkbox"
                         checked={competitorEnabled[index] ?? true}
                         onChange={() => toggleCompetitorEnabled(index)}
-                        className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10"
+                        className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[var(--color-text-primary)] focus:ring-[var(--color-border-primary)]/10"
                       />
-                      <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
+                      <div className="w-7 h-7 rounded-lg bg-[var(--color-background-secondary)] flex items-center justify-center text-[10px] font-bold text-[var(--color-text-secondary)] flex-shrink-0">
                         {(scraper?.site_name || getDomain(url)).charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
                             {scraper?.site_name || getDomain(url)}
                           </p>
-                          {scraper && <BadgeCheck className="w-3 h-3 text-violet-500 dark:text-violet-400 flex-shrink-0" />}
+                          {scraper && <BadgeCheck className="w-3 h-3 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />}
                         </div>
                       </div>
                       <button
                         onClick={() => removeUrl(index)}
-                        className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-[var(--color-text-secondary)] rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -837,8 +837,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 })}
               </div>
             ) : (
-              <div className="px-3.5 py-3 rounded-xl border border-dashed border-gray-200/60 dark:border-white/[0.06]">
-                <p className="text-[13px] text-gray-400 dark:text-gray-500 text-center">
+              <div className="px-3.5 py-3 rounded-xl border border-dashed border-[var(--color-border-secondary)]">
+                <p className="text-[13px] text-[var(--color-text-secondary)] text-center">
                   {t("config.searchUniversal")}
                 </p>
               </div>
@@ -846,36 +846,36 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           </div>
 
           {/* Séparateur */}
-          <div className="h-px bg-gray-100 dark:bg-white/[0.04]" />
+          <div className="h-px bg-[var(--color-background-primary)]" />
 
           {/* Options */}
           <div className="space-y-2.5">
-            <span className="text-sm font-medium text-gray-900 dark:text-white">{t("config.options")}</span>
+            <span className="text-sm font-medium text-[var(--color-text-primary)]">{t("config.options")}</span>
 
             <div className="space-y-1">
-              <label htmlFor="ignoreColors" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
+              <label htmlFor="ignoreColors" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-[var(--color-background-hover)] cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   id="ignoreColors"
                   checked={ignoreColors}
                   onChange={(e) => setIgnoreColors(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 focus:ring-offset-0"
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[var(--color-text-primary)] focus:ring-[var(--color-border-primary)]/10 focus:ring-offset-0"
                 />
-                <span className="text-sm text-gray-600 dark:text-gray-400">
+                <span className="text-sm text-[var(--color-text-secondary)]">
                   {t("config.ignoreColors")}
-                  <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">{t("config.moreMatches")}</span>
+                  <span className="ml-1.5 text-[11px] text-[var(--color-text-secondary)]">{t("config.moreMatches")}</span>
                 </span>
               </label>
 
-              <label htmlFor="inventoryOnly" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors">
+              <label htmlFor="inventoryOnly" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-[var(--color-background-hover)] cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   id="inventoryOnly"
                   checked={inventoryOnly}
                   onChange={(e) => setInventoryOnly(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900/10 dark:focus:ring-white/10 focus:ring-offset-0"
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[var(--color-text-primary)] focus:ring-[var(--color-border-primary)]/10 focus:ring-offset-0"
                 />
-                <span className="text-sm text-gray-600 dark:text-gray-400">
+                <span className="text-sm text-[var(--color-text-secondary)]">
                   {t("config.filterCatalog")}
                 </span>
               </label>
@@ -887,26 +887,26 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           {/* Résumé */}
           {totalSitesToScrape > 0 && !isScraping && (
             <>
-              <div className="h-px bg-gray-100 dark:bg-white/[0.04]" />
+              <div className="h-px bg-[var(--color-background-primary)]" />
               <div className="flex items-center justify-between py-1">
                 <div className="flex items-center gap-2.5">
                   <div className="flex -space-x-1">
                     {[referenceUrl, ...otherValidUrls].slice(0, 3).map((url, i) => (
-                      <div key={i} className="w-7 h-7 rounded-full bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-[11px] font-medium text-gray-500 dark:text-gray-400 border-2 border-white dark:border-[#0f0f12]">
+                      <div key={i} className="w-7 h-7 rounded-full bg-[var(--color-background-secondary)] flex items-center justify-center text-[11px] font-medium text-[var(--color-text-secondary)] border-2 border-[var(--color-background-primary)]">
                         {getDomain(url).charAt(0).toUpperCase()}
                       </div>
                     ))}
                     {totalSitesToScrape > 3 && (
-                      <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center text-[11px] font-medium text-gray-400 border-2 border-white dark:border-[#0f0f12]">
+                      <div className="w-7 h-7 rounded-full bg-[var(--color-background-secondary)] flex items-center justify-center text-[11px] font-medium text-gray-400 border-2 border-[var(--color-background-primary)]">
                         +{totalSitesToScrape - 3}
                       </div>
                     )}
                   </div>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                  <span className="text-sm text-[var(--color-text-secondary)]">
                     {totalSitesToScrape} site{totalSitesToScrape > 1 ? 's' : ''}
                   </span>
                 </div>
-                <span className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                <span className="text-[11px] text-[var(--color-text-secondary)] flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   ~{timeEstimate.text}
                 </span>
@@ -919,7 +919,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
       {/* Terminal de logs - TOUJOURS AFFICHÉ en mode logs-only OU pendant le scraping */}
       {shouldShowLogsTerminal && (
-        <div className="rounded-2xl bg-white/95 dark:bg-white/[0.025] border border-gray-200/60 dark:border-white/[0.06] overflow-hidden shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.5)]">
+        <div className="rounded-2xl bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] overflow-hidden shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.5)]">
 
           {/* Progression - toujours visible */}
           <div className="px-5 pt-5 pb-4">
@@ -928,8 +928,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               <div className="flex items-center gap-3">
                 {isScraping ? (
                   <div className="relative flex items-center justify-center w-8 h-8">
-                    <div className="absolute inset-0 rounded-full bg-blue-500/10 dark:bg-blue-400/10 animate-ping" />
-                    <Loader2 className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin relative z-10" />
+                    <div className="absolute inset-0 rounded-full bg-emerald-500/10 dark:bg-emerald-400/10 animate-ping" />
+                    <Loader2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-spin relative z-10" />
                   </div>
                 ) : scrapeStatus === 'error' ? (
                   <div className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
@@ -940,15 +940,15 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                   </div>
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-gray-50 dark:bg-white/5 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full bg-[var(--color-background-secondary)] flex items-center justify-center">
                     <Database className="w-4 h-4 text-gray-400" />
                   </div>
                 )}
                 <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
                     {isScraping ? t('config.inProgress') : scrapeStatus === 'error' ? t('config.error') : scrapeStatus === 'success' ? t('config.done') : t('config.extractionStep')}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-[var(--color-text-secondary)]">
                     {formatTime(elapsedTime)}
                   </p>
                 </div>
@@ -967,7 +967,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 {logContent.length > 0 && (
                   <button
                     onClick={() => setShowLogs(prev => !prev)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition-all"
                   >
                     <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${showLogs ? 'rotate-90' : ''}`} />
                     Logs
@@ -981,9 +981,9 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               <div>
                 <div className="flex gap-1.5 mb-2.5">
                   {scrapingSteps.map((step) => (
-                    <div key={step.id} className="flex-1 h-1.5 rounded-full overflow-hidden bg-gray-100 dark:bg-white/[0.06]">
+                    <div key={step.id} className="flex-1 h-1.5 rounded-full overflow-hidden bg-[var(--color-background-secondary)]">
                       <div className={`h-full rounded-full transition-all duration-700 ease-out ${step.status === 'completed' ? 'w-full bg-emerald-500' :
-                          step.status === 'active' ? 'w-2/3 bg-blue-500 animate-pulse' :
+                          step.status === 'active' ? 'w-2/3 bg-emerald-500 animate-pulse' :
                             step.status === 'error' ? 'w-full bg-red-500' :
                               'w-0'
                         }`} />
@@ -993,7 +993,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 <div className="flex justify-between">
                   {scrapingSteps.map((step) => (
                     <span key={step.id} className={`text-[11px] font-medium transition-colors ${step.status === 'completed' ? 'text-emerald-600 dark:text-emerald-400' :
-                        step.status === 'active' ? 'text-blue-600 dark:text-blue-400' :
+                        step.status === 'active' ? 'text-emerald-600 dark:text-emerald-400' :
                           step.status === 'error' ? 'text-red-500 dark:text-red-400' :
                             'text-gray-400 dark:text-gray-600'
                       }`}>
@@ -1020,7 +1020,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
 
           {/* Logs dépliables */}
           {showLogs && logContent.length > 0 && (
-            <div className="border-t border-gray-100 dark:border-white/[0.06]">
+            <div className="border-t border-[var(--color-border-tertiary)]">
               <div className="px-5 py-3 max-h-48 overflow-y-auto" ref={(el) => { if (el) el.scrollTop = el.scrollHeight }}>
                 <div className="space-y-0.5">
                   {logContent
@@ -1101,8 +1101,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                       return (
                         <div key={i} className={`text-[11px] leading-relaxed py-0.5 ${isError ? 'text-red-600 dark:text-red-400 font-medium' :
                             isSuccess ? 'text-emerald-600 dark:text-emerald-400' :
-                              isProgress ? 'text-blue-600/80 dark:text-blue-400/80' :
-                                'text-gray-400 dark:text-gray-500'
+                              isProgress ? 'text-emerald-600/80 dark:text-emerald-400/80' :
+                                'text-[var(--color-text-secondary)]'
                           }`}>
                           {line}
                         </div>
@@ -1110,7 +1110,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                     })}
                   {isScraping && (
                     <div className="flex items-center gap-1.5 pt-1 text-xs text-gray-400">
-                      <span className="inline-block w-1 h-3 bg-blue-500/60 rounded-full animate-pulse" />
+                      <span className="inline-block w-1 h-3 bg-emerald-500/60 rounded-full animate-pulse" />
                     </div>
                   )}
                 </div>

@@ -62,7 +62,7 @@ export default function SubscriptionPage() {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-600 dark:text-gray-400" />
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--color-text-secondary)]" />
         </div>
       </Layout>
     )
@@ -89,12 +89,12 @@ export default function SubscriptionPage() {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white leading-tight mb-8">
+        <h1 className="text-4xl md:text-5xl font-extrabold text-[var(--color-text-primary)] leading-tight mb-8">
           Abonnement
         </h1>
 
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4 mb-6">
-          <p className="text-sm text-blue-800 dark:text-blue-300">
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900 rounded-lg p-4 mb-6">
+          <p className="text-sm text-emerald-800 dark:text-emerald-300">
             L'abonnement peut être géré uniquement par le compte principal.
           </p>
         </div>
@@ -103,21 +103,21 @@ export default function SubscriptionPage() {
           {PLANS.map((plan) => (
             <div
               key={plan.id}
-              className={`bg-white dark:bg-white/[0.025] rounded-lg border-2 p-6 ${
+              className={`bg-[var(--color-background-primary)] rounded-lg border-2 p-6 ${
                 user.subscription_plan === plan.id
-                  ? "border-blue-500"
-                  : "border-gray-200 dark:border-[#1F1F23]"
+                  ? "border-emerald-500"
+                  : "border-[var(--color-border-secondary)]"
               }`}
             >
               <div className="mb-4">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                <h3 className="text-xl font-semibold text-[var(--color-text-primary)]">
                   {plan.name}
                 </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <p className="text-sm text-[var(--color-text-secondary)] mt-1">
                   {plan.description}
                 </p>
                 {plan.price && (
-                  <p className="text-lg font-bold text-gray-900 dark:text-white mt-2">
+                  <p className="text-lg font-bold text-[var(--color-text-primary)] mt-2">
                     {plan.price}
                   </p>
                 )}
@@ -127,7 +127,7 @@ export default function SubscriptionPage() {
                 {plan.features.map((feature, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="text-sm text-[var(--color-text-primary)]">
                       {feature}
                     </span>
                   </li>
@@ -137,8 +137,8 @@ export default function SubscriptionPage() {
               <button
                 className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
                   user.subscription_plan === plan.id
-                    ? "bg-gray-200 dark:bg-[#1F1F23] text-gray-700 dark:text-gray-300 cursor-not-allowed"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
+                    ? "bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] cursor-not-allowed"
+                    : "bg-emerald-600 text-white hover:bg-emerald-700"
                 }`}
                 disabled={user.subscription_plan === plan.id}
               >

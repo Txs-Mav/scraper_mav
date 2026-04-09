@@ -17,7 +17,7 @@ interface PriceEvolutionProps {
 function ScrapeTooltip({ active, payload, label }: any) {
   if (!active || !payload?.[0]) return null
   return (
-    <div className="bg-[#0F0F12] border border-[#2B2B30] rounded-xl px-4 py-3 shadow-2xl">
+    <div className="bg-[#1c1e20] border border-[#343638] rounded-xl px-4 py-3 shadow-2xl">
       <p className="text-xs text-gray-400 mb-1">{label}</p>
       <p className="text-sm font-semibold text-white">
         {payload[0].value} scrape{payload[0].value > 1 ? 's' : ''}
@@ -29,7 +29,7 @@ function ScrapeTooltip({ active, payload, label }: any) {
 function PriceTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#0F0F12] border border-[#2B2B30] rounded-xl px-4 py-3 shadow-2xl">
+    <div className="bg-[#1c1e20] border border-[#343638] rounded-xl px-4 py-3 shadow-2xl">
       <p className="text-xs text-gray-400 mb-2">{label}</p>
       <div className="space-y-1">
         {payload.map((entry: any, i: number) => (
@@ -53,12 +53,12 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
     const hasData = scrapesParJour.length > 0
 
     return (
-      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {t("ap.scrapingActivity")}
           </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mt-1">
             {t("ap.scrapesPerDay")}
           </p>
         </div>
@@ -98,7 +98,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
                 strokeWidth={2}
                 fill="url(#scrapeGradient)"
                 dot={{ fill: '#3B82F6', r: 3, strokeWidth: 0 }}
-                activeDot={{ fill: '#3B82F6', r: 5, strokeWidth: 2, stroke: '#0F0F12' }}
+                activeDot={{ fill: '#3B82F6', r: 5, strokeWidth: 2, stroke: '#1c1e20' }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -135,12 +135,12 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
   }
 
   return (
-    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.priceEvolution")}
         </h3>
-        <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+        <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mt-1">
           {t("ap.priceEvolutionDesc")}
         </p>
       </div>
@@ -183,7 +183,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
             stroke="#3B82F6"
             strokeWidth={2.5}
             dot={{ fill: '#3B82F6', r: 3, strokeWidth: 0 }}
-            activeDot={{ fill: '#3B82F6', r: 5, strokeWidth: 2, stroke: '#0F0F12' }}
+            activeDot={{ fill: '#3B82F6', r: 5, strokeWidth: 2, stroke: '#1c1e20' }}
           />
           <Line
             type="monotone"
@@ -192,7 +192,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
             strokeWidth={2}
             strokeDasharray="6 3"
             dot={{ fill: '#34D399', r: 3, strokeWidth: 0 }}
-            activeDot={{ fill: '#34D399', r: 5, strokeWidth: 2, stroke: '#0F0F12' }}
+            activeDot={{ fill: '#34D399', r: 5, strokeWidth: 2, stroke: '#1c1e20' }}
           />
         </LineChart>
       </ResponsiveContainer>

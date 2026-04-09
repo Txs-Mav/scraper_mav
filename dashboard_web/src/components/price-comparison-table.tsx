@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useMemo, useState, useEffect, useCallback, useRef } from "react"
-import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette } from "lucide-react"
+import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react"
+import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette, SlidersHorizontal } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { deepNormalize, normalizeProductGroupKey, normalizeProductGroupKeyWithMode, getProductFamilyKey, type MatchMode } from "@/lib/analytics-calculations"
@@ -145,9 +145,9 @@ function getProductDisplayName(product: Product): string {
 const etatConfig: Record<string, { labelKey: string; className: string }> = {
   neuf: { labelKey: "etat.new", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
   occasion: { labelKey: "etat.used", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  demonstrateur: { labelKey: "etat.demo", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  demonstrateur: { labelKey: "etat.demo", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
   inventaire: { labelKey: "etat.inventory", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  catalogue: { labelKey: "etat.catalog", className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+  catalogue: { labelKey: "etat.catalog", className: "bg-gray-100 text-gray-700 dark:bg-gray-800/30 dark:text-gray-400" },
   vehicules_occasion: { labelKey: "etat.used", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
 }
 
@@ -166,16 +166,16 @@ function EtatBadge({ etat, sourceCategorie }: { etat?: string; sourceCategorie?:
 function PriceCell({ price, delta }: { price: number | null; delta: number | null }) {
   const deltaTone =
     delta === null
-      ? "text-gray-500 dark:text-gray-400"
+      ? "text-[var(--color-text-secondary)]"
       : delta > 0
-        ? "text-emerald-600 dark:text-emerald-400"
+        ? "text-[#3B6D11] dark:text-emerald-400"
         : delta < 0
-          ? "text-red-600 dark:text-red-400"
-          : "text-gray-500 dark:text-gray-400"
+          ? "text-[#A32D2D] dark:text-red-400"
+          : "text-[var(--color-text-secondary)]"
 
   return (
     <div className="flex items-center justify-end gap-2">
-      <span className="text-sm text-gray-900 dark:text-gray-100">{price !== null ? `${price.toFixed(0)} $` : "—"}</span>
+      <span className="text-sm text-[var(--color-text-primary)]">{price !== null ? `${price.toFixed(0)} $` : "—"}</span>
       <span className={`text-xs font-semibold ${deltaTone}`}>
         {delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(0)} $`}
       </span>
@@ -226,7 +226,14 @@ function stripColorWords(text: string): string {
   return cleaned || text
 }
 
-export default function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, matchMode = 'exact', onMatchModeChange, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }: PriceComparisonTableProps) {
+export type PriceComparisonTableHandle = {
+  handlePrint: () => void
+  handleExportExcel: () => void
+  openShareModal: () => void
+  tableDataLength: number
+}
+
+const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceComparisonTableProps>(function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, matchMode = 'exact', onMatchModeChange, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }, ref) {
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
@@ -247,6 +254,17 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       label: hostnameFromUrl(url),
     }))
   }, [competitorsUrls])
+
+  const competitorProductCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const p of products) {
+      if (p.sourceSite) {
+        const label = hostnameFromUrl(p.sourceSite)
+        counts[label] = (counts[label] || 0) + 1
+      }
+    }
+    return counts
+  }, [products])
 
   const tableData = useMemo(() => {
     // ── Regrouper les produits comparés par clé normalisée ──
@@ -439,20 +457,41 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
     }
   }, [shareEmails, shareSubject, shareMessage, tableData, competitors])
 
+  useImperativeHandle(ref, () => ({
+    handlePrint,
+    handleExportExcel,
+    openShareModal: () => { setShareResult(null); setShowShareModal(true) },
+    tableDataLength: tableData.length,
+  }), [handlePrint, handleExportExcel, tableData.length])
+
   type TableRow = (typeof tableData)[number]
 
   const [groupByFamily, setGroupByFamily] = useState(false)
+  const [compFilter, setCompFilter] = useState<'all' | 'competitive' | 'non-competitive'>('all')
+
+  const filteredTableData = useMemo(() => {
+    if (compFilter === 'all') return tableData
+    return tableData.filter(row => {
+      const pricedCompetitors = row.prices.filter(p => p.price !== null && row.reference !== null)
+      if (pricedCompetitors.length === 0) return compFilter === 'competitive'
+      if (compFilter === 'competitive') {
+        return pricedCompetitors.every(p => p.price! >= row.reference!)
+      } else {
+        return pricedCompetitors.some(p => p.price! < row.reference!)
+      }
+    })
+  }, [tableData, compFilter])
 
   const flatRows = useMemo(() => {
     const result: Array<{ type: 'family'; label: string; count: number } | { type: 'row'; row: TableRow; globalIdx: number }> = []
 
     if (!groupByFamily) {
-      tableData.forEach((row, i) => result.push({ type: 'row', row, globalIdx: i }))
+      filteredTableData.forEach((row, i) => result.push({ type: 'row', row, globalIdx: i }))
       return result
     }
 
     const families = new Map<string, { label: string; rows: TableRow[] }>()
-    for (const row of tableData) {
+    for (const row of filteredTableData) {
       const fk = getProductFamilyKey({
         name: row.name, marque: row.marque, modele: row.modele, prix: row.reference || 0,
       } as any)
@@ -478,7 +517,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
       }
     }
     return result
-  }, [tableData, groupByFamily])
+  }, [filteredTableData, groupByFamily])
 
   const ROWS_PER_PAGE = 50
   const [currentPage, setCurrentPage] = useState(0)
@@ -562,18 +601,18 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
             <table className="w-full border-collapse">
               <thead>
                 <tr className="sticky top-0">
-                  <th className="sticky left-0 z-30 bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                  <th className="sticky left-0 z-30 bg-[var(--color-background-primary)] px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)]">
                     {t("table.image")}
                   </th>
-                  <th className="sticky left-[80px] z-30 bg-white dark:bg-[#0F0F12] px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[280px]">
+                  <th className="sticky left-[80px] z-30 bg-[var(--color-background-primary)] px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] min-w-[280px]">
                     {t("table.product")}
                   </th>
-                  <th className="sticky left-[260px] z-30 bg-white dark:bg-[#0F0F12] px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23]">
+                  <th className="sticky left-[260px] z-30 bg-[var(--color-background-primary)] px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] whitespace-nowrap">
                     {t("table.refPrice")}
                   </th>
                   {cols.map(c => (
-                    <th key={c.id} className="px-3 py-2 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#1F1F23] min-w-[130px]" title={c.label}>
-                      <span className="truncate block max-w-[130px] ml-auto">{c.label}</span>
+                    <th key={c.id} className="px-3 py-2.5 text-right border-b border-[var(--color-border-tertiary)] min-w-[130px]" title={c.label}>
+                      <span className="truncate block max-w-[130px] text-[11px] font-semibold text-[var(--color-text-primary)]">{c.label}</span>
                     </th>
                   ))}
                 </tr>
@@ -581,7 +620,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               <tbody>
                 {data.length === 0 && (
                   <tr>
-                    <td colSpan={3 + cols.length} className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                    <td colSpan={3 + cols.length} className="px-3 py-4 text-center text-sm text-[var(--color-text-secondary)]">
                       {emptyMessage || t("table.noProducts")}
                     </td>
                   </tr>
@@ -592,12 +631,12 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                 ).map((entry, flatIdx) => {
                   if (entry.type === 'family') {
                     return (
-                      <tr key={`fam-${flatIdx}`} className="bg-gray-50/80 dark:bg-white/[0.02]">
-                        <td colSpan={3 + cols.length} className="px-4 py-1.5 border-b border-gray-200/60 dark:border-white/[0.06]">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      <tr key={`fam-${flatIdx}`} className="bg-[var(--color-background-secondary)]/60">
+                        <td colSpan={3 + cols.length} className="px-4 py-1.5 border-b border-[var(--color-border-tertiary)]">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-secondary)]">
                             {entry.label}
                           </span>
-                          <span className="ml-2 text-[10px] text-gray-300 dark:text-gray-600">{entry.count}</span>
+                          <span className="ml-2 text-[10px] text-[var(--color-text-secondary)]/60">{entry.count}</span>
                         </td>
                       </tr>
                     )
@@ -609,19 +648,19 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   return (
                     <React.Fragment key={idx}>
                       <tr
-                        className="group border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#111117] transition-colors"
+                        className="group border-b border-[var(--color-border-tertiary)] hover:bg-[var(--color-background-hover)] transition-colors"
                       >
-                        <td className="sticky left-0 z-20 bg-white group-hover:bg-gray-50 dark:bg-[#0F0F12] dark:group-hover:bg-[#111117] transition-colors px-3 py-2 align-middle">
+                        <td className="sticky left-0 z-20 bg-[var(--color-background-primary)] group-hover:bg-[var(--color-background-hover)] transition-colors px-3 py-2 align-middle">
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => hasDetails && toggleDetailRow(idx)}
-                              className={`flex-shrink-0 p-0.5 rounded transition-all ${hasDetails ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] cursor-pointer' : 'text-gray-200 dark:text-gray-700 cursor-default'}`}
+                              className={`flex-shrink-0 p-0.5 rounded transition-all ${hasDetails ? 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-secondary)] cursor-pointer' : 'text-[var(--color-border-tertiary)] cursor-default'}`}
                               disabled={!hasDetails}
                               title={hasDetails ? (detailRows.has(idx) ? t("table.hideDetails") : t("table.showDetails")) : ''}
                             >
                               <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${detailRows.has(idx) ? 'rotate-180' : ''}`} />
                             </button>
-                            <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-[#1F1F23] shadow-[0_8px_20px_-14px_rgba(0,0,0,0.4)]">
+                            <div className="w-12 h-12 rounded-lg overflow-hidden bg-[var(--color-background-secondary)] shadow-[0_8px_20px_-14px_rgba(0,0,0,0.4)]">
                               {p.image ? (
                                 <>
                                   <img
@@ -642,30 +681,29 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                             </div>
                           </div>
                         </td>
-                        <td className="sticky left-[80px] z-20 bg-white group-hover:bg-gray-50 dark:bg-[#0F0F12] dark:group-hover:bg-[#111117] transition-colors px-3 py-2 min-w-[280px]">
+                        <td className="sticky left-[80px] z-20 bg-[var(--color-background-primary)] group-hover:bg-[var(--color-background-hover)] transition-colors px-3 py-2 min-w-[280px]">
                           <div className="flex flex-col gap-0.5">
                             {p.marque && extractMarque(p.marque) && (
-                              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{extractMarque(p.marque)}</span>
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{extractMarque(p.marque)}</span>
                             )}
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {(() => {
                                 const rawName = p.displayName || p.name
                                 const displayedName = stripColorsFromDisplay ? stripColorWords(rawName) : rawName
                                 return p.referenceUrl ? (
-                                  <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
+                                  <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-[var(--color-text-primary)] whitespace-normal hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline transition-colors">
                                     {displayedName}
                                   </a>
                                 ) : (
-                                  <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-normal">
+                                  <span className="text-sm font-semibold text-[var(--color-text-primary)] whitespace-normal">
                                     {displayedName}
                                   </span>
                                 )
                               })()}
-                              <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
                               {p.quantity != null && p.quantity > 1 && (
                                 <button
                                   onClick={() => toggleRowExpand(idx)}
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors cursor-pointer"
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-800/50 transition-colors cursor-pointer"
                                   title={expandedRows.has(idx) ? "Masquer les URLs" : "Voir les URLs individuelles"}
                                 >
                                   x{p.quantity} {expandedRows.has(idx) ? '▲' : '▼'}
@@ -673,26 +711,31 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                               )}
                             </div>
                             {p.inventaire && (
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500">#{p.inventaire}</span>
+                              <span className="text-[10px] text-[var(--color-text-secondary)]">#{p.inventaire}</span>
                             )}
                           </div>
                         </td>
-                        <td className="sticky left-[260px] z-20 bg-white group-hover:bg-gray-50 dark:bg-[#0F0F12] dark:group-hover:bg-[#111117] transition-colors px-3 py-2 text-right text-sm font-semibold text-gray-900 dark:text-white">
-                          {p.reference !== null ? (
-                            p.referenceUrl ? (
-                              <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                                {p.reference.toFixed(0)} $
-                              </a>
-                            ) : (
-                              `${p.reference.toFixed(0)} $`
-                            )
-                          ) : "—"}
+                        <td className="sticky left-[260px] z-20 bg-[var(--color-background-primary)] group-hover:bg-[var(--color-background-hover)] transition-colors px-3 py-2">
+                          <div className="flex items-center justify-end gap-2">
+                            <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
+                            <span className="text-sm font-semibold text-[var(--color-text-primary)]">
+                              {p.reference !== null ? (
+                                p.referenceUrl ? (
+                                  <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                                    {p.reference.toFixed(0)} $
+                                  </a>
+                                ) : (
+                                  `${p.reference.toFixed(0)} $`
+                                )
+                              ) : "—"}
+                            </span>
+                          </div>
                         </td>
                         {p.prices.map(priceEntry => (
-                          <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-gray-900 dark:text-gray-200 min-w-[130px]">
+                          <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[130px]">
                             <div className="flex flex-col items-end gap-0.5">
                               {priceEntry.url && priceEntry.price !== null ? (
-                                <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
                                   <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
                                 </a>
                               ) : (
@@ -706,19 +749,19 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                         ))}
                       </tr>
                       {detailRows.has(idx) && hasDetails && (
-                        <tr className="bg-slate-50/70 dark:bg-slate-900/20 border-b border-gray-100 dark:border-[#1F1F23]">
+                        <tr className="bg-[var(--color-background-secondary)]/40 border-b border-[var(--color-border-tertiary)]">
                           <td colSpan={3 + cols.length} className="px-4 py-2.5">
                             <div className="flex flex-wrap gap-x-6 gap-y-1.5 items-center pl-6">
                               {isUsed && p.kilometrage != null && (
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.mileage")}</span>
-                                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{p.kilometrage.toLocaleString()} km</span>
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{t("table.mileage")}</span>
+                                  <span className="text-xs font-medium text-[var(--color-text-primary)]">{p.kilometrage.toLocaleString()} km</span>
                                 </div>
                               )}
                               {p.inventaire && (
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{t("table.serialNumber")}</span>
-                                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">#{p.inventaire}</span>
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{t("table.serialNumber")}</span>
+                                  <span className="text-xs font-medium text-[var(--color-text-primary)]">#{p.inventaire}</span>
                                 </div>
                               )}
                             </div>
@@ -726,17 +769,17 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                         </tr>
                       )}
                       {expandedRows.has(idx) && p.groupedUrls && p.groupedUrls.length > 0 && (
-                        <tr className="bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-[#1F1F23]">
+                        <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-[var(--color-border-tertiary)]">
                           <td colSpan={3 + cols.length} className="px-4 py-2">
                             <div className="flex flex-wrap gap-2 items-center">
-                              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">URLs regroupées :</span>
+                              <span className="text-xs font-medium text-[var(--color-text-secondary)]">URLs regroupées :</span>
                               {p.groupedUrls.map((url: string, urlIdx: number) => (
                                 <a
                                   key={urlIdx}
                                   href={url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[300px]"
+                                  className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline truncate max-w-[300px]"
                                   title={url}
                                 >
                                   {urlIdx + 1}. {url.split('/').filter(Boolean).pop() || url}
@@ -755,8 +798,8 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           </div>
         </div>
         {canScrollTableRight && cols.length >= 3 && (
-          <div className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none bg-gradient-to-l from-white/80 to-transparent dark:from-black/60 z-10 flex items-center justify-center">
-            <ChevronRight className="h-4 w-4 text-gray-300 dark:text-gray-600 animate-pulse" />
+          <div className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none bg-gradient-to-l from-[var(--color-background-primary)]/80 to-transparent z-10 flex items-center justify-center">
+            <ChevronRight className="h-4 w-4 text-[var(--color-text-secondary)] animate-pulse" />
           </div>
         )}
       </div>
@@ -765,57 +808,21 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
 
   return (
     <div className="pb-5">
-      <div className="flex items-center gap-1.5 px-6 py-3 border-b border-gray-100/50 dark:border-white/[0.03]">
-        <div className="flex items-center gap-1 rounded-xl border border-gray-200/70 dark:border-[#1F1F23] bg-gray-50/50 dark:bg-white/[0.02] p-1">
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title={t("table.print")}
-          >
-            <Printer className="h-3.5 w-3.5" />
-            {t("table.print")}
-          </button>
-          <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/[0.06] hover:text-gray-800 dark:hover:text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title={t("table.excel")}
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            Excel
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setShareResult(null)
-            setShowShareModal(true)
-          }}
-          disabled={tableData.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-violet-500/15 hover:shadow-md hover:shadow-violet-500/20 hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          title={t("table.shareByEmail")}
-        >
-          <Mail className="h-3.5 w-3.5" />
-          {t("table.share")}
-        </button>
-        <div className="flex-1" />
+      {/* Toolbar: search + toggles + export */}
+      <div className="flex items-center gap-2 px-5 py-2.5 bg-[var(--color-background-secondary)]">
         {onSearchChange && (
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
             <input
               type="text"
               value={searchQuery || ""}
               onChange={e => onSearchChange(e.target.value)}
-              placeholder={searchPlaceholder || "Rechercher..."}
-              className="w-72 pl-8 pr-7 py-1.5 rounded-lg border border-gray-200/50 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-white/10 focus:border-gray-300 dark:focus:border-white/[0.12] transition"
+              placeholder={searchPlaceholder || "Ex: Kawasaki 2025, Ninja 650..."}
+              className="w-full pl-9 pr-8 py-2 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition"
             />
             {searchQuery && (
-              <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
-                <X className="h-3 w-3" />
+              <button type="button" onClick={() => onSearchChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition">
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
@@ -824,9 +831,9 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
           <button
             type="button"
             onClick={onToggleColors}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04] transition shrink-0"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-primary)] transition shrink-0"
           >
-            <Palette className="h-3 w-3" />
+            <Palette className="h-3.5 w-3.5" />
             {stripColorsFromDisplay ? (showColorsLabel || "Afficher couleurs") : (hideColorsLabel || "Masquer couleurs")}
           </button>
         )}
@@ -839,19 +846,19 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               return next
             })
           }}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition shrink-0 ${groupByFamily
-              ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/60 dark:hover:bg-white/[0.04]'
+          className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition shrink-0 ${groupByFamily
+              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
+              : 'border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-primary)]'
             }`}
         >
-          <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
+          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
           {groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}
         </button>
         {groupByFamily && onMatchModeChange && (
           <select
             value={matchMode}
             onChange={(e) => onMatchModeChange(e.target.value)}
-            className="text-[11px] pl-2 pr-6 py-1.5 rounded-lg border border-gray-200/70 dark:border-white/[0.06] bg-white/60 dark:bg-white/[0.02] text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:focus:ring-white/10 shrink-0"
+            className="text-xs pl-2 pr-6 py-2 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-emerald-500/20 shrink-0"
           >
             <option value="exact">{t("config.matchMode.exact")}</option>
             <option value="base">{t("config.matchMode.base")}</option>
@@ -859,6 +866,64 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
             <option value="flexible">{t("config.matchMode.flexible")}</option>
           </select>
         )}
+
+        {/* Filtres compétitivité */}
+        <div className="flex items-center gap-1 shrink-0 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-0.5">
+          <button
+            type="button"
+            onClick={() => setCompFilter(prev => prev === 'competitive' ? 'all' : 'competitive')}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition ${
+              compFilter === 'competitive'
+                ? 'bg-emerald-500 text-white shadow-sm'
+                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-secondary)]'
+            }`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-current inline-block" />
+            Compétitif
+          </button>
+          <button
+            type="button"
+            onClick={() => setCompFilter(prev => prev === 'non-competitive' ? 'all' : 'non-competitive')}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition ${
+              compFilter === 'non-competitive'
+                ? 'bg-red-500 text-white shadow-sm'
+                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-secondary)]'
+            }`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-current inline-block" />
+            Non compétitif
+          </button>
+        </div>
+
+        <div className="w-px h-6 bg-[var(--color-border-tertiary)] shrink-0" />
+
+        <button
+          type="button"
+          onClick={handleExportExcel}
+          disabled={tableData.length === 0}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <FileSpreadsheet className="h-3.5 w-3.5" />
+          Excel
+        </button>
+        <button
+          type="button"
+          onClick={handlePrint}
+          disabled={tableData.length === 0}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          {t("table.print")}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setShareResult(null); setShowShareModal(true) }}
+          disabled={tableData.length === 0}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-violet-500/30 bg-violet-500/10 text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Mail className="h-3.5 w-3.5" />
+          {t("table.share")}
+        </button>
       </div>
 
       <div id="price-comparison-table">
@@ -870,7 +935,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
 
       {totalRows > ROWS_PER_PAGE && (
         <div className="flex items-center justify-between mt-4 px-6">
-          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+          <span className="text-xs text-[var(--color-text-secondary)] tabular-nums">
             {t("table.showing")} {currentPage * ROWS_PER_PAGE + 1} {t("table.to")} {Math.min((currentPage + 1) * ROWS_PER_PAGE, totalRows)} {t("table.of")} {totalRows}
           </span>
           <div className="flex items-center gap-1">
@@ -878,7 +943,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               type="button"
               onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
               disabled={currentPage === 0}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-30 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] hover:bg-[var(--color-background-secondary)] transition disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-3 w-3" />
               {t("table.previous")}
@@ -892,16 +957,16 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                       type="button"
                       onClick={() => setCurrentPage(page)}
                       className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition ${page === currentPage
-                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                          : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                          ? "bg-[var(--color-text-primary)] text-[var(--color-background-primary)]"
+                          : "text-[var(--color-text-secondary)] hover:bg-[var(--color-background-secondary)]"
                         }`}
                     >
                       {page + 1}
                     </button>
                   )
                 }
-                if (page === 1 && currentPage > 3) return <span key="start-dots" className="px-1 text-xs text-gray-400">…</span>
-                if (page === totalPages - 2 && currentPage < totalPages - 4) return <span key="end-dots" className="px-1 text-xs text-gray-400">…</span>
+                if (page === 1 && currentPage > 3) return <span key="start-dots" className="px-1 text-xs text-[var(--color-text-secondary)]">…</span>
+                if (page === totalPages - 2 && currentPage < totalPages - 4) return <span key="end-dots" className="px-1 text-xs text-[var(--color-text-secondary)]">…</span>
                 return null
               })}
             </div>
@@ -909,7 +974,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               type="button"
               onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={currentPage >= totalPages - 1}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-30 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] hover:bg-[var(--color-background-secondary)] transition disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {t("table.next")}
               <ChevronRight className="h-3 w-3" />
@@ -931,16 +996,16 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               }
             }}
           >
-            <div className="bg-white dark:bg-[#0F0F12] rounded-2xl max-w-lg w-full shadow-[0_24px_60px_-32px_rgba(0,0,0,0.55)] border border-gray-100 dark:border-[#1F1F23] overflow-hidden">
+            <div className="bg-[var(--color-background-primary)] rounded-2xl max-w-lg w-full shadow-[0_24px_60px_-32px_rgba(0,0,0,0.55)] border border-[var(--color-border-tertiary)] overflow-hidden">
               {/* Header modale */}
-              <div className="flex items-center justify-between p-5 pb-4 border-b border-gray-100 dark:border-[#1F1F23]">
+              <div className="flex items-center justify-between p-5 pb-4 border-b border-[var(--color-border-tertiary)]">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-900/20">
-                    <Mail className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                  <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
+                    <Mail className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{t("table.shareByEmail")}</h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("table.shareByEmail")}</h4>
+                    <p className="text-xs text-[var(--color-text-secondary)]">
                       {tableData.length} produit{tableData.length > 1 ? "s" : ""} &middot; {competitors.length} concurrent{competitors.length > 1 ? "s" : ""}
                     </p>
                   </div>
@@ -964,7 +1029,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
               <div className="p-5 space-y-4">
                 {/* Destinataires */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
                     {t("table.recipients")}
                   </label>
                   <input
@@ -972,7 +1037,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     value={shareEmails}
                     onChange={e => setShareEmails(e.target.value)}
                     placeholder="email@exemple.com, autre@exemple.com"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
                     disabled={shareSending}
                   />
                   <p className="text-xs text-gray-400">{t("table.recipientsHint")}</p>
@@ -980,7 +1045,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
 
                 {/* Sujet personnalisé */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
                     {t("table.subject")}
                   </label>
                   <input
@@ -988,14 +1053,14 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     value={shareSubject}
                     onChange={e => setShareSubject(e.target.value)}
                     placeholder={t("table.subjectDefault")}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
                     disabled={shareSending}
                   />
                 </div>
 
                 {/* Message d'accompagnement */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
                     {t("table.message")}
                   </label>
                   <textarea
@@ -1003,7 +1068,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     onChange={e => setShareMessage(e.target.value)}
                     placeholder={t("table.messageDefault")}
                     rows={3}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 resize-none"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 resize-none"
                     disabled={shareSending}
                   />
                 </div>
@@ -1037,7 +1102,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                     }
                   }}
                   disabled={shareSending}
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1b1f] transition disabled:opacity-50"
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-50"
                 >
                   {t("cancel")}
                 </button>
@@ -1045,7 +1110,7 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
                   type="button"
                   onClick={handleShareEmail}
                   disabled={shareSending || !shareEmails.trim()}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-700 hover:via-purple-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-[0_8px_20px_-8px_rgba(124,58,237,0.5)] hover:shadow-[0_10px_24px_-8px_rgba(124,58,237,0.6)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-700 text-white text-sm font-semibold shadow-[0_8px_20px_-8px_rgba(5,150,105,0.5)] hover:shadow-[0_10px_24px_-8px_rgba(5,150,105,0.6)] transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {shareSending ? (
                     <>
@@ -1066,4 +1131,6 @@ export default function PriceComparisonTable({ products, competitorsUrls = [], i
         )}
     </div>
   )
-}
+})
+
+export default PriceComparisonTable

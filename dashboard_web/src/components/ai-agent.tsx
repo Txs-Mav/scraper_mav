@@ -191,16 +191,16 @@ export default function AIAgent() {
   return (
     <div className="space-y-6">
       {/* En-tête */}
-      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-xl p-6 border border-gray-200/60 dark:border-white/[0.06]">
+      <div className="bg-[var(--color-background-primary)] backdrop-blur-sm rounded-xl p-6 border border-[var(--color-border-secondary)]">
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-            <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+          <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+            <Sparkles className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+            <h2 className="text-xl font-bold text-[var(--color-text-primary)]">
               Agent IA - Analyseur de Sites
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-[var(--color-text-secondary)]">
               Gemini analyse le HTML et génère un scraper spécifique pour chaque site
             </p>
           </div>
@@ -231,14 +231,14 @@ export default function AIAgent() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && !analyzing && handleAnalyze()}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400"
+              className="w-full pl-10 pr-4 py-2 border border-[var(--color-border-secondary)] rounded-lg bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400"
               disabled={analyzing}
             />
           </div>
           <button
             onClick={handleAnalyze}
             disabled={analyzing || !url.trim()}
-            className="px-6 py-2 bg-purple-600 dark:bg-purple-500 text-white rounded-lg hover:bg-purple-700 dark:hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-6 py-2 bg-emerald-600 dark:bg-emerald-500 text-white rounded-lg hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {analyzing ? (
               <>
@@ -256,33 +256,33 @@ export default function AIAgent() {
 
         {/* Résultat de l'analyse */}
         {analysisResult && (
-          <div className="mt-4 p-4 bg-gray-50 dark:bg-[#1F1F23] rounded-lg">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+          <div className="mt-4 p-4 bg-[var(--color-background-secondary)] rounded-lg">
+            <h3 className="font-semibold text-[var(--color-text-primary)] mb-2">
               Scraper généré
             </h3>
             <div className="space-y-2 text-sm">
               <p>
-                <span className="text-gray-600 dark:text-gray-400">Site:</span>{' '}
-                <span className="text-gray-900 dark:text-white">
+                <span className="text-[var(--color-text-secondary)]">Site:</span>{' '}
+                <span className="text-[var(--color-text-primary)]">
                   {analysisResult.siteAnalysis?.siteName || 'N/A'}
                 </span>
               </p>
               <p>
-                <span className="text-gray-600 dark:text-gray-400">Structure:</span>{' '}
-                <span className="text-gray-900 dark:text-white">
+                <span className="text-[var(--color-text-secondary)]">Structure:</span>{' '}
+                <span className="text-[var(--color-text-primary)]">
                   {analysisResult.siteAnalysis?.structureType || 'N/A'}
                 </span>
               </p>
               <p>
-                <span className="text-gray-600 dark:text-gray-400">Pagination:</span>{' '}
-                <span className="text-gray-900 dark:text-white">
+                <span className="text-[var(--color-text-secondary)]">Pagination:</span>{' '}
+                <span className="text-[var(--color-text-primary)]">
                   {analysisResult.siteAnalysis?.paginationStrategy?.type || 'none'}
                 </span>
               </p>
               {analysisResult.metadata?.analyzed_pages && (
                 <p>
-                  <span className="text-gray-600 dark:text-gray-400">Pages analysées:</span>{' '}
-                  <span className="text-gray-900 dark:text-white">
+                  <span className="text-[var(--color-text-secondary)]">Pages analysées:</span>{' '}
+                  <span className="text-[var(--color-text-primary)]">
                     {analysisResult.metadata.analyzed_pages.length}
                   </span>
                 </p>
@@ -293,18 +293,18 @@ export default function AIAgent() {
       </div>
 
       {/* Liste des scrapers en cache */}
-      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-xl p-6 border border-gray-200/60 dark:border-white/[0.06]">
+      <div className="bg-[var(--color-background-primary)] backdrop-blur-sm rounded-xl p-6 border border-[var(--color-border-secondary)]">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <Database className="w-5 h-5 text-[var(--color-text-secondary)]" />
+            <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
               Scrapers en cache ({cachedScrapers.length})
             </h3>
           </div>
           <button
             onClick={loadCache}
             disabled={loadingCache}
-            className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg transition-colors"
+            className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] rounded-lg transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${loadingCache ? 'animate-spin' : ''}`} />
           </button>
@@ -315,7 +315,7 @@ export default function AIAgent() {
             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
           </div>
         ) : cachedScrapers.length === 0 ? (
-          <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+          <div className="text-center py-8 text-[var(--color-text-secondary)]">
             <FileCode className="w-12 h-12 mx-auto mb-2 opacity-50" />
             <p>Aucun scraper en cache</p>
             <p className="text-sm mt-1">Analysez un site pour générer un scraper</p>
@@ -325,24 +325,24 @@ export default function AIAgent() {
             {cachedScrapers.map((scraper) => (
               <div
                 key={scraper.cacheKey}
-                className="p-4 border border-gray-200 dark:border-[#1F1F23] rounded-lg hover:bg-gray-50 dark:hover:bg-[#1F1F23] transition-colors"
+                className="p-4 border border-[var(--color-border-secondary)] rounded-lg hover:bg-[var(--color-background-hover)] transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h4 className="font-medium text-gray-900 dark:text-white mb-1">
+                    <h4 className="font-medium text-[var(--color-text-primary)] mb-1">
                       {scraper.siteName}
                     </h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 break-all">
+                    <p className="text-sm text-[var(--color-text-secondary)] mb-2 break-all">
                       {scraper.url}
                     </p>
-                    <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-500">
-                      <span className="px-2 py-1 bg-gray-100 dark:bg-[#1F1F23] rounded">
+                    <div className="flex flex-wrap gap-2 text-xs text-[var(--color-text-secondary)]">
+                      <span className="px-2 py-1 bg-[var(--color-background-secondary)] rounded">
                         {scraper.structureType}
                       </span>
-                      <span className="px-2 py-1 bg-gray-100 dark:bg-[#1F1F23] rounded">
+                      <span className="px-2 py-1 bg-[var(--color-background-secondary)] rounded">
                         Pagination: {scraper.paginationType}
                       </span>
-                      <span className="px-2 py-1 bg-gray-100 dark:bg-[#1F1F23] rounded">
+                      <span className="px-2 py-1 bg-[var(--color-background-secondary)] rounded">
                         {(scraper.fileSize / 1024).toFixed(1)} KB
                       </span>
                     </div>
@@ -359,7 +359,7 @@ export default function AIAgent() {
                     <button
                       onClick={() => handleRun(scraper.url, true)}
                       disabled={running}
-                      className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-50"
+                      className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors disabled:opacity-50"
                       title="Régénérer et exécuter"
                     >
                       <RefreshCw className="w-4 h-4" />

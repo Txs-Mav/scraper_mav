@@ -284,7 +284,7 @@ const translations = {
     // ── Price table ──
     "table.image": "Image",
     "table.product": "Produit",
-    "table.refPrice": "Prix réf",
+    "table.refPrice": "Prix référence",
     "table.noProducts": "Aucun produit à afficher.",
     "table.noProductsYet": "Aucun produit scrappé pour le moment.",
     "table.groupModels": "Regrouper par modèle",
@@ -897,7 +897,7 @@ const translations = {
     // ── Price table ──
     "table.image": "Image",
     "table.product": "Product",
-    "table.refPrice": "Ref. price",
+    "table.refPrice": "Reference price",
     "table.noProducts": "No products to display.",
     "table.noProductsYet": "No scraped products yet.",
     "table.groupModels": "Group by model",

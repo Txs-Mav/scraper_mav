@@ -30,12 +30,12 @@ export function DashboardSkeleton() {
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="col-span-2 md:col-span-1 rounded-2xl bg-blue-100/50 dark:bg-blue-950/20 p-5 space-y-3">
-          <Skeleton className="h-3 w-16 !from-blue-200/60 !to-blue-200/60 dark:!from-blue-900/40 dark:!to-blue-900/40" />
-          <Skeleton className="h-10 w-16 !from-blue-200/60 !to-blue-200/60 dark:!from-blue-900/40 dark:!to-blue-900/40" />
+        <div className="col-span-2 md:col-span-1 rounded-2xl bg-emerald-100/50 dark:bg-emerald-950/20 p-5 space-y-3">
+          <Skeleton className="h-3 w-16 !from-emerald-200/60 !to-emerald-200/60 dark:!from-emerald-900/40 dark:!to-emerald-900/40" />
+          <Skeleton className="h-10 w-16 !from-emerald-200/60 !to-emerald-200/60 dark:!from-emerald-900/40 dark:!to-emerald-900/40" />
         </div>
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white/40 dark:bg-white/[0.015] p-4 space-y-3">
+          <div key={i} className="rounded-2xl border border-[var(--color-border-tertiary)] bg-white/40 dark:bg-white/[0.015] p-4 space-y-3">
             <Skeleton className="h-3 w-16" />
             <Skeleton className="h-6 w-10" />
           </div>
@@ -43,7 +43,7 @@ export function DashboardSkeleton() {
       </div>
 
       {/* Extraction */}
-      <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white/40 dark:bg-white/[0.015] p-5 space-y-4">
+      <div className="rounded-2xl border border-[var(--color-border-tertiary)] bg-white/40 dark:bg-white/[0.015] p-5 space-y-4">
         <div className="flex items-center gap-3">
           <Skeleton className="h-9 w-9 rounded-xl" />
           <div className="space-y-1.5">
@@ -55,13 +55,13 @@ export function DashboardSkeleton() {
       </div>
 
       {/* Products */}
-      <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-white/[0.025] overflow-hidden shadow-sm">
+      <div className="rounded-2xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden shadow-sm">
         <div className="p-5 flex items-center justify-between">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-4 w-20" />
         </div>
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="flex items-center gap-4 px-5 py-3 border-t border-gray-100/50 dark:border-white/[0.03]">
+          <div key={i} className="flex items-center gap-4 px-5 py-3 border-t border-[var(--color-border-tertiary)]">
             <Skeleton className="h-4 w-6" />
             <Skeleton className="h-4 w-40" />
             <Skeleton className="h-4 w-20 ml-auto" />
@@ -79,7 +79,7 @@ export function AnalyticsSkeleton() {
       <Skeleton className="h-8 w-48" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-white/[0.025] p-6 space-y-4 shadow-sm">
+          <div key={i} className="rounded-2xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] p-6 space-y-4 shadow-sm">
             <Skeleton className="h-5 w-36" />
             <Skeleton className="h-44 w-full rounded-xl" />
           </div>
@@ -91,9 +91,9 @@ export function AnalyticsSkeleton() {
 
 export function TableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="rounded-2xl border border-gray-200/40 dark:border-white/[0.04] bg-white dark:bg-white/[0.025] overflow-hidden shadow-sm animate-in fade-in duration-500">
+    <div className="rounded-2xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden shadow-sm animate-in fade-in duration-500">
       {[...Array(rows)].map((_, i) => (
-        <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-gray-100/50 dark:border-white/[0.03] last:border-0">
+        <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-[var(--color-border-tertiary)] last:border-0">
           <Skeleton className="h-4 w-6" />
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-4 w-20 ml-auto" />

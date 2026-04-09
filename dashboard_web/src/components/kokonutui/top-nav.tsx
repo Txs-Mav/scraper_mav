@@ -6,7 +6,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/compon
 import { User, Home, BarChart2, CreditCard, Activity } from "lucide-react"
 
 import Profile01 from "./profile-01"
-import { ThemeToggle } from "../theme-toggle"
 import { useLanguage } from "@/contexts/language-context"
 import { useAuth } from "@/contexts/auth-context"
 import { cn } from "@/lib/utils"
@@ -35,9 +34,9 @@ export default function TopNav() {
   )
 
   return (
-    <nav className="px-3 sm:px-6 flex items-center justify-between bg-white dark:bg-[#0F0F12] border-b border-gray-200 dark:border-[#1F1F23] h-full">
+    <nav className="px-3 sm:px-6 flex items-center justify-between bg-[var(--color-background-primary)] border-b border-[var(--color-border-secondary)] h-full">
       <Link href="/dashboard" className="flex items-center hover:opacity-90 transition-opacity">
-        <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">GO-DATA</span>
+        <span className="text-lg font-semibold tracking-tight text-[var(--color-text-primary)]">GO-DATA</span>
       </Link>
 
       <div className="flex-1 flex justify-center">
@@ -54,16 +53,16 @@ export default function TopNav() {
                 className={cn(
                   "group relative flex items-center gap-2 px-3 py-2.5 text-sm transition-colors",
                   isExact
-                    ? "text-gray-900 dark:text-white font-semibold"
-                    : "text-gray-500 dark:text-gray-400 font-medium hover:text-gray-900 dark:hover:text-white"
+                    ? "text-[var(--color-text-primary)] font-semibold"
+                    : "text-[var(--color-text-secondary)] font-medium hover:text-[var(--color-text-primary)]"
                 )}
               >
-                <Icon className={cn("h-4 w-4", isExact ? "text-blue-600 dark:text-blue-400" : "")} />
+                <Icon className={cn("h-4 w-4", isExact ? "text-emerald-600 dark:text-emerald-400" : "")} />
                 <span>{t(item.labelKey)}</span>
                 <span className={cn(
                   "absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200",
                   isExact
-                    ? "opacity-100 bg-blue-600 dark:bg-blue-400"
+                    ? "opacity-100 bg-emerald-600 dark:bg-emerald-400"
                     : "opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600"
                 )} />
               </Link>
@@ -73,17 +72,15 @@ export default function TopNav() {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4 ml-auto sm:ml-0">
-        <ThemeToggle />
-
         {/* Section profil */}
         <DropdownMenu>
           <DropdownMenuTrigger className="focus:outline-none">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-[#2B2B30] cursor-pointer hover:bg-gray-100 dark:hover:bg-[#1F1F23] transition-colors overflow-hidden">
+            <div className="flex items-center justify-center w-8 h-8 rounded-full ring-2 ring-[var(--color-border-secondary)] cursor-pointer hover:bg-[var(--color-background-hover)] transition-colors overflow-hidden">
               {user?.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.avatar_url} alt={user.name || "avatar"} className="w-full h-full object-cover" />
               ) : (
-                <User className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                <User className="h-5 w-5 text-[var(--color-text-secondary)]" />
               )}
             </div>
           </DropdownMenuTrigger>

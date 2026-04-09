@@ -149,15 +149,15 @@ function CreateAccountContent() {
     } catch (err: any) { setError(err.message || t("register.unknownError")); setLoading(false) }
   }
 
-  const inputClass = "w-full h-10 px-3 text-[14px] border border-gray-200 dark:border-white/[0.08] rounded-[8px] bg-white dark:bg-white/[0.03] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+  const inputClass = "w-full h-10 px-3 text-[14px] border border-gray-200 dark:border-white/[0.08] rounded-[8px] bg-white dark:bg-white/[0.03] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
 
   return (
-    <div className="min-h-screen bg-[#fafbfc] dark:bg-[#09090b]">
+    <div className="min-h-screen bg-[#fafbfc] dark:bg-[#111314]">
       {/* ── Header ── */}
-      <header className="px-6 py-4 border-b border-gray-100 dark:border-white/[0.06] bg-white/80 dark:bg-[#09090b]/80 backdrop-blur-sm sticky top-0 z-20">
+      <header className="px-6 py-4 border-b border-gray-100 dark:border-[#2a2c2e] bg-white/80 dark:bg-[#111314]/80 backdrop-blur-sm sticky top-0 z-20">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="relative h-8 w-8 flex-shrink-0 rounded-[8px] bg-white dark:bg-[#141419] shadow-sm border border-gray-100 dark:border-white/[0.06] overflow-hidden">
+            <div className="relative h-8 w-8 flex-shrink-0 rounded-[8px] bg-white dark:bg-[#1c1e20] shadow-sm border border-gray-100 dark:border-[#2a2c2e] overflow-hidden">
               <Image src="/Go-Data.svg" alt="GO-DATA" fill sizes="32px" className="object-contain" />
             </div>
             <span className="text-[15px] font-semibold text-gray-900 dark:text-white tracking-tight">GO-DATA</span>
@@ -194,7 +194,7 @@ function CreateAccountContent() {
             return (
               <div key={plan.id} className="relative flex flex-col">
                 {isPro && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1 text-[11px] font-semibold tracking-wide uppercase rounded-full bg-blue-600 text-white whitespace-nowrap">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1 text-[11px] font-semibold tracking-wide uppercase rounded-full bg-emerald-600 text-white whitespace-nowrap">
                     {t("register.mostPopular")}
                   </span>
                 )}
@@ -204,18 +204,18 @@ function CreateAccountContent() {
                   onClick={() => setSelectedPlan(plan.id)}
                   className={`flex-1 text-left p-6 rounded-[12px] border transition-all duration-200 group ${
                     isSelected
-                      ? "border-blue-500 bg-white dark:bg-[#0F0F12] shadow-lg shadow-blue-500/[0.08] ring-1 ring-blue-500/20"
+                      ? "border-emerald-500 bg-white dark:bg-[#1c1e20] shadow-lg shadow-emerald-500/[0.08] ring-1 ring-emerald-500/20"
                       : isPro
-                        ? "border-blue-200 dark:border-blue-500/20 bg-white dark:bg-[#0F0F12] shadow-md hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-500/30"
-                        : "border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-white/[0.1]"
+                        ? "border-emerald-200 dark:border-emerald-500/20 bg-white dark:bg-[#1c1e20] shadow-md hover:shadow-lg hover:border-emerald-300 dark:hover:border-emerald-500/30"
+                        : "border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20] shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-white/[0.1]"
                   }`}
                 >
                   <div className="flex items-center gap-3 mb-4">
                     <div className={`flex items-center justify-center w-10 h-10 rounded-[10px] ${
-                      isSelected || isPro ? "bg-blue-50 dark:bg-blue-900/20" : "bg-gray-50 dark:bg-white/[0.04]"
+                      isSelected || isPro ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-gray-50 dark:bg-[#1c1e20]"
                     }`}>
                       <Icon className={`h-5 w-5 ${
-                        isSelected || isPro ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"
+                        isSelected || isPro ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"
                       }`} />
                     </div>
                     <div>
@@ -235,7 +235,7 @@ function CreateAccountContent() {
                     {plan.features.map((f) => (
                       <li key={f} className="flex items-start gap-2.5">
                         <Check className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                          isSelected || isPro ? "text-blue-500 dark:text-blue-400" : "text-gray-300 dark:text-gray-600"
+                          isSelected || isPro ? "text-emerald-500 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"
                         }`} />
                         <span className="text-[13px] text-gray-600 dark:text-gray-400 leading-snug">{f}</span>
                       </li>
@@ -244,7 +244,7 @@ function CreateAccountContent() {
 
                   <div className={`w-full h-10 flex items-center justify-center rounded-[8px] text-[13px] font-semibold transition-all ${
                     isSelected
-                      ? "bg-blue-600 text-white shadow-sm shadow-blue-600/20"
+                      ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
                       : isPro
                         ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 group-hover:bg-gray-800 dark:group-hover:bg-gray-100"
                         : "bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-gray-300 group-hover:bg-gray-200 dark:group-hover:bg-white/[0.08]"
@@ -269,7 +269,7 @@ function CreateAccountContent() {
             </p>
           </div>
 
-          <div className="rounded-[12px] border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#0F0F12] shadow-sm p-6 sm:p-8">
+          <div className="rounded-[12px] border border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20] shadow-sm p-6 sm:p-8">
             <form className="space-y-4" onSubmit={handleSubmit}>
               {successMessage && (
                 <div className="rounded-[8px] p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
@@ -280,10 +280,10 @@ function CreateAccountContent() {
               {error && (
                 <div className={`rounded-[8px] p-3 ${
                   accountExists
-                    ? "bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40"
+                    ? "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40"
                     : "bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40"
                 }`}>
-                  <p className={`text-[13px] ${accountExists ? "text-blue-700 dark:text-blue-300" : "text-red-700 dark:text-red-300"}`}>{error}</p>
+                  <p className={`text-[13px] ${accountExists ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{error}</p>
                 </div>
               )}
 
@@ -340,7 +340,7 @@ function CreateAccountContent() {
                   <input type="text" value={promoCode}
                     onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoCodeValid(null) }}
                     onBlur={validatePromoCode}
-                    className="flex-1 h-8 px-2.5 text-[13px] border border-gray-200 dark:border-white/[0.08] rounded-[6px] bg-gray-50/50 dark:bg-white/[0.02] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 focus:bg-white dark:focus:bg-white/[0.04] transition-all"
+                    className="flex-1 h-8 px-2.5 text-[13px] border border-gray-200 dark:border-white/[0.08] rounded-[6px] bg-gray-50/50 dark:bg-white/[0.02] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 focus:bg-white dark:focus:bg-white/[0.04] transition-all"
                     placeholder={t("register.promoPlaceholder")} />
                   {validatingPromo && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
                   {promoCodeValid === true && <Check className="h-4 w-4 text-emerald-500" />}
@@ -351,17 +351,17 @@ function CreateAccountContent() {
               <label className="flex items-start gap-2.5 cursor-pointer">
                 <div className="relative mt-0.5">
                   <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="sr-only peer" />
-                  <div className="w-4 h-4 rounded-[4px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-white/[0.04] peer-checked:bg-blue-600 peer-checked:border-blue-600 transition-all flex items-center justify-center">
+                  <div className="w-4 h-4 rounded-[4px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#1c1e20] peer-checked:bg-emerald-600 peer-checked:border-emerald-600 transition-all flex items-center justify-center">
                     {acceptTerms && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
                   </div>
                 </div>
                 <span className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                  {t("register.acceptTerms")} <Link href="#" className="text-blue-600 dark:text-blue-400 hover:underline">{t("register.terms")}</Link> {t("register.and")} <Link href="#" className="text-blue-600 dark:text-blue-400 hover:underline">{t("register.privacyPolicy")}</Link>.
+                  {t("register.acceptTerms")} <Link href="#" className="text-emerald-600 dark:text-emerald-400 hover:underline">{t("register.terms")}</Link> {t("register.and")} <Link href="#" className="text-emerald-600 dark:text-emerald-400 hover:underline">{t("register.privacyPolicy")}</Link>.
                 </span>
               </label>
 
               <button type="submit" disabled={loading || !acceptTerms}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-[8px] text-[14px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-blue-600/20 hover:shadow-md active:scale-[0.98]">
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-[8px] text-[14px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-emerald-600/20 hover:shadow-md active:scale-[0.98]">
                 {loading
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> {t("register.creating")}</>
                   : <>{t("register.submit")} <ArrowRight className="h-4 w-4" /></>}
@@ -389,7 +389,7 @@ function CreateAccountContent() {
 export default function CreateAccountPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-[#09090b]">
+      <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-[#111314]">
         <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
       </div>
     }>

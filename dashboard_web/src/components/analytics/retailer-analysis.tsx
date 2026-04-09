@@ -40,9 +40,9 @@ const fmtPrice = (v: number) =>
   v.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '$'
 
 function ecartColor(ecart: number): string {
-  if (ecart > 0.5) return 'text-red-600 dark:text-red-400'
-  if (ecart < -0.5) return 'text-emerald-600 dark:text-emerald-400'
-  return 'text-gray-500 dark:text-gray-400'
+  if (ecart > 0.5) return 'text-[#A32D2D] dark:text-[#A32D2D]'
+  if (ecart < -0.5) return 'text-[#3B6D11] dark:text-[#3B6D11]'
+  return 'text-gray-500 dark:text-[#B0B0B0]'
 }
 
 function barFill(ecart: number): string {
@@ -57,7 +57,7 @@ function EcartTooltip({ active, payload }: any) {
   const d = payload[0].payload
   const sign = d.ecart > 0 ? '+' : ''
   return (
-    <div className="bg-[#0F0F12] border border-[#2B2B30] rounded-xl px-4 py-3 shadow-2xl max-w-xs">
+    <div className="bg-[#1c1e20] border border-[#343638] rounded-xl px-4 py-3 shadow-2xl max-w-xs">
       <p className="text-sm font-medium text-white mb-2">{d.fullSite}</p>
       <div className="space-y-1.5 text-xs">
         <div className="flex justify-between gap-6">
@@ -70,7 +70,7 @@ function EcartTooltip({ active, payload }: any) {
           <span className="text-gray-400">{t("ap.comparedCount")}</span>
           <span className="text-white">{d.produitsComparables}</span>
         </div>
-        <div className="h-px bg-[#2B2B30]" />
+        <div className="h-px bg-[#343638]" />
         <div className="text-gray-500 leading-relaxed">
           {d.ecart > 0.5
             ? t("ap.retailerMoreExpensive").replace("{0}", d.ecart.toFixed(1))
@@ -89,11 +89,11 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
 
   if (detailleurs.length === 0) {
     return (
-      <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           {t("ap.retailerComparison")}
         </h3>
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-8 text-gray-500 dark:text-[#B0B0B0]">
           {t("ap.noRetailerData")}
         </div>
       </div>
@@ -116,18 +116,18 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
     }))
 
   return (
-    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.retailerComparison")}
         </h3>
-        <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+        <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mt-1">
           {t("ap.retailerDescNew")}
         </p>
       </div>
 
       {refSite && (
-        <div className="mb-5 p-3.5 bg-gray-50 dark:bg-[#141417] rounded-xl border border-gray-200 dark:border-[#2B2B30]">
+        <div className="mb-5 p-3.5 bg-gray-50 dark:bg-[#2A2A2A] rounded-xl border border-gray-200 dark:border-[#3A3A3A]">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs text-gray-500 uppercase tracking-wider font-medium">{t("ap.yourSitePosition")}</div>
@@ -194,7 +194,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
               <span>{t("ap.cheaperLegendNew")}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm bg-red-400" />
+              <div className="w-2.5 h-2.5 rounded-sm bg-[#A32D2D]" />
               <span>{t("ap.expensiveLegendNew")}</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -209,7 +209,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
       <div className="mt-6 overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200 dark:border-[#1F1F23]">
+            <tr className="border-b border-gray-200 dark:border-[#3A3A3A]">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 {t("ap.retailer")}
               </th>
@@ -232,16 +232,16 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                 <tr key={`row-${index}`} className="group">
                   <td colSpan={5} className="p-0">
                     <div
-                      className="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1A1A1E] transition-colors rounded-lg"
+                      className="flex items-center cursor-pointer hover:hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors rounded-lg"
                       onClick={() => setExpandedRetailer(
                         expandedRetailer === det.site ? null : det.site
                       )}
                     >
                       <div className="flex-1 py-3 px-4 text-sm text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
-                        {det.isReference && <Award className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />}
+                        {det.isReference && <Award className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />}
                         <span className="truncate">{det.site}</span>
                         {det.isReference && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 flex-shrink-0">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex-shrink-0">
                             {t("ap.yourSite")}
                           </span>
                         )}
@@ -249,7 +249,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                       <div className="py-3 px-4 text-sm text-right w-28">
                         {det.produitsComparables > 0 ? (
                           ecart > 0.5 ? (
-                            <span className="text-red-600 dark:text-red-400 inline-flex items-center justify-end gap-1 font-semibold tabular-nums">
+                            <span className="text-[#A32D2D] dark:text-[#A32D2D] inline-flex items-center justify-end gap-1 font-semibold tabular-nums">
                               <TrendingUp className="h-3.5 w-3.5" />
                               +{ecart.toFixed(1)}%
                             </span>
@@ -281,7 +281,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                     </div>
 
                     {expandedRetailer === det.site && det.categorieStats && det.categorieStats.length > 0 && (
-                      <div className="bg-gray-50/50 dark:bg-[#141417] mx-2 mb-2 rounded-lg px-4 py-3">
+                      <div className="bg-gray-50 dark:bg-[#2A2A2A] mx-2 mb-2 rounded-lg px-4 py-3">
                         <div className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">
                           {t("ap.avgGapCategory")}
                         </div>
@@ -296,17 +296,17 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                                   isCheap
                                     ? 'bg-emerald-50/80 dark:bg-emerald-900/10 border-emerald-200/60 dark:border-emerald-900/30'
                                     : isExpensive
-                                    ? 'bg-red-50/80 dark:bg-red-900/10 border-red-200/60 dark:border-red-900/30'
-                                    : 'bg-white dark:bg-white/[0.025] border-gray-200/60 dark:border-[#2B2B30]'
+                                    ? 'bg-[#FCEBEB]/80 dark:bg-[#A32D2D]/15 border-[#A32D2D]/20 dark:border-[#A32D2D]/30'
+                                    : 'bg-white dark:bg-[#222222] border-gray-200 dark:border-[#3A3A3A]'
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                  <span className="text-xs font-medium text-gray-900 dark:text-white">
                                     {categoryLabels[cs.categorie] || cs.categorie}
                                   </span>
                                   <span className={`text-xs font-bold tabular-nums ${
-                                    isCheap ? 'text-emerald-600 dark:text-emerald-400'
-                                      : isExpensive ? 'text-red-600 dark:text-red-400'
+                                    isCheap ? 'text-[#3B6D11] dark:text-[#3B6D11]'
+                                      : isExpensive ? 'text-[#A32D2D] dark:text-[#A32D2D]'
                                       : 'text-gray-500'
                                   }`}>
                                     {cs.agressivite > 0 ? '+' : ''}{cs.agressivite.toFixed(1)}%
@@ -322,7 +322,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                       </div>
                     )}
 
-                    <div className="h-px bg-gray-100 dark:bg-[#1F1F23] mx-4" />
+                    <div className="h-px bg-gray-100 dark:bg-[#2E2E2E] mx-4" />
                   </td>
                 </tr>
               )

@@ -27,7 +27,7 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className={`min-h-screen flex flex-col ${theme === "dark" ? "dark" : ""}`}>
-      <header className="h-16 border-b border-gray-200 dark:border-[#1F1F23]">
+      <header className="h-16 border-b border-[var(--color-border-secondary)]">
         <TopNav />
       </header>
       <main className="flex-1 overflow-auto p-6 background-template">

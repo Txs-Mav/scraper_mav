@@ -27,7 +27,7 @@ export default function Sidebar() {
       <Link
         href={href}
         onClick={handleNavigation}
-        className="flex items-center px-3 py-2 text-sm rounded-md transition-colors text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#1F1F23]"
+        className="flex items-center px-3 py-2 text-sm rounded-md transition-colors text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
       >
         <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
         {children}
@@ -39,20 +39,20 @@ export default function Sidebar() {
     <>
       <button
         type="button"
-        className="lg:hidden fixed top-4 left-4 z-[70] p-2 rounded-lg bg-white dark:bg-[#0F0F12] shadow-md"
+        className="lg:hidden fixed top-4 left-4 z-[70] p-2 rounded-lg bg-[var(--color-background-primary)] shadow-md"
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       >
-        <Menu className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+        <Menu className="h-5 w-5 text-[var(--color-text-secondary)]" />
       </button>
       <nav
         className={`
-                fixed inset-y-0 left-0 z-[70] w-64 bg-white dark:bg-[#0F0F12] transform transition-transform duration-200 ease-in-out
-                lg:translate-x-0 lg:static lg:w-64 border-r border-gray-200 dark:border-[#1F1F23]
+                fixed inset-y-0 left-0 z-[70] w-64 bg-[var(--color-background-primary)] transform transition-transform duration-200 ease-in-out
+                lg:translate-x-0 lg:static lg:w-64 border-r border-[var(--color-border-secondary)]
                 ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
             `}
       >
         <div className="h-full flex flex-col">
-          <Link href="/dashboard" className="h-16 px-6 flex items-center border-b border-gray-200 dark:border-[#1F1F23]">
+          <Link href="/dashboard" className="h-16 px-6 flex items-center border-b border-[var(--color-border-secondary)]">
             <div className="flex items-center gap-3">
               <div className="relative h-10 w-10 flex-shrink-0">
                 <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/70 via-white/30 to-transparent dark:from-white/15 dark:via-white/10 dark:to-transparent" />
@@ -68,7 +68,7 @@ export default function Sidebar() {
                   }}
                 />
               </div>
-              <span className="text-lg font-semibold hover:cursor-pointer text-gray-900 dark:text-white">
+              <span className="text-lg font-semibold hover:cursor-pointer text-[var(--color-text-primary)]">
                 Go-Data
               </span>
             </div>
@@ -80,7 +80,7 @@ export default function Sidebar() {
             </div>
           </div>
 
-          <div className="px-4 py-4 border-t border-gray-200 dark:border-[#1F1F23]">
+          <div className="px-4 py-4 border-t border-[var(--color-border-secondary)]">
             <div className="space-y-1">
               <NavItem href="#" icon={Settings}>
                 Settings

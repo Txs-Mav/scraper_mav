@@ -133,12 +133,36 @@ function changeTypeLabel(type: string, t: (key: TranslationKey) => string): stri
 
 function changeTypeIcon(type: string) {
   switch (type) {
-    case 'price_increase': return <TrendingUp className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-    case 'price_decrease': return <TrendingDown className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-    case 'new_product': return <Package className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-    case 'removed_product': return <PackageMinus className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-    case 'stock_change': return <RefreshCw className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-    default: return <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+    case 'price_increase': return (
+      <div className="p-1.5 rounded-lg bg-[#EAF3DE] dark:bg-[#3B6D11]/20">
+        <TrendingUp className="h-4 w-4 text-[#3B6D11]" />
+      </div>
+    )
+    case 'price_decrease': return (
+      <div className="p-1.5 rounded-lg bg-[#FCEBEB] dark:bg-[#A32D2D]/20">
+        <TrendingDown className="h-4 w-4 text-[#A32D2D]" />
+      </div>
+    )
+    case 'new_product': return (
+      <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+        <Package className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+      </div>
+    )
+    case 'removed_product': return (
+      <div className="p-1.5 rounded-lg bg-[var(--color-background-secondary)]">
+        <PackageMinus className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+      </div>
+    )
+    case 'stock_change': return (
+      <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+        <RefreshCw className="h-4 w-4 text-[#BA7517]" />
+      </div>
+    )
+    default: return (
+      <div className="p-1.5 rounded-lg bg-[var(--color-background-secondary)]">
+        <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+      </div>
+    )
   }
 }
 
@@ -493,8 +517,8 @@ export default function AlertePage() {
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <Lock className="h-12 w-12 text-amber-500" />
-          <p className="text-lg font-medium text-gray-900 dark:text-white">{t("alerts.accessDenied")}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{t("alerts.redirecting")}</p>
+          <p className="text-lg font-medium text-[var(--color-text-primary)]">{t("alerts.accessDenied")}</p>
+          <p className="text-sm text-[var(--color-text-secondary)]">{t("alerts.redirecting")}</p>
         </div>
       </Layout>
     )
@@ -515,12 +539,12 @@ export default function AlertePage() {
           ].map((s, i) => {
             const Icon = s.icon
             return (
-              <div key={i} className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm p-5 flex flex-col justify-between">
+              <div key={i} className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] backdrop-blur-sm p-5 flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">{s.label}</p>
-                  <Icon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 opacity-50" />
+                  <p className="text-xs font-medium text-[var(--color-text-secondary)] tracking-wide">{s.label}</p>
+                  <Icon className="h-3.5 w-3.5 text-[var(--color-text-secondary)] opacity-50" />
                 </div>
-                <p className="text-3xl font-extrabold leading-none tabular-nums tracking-tight text-gray-800 dark:text-gray-100">{s.value}</p>
+                <p className="text-3xl font-extrabold leading-none tabular-nums tracking-tight text-[var(--color-text-primary)]">{s.value}</p>
               </div>
             )
           })}
@@ -540,26 +564,26 @@ export default function AlertePage() {
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : alerts.length === 0 ? (
-          <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] p-10 text-center">
+          <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-10 text-center">
             <div className="max-w-sm mx-auto">
-              <div className="mx-auto w-12 h-12 rounded-xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mb-4">
-                <Radar className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+              <div className="mx-auto w-12 h-12 rounded-xl bg-[var(--color-background-primary)] flex items-center justify-center mb-4">
+                <Radar className="h-5 w-5 text-[var(--color-text-secondary)]" />
               </div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1.5">{t("alerts.noAlerts")}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+              <h3 className="text-base font-bold text-[var(--color-text-primary)] mb-1.5">{t("alerts.noAlerts")}</h3>
+              <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
                 {t("alerts.noAlertsDesc")}
               </p>
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
-            <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.04]">
-              <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
+          <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+            <div className="px-5 py-4 border-b border-[var(--color-border-tertiary)]">
+              <h2 className="text-base font-extrabold text-[var(--color-text-primary)] tracking-tight">
                 {t("alerts.monitoredSites")}
-                <span className="ml-2 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.04] text-gray-600 dark:text-gray-400 text-[11px] font-semibold tabular-nums">{alerts.length}</span>
+                <span className="ml-2 px-1.5 py-0.5 rounded-md bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] text-[11px] font-semibold tabular-nums">{alerts.length}</span>
               </h2>
             </div>
-            <div className="divide-y divide-gray-100 dark:divide-white/[0.04]">
+            <div className="divide-y divide-[var(--color-border-tertiary)]">
               {alerts.map((alert) => {
                 const isLoading = actionLoading === alert.id || actionLoading === `check-${alert.id}`
                 const isScraping = scrapingInProgress.has(alert.id)
@@ -571,7 +595,7 @@ export default function AlertePage() {
                 return (
                   <div
                     key={alert.id}
-                    className={`px-5 py-3.5 hover:bg-gray-50/50 dark:hover:bg-white/[0.015] transition ${
+                    className={`px-5 py-3.5 hover:bg-[var(--color-background-hover)] transition ${
                       !alert.is_active ? 'opacity-50' : ''
                     }`}
                   >
@@ -580,7 +604,7 @@ export default function AlertePage() {
                         {/* Reference site */}
                         <div className="flex items-center gap-2">
                           <Star className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{hostname}</span>
+                          <span className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{hostname}</span>
                           {hasCache && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium">{t("alerts.cached")}</span>
                           )}
@@ -588,7 +612,7 @@ export default function AlertePage() {
                             <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 font-medium">{t("alerts.paused")}</span>
                           )}
                           {isScraping && (
-                            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
+                            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-medium">
                               <Loader2 className="h-2.5 w-2.5 animate-spin" />
                               {t("alerts.scrapingInProgress")}
                             </span>
@@ -596,7 +620,7 @@ export default function AlertePage() {
                         </div>
 
                         {/* Meta line: auto-monitoring, email, competitors count */}
-                        <div className="flex flex-wrap items-center gap-2.5 mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                        <div className="flex flex-wrap items-center gap-2.5 mt-1 text-[11px] text-[var(--color-text-secondary)]">
                           <span className="flex items-center gap-1">
                             <Radar className="h-3 w-3" />
                             {locale === 'fr' ? 'Auto' : 'Auto'}
@@ -628,7 +652,7 @@ export default function AlertePage() {
                         {competitors.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                             {competitors.map((url, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.04] text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                              <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--color-background-primary)] text-[10px] font-medium text-[var(--color-text-secondary)]">
                                 <Globe className="h-2.5 w-2.5" />
                                 {getHostname(url)}
                               </span>
@@ -639,7 +663,7 @@ export default function AlertePage() {
                         {/* Threshold badge (only if non-default) */}
                         {(alert.min_price_change_pct !== 1 || alert.min_price_change_abs !== 2) && (
                           <div className="mt-1.5">
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100/80 dark:bg-white/[0.04] text-[10px] font-medium text-gray-500">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--color-background-primary)] text-[10px] font-medium text-gray-500">
                               <Settings2 className="h-2.5 w-2.5" />
                               {alert.min_price_change_pct}% / {alert.min_price_change_abs}$
                             </span>
@@ -652,7 +676,7 @@ export default function AlertePage() {
                           onClick={() => runCheck(alert.id)}
                           disabled={isLoading}
                           title={t("alerts.checkNow")}
-                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition disabled:opacity-50"
+                          className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition disabled:opacity-50"
                         >
                           {actionLoading === `check-${alert.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
                         </button>
@@ -682,20 +706,20 @@ export default function AlertePage() {
         )}
 
         {/* ── Activity feed ── */}
-        <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white dark:bg-white/[0.025] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
-          <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.04] flex items-center justify-between">
+        <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+          <div className="px-5 py-4 border-b border-[var(--color-border-tertiary)] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-extrabold text-[var(--color-text-primary)] tracking-tight">
                 {t("alerts.detectedChanges")}
                 {unreadCount > 0 && (
-                  <span className="ml-2 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.05] text-gray-600 dark:text-gray-400 text-[11px] font-semibold tabular-nums">{unreadCount}</span>
+                  <span className="ml-2 px-1.5 py-0.5 rounded-md bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] text-[11px] font-semibold tabular-nums">{unreadCount}</span>
                 )}
               </h2>
             </div>
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700 font-semibold"
+                className="inline-flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-700 font-semibold"
               >
                 <CheckCheck className="h-3 w-3" />
                 {t("alerts.markAllRead")}
@@ -706,13 +730,13 @@ export default function AlertePage() {
           {changes.length === 0 ? (
             <div className="p-8 text-center">
               <AlertTriangle className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-[var(--color-text-secondary)]">
                 {t("alerts.noChanges")}
               </p>
             </div>
           ) : (
             <div>
-              <div className="divide-y divide-gray-50 dark:divide-white/[0.02]">
+              <div className="p-3 space-y-2.5">
                 {visibleChanges.map((change) => {
                   const sourceSite = change.source_site
                   const fallbackSiteUrl = change.scraper_alerts?.scraper_cache?.site_url
@@ -720,66 +744,106 @@ export default function AlertePage() {
                   const isPriceChange = change.change_type === 'price_increase' || change.change_type === 'price_decrease'
                   const isIncrease = change.change_type === 'price_increase'
                   const diff = change.details?.diff as number | undefined
+                  const productImage = change.details?.image as string | undefined
+
+                  const deltaColor = isIncrease
+                    ? 'text-[#3B6D11] bg-[#EAF3DE] dark:bg-[#3B6D11]/15'
+                    : 'text-[#A32D2D] bg-[#FCEBEB] dark:bg-[#A32D2D]/15'
 
                   return (
                     <div
                       key={change.id}
-                      className={`group px-5 py-3 transition hover:bg-gray-50/50 dark:hover:bg-white/[0.015] ${
-                        !change.is_read ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''
-                      }`}
+                      className={`group rounded-xl border transition-all ${
+                        !change.is_read
+                          ? 'border-emerald-200/40 dark:border-emerald-800/30 bg-emerald-50/20 dark:bg-emerald-950/5'
+                          : 'border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)]'
+                      } hover:shadow-sm`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 shrink-0 p-1.5 rounded-lg bg-gray-100/80 dark:bg-white/[0.04]">
-                          {changeTypeIcon(change.change_type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                              {changeTypeLabel(change.change_type, t)}
-                            </span>
-                            {isPriceChange && change.percentage_change !== null && (
-                              <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums bg-gray-100 dark:bg-white/[0.05] text-gray-700 dark:text-gray-300">
-                                {isIncrease ? '+' : ''}{change.percentage_change}%
-                                {diff !== undefined && <span className="ml-0.5">({diff > 0 ? '+' : ''}{diff.toFixed(2)} $)</span>}
-                              </span>
-                            )}
-                            {!change.is_read && (
-                              <button
-                                onClick={() => markOneRead(change.id)}
-                                className="w-2 h-2 rounded-full bg-blue-500 shrink-0 hover:bg-blue-700 transition-colors cursor-pointer"
-                                title={t("alerts.markRead")}
-                              />
+                      <div className="p-5">
+                        {/* Rangée du haut : image + nom + timestamp */}
+                        <div className="flex items-start gap-4">
+                          {/* Image produit ou icône */}
+                          <div className="shrink-0">
+                            {productImage ? (
+                              <div className="w-14 h-14 rounded-xl overflow-hidden bg-[var(--color-background-secondary)] ring-1 ring-gray-200/50 dark:ring-white/[0.06]">
+                                <img
+                                  src={productImage}
+                                  alt={change.product_name || ''}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    const el = e.target as HTMLImageElement
+                                    el.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-400 text-xs">Img</div>'
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              changeTypeIcon(change.change_type)
                             )}
                           </div>
 
-                          <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5 truncate font-medium">
-                            {change.product_name || t('alerts.unknownProduct')}
-                          </p>
+                          {/* Nom + meta */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3">
+                              <h4 className="text-base font-bold text-gray-900 dark:text-white leading-snug">
+                                {change.product_name || t('alerts.unknownProduct')}
+                              </h4>
+                              <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                                {!change.is_read && (
+                                  <button
+                                    onClick={() => markOneRead(change.id)}
+                                    className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 hover:bg-emerald-700 transition-colors cursor-pointer"
+                                    title={t("alerts.markRead")}
+                                  />
+                                )}
+                                <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap">
+                                  {formatDate(change.detected_at, t, locale)}
+                                </span>
+                              </div>
+                            </div>
 
-                          <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-                            {displaySite && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.04] text-gray-500 dark:text-gray-400 font-medium shrink-0">
-                                <Globe className="h-2.5 w-2.5" />
-                                {displaySite}
+                            {/* Type + delta + site — sur une ligne */}
+                            <div className="flex items-center gap-2.5 mt-2 flex-wrap">
+                              {productImage && <span className="shrink-0">{changeTypeIcon(change.change_type)}</span>}
+                              <span className="text-sm text-gray-500 dark:text-gray-400">
+                                {changeTypeLabel(change.change_type, t)}
                               </span>
-                            )}
-                            {isPriceChange && change.old_value && change.new_value ? (
-                              <span className="flex items-center gap-1.5 tabular-nums">
-                                <span className="line-through opacity-60">{change.old_value}</span>
-                                <span className="text-gray-300 dark:text-gray-600">&rarr;</span>
-                                <span className="font-semibold text-gray-900 dark:text-white">
+                              {isPriceChange && change.percentage_change !== null && (
+                                <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full tabular-nums ${deltaColor}`}>
+                                  {isIncrease ? '+' : ''}{change.percentage_change}%
+                                  {diff !== undefined && (
+                                    <span className="font-semibold">({diff > 0 ? '+' : ''}{diff.toFixed(0)} $)</span>
+                                  )}
+                                </span>
+                              )}
+                              {!isPriceChange && change.new_value && (
+                                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
                                   {change.new_value}
                                 </span>
-                              </span>
-                            ) : (
-                              <>
-                                {change.old_value && <span>{t("alerts.before")} {change.old_value}</span>}
-                                {change.new_value && <span className="font-medium">{change.old_value ? t("alerts.after") : t("alerts.priceLabel")} {change.new_value}</span>}
-                              </>
-                            )}
-                            <span className="ml-auto shrink-0">{formatDate(change.detected_at, t, locale)}</span>
+                              )}
+                              {displaySite && (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-[#242628] text-sm font-semibold text-gray-700 dark:text-gray-300 ml-auto shrink-0">
+                                  <Globe className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+                                  {displaySite}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
+
+                        {/* Bloc prix — centré, plus gros */}
+                        {isPriceChange && change.old_value && change.new_value && (
+                          <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-[var(--color-border-tertiary)]">
+                            <span className="text-lg text-gray-400 dark:text-gray-500 line-through tabular-nums">
+                              {change.old_value}
+                            </span>
+                            <span className="text-gray-300 dark:text-gray-600 text-lg">&rarr;</span>
+                            <span className={`text-xl font-extrabold tabular-nums ${isIncrease ? 'text-[#3B6D11]' : 'text-[#A32D2D]'}`}>
+                              {change.new_value}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -789,7 +853,7 @@ export default function AlertePage() {
               {changes.length > 10 && (
                 <button
                   onClick={() => setShowAllChanges(!showAllChanges)}
-                  className="w-full py-3 text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 flex items-center justify-center gap-1 border-t border-gray-100 dark:border-white/[0.04] transition"
+                  className="w-full py-3 text-xs font-medium text-[var(--color-text-secondary)] hover:text-gray-700 dark:hover:text-gray-200 flex items-center justify-center gap-1 border-t border-[var(--color-border-tertiary)] transition"
                 >
                   {showAllChanges ? (
                     <>{t("alerts.showLess")} <ChevronUp className="h-3.5 w-3.5" /></>

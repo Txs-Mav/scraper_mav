@@ -20,9 +20,9 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
   const getPositionIcon = () => {
     switch (positionnement.position) {
       case 'lowest':
-        return <TrendingDown className="h-8 w-8 text-green-500" />
+        return <TrendingDown className="h-8 w-8 text-[#3B6D11]" />
       case 'above':
-        return <TrendingUp className="h-8 w-8 text-red-500" />
+        return <TrendingUp className="h-8 w-8 text-[#A32D2D]" />
       default:
         return <Minus className="h-8 w-8 text-gray-500" />
     }
@@ -31,11 +31,11 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
   const getPositionColor = () => {
     switch (positionnement.position) {
       case 'lowest':
-        return 'text-green-600 dark:text-green-400'
+        return 'text-[#3B6D11] dark:text-[#3B6D11]'
       case 'above':
-        return 'text-red-600 dark:text-red-400'
+        return 'text-[#A32D2D] dark:text-[#A32D2D]'
       default:
-        return 'text-gray-600 dark:text-gray-400'
+        return 'text-gray-500 dark:text-[#B0B0B0]'
     }
   }
 
@@ -51,7 +51,7 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
   }
 
   return (
-    <div className="bg-white/70 dark:bg-white/[0.025] backdrop-blur-sm rounded-lg border border-gray-200/60 dark:border-white/[0.06] p-6">
+    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.positioning")}
@@ -72,8 +72,8 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
 
         {/* Écart */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-50 dark:bg-[#1F1F23] rounded-lg p-4">
-            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+          <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+            <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.gapPercent")}
             </div>
             <div className={`text-2xl font-bold ${getPositionColor()}`}>
@@ -81,8 +81,8 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
               {positionnement.ecartPourcentage.toFixed(1)}%
             </div>
           </div>
-          <div className="bg-gray-50 dark:bg-[#1F1F23] rounded-lg p-4">
-            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+          <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+            <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.gapValue")}
             </div>
             <div className={`text-2xl font-bold ${getPositionColor()}`}>
@@ -93,18 +93,18 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
         </div>
 
         {/* Classement */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-          <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+        <div className="bg-[#EAF3DE] dark:bg-[#3B6D11]/15 rounded-lg p-4">
+          <div className="text-sm text-[#27500A] dark:text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.ranking")}
           </div>
-          <div className="text-xl font-semibold text-blue-600 dark:text-blue-400">
+          <div className="text-xl font-semibold text-[#3B6D11] dark:text-[#3B6D11]">
             {positionnement.classement}{getOrdinalSuffix(positionnement.classement)} {t("ap.cheapestOf")} {positionnement.totalDetailleurs} {t("ap.retailers")}
           </div>
         </div>
 
         {/* Message résumé */}
-        <div className="bg-gray-50 dark:bg-[#1F1F23] rounded-lg p-4">
-          <p className="text-sm text-gray-700 dark:text-gray-300">
+        <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+          <p className="text-sm text-gray-900 dark:text-white">
             {positionnement.message}
           </p>
         </div>
