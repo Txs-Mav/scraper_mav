@@ -983,12 +983,12 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         </div>
       )}
 
-      {/* Modale Partage par courriel */}
+      {/* Modale Partage — compositeur d'email */}
       {mounted &&
         showShareModal &&
         createPortal(
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center px-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-end sm:items-center justify-center sm:px-4"
             onClick={(e) => {
               if (e.target === e.currentTarget && !shareSending) {
                 setShowShareModal(false)
@@ -996,134 +996,136 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
               }
             }}
           >
-            <div className="bg-[var(--color-background-primary)] rounded-2xl max-w-lg w-full shadow-[0_24px_60px_-32px_rgba(0,0,0,0.55)] border border-[var(--color-border-tertiary)] overflow-hidden">
-              {/* Header modale */}
-              <div className="flex items-center justify-between p-5 pb-4 border-b border-[var(--color-border-tertiary)]">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
-                    <Mail className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="bg-white dark:bg-[#1c1e20] w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2c2e] overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:fade-in duration-200">
+
+              {/* Barre de titre — style fenêtre mail */}
+              <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50 dark:bg-[#242628] border-b border-gray-200 dark:border-[#2a2c2e]">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                    <Mail className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                   </div>
-                  <div>
-                    <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("table.shareByEmail")}</h4>
-                    <p className="text-xs text-[var(--color-text-secondary)]">
-                      {tableData.length} produit{tableData.length > 1 ? "s" : ""} &middot; {competitors.length} concurrent{competitors.length > 1 ? "s" : ""}
-                    </p>
-                  </div>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">Nouveau message</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                    · {tableData.length} produit{tableData.length > 1 ? "s" : ""} &middot; {competitors.length} concurrent{competitors.length > 1 ? "s" : ""}
+                  </span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!shareSending) {
-                      setShowShareModal(false)
-                      setShareResult(null)
-                    }
-                  }}
-                  aria-label="Fermer"
-                  className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  onClick={() => { if (!shareSending) { setShowShareModal(false); setShareResult(null) } }}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#2a2c2e] transition"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Contenu modale */}
-              <div className="p-5 space-y-4">
-                {/* Destinataires */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-                    {t("table.recipients")}
-                  </label>
+              {/* Champs email — style client mail */}
+              <div className="divide-y divide-gray-100 dark:divide-[#2a2c2e]">
+                {/* De */}
+                <div className="flex items-center gap-3 px-5 py-3">
+                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-10 shrink-0">De</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      Go-Data &lt;gestion@go-data.co&gt;
+                    </span>
+                  </span>
+                </div>
+
+                {/* À */}
+                <div className="flex items-start gap-3 px-5 py-3">
+                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-10 shrink-0 pt-2">À</span>
                   <input
                     type="text"
                     value={shareEmails}
                     onChange={e => setShareEmails(e.target.value)}
-                    placeholder="email@exemple.com, autre@exemple.com"
-                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                    placeholder="destinataire@exemple.com, autre@exemple.com"
+                    className="flex-1 text-sm text-gray-900 dark:text-white bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 py-1"
                     disabled={shareSending}
+                    autoFocus
                   />
-                  <p className="text-xs text-gray-400">{t("table.recipientsHint")}</p>
                 </div>
 
-                {/* Sujet personnalisé */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-                    {t("table.subject")}
-                  </label>
+                {/* Sujet */}
+                <div className="flex items-center gap-3 px-5 py-3">
+                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-10 shrink-0">Sujet</span>
                   <input
                     type="text"
                     value={shareSubject}
                     onChange={e => setShareSubject(e.target.value)}
                     placeholder={t("table.subjectDefault")}
-                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                    className="flex-1 text-sm font-medium text-gray-900 dark:text-white bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 py-1"
                     disabled={shareSending}
                   />
                 </div>
 
-                {/* Message d'accompagnement */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-                    {t("table.message")}
-                  </label>
+                {/* Corps du message */}
+                <div className="px-5 pt-3 pb-2">
                   <textarea
                     value={shareMessage}
                     onChange={e => setShareMessage(e.target.value)}
                     placeholder={t("table.messageDefault")}
-                    rows={3}
-                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 resize-none"
+                    rows={4}
+                    className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 resize-none leading-relaxed"
                     disabled={shareSending}
                   />
-                </div>
 
-                {/* Résultat */}
-                {shareResult && (
-                  <div
-                    className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${shareResult.success
-                      ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40"
-                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40"
-                      }`}
-                  >
-                    {shareResult.success ? (
-                      <Check className="h-4 w-4 flex-shrink-0" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    )}
-                    {shareResult.message}
+                  {/* Aperçu pièce jointe */}
+                  <div className="flex items-center gap-2.5 mt-2 py-2.5 px-3 rounded-xl bg-gray-50 dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e]">
+                    <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
+                      <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">
+                        Comparatif des prix — Go-Data.xlsx
+                      </p>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                        {tableData.length} produits &middot; {competitors.length} concurrents
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 shrink-0">Tableau inclus</span>
                   </div>
-                )}
+                </div>
               </div>
 
-              {/* Footer modale */}
-              <div className="flex items-center justify-end gap-3 p-5 pt-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!shareSending) {
-                      setShowShareModal(false)
-                      setShareResult(null)
-                    }
-                  }}
-                  disabled={shareSending}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-50"
-                >
-                  {t("cancel")}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShareEmail}
-                  disabled={shareSending || !shareEmails.trim()}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-700 text-white text-sm font-semibold shadow-[0_8px_20px_-8px_rgba(5,150,105,0.5)] hover:shadow-[0_10px_24px_-8px_rgba(5,150,105,0.6)] transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {shareSending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      {t("table.sending")}
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4" />
-                      {t("table.send")}
-                    </>
-                  )}
-                </button>
+              {/* Résultat */}
+              {shareResult && (
+                <div className={`mx-5 mb-3 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${
+                  shareResult.success
+                    ? "bg-[#EAF3DE] dark:bg-[#3B6D11]/15 text-[#27500A] dark:text-[#3B6D11]"
+                    : "bg-[#FCEBEB] dark:bg-[#A32D2D]/15 text-[#791F1F] dark:text-[#A32D2D]"
+                }`}>
+                  {shareResult.success ? <Check className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
+                  {shareResult.message}
+                </div>
+              )}
+
+              {/* Footer — barre d'envoi */}
+              <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50 dark:bg-[#242628] border-t border-gray-200 dark:border-[#2a2c2e]">
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                  Envoyé via Resend · gestion@go-data.co
+                </p>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => { if (!shareSending) { setShowShareModal(false); setShareResult(null) } }}
+                    disabled={shareSending}
+                    className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#2a2c2e] transition disabled:opacity-50"
+                  >
+                    {t("cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShareEmail}
+                    disabled={shareSending || !shareEmails.trim()}
+                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm shadow-emerald-600/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {shareSending ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />{t("table.sending")}</>
+                    ) : (
+                      <><Send className="h-4 w-4" />{t("table.send")}</>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>,

@@ -120,13 +120,13 @@ function buildEmailHtml(rows: ComparisonRow[], competitors: string[], customMess
   <div style="max-width:960px;margin:0 auto;padding:32px 24px;">
     <div style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
       <!-- Header -->
-      <div style="background:linear-gradient(135deg,#7c3aed 0%,#6366f1 100%);padding:24px 28px;">
+      <div style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 28px;">
         <h1 style="font-size:22px;font-weight:700;color:#ffffff;margin:0 0 4px 0;">Comparatif des prix</h1>
         <p style="font-size:13px;color:rgba(255,255,255,0.8);margin:0;">Partagé${senderInfo} via Go-Data &middot; ${dateStr}</p>
       </div>
 
       <div style="padding:24px 28px;">
-        ${customMessage ? `<div style="font-size:14px;color:#374151;margin-bottom:20px;padding:14px 18px;background:#f9fafb;border-radius:8px;border-left:3px solid #8b5cf6;">${customMessage}</div>` : ""}
+        ${customMessage ? `<div style="font-size:14px;color:#374151;margin-bottom:20px;padding:14px 18px;background:#EAF3DE;border-radius:8px;border-left:3px solid #3B6D11;">${customMessage}</div>` : ""}
 
         <!-- Résumé -->
         <div style="display:flex;gap:16px;margin-bottom:20px;">

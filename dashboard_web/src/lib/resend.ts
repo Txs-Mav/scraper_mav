@@ -5,7 +5,7 @@
 import { Resend } from 'resend'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
-const RESEND_FROM = process.env.RESEND_FROM_EMAIL || 'Go-Data <noreply@go-data.co>'
+const RESEND_FROM = process.env.RESEND_FROM_EMAIL || 'Go-Data <gestion@go-data.co>'
 
 let resendClient: Resend | null = null
 
