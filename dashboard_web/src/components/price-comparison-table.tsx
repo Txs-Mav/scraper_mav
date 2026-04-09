@@ -896,35 +896,36 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           </button>
         </div>
 
-        <div className="w-px h-6 bg-[var(--color-border-tertiary)] shrink-0" />
-
-        <button
-          type="button"
-          onClick={handleExportExcel}
-          disabled={tableData.length === 0}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <FileSpreadsheet className="h-3.5 w-3.5" />
-          Excel
-        </button>
-        <button
-          type="button"
-          onClick={handlePrint}
-          disabled={tableData.length === 0}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Printer className="h-3.5 w-3.5" />
-          {t("table.print")}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setShareResult(null); setShowShareModal(true) }}
-          disabled={tableData.length === 0}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-violet-500/30 bg-violet-500/10 text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Mail className="h-3.5 w-3.5" />
-          {t("table.share")}
-        </button>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <div className="w-px h-6 bg-[var(--color-border-tertiary)]" />
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={tableData.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Excel
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            disabled={tableData.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            {t("table.print")}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShareResult(null); setShowShareModal(true) }}
+            disabled={tableData.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-violet-500/30 bg-violet-500/10 text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            {t("table.share")}
+          </button>
+        </div>
       </div>
 
       <div id="price-comparison-table">
