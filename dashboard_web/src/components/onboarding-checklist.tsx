@@ -115,9 +115,15 @@ export default function OnboardingChecklist() {
     setCompletedSteps(completed)
 
     const hasProducts = localStorage.getItem(`has_scraped_${user.id}`) === "true"
+
+    if (hasProducts) {
+      setDismissed(true)
+      localStorage.setItem(`onboarding_${user.id}`, "dismissed")
+      return
+    }
+
     const autoComplete: string[] = []
     if (user.avatar_url) autoComplete.push("profile")
-    if (hasProducts) autoComplete.push("scrape")
 
     const merged = [...new Set([...completed, ...autoComplete])]
     if (merged.length !== completed.length) {
