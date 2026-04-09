@@ -811,7 +811,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       {/* Toolbar: search + toggles + export */}
       <div className="flex items-center gap-2 px-5 py-2.5 bg-[var(--color-background-secondary)]">
         {onSearchChange && (
-          <div className="relative flex-1 max-w-sm">
+          <div className="relative w-56">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
             <input
               type="text"
@@ -998,98 +998,84 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           >
             <div className="bg-white dark:bg-[#1c1e20] w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2c2e] overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:fade-in duration-200">
 
-              {/* Barre de titre — style fenêtre mail */}
-              <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50 dark:bg-[#242628] border-b border-gray-200 dark:border-[#2a2c2e]">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                    <Mail className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">Nouveau message</span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-                    · {tableData.length} produit{tableData.length > 1 ? "s" : ""} &middot; {competitors.length} concurrent{competitors.length > 1 ? "s" : ""}
-                  </span>
-                </div>
+              {/* Barre de titre */}
+              <div className="flex items-center justify-between px-4 py-3 bg-gray-100/80 dark:bg-[#242628] border-b border-gray-200 dark:border-[#2a2c2e]">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Nouveau message</span>
                 <button
                   type="button"
                   onClick={() => { if (!shareSending) { setShowShareModal(false); setShareResult(null) } }}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#2a2c2e] transition"
+                  className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Champs email — style client mail */}
-              <div className="divide-y divide-gray-100 dark:divide-[#2a2c2e]">
+              {/* Champs */}
+              <div className="divide-y divide-gray-100 dark:divide-[#242628]">
                 {/* De */}
-                <div className="flex items-center gap-3 px-5 py-3">
-                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-10 shrink-0">De</span>
-                  <span className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      Go-Data &lt;gestion@go-data.co&gt;
-                    </span>
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 w-8 shrink-0">De</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    Go-Data &lt;gestion@go-data.co&gt;
                   </span>
                 </div>
 
                 {/* À */}
-                <div className="flex items-start gap-3 px-5 py-3">
-                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-10 shrink-0 pt-2">À</span>
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 w-8 shrink-0">À</span>
                   <input
                     type="text"
                     value={shareEmails}
                     onChange={e => setShareEmails(e.target.value)}
                     placeholder="destinataire@exemple.com, autre@exemple.com"
-                    className="flex-1 text-sm text-gray-900 dark:text-white bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 py-1"
+                    className="flex-1 text-sm text-gray-900 dark:text-white bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600"
                     disabled={shareSending}
                     autoFocus
                   />
                 </div>
 
                 {/* Sujet */}
-                <div className="flex items-center gap-3 px-5 py-3">
-                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-10 shrink-0">Sujet</span>
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 w-8 shrink-0">Sujet</span>
                   <input
                     type="text"
                     value={shareSubject}
                     onChange={e => setShareSubject(e.target.value)}
                     placeholder={t("table.subjectDefault")}
-                    className="flex-1 text-sm font-medium text-gray-900 dark:text-white bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 py-1"
+                    className="flex-1 text-sm text-gray-900 dark:text-white bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600"
                     disabled={shareSending}
                   />
                 </div>
 
-                {/* Corps du message */}
-                <div className="px-5 pt-3 pb-2">
+                {/* Corps */}
+                <div className="px-4 py-3">
                   <textarea
                     value={shareMessage}
                     onChange={e => setShareMessage(e.target.value)}
                     placeholder={t("table.messageDefault")}
-                    rows={4}
-                    className="w-full text-sm text-gray-700 dark:text-gray-300 bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 resize-none leading-relaxed"
+                    rows={5}
+                    className="w-full text-sm text-gray-800 dark:text-gray-200 bg-transparent focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 resize-none leading-relaxed"
                     disabled={shareSending}
                   />
+                </div>
 
-                  {/* Aperçu pièce jointe */}
-                  <div className="flex items-center gap-2.5 mt-2 py-2.5 px-3 rounded-xl bg-gray-50 dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e]">
-                    <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
-                      <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">
-                        Comparatif des prix — Go-Data.xlsx
-                      </p>
-                      <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                        {tableData.length} produits &middot; {competitors.length} concurrents
-                      </p>
-                    </div>
-                    <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 shrink-0">Tableau inclus</span>
+                {/* Pièce jointe */}
+                <div className="px-4 py-2.5">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-[#242628] border border-gray-200 dark:border-[#2a2c2e]">
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+                    <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">
+                      Comparatif_prix_Go-Data.xlsx
+                    </span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                      · {tableData.length} produits
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Résultat */}
               {shareResult && (
-                <div className={`mx-5 mb-3 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${
+                <div className={`mx-4 mb-2 flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm ${
                   shareResult.success
                     ? "bg-[#EAF3DE] dark:bg-[#3B6D11]/15 text-[#27500A] dark:text-[#3B6D11]"
                     : "bg-[#FCEBEB] dark:bg-[#A32D2D]/15 text-[#791F1F] dark:text-[#A32D2D]"
@@ -1099,17 +1085,15 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                 </div>
               )}
 
-              {/* Footer — barre d'envoi */}
-              <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50 dark:bg-[#242628] border-t border-gray-200 dark:border-[#2a2c2e]">
-                <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                  Envoyé via Resend · gestion@go-data.co
-                </p>
-                <div className="flex items-center gap-2.5">
+              {/* Footer */}
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-[#2a2c2e]">
+                <span className="text-[11px] text-gray-400 dark:text-gray-500">gestion@go-data.co</span>
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => { if (!shareSending) { setShowShareModal(false); setShareResult(null) } }}
                     disabled={shareSending}
-                    className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#2a2c2e] transition disabled:opacity-50"
+                    className="px-3.5 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#242628] transition disabled:opacity-50"
                   >
                     {t("cancel")}
                   </button>
@@ -1117,12 +1101,12 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                     type="button"
                     onClick={handleShareEmail}
                     disabled={shareSending || !shareEmails.trim()}
-                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm shadow-emerald-600/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {shareSending ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" />{t("table.sending")}</>
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("table.sending")}</>
                     ) : (
-                      <><Send className="h-4 w-4" />{t("table.send")}</>
+                      <><Send className="h-3.5 w-3.5" />{t("table.send")}</>
                     )}
                   </button>
                 </div>

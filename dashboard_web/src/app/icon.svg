@@ -1,13 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#7c3aed"/>
-    </linearGradient>
-  </defs>
-  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
-  <text x="16" y="15.5" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="13" fill="white" letter-spacing="-0.5">GO</text>
-  <rect x="8" y="21" width="4" height="5" rx="1" fill="white" opacity="0.6"/>
-  <rect x="14" y="19" width="4" height="7" rx="1" fill="white" opacity="0.7"/>
-  <rect x="20" y="17" width="4" height="9" rx="1" fill="white" opacity="0.8"/>
+  <rect width="32" height="32" rx="7" fill="#1F2937"/>
+  <text x="16" y="13" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="11" fill="white" letter-spacing="-0.5">GO</text>
+  <rect x="8" y="21" width="3" height="5" rx="1" fill="white" opacity="0.4"/>
+  <rect x="13" y="19" width="3" height="7" rx="1" fill="white" opacity="0.55"/>
+  <rect x="18" y="17" width="3" height="9" rx="1" fill="white" opacity="0.7"/>
+  <rect x="23" y="15" width="3" height="11" rx="1" fill="white" opacity="0.85"/>
 </svg>
