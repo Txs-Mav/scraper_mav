@@ -56,6 +56,37 @@ const SCRAPING_STEPS: Omit<ScrapingStep, 'status'>[] = [
   { id: 'save', label: 'Sauvegarde' },
 ]
 
+// ── Favicon du site concurrent ──
+function SiteFavicon({ url, name }: { url: string; name: string }) {
+  const [errored, setErrored] = useState(false)
+  let hostname = ""
+  try { hostname = new URL(url.startsWith("http") ? url : "https://" + url).hostname } catch { hostname = "" }
+  const faviconUrl = hostname ? `https://www.google.com/s2/favicons?domain=${hostname}&sz=32` : ""
+  const initial = name.charAt(0).toUpperCase()
+
+  if (!errored && faviconUrl) {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-white dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e] flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={faviconUrl}
+          alt={name}
+          width={20}
+          height={20}
+          className="w-5 h-5 object-contain"
+          onError={() => setErrored(true)}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e] flex items-center justify-center text-[11px] font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
+      {initial}
+    </div>
+  )
+}
+
 export interface ScraperConfigHandle {
   runScrape: () => Promise<void>
   stopScrape: () => Promise<void>
@@ -692,9 +723,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                           key={shared.id}
                           className={`flex items-center gap-3 px-3.5 py-3 hover:bg-emerald-50/50 dark:hover:bg-emerald-500/[0.04] transition-colors ${isUsed ? 'bg-emerald-50/30 dark:bg-emerald-500/[0.03]' : ''}`}
                         >
-                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-500/20 dark:to-emerald-500/5 flex items-center justify-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {shared.site_name.charAt(0)}
-                          </div>
+                          <SiteFavicon url={shared.site_url} name={shared.site_name} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
@@ -754,9 +783,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
               const refScraper = getScraperInfo(referenceUrl)
               return (
                 <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-amber-200/60 dark:border-amber-500/20 bg-amber-50/30 dark:bg-amber-500/[0.03]">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-500/20 dark:to-amber-500/5 flex items-center justify-center text-xs font-bold text-amber-600 dark:text-amber-400">
-                    {(refScraper?.site_name || getDomain(referenceUrl)).charAt(0).toUpperCase()}
-                  </div>
+                  <SiteFavicon url={referenceUrl} name={refScraper?.site_name || getDomain(referenceUrl)} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
@@ -815,9 +842,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                         onChange={() => toggleCompetitorEnabled(index)}
                         className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[var(--color-text-primary)] focus:ring-[var(--color-border-primary)]/10"
                       />
-                      <div className="w-7 h-7 rounded-lg bg-[var(--color-background-secondary)] flex items-center justify-center text-[10px] font-bold text-[var(--color-text-secondary)] flex-shrink-0">
-                        {(scraper?.site_name || getDomain(url)).charAt(0).toUpperCase()}
-                      </div>
+                      <SiteFavicon url={url} name={scraper?.site_name || getDomain(url)} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
