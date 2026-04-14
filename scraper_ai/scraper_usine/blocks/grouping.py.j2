@@ -1,0 +1,20 @@
+    def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
+        groups: Dict[str, Dict] = {}
+        for p in products:
+            marque = str(p.get('marque', '')).lower().strip()
+            modele = str(p.get('modele', '')).lower().strip()
+            annee = str(p.get('annee', ''))
+            etat = str(p.get('etat', ''))
+            key = f"{marque}|{modele}|{annee}|{etat}" if marque and modele else f"{p.get('name', '')}|{annee}|{etat}"
+            key = key.lower()
+
+            if key in groups:
+                existing = groups[key]
+                existing['quantity'] = existing.get('quantity', 1) + 1
+                existing['groupedUrls'] = existing.get('groupedUrls', []) + p.get('groupedUrls', [p.get('sourceUrl', '')])
+                if p.get('prix') and (not existing.get('prix') or p['prix'] < existing['prix']):
+                    existing['prix'] = p['prix']
+            else:
+                groups[key] = p
+
+        return list(groups.values())

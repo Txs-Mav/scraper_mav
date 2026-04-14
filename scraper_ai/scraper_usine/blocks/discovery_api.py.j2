@@ -1,0 +1,36 @@
+    def discover_product_urls(self, categories: List[str] = None) -> List[str]:
+        return []
+
+    def _fetch_all_api_products(self) -> List[Dict]:
+        all_items = []
+        {{ pagination_init }}
+
+        while True:
+            url = f"{{ api_url }}{{ pagination_url_part }}"
+            try:
+                resp = self.session.get(url, headers=self.API_HEADERS, timeout=self.HTTP_TIMEOUT)
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+{% if items_field %}
+                items = data
+                for key in "{{ items_field }}".split('.'):
+                    items = items.get(key, []) if isinstance(items, dict) else items
+{% else %}
+                items = data if isinstance(data, list) else data.get('data', data.get('results', data.get('items', [])))
+{% endif %}
+                if not isinstance(items, list) or not items:
+                    break
+                all_items.extend(items)
+{% if pagination_param %}
+                {{ pagination_increment }}
+                if len(items) < self.API_PAGE_SIZE:
+                    break
+{% else %}
+                break
+{% endif %}
+                time.sleep({{ request_delay }})
+            except Exception:
+                break
+
+        return all_items

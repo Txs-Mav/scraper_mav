@@ -1,0 +1,46 @@
+    def extract_from_detail_page(self, url: str, html: str, soup: BeautifulSoup) -> Optional[Dict]:
+        return None
+
+    def _extract_from_listing_item(self, item, base_url: str, etat: str, source_cat: str) -> Optional[Dict]:
+        out: Dict[str, Any] = {
+            'etat': etat,
+            'sourceCategorie': source_cat,
+        }
+
+        link = item.find('a', href=True)
+        if link and link.get('href'):
+            out['sourceUrl'] = urljoin(base_url, link['href'])
+
+{% if name_selector %}
+        name_el = item.select_one('{{ name_selector }}')
+{% else %}
+        name_el = item.select_one('h3 a, h2 a, .product-title a, a')
+{% endif %}
+        if name_el:
+            out['name'] = name_el.get_text(strip=True)
+
+{% if price_selector %}
+        price_el = item.select_one('{{ price_selector }}')
+        if price_el:
+            out['prix'] = self._parse_price(price_el.get_text(strip=True))
+{% else %}
+        for price_candidate in item.select('.price, .prix, .product-price, [itemprop="price"]'):
+            parsed = self._parse_price(price_candidate.get_text(strip=True))
+            if parsed:
+                out['prix'] = parsed
+                break
+{% endif %}
+
+        img = item.select_one('img')
+        if img:
+            src = img.get('{{ image_attr }}') or img.get('src', '')
+            if src:
+                out['image'] = src if src.startswith('http') else urljoin(base_url, src)
+
+        if not out.get('name'):
+            return None
+
+        out['sourceSite'] = self.SITE_URL
+        out['quantity'] = 1
+        out['groupedUrls'] = [out.get('sourceUrl', '')]
+        return out

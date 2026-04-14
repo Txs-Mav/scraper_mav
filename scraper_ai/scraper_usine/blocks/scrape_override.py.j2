@@ -1,0 +1,267 @@
+    def scrape(self, categories: List[str] = None, inventory_only: bool = False) -> Dict[str, Any]:
+        start_time = time.time()
+
+        if categories is None:
+            categories = ['inventaire', 'occasion']
+
+        print(f"\n{'='*70}")
+        print(f"  SCRAPER DÉDIÉ: {self.SITE_NAME}")
+        print(f"{'='*70}")
+        print(f"  Site: {self.SITE_URL}")
+        print(f"  Catégories: {categories}")
+
+{% if extraction_method == 'api_json' %}
+        products = self._scrape_via_api()
+{% elif extraction_method == 'listing_only' %}
+        products = []
+        for cat_key, config in self.LISTING_PAGES.items():
+            if cat_key not in categories and not any(c in cat_key for c in categories):
+                continue
+            products.extend(self._scrape_listing_page(config))
+{% else %}
+        products = self._try_api_then_pages(categories)
+{% endif %}
+
+{% if needs_state_classification %}
+        for p in products:
+            if not p.get('etat'):
+                p['etat'] = self._classify_state(p)
+{% endif %}
+
+        if inventory_only:
+            products = [p for p in products if p.get('sourceCategorie') != 'catalogue']
+
+        pre_group = len(products)
+        products = self._group_identical_products(products)
+        if pre_group != len(products):
+            grouped = pre_group - len(products)
+            print(f"\n  Regroupement: {pre_group} -> {len(products)} ({grouped} combinés)")
+
+        elapsed = time.time() - start_time
+
+        print(f"\n{'='*70}")
+        print(f"  {self.SITE_NAME}: {len(products)} produits en {elapsed:.1f}s")
+        print(f"{'='*70}")
+
+        return {
+            'products': products,
+            'metadata': {
+                'site_url': self.SITE_URL,
+                'site_name': self.SITE_NAME,
+                'scraper_type': 'dedicated',
+                'scraper_module': self.SITE_SLUG,
+                'products_count': len(products),
+                'urls_processed': len(products),
+                'execution_time_seconds': round(elapsed, 2),
+                'categories': categories,
+                'cache_status': 'dedicated',
+            },
+            'scraper_info': {
+                'type': 'dedicated',
+                'module': self.SITE_SLUG,
+                'selectors': 'generated',
+            }
+        }
+{% if extraction_method not in ('api_json', 'listing_only') %}
+
+    def _try_api_then_pages(self, categories: List[str]) -> List[Dict]:
+        """Essaie d'abord l'interception API, puis fallback sur extraction par page."""
+        api_products = self._try_runtime_api_intercept()
+        if api_products and len(api_products) >= 5:
+            print(f"  API interceptée: {len(api_products)} produits")
+            return api_products
+
+        product_urls = self.discover_product_urls(categories)
+        print(f"\n  {len(product_urls)} URLs de produits découvertes")
+
+        if not product_urls:
+            return []
+
+        return self._extract_all(product_urls)
+
+    def _try_runtime_api_intercept(self) -> List[Dict]:
+        """Tente d'intercepter une API interne au runtime via Playwright."""
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            return []
+
+        inventory_urls = [self.SITE_URL]
+        base = urlparse(self.SITE_URL)
+        origin = f"{base.scheme}://{base.netloc}"
+        for path in ['/new/inventory.html', '/used/search.html', '/en/new/inventory/',
+                     '/fr/inventaire-neuf/', '/inventory/', '/inventaire/']:
+            inventory_urls.append(origin + path)
+
+        captured = []
+
+        def on_response(response):
+            try:
+                ct = response.headers.get('content-type', '')
+                if 'json' not in ct:
+                    return
+                if response.status != 200:
+                    return
+                url = response.url
+                if any(skip in url for skip in ['google', 'facebook', 'analytics', 'fonts.', '.css', '.js']):
+                    return
+                body = response.text()
+                if len(body) < 100:
+                    return
+                data = json.loads(body)
+                captured.append(data)
+            except Exception:
+                pass
+
+        products = []
+        try:
+            pw = sync_playwright().start()
+            browser = pw.chromium.launch(headless=True)
+            ctx = browser.new_context(
+                user_agent=self.session.headers.get('User-Agent', ''),
+                locale='fr-CA',
+            )
+            page = ctx.new_page()
+            page.on('response', on_response)
+
+            for inv_url in inventory_urls[:3]:
+                captured.clear()
+                try:
+                    page.goto(inv_url, timeout=15000, wait_until='networkidle')
+                except Exception:
+                    continue
+
+                page.wait_for_timeout(2000)
+
+                for data in captured:
+                    items = self._find_product_array(data)
+                    if items and len(items) >= 2:
+                        for raw in items:
+                            p = self._map_raw_product(raw)
+                            if p:
+                                products.append(p)
+                        if products:
+                            break
+                if products:
+                    break
+
+            browser.close()
+            pw.stop()
+        except Exception:
+            pass
+
+        return products
+
+    def _find_product_array(self, data, depth=0):
+        if depth > 4:
+            return None
+        if isinstance(data, list) and len(data) >= 2:
+            if all(isinstance(x, dict) for x in data[:5]):
+                return data
+        if isinstance(data, dict):
+            for v in data.values():
+                result = self._find_product_array(v, depth + 1)
+                if result:
+                    return result
+        return None
+
+    def _map_raw_product(self, raw: Dict) -> Optional[Dict]:
+        if not isinstance(raw, dict):
+            return None
+        out: Dict[str, Any] = {}
+        field_map = {
+            'name': ['name', 'nom', 'title', 'titre', 'vehicleName', 'vehicle_name'],
+            'prix': ['prix', 'price', 'msrp', 'salePrice', 'sale_price', 'askingPrice'],
+            'marque': ['brand', 'marque', 'make', 'manufacturer', 'brandName'],
+            'modele': ['model', 'modele', 'modelName', 'model_name'],
+            'annee': ['year', 'annee', 'modelYear', 'model_year'],
+            'image': ['image', 'photo', 'thumbnail', 'img', 'imageUrl', 'image_url', 'mainPhoto'],
+            'kilometrage': ['mileage', 'kilometrage', 'km', 'odometer'],
+            'vin': ['vin', 'vinNumber', 'vin_number'],
+            'couleur': ['color', 'colour', 'couleur', 'exteriorColor'],
+        }
+        for target, sources in field_map.items():
+            for src in sources:
+                val = raw.get(src)
+                if val is not None and val != '':
+                    if target == 'prix':
+                        out[target] = float(val) if isinstance(val, (int, float)) else self._parse_price(str(val))
+                    elif target == 'annee':
+                        out[target] = int(val) if isinstance(val, (int, float)) else self.clean_year(str(val))
+                    elif target == 'kilometrage':
+                        out[target] = int(val) if isinstance(val, (int, float)) else self.clean_mileage(str(val))
+                    elif target == 'image' and isinstance(val, list):
+                        out[target] = val[0] if val else ''
+                    else:
+                        out[target] = str(val)
+                    break
+
+        if not out.get('name'):
+            parts = [out.get('annee', ''), out.get('marque', ''), out.get('modele', '')]
+            name = ' '.join(str(p) for p in parts if p)
+            if name.strip():
+                out['name'] = name
+
+        if not out.get('name'):
+            return None
+
+        out['sourceUrl'] = raw.get('url', raw.get('detailUrl', raw.get('detail_url', self.SITE_URL)))
+        out['sourceSite'] = self.SITE_URL
+        out['quantity'] = 1
+        out['groupedUrls'] = [out.get('sourceUrl', '')]
+        return out
+{% endif %}
+{% if extraction_method == 'listing_only' %}
+
+    def _scrape_listing_page(self, config: Dict) -> List[Dict]:
+        products = []
+        listing_url = config['url']
+        etat = config.get('etat', 'neuf')
+        source_cat = config.get('sourceCategorie', 'inventaire')
+
+        try:
+            resp = self.session.get(listing_url, timeout=self.HTTP_TIMEOUT)
+            if resp.status_code != 200:
+                return products
+            soup = BeautifulSoup(resp.text, 'lxml')
+
+            total = self._parse_total_products(soup) if hasattr(self, '_parse_total_products') else 0
+            total_pages = max(1, math.ceil(total / self.PRODUCTS_PER_PAGE)) if total > 0 else 1
+
+            items = soup.select('{{ item_selector }}')
+            for item in items:
+                p = self._extract_from_listing_item(item, listing_url, etat, source_cat)
+                if p:
+                    products.append(p)
+
+            for page_num in range(2, total_pages + 1):
+                page_url = f"{listing_url}{{ pagination_pattern }}"
+                time.sleep({{ request_delay }})
+                try:
+                    resp_p = self.session.get(page_url, timeout=self.HTTP_TIMEOUT)
+                    if resp_p.status_code == 200:
+                        soup_p = BeautifulSoup(resp_p.text, 'lxml')
+                        for item in soup_p.select('{{ item_selector }}'):
+                            p = self._extract_from_listing_item(item, listing_url, etat, source_cat)
+                            if p:
+                                products.append(p)
+                except Exception:
+                    break
+        except Exception:
+            pass
+        return products
+{% endif %}
+{% if extraction_method == 'api_json' %}
+
+    def _scrape_via_api(self) -> List[Dict]:
+        raw_items = self._fetch_all_api_products()
+        products = []
+        for raw in raw_items:
+            p = self._map_api_product(raw)
+            if p:
+                p['sourceSite'] = self.SITE_URL
+                p['quantity'] = 1
+                p['groupedUrls'] = [p.get('sourceUrl', self.SITE_URL)]
+                products.append(p)
+        return products
+{% endif %}

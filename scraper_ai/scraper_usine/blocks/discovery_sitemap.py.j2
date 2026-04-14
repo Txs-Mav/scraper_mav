@@ -1,0 +1,75 @@
+    def discover_product_urls(self, categories: List[str] = None) -> List[str]:
+        if categories is None:
+            categories = ['inventaire', 'occasion']
+
+        all_urls = self._parse_sitemap_live()
+
+        seen = set()
+        return [u for u in all_urls
+                if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
+
+    def _parse_sitemap_live(self) -> List[str]:
+        """Parse le sitemap XML en live à chaque exécution (pas de cache)."""
+        base = self.SITE_URL.rstrip('/')
+        parsed = urlparse(base)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+
+        candidates = []
+        if hasattr(self, 'SITEMAP_URL') and self.SITEMAP_URL:
+            candidates.append(self.SITEMAP_URL)
+        candidates += [
+            origin + '/sitemaps/inventory-detail.xml',
+            origin + '/sitemap.xml',
+            origin + '/robots.txt',
+        ]
+
+        product_urls = []
+        seen_sitemaps = set()
+
+        for sitemap_url in candidates:
+            if sitemap_url in seen_sitemaps:
+                continue
+            seen_sitemaps.add(sitemap_url)
+            try:
+                resp = self.session.get(sitemap_url, timeout=15)
+                if resp.status_code != 200:
+                    continue
+
+                if sitemap_url.endswith('robots.txt'):
+                    for line in resp.text.splitlines():
+                        if line.strip().lower().startswith('sitemap:'):
+                            sm = line.split(':', 1)[1].strip()
+                            if sm not in seen_sitemaps:
+                                candidates.append(sm)
+                    continue
+
+                if '<' not in resp.text[:200]:
+                    continue
+
+                soup_sm = BeautifulSoup(resp.text, 'lxml-xml')
+
+                sitemapindex = soup_sm.find_all('sitemap')
+                if sitemapindex:
+                    for sm in sitemapindex:
+                        loc = sm.find('loc')
+                        if loc:
+                            sub_url = loc.text.strip()
+                            if 'compare' in sub_url.lower():
+                                continue
+                            if sub_url not in seen_sitemaps:
+                                candidates.append(sub_url)
+                    continue
+
+                for url_tag in soup_sm.find_all('url'):
+                    loc = url_tag.find('loc')
+                    if loc:
+                        u = loc.text.strip()
+{% if language_filter %}
+                        if '/en/' in u and '/fr/' not in u:
+                            continue
+{% endif %}
+                        product_urls.append(u)
+            except Exception:
+                continue
+
+        return product_urls

@@ -131,3 +131,12 @@ class DedicatedScraperRegistry:
 
 def get_registry() -> DedicatedScraperRegistry:
     return DedicatedScraperRegistry()
+
+
+# --- Scrapers générés par scraper_usine ---
+try:
+    from ._generated_registry import GENERATED_SCRAPERS, GENERATED_DOMAINS
+    _SCRAPERS.update(GENERATED_SCRAPERS)
+    _DOMAIN_MAP.update(GENERATED_DOMAINS)
+except ImportError:
+    pass

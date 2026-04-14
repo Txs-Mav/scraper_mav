@@ -14,6 +14,7 @@ import re
 import json
 import math
 import time
+import random
 import threading
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin
@@ -46,9 +47,9 @@ class MotoVanierScraper(DedicatedScraper):
     }
 
     PRODUCTS_PER_PAGE = 12
-    WORKERS = 5
-    LISTING_MAX_RETRIES = 3
-    LISTING_RETRY_DELAY = 5
+    WORKERS = 3
+    LISTING_MAX_RETRIES = 5
+    LISTING_RETRY_DELAY = 8
 
     SPEC_FIELD_MAP = {
         'cylindrée (cc)': 'cylindree',
@@ -70,12 +71,17 @@ class MotoVanierScraper(DedicatedScraper):
         'garantie (mois)': 'garantie',
     }
 
+    DETAIL_MAX_RETRIES = 3
+    DETAIL_RETRY_BASE_DELAY = 5
+
     def __init__(self):
         super().__init__()
         self._request_lock = threading.Lock()
         self._last_request_time = 0.0
-        self._min_request_interval = 0.15
+        self._min_request_interval = 0.6
         self._session_warmed = False
+        self._consecutive_403 = 0
+        self._cooling_until = 0.0
 
     # ================================================================
     # PIPELINE PRINCIPAL (override)
@@ -166,7 +172,8 @@ class MotoVanierScraper(DedicatedScraper):
         return all_products
 
     def _warm_session(self):
-        """Visite la page d'accueil pour obtenir les cookies PrestaShop."""
+        """Visite la page d'accueil puis une page intermédiaire pour construire
+        un profil de cookies réaliste avant de crawler les listings."""
         if self._session_warmed:
             return
         self.session.headers.update({
@@ -174,27 +181,30 @@ class MotoVanierScraper(DedicatedScraper):
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache',
             'DNT': '1',
-            'Sec-CH-UA': '"Chromium";v="131", "Not A(Brand";v="24"',
+            'Sec-CH-UA': '"Chromium";v="136", "Not A(Brand";v="99"',
             'Sec-CH-UA-Mobile': '?0',
             'Sec-CH-UA-Platform': '"Windows"',
         })
-        for attempt in range(3):
-            try:
-                resp = self.session.get(self.SITE_URL, timeout=15)
-                if resp.status_code == 200:
-                    print(f"      🍪 Session réchauffée (cookies PrestaShop)")
-                    time.sleep(1)
-                    self._session_warmed = True
-                    return
-                print(f"      ⚠️ Warm-up: HTTP {resp.status_code} (tentative {attempt+1}/3)")
-                time.sleep(3 * (attempt + 1))
-            except Exception as e:
-                print(f"      ⚠️ Warm-up échoué: {e}")
-                time.sleep(3)
+        warmup_urls = [
+            self.SITE_URL,
+            f"{self.SITE_URL}content/3-conditions-generales",
+        ]
+        for i, warmup_url in enumerate(warmup_urls):
+            for attempt in range(3):
+                try:
+                    resp = self.session.get(warmup_url, timeout=15)
+                    if resp.status_code == 200:
+                        if i == 0:
+                            print(f"      🍪 Session réchauffée (cookies PrestaShop)")
+                        time.sleep(random.uniform(1.5, 3.0))
+                        break
+                    time.sleep(3 * (attempt + 1))
+                except Exception:
+                    time.sleep(3)
         self._session_warmed = True
 
     def _fetch_listing_with_retry(self, url: str) -> Optional[requests.Response]:
-        """GET une page listing avec retry applicatif et backoff exponentiel."""
+        """GET une page listing avec retry, backoff exponentiel et jitter."""
         self._warm_session()
 
         for attempt in range(1, self.LISTING_MAX_RETRIES + 1):
@@ -204,16 +214,16 @@ class MotoVanierScraper(DedicatedScraper):
                     return resp
                 retryable = resp.status_code >= 500 or resp.status_code == 403
                 if retryable and attempt < self.LISTING_MAX_RETRIES:
-                    wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1))
-                    print(f"      ⏳ HTTP {resp.status_code} — nouvelle tentative dans {wait}s ({attempt}/{self.LISTING_MAX_RETRIES})")
+                    wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1)) + random.uniform(2, 6)
+                    print(f"      ⏳ HTTP {resp.status_code} — nouvelle tentative dans {wait:.0f}s ({attempt}/{self.LISTING_MAX_RETRIES})")
                     time.sleep(wait)
                     continue
                 print(f"      ⚠️ HTTP {resp.status_code} pour {url}")
                 return None
             except requests.exceptions.RequestException as e:
                 if attempt < self.LISTING_MAX_RETRIES:
-                    wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1))
-                    print(f"      ⏳ Erreur réseau — nouvelle tentative dans {wait}s ({attempt}/{self.LISTING_MAX_RETRIES})")
+                    wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1)) + random.uniform(2, 6)
+                    print(f"      ⏳ Erreur réseau — nouvelle tentative dans {wait:.0f}s ({attempt}/{self.LISTING_MAX_RETRIES})")
                     time.sleep(wait)
                 else:
                     print(f"      ⚠️ Erreur après {self.LISTING_MAX_RETRIES} tentatives: {e}")
@@ -242,7 +252,7 @@ class MotoVanierScraper(DedicatedScraper):
 
             for page in range(2, total_pages + 1):
                 page_url = f"{listing_url}?page={page}"
-                time.sleep(0.5)
+                time.sleep(random.uniform(1.0, 2.5))
                 try:
                     resp_p = self._fetch_listing_with_retry(page_url)
                     if not resp_p:
@@ -335,9 +345,14 @@ class MotoVanierScraper(DedicatedScraper):
         enriched_count = 0
         start = time.time()
 
-        print(f"\n   🔍 Enrichissement: {total} pages détail ({workers} workers)...")
+        global_timeout = max(1200, total * 4)
+
+        print(f"\n   🔍 Enrichissement: {total} pages détail ({workers} workers, timeout {global_timeout}s)...")
 
         url_to_product = {p['sourceUrl']: p for p in products}
+
+        self._consecutive_403 = 0
+        self._cooling_until = 0.0
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
@@ -347,11 +362,11 @@ class MotoVanierScraper(DedicatedScraper):
 
             processed = 0
             try:
-                for future in as_completed(futures, timeout=600):
+                for future in as_completed(futures, timeout=global_timeout):
                     processed += 1
                     url = futures[future]
                     try:
-                        detail = future.result(timeout=15)
+                        detail = future.result(timeout=30)
                         if detail:
                             product = url_to_product[url]
                             for key, val in detail.items():
@@ -361,7 +376,7 @@ class MotoVanierScraper(DedicatedScraper):
                     except Exception:
                         pass
 
-                    if processed % 25 == 0 or processed == total:
+                    if processed % 50 == 0 or processed == total:
                         elapsed = time.time() - start
                         rate = processed / elapsed if elapsed > 0 else 0
                         print(f"      📊 [{processed}/{total}] {enriched_count} enrichis — {rate:.1f}/s")
@@ -376,39 +391,78 @@ class MotoVanierScraper(DedicatedScraper):
         return products
 
     def _throttled_get(self, url: str, **kwargs) -> requests.Response:
-        """GET avec throttle pour espacer les requêtes concurrentes."""
+        """GET avec throttle, jitter aléatoire, et respect du cooling global."""
+        now = time.monotonic()
+        if now < self._cooling_until:
+            wait = self._cooling_until - now
+            time.sleep(wait)
+
         with self._request_lock:
             now = time.monotonic()
+            jitter = random.uniform(0.1, 0.4)
+            interval = self._min_request_interval + jitter
             elapsed = now - self._last_request_time
-            if elapsed < self._min_request_interval:
-                time.sleep(self._min_request_interval - elapsed)
+            if elapsed < interval:
+                time.sleep(interval - elapsed)
             self._last_request_time = time.monotonic()
         return self.session.get(url, **kwargs)
 
+    def _register_403(self):
+        """Signale un 403 et déclenche un cooling global si trop fréquents."""
+        with self._request_lock:
+            self._consecutive_403 += 1
+            if self._consecutive_403 >= 3:
+                cooldown = min(30, 5 * self._consecutive_403)
+                self._cooling_until = time.monotonic() + cooldown
+                print(f"      ❄️ Cooling global: {cooldown}s ({self._consecutive_403} x 403 consécutifs)")
+
+    def _register_success(self):
+        """Réinitialise le compteur de 403 après une requête réussie."""
+        with self._request_lock:
+            self._consecutive_403 = 0
+
     def _fetch_detail_data(self, url: str) -> Optional[Dict]:
-        try:
-            resp = self._throttled_get(url, timeout=15, allow_redirects=True)
-            if resp.status_code != 200:
+        for attempt in range(1, self.DETAIL_MAX_RETRIES + 1):
+            try:
+                resp = self._throttled_get(url, timeout=20, allow_redirects=True)
+
+                if resp.status_code == 403:
+                    self._register_403()
+                    if attempt < self.DETAIL_MAX_RETRIES:
+                        wait = self.DETAIL_RETRY_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(1, 3)
+                        time.sleep(wait)
+                        continue
+                    return None
+
+                if resp.status_code != 200:
+                    return None
+
+                self._register_success()
+
+                soup = BeautifulSoup(resp.text, 'lxml')
+                data: Dict[str, Any] = {}
+
+                self._extract_json_ld(soup, data)
+                self._extract_prestashop_meta(soup, data)
+                self._extract_specs(soup, data)
+                self._extract_price_from_detail(soup, data)
+                self._extract_km_from_detail(soup, data)
+
+                if not data.get('marque'):
+                    brand = self._guess_brand_from_url(url)
+                    if brand:
+                        data['marque'] = brand
+
+                return data if data else None
+
+            except requests.exceptions.Timeout:
+                if attempt < self.DETAIL_MAX_RETRIES:
+                    time.sleep(self.DETAIL_RETRY_BASE_DELAY * attempt)
+                    continue
                 return None
-
-            soup = BeautifulSoup(resp.text, 'lxml')
-            data: Dict[str, Any] = {}
-
-            self._extract_json_ld(soup, data)
-            self._extract_prestashop_meta(soup, data)
-            self._extract_specs(soup, data)
-            self._extract_price_from_detail(soup, data)
-            self._extract_km_from_detail(soup, data)
-
-            if not data.get('marque'):
-                brand = self._guess_brand_from_url(url)
-                if brand:
-                    data['marque'] = brand
-
-            return data if data else None
-
-        except Exception:
-            return None
+            except Exception:
+                return None
+        return None
 
     def _guess_brand_from_url(self, url: str) -> Optional[str]:
         """Déduit la marque depuis le slug de l'URL du produit."""

@@ -1,0 +1,81 @@
+    def _parse_price(self, text: str) -> Optional[float]:
+        if not text:
+            return None
+        text = text.strip()
+        skip_patterns = [
+            'prix sur demande', 'call for price', 'appelez', 'contactez',
+            'nous contacter', 'request a quote', 'sur demande',
+        ]
+        if any(p in text.lower() for p in skip_patterns):
+            return None
+
+        text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r'PDSF|MSRP|Prix\s*:', '', text, flags=re.IGNORECASE)
+
+        prices = re.findall(r'[\d\s,.]+', text.replace('\xa0', ' '))
+        for raw in prices:
+            cleaned = raw.strip().replace(' ', '').replace(',', '').replace('\xa0', '')
+            if '.' in cleaned:
+                parts = cleaned.split('.')
+                if len(parts[-1]) > 2:
+                    cleaned = cleaned.replace('.', '')
+            try:
+                val = float(cleaned)
+                if 100 <= val <= 500000:
+                    return val
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    def _classify_state(self, product: Dict) -> str:
+        signals = ' '.join([
+            str(product.get('name', '')),
+            str(product.get('sourceUrl', '')),
+            str(product.get('sourceCategorie', '')),
+            str(product.get('etat', '')),
+        ]).lower()
+
+        if any(w in signals for w in ['occasion', 'used', 'usagé', 'usages', 'pre-owned', 'préowned']):
+            return 'occasion'
+        if any(w in signals for w in ['demo', 'démo', 'demonstrateur', 'démonstrateur']):
+            return 'demonstrateur'
+        if any(w in signals for w in ['liquidation', 'clearance']):
+            return 'neuf'
+        return 'neuf'
+
+    def _is_soft_404(self, soup: BeautifulSoup) -> bool:
+        title = soup.find('title')
+        if title:
+            t = title.get_text(strip=True).lower()
+            if any(w in t for w in ['404', 'introuvable', 'not found', 'page removed', 'erreur']):
+                return True
+        body_text = soup.get_text(separator=' ', strip=True)
+        if len(body_text) < 500:
+            return True
+        h1 = soup.find('h1')
+        if h1:
+            h1_text = h1.get_text(strip=True).lower()
+            if any(w in h1_text for w in ['404', 'not found', 'introuvable', 'page non trouvée']):
+                return True
+        return False
+{% if warm_up %}
+
+    def _warm_session(self):
+        try:
+            self.session.get(self.SITE_URL, timeout=15)
+        except Exception:
+            pass
+{% endif %}
+{% if needs_mojibake_fix %}
+
+    def _fix_mojibake(self, out: Dict) -> None:
+        fixes = [
+            ('Ã©', 'é'), ('Ã¨', 'è'), ('Ãª', 'ê'), ('Ã\xa0', 'à'),
+            ('Ã®', 'î'), ('Ã´', 'ô'), ('Ã¹', 'ù'), ('Ã§', 'ç'),
+            ('Ã‰', 'É'), ('Ã€', 'À'), ('\xe2\x80\x99', "'"), ('\xe2\x80\x94', '—'),
+        ]
+        for key in list(out.keys()):
+            if isinstance(out[key], str):
+                for bad, good in fixes:
+                    out[key] = out[key].replace(bad, good)
+{% endif %}

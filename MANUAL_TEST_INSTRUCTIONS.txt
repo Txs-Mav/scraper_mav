@@ -1,0 +1,52 @@
+MANUAL SEARCH BAR TEST INSTRUCTIONS
+====================================
+
+Environment: Browser automation not available
+Target: http://localhost:3000
+
+STEP 1: Navigate
+----------------
+- Open browser
+- Go to http://localhost:3000
+- Wait 5 seconds
+
+STEP 2: Login (if needed)
+--------------------------
+- Enter credentials if login page appears
+- API requires authentication
+
+STEP 3: Find Search Bar
+------------------------
+Look for:
+- "Configurer le scraping" section
+- Input with placeholder "Rechercher..."
+- Magnifying glass icon
+
+STEP 4: Test "motoplex"
+------------------------
+1. Type: motoplex
+2. Wait 2 seconds
+3. Verify dropdown shows:
+   - "Motoplex St-Eustache"
+   - "motoplex.ca"
+   - Two action buttons
+
+STEP 5: Test "st-eustache"  
+---------------------------
+1. Clear input
+2. Type: st-eustache
+3. Wait 2 seconds
+4. Verify same result appears
+
+EXPECTED RESULTS
+----------------
+Site Name: "Motoplex St-Eustache"
+Domain: "motoplex.ca"
+Buttons: "+ Référence" and "+ Concurrent"
+
+TROUBLESHOOTING
+---------------
+- No results? Check console (F12) and login status
+- Not visible? Scroll down or refresh
+- Database issue? Run migration_shared_scrapers_motoplex.sql
+

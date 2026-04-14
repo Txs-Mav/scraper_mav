@@ -1,0 +1,40 @@
+"""
+Scraper dédié pour {{ site_name }} ({{ site_domain }}).
+Généré par scraper_usine le {{ generation_date }}.
+Stratégie: {{ strategy_discovery }} + {{ strategy_extraction }}
+Plateforme: {{ platform_name }}
+"""
+{{ imports_block }}
+
+{{ base_class_import }}
+
+
+class {{ class_name }}({{ base_class }}):
+
+    SITE_NAME = "{{ site_name }}"
+    SITE_SLUG = "{{ slug }}"
+    SITE_URL = "{{ site_url }}"
+    SITE_DOMAIN = "{{ site_domain }}"
+{% if extra_class_attrs %}
+{{ extra_class_attrs }}
+{% endif %}
+{% if custom_init %}
+    def __init__(self):
+        super().__init__()
+{{ custom_init }}
+{% endif %}
+
+{% block discovery %}
+{% endblock %}
+
+{% block extraction %}
+{% endblock %}
+
+{% block scrape_override %}
+{% endblock %}
+
+{% block grouping %}
+{% endblock %}
+
+{% block helpers %}
+{% endblock %}

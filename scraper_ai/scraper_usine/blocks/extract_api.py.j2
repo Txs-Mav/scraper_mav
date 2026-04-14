@@ -1,0 +1,21 @@
+    def extract_from_detail_page(self, url: str, html: str, soup: BeautifulSoup) -> Optional[Dict]:
+        return None
+
+    def _map_api_product(self, raw: Dict) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+{% for target, source in field_mapping.items() %}
+        val = raw.get('{{ source }}')
+        if val is not None:
+{% if target == 'prix' %}
+            out['{{ target }}'] = float(val) if isinstance(val, (int, float)) else self._parse_price(str(val))
+{% elif target == 'annee' %}
+            out['{{ target }}'] = int(val) if isinstance(val, (int, float)) else self.clean_year(str(val))
+{% elif target == 'kilometrage' %}
+            out['{{ target }}'] = int(val) if isinstance(val, (int, float)) else self.clean_mileage(str(val))
+{% elif target == 'image' %}
+            out['{{ target }}'] = str(val) if isinstance(val, str) else (val[0] if isinstance(val, list) and val else '')
+{% else %}
+            out['{{ target }}'] = str(val)
+{% endif %}
+{% endfor %}
+        return out if out.get('name') else None

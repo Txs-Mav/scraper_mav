@@ -1,0 +1,58 @@
+    def discover_product_urls(self, categories: List[str] = None) -> List[str]:
+        if categories is None:
+            categories = ['inventaire', 'occasion']
+
+        all_urls = []
+        for cat_key, config in self.LISTING_PAGES.items():
+            if categories and cat_key not in categories and not any(c in cat_key for c in categories):
+                continue
+
+            listing_url = config['url']
+            try:
+                resp = self.session.get(listing_url, timeout=self.HTTP_TIMEOUT)
+                if resp.status_code != 200:
+                    continue
+
+                soup = BeautifulSoup(resp.text, 'lxml')
+                total = self._parse_total_products(soup)
+                total_pages = max(1, math.ceil(total / self.PRODUCTS_PER_PAGE)) if total > 0 else 1
+
+                urls = self._extract_urls_from_listing(soup, listing_url)
+                all_urls.extend(urls)
+
+                for page_num in range(2, total_pages + 1):
+                    page_url = f"{listing_url}{{ pagination_pattern }}"
+                    time.sleep({{ request_delay }})
+                    try:
+                        resp_p = self.session.get(page_url, timeout=self.HTTP_TIMEOUT)
+                        if resp_p and resp_p.status_code == 200:
+                            soup_p = BeautifulSoup(resp_p.text, 'lxml')
+                            all_urls.extend(self._extract_urls_from_listing(soup_p, listing_url))
+                    except Exception:
+                        break
+            except Exception:
+                continue
+
+        seen = set()
+        return [u for u in all_urls
+                if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
+
+    def _parse_total_products(self, soup: BeautifulSoup) -> int:
+        el = soup.select_one('.total-products, .result-count, .woocommerce-result-count')
+        if el:
+            m = re.search(r'(\d+)', el.get_text())
+            if m:
+                return int(m.group(1))
+        return 0
+
+    def _extract_urls_from_listing(self, soup: BeautifulSoup, base_url: str) -> List[str]:
+        urls = []
+        items = soup.select('{{ item_selector }}')
+        for item in items:
+            link = item.select_one('{{ link_selector }}')
+            if not link:
+                link = item.find('a', href=True)
+            if link and link.get('href'):
+                full = urljoin(base_url, link['href'])
+                urls.append(full)
+        return urls
