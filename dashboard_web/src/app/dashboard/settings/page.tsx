@@ -28,6 +28,7 @@ import {
   Command,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import NotificationChannelsSection from "@/components/notification-channels-section"
 
 export default function SettingsPage() {
   const { user, isLoading: authLoading, logout, refreshUser } = useAuth()
@@ -403,6 +404,9 @@ export default function SettingsPage() {
             </button>
           </div>
         </section>
+
+        {/* ── Canaux de notification (Email / SMS / Slack) ── */}
+        <NotificationChannelsSection userEmail={user.email || ""} />
 
         {/* ── Abonnement ── */}
         <section className={`rounded-2xl border p-6 sm:p-8 mb-6 transition-all ${

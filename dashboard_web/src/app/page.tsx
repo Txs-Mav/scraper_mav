@@ -175,7 +175,7 @@ export default function Home() {
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              href="#demo"
+              href="/demo"
               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white dark:bg-[#242628] text-gray-900 dark:text-white text-base font-semibold border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-all hover:-translate-y-0.5"
             >
               Voir la démo

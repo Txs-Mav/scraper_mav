@@ -15,6 +15,7 @@ import { KNOWN_BRANDS, normalizeProductGroupKey, type MatchMode } from "@/lib/an
 import { getEffectiveStatus } from "@/lib/product-status"
 import PriceComparisonTable from "./price-comparison-table"
 import Celebration from "./celebration"
+import CompetitorCards from "./competitor-cards"
 import { DashboardSkeleton } from "./skeleton-loader"
 import { toast } from "sonner"
 
@@ -44,8 +45,11 @@ interface Product {
   groupedUrls?: string[]
 }
 
+export type DashboardView = "comparaisons" | "surveillance"
+
 interface ScraperDashboardProps {
   initialData?: { products: Product[] }
+  view?: DashboardView
 }
 
 const vehicleTypeLabels: Record<string, string> = {
@@ -179,7 +183,9 @@ function getEffectiveMarque(product: Product): string {
   return ""
 }
 
-export default function ScraperDashboard({ initialData }: ScraperDashboardProps) {
+export default function ScraperDashboard({ initialData, view }: ScraperDashboardProps) {
+  const showComparisons = view !== "surveillance"
+  const showSurveillance = view !== "comparaisons"
   const { user } = useAuth()
   const scrapingLimit = useScrapingLimit()
   const { t, locale } = useLanguage()
@@ -723,6 +729,14 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       </div>
 
+      {/* ── Cartes concurrents comparés ── */}
+      {showComparisons && Object.keys(productsBySite.otherSites).length > 0 && (
+        <CompetitorCards
+          competitorsBySite={productsBySite.otherSites}
+          onSelect={(siteUrl) => setActiveTab(`site-${siteUrl}`)}
+        />
+      )}
+
       {/* Notification */}
       {scrapeNotification && (
         <div className={`flex items-center justify-between gap-3 rounded-2xl border px-5 py-4 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 ${
@@ -758,6 +772,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
         </div>
       )}
 
+      {showSurveillance && (<>
       {/* ── Surveillance + Actions ── */}
       <div data-onboarding="scrape" className="rounded-2xl border border-gray-200/60 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20]">
         <div className="flex items-center gap-0">
@@ -990,6 +1005,7 @@ export default function ScraperDashboard({ initialData }: ScraperDashboardProps)
           showColorsLabel={t("dash.showColors")}
         />
       </div>
+      </>)}
 
       {/* ── Modale config ── */}
       {mounted && createPortal(

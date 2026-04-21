@@ -2,11 +2,37 @@
         if categories is None:
             categories = ['inventaire', 'occasion']
 
-        all_urls = self._parse_sitemap_live()
+        raw_urls = self._parse_sitemap_live()
+
+        # Déduplication intelligente: pour les sites bilingues (EN/FR),
+        # deux URLs peuvent pointer vers le même véhicule (ex: /new/ et /neufs/).
+        # On déduplique par ID de produit en préférant les chemins francophones.
+        _FR_PREFIXES = ('neufs', 'occasion', 'demonstrateurs', 'usages', 'fr')
+        id_map: Dict[str, str] = {}
+        no_id: list = []
+        for u in raw_urls:
+            m = re.search(r'-id(\d+)', u)
+            if m:
+                pid = m.group(1)
+                existing = id_map.get(pid)
+                if existing is None:
+                    id_map[pid] = u
+                else:
+                    # Préférer le chemin FR si les deux existent
+                    seg = u.lower().split('/')
+                    if any(any(s.startswith(p) for p in _FR_PREFIXES) for s in seg):
+                        id_map[pid] = u
+            else:
+                no_id.append(u)
 
         seen = set()
-        return [u for u in all_urls
-                if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
+        result = list(id_map.values())
+        for u in no_id:
+            k = u.rstrip('/').lower()
+            if k not in seen:
+                seen.add(k)
+                result.append(u)
+        return result
 
     def _parse_sitemap_live(self) -> List[str]:
         """Parse le sitemap XML en live à chaque exécution (pas de cache)."""
@@ -64,10 +90,9 @@
                     loc = url_tag.find('loc')
                     if loc:
                         u = loc.text.strip()
-{% if language_filter %}
-                        if '/en/' in u and '/fr/' not in u:
+                        # Exclure les pages non-produits communes aux plateformes eDealer
+                        if any(x in u for x in ('-pdf', '-brochure', '/compare', '/search')):
                             continue
-{% endif %}
                         product_urls.append(u)
             except Exception:
                 continue

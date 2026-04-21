@@ -86,59 +86,88 @@
         return out if out.get('name') else None
 
     def _extract_json_ld(self, soup: BeautifulSoup, out: Dict) -> None:
+        # Collecter tous les items JSON-LD et les trier par priorité de type
+        # Vehicle/Car ont le VIN → doivent être traités avant Product
+        _TYPE_PRIORITY = ('Vehicle', 'Car', 'AutomotiveVehicle', 'MotorizedBicycle',
+                          'Product', 'IndividualProduct')
+        all_items = []
         for script in soup.find_all('script', type='application/ld+json'):
             try:
                 data = json.loads(script.string or '')
                 items = data if isinstance(data, list) else [data]
-                for item in items:
-                    t = item.get('@type', '')
-                    if t not in ('Product', 'Vehicle', 'Car', 'MotorizedBicycle',
-                                 'IndividualProduct', 'AutomotiveVehicle'):
-                        if 'offers' not in item:
-                            continue
-
-                    out.setdefault('name', item.get('name', ''))
-                    out.setdefault('description', item.get('description', ''))
-
-                    brand = item.get('brand', '')
-                    if isinstance(brand, dict):
-                        out.setdefault('marque', brand.get('name', ''))
-                    elif brand:
-                        out.setdefault('marque', str(brand))
-
-                    out.setdefault('modele', item.get('model', ''))
-                    out.setdefault('vin', item.get('vehicleIdentificationNumber', item.get('vin', '')))
-
-                    img = item.get('image', '')
-                    if isinstance(img, list) and img:
-                        img = img[0]
-                    out.setdefault('image', img)
-
-                    if item.get('modelDate'):
-                        out.setdefault('annee', self.clean_year(str(item['modelDate'])))
-                    if item.get('vehicleModelDate'):
-                        out.setdefault('annee', self.clean_year(str(item['vehicleModelDate'])))
-                    if item.get('productionDate'):
-                        out.setdefault('annee', self.clean_year(str(item['productionDate'])))
-
-                    mileage = item.get('mileageFromOdometer', item.get('mileage', ''))
-                    if mileage:
-                        if isinstance(mileage, dict):
-                            out.setdefault('kilometrage', self.clean_mileage(str(mileage.get('value', ''))))
-                        else:
-                            out.setdefault('kilometrage', self.clean_mileage(str(mileage)))
-
-                    offers = item.get('offers', {})
-                    if isinstance(offers, dict):
-                        price = offers.get('price')
-                        if price:
-                            out.setdefault('prix', float(price) if isinstance(price, (int, float)) else self.clean_price(str(price)))
-                    elif isinstance(offers, list) and offers:
-                        price = offers[0].get('price')
-                        if price:
-                            out.setdefault('prix', float(price) if isinstance(price, (int, float)) else self.clean_price(str(price)))
+                all_items.extend(items)
             except (json.JSONDecodeError, TypeError, ValueError):
                 continue
+
+        all_items.sort(key=lambda x: next(
+            (i for i, t in enumerate(_TYPE_PRIORITY) if x.get('@type') == t), 99
+        ))
+
+        for item in all_items:
+            t = item.get('@type', '')
+            if t not in _TYPE_PRIORITY:
+                if 'offers' not in item:
+                    continue
+
+            if item.get('name') and not out.get('name'):
+                out['name'] = item['name']
+            if item.get('description') and not out.get('description'):
+                out['description'] = item['description']
+
+            brand = item.get('brand', '')
+            if not out.get('marque'):
+                if isinstance(brand, dict):
+                    out['marque'] = brand.get('name', '')
+                elif brand:
+                    out['marque'] = str(brand)
+
+            if item.get('model') and not out.get('modele'):
+                out['modele'] = item['model']
+
+            # VIN: utiliser if not out.get() pour ne jamais écraser une valeur non vide
+            vin = item.get('vehicleIdentificationNumber') or item.get('vin') or ''
+            if vin and not out.get('vin'):
+                out['vin'] = str(vin)
+
+            img = item.get('image', '')
+            if isinstance(img, list) and img:
+                img = img[0]
+            if img and not out.get('image'):
+                out['image'] = img
+
+            for date_field in ('modelDate', 'vehicleModelDate', 'productionDate'):
+                if item.get(date_field) and not out.get('annee'):
+                    out['annee'] = self.clean_year(str(item[date_field]))
+
+            mileage = item.get('mileageFromOdometer', item.get('mileage', ''))
+            if mileage and not out.get('kilometrage'):
+                if isinstance(mileage, dict):
+                    out['kilometrage'] = self.clean_mileage(str(mileage.get('value', '')))
+                else:
+                    out['kilometrage'] = self.clean_mileage(str(mileage))
+
+            offers = item.get('offers', {})
+            if isinstance(offers, list) and offers:
+                offers = offers[0]
+            if isinstance(offers, dict):
+                price = offers.get('price')
+                if price and not out.get('prix'):
+                    out['prix'] = float(price) if isinstance(price, (int, float)) else self.clean_price(str(price))
+
+        # Extraire l'année depuis le nom quand absente du JSON-LD (ex: eDealer)
+        if not out.get('annee') and out.get('name'):
+            m = re.search(r'\b(20\d{2}|19\d{2})\b', out['name'])
+            if m:
+                out['annee'] = int(m.group(1))
+
+        # Extraire le modèle depuis le nom quand absent (après retrait de l'année et de la marque)
+        if not out.get('modele') and out.get('name') and out.get('marque'):
+            name_rest = out['name']
+            if out.get('annee'):
+                name_rest = name_rest.replace(str(out['annee']), '')
+            name_rest = name_rest.replace(out['marque'], '').strip()
+            if name_rest:
+                out['modele'] = name_rest.split()[0]
 
     def _extract_css(self, soup: BeautifulSoup, out: Dict) -> None:
 {% if css_selectors %}

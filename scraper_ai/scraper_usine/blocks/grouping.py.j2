@@ -1,12 +1,17 @@
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
         groups: Dict[str, Dict] = {}
         for p in products:
-            marque = str(p.get('marque', '')).lower().strip()
-            modele = str(p.get('modele', '')).lower().strip()
-            annee = str(p.get('annee', ''))
-            etat = str(p.get('etat', ''))
-            key = f"{marque}|{modele}|{annee}|{etat}" if marque and modele else f"{p.get('name', '')}|{annee}|{etat}"
-            key = key.lower()
+            # Chaque VIN identifie un véhicule unique — ne jamais fusionner
+            vin = str(p.get('vin', '')).strip().upper()
+            if vin and len(vin) >= 10:
+                key = f"vin:{vin}"
+            else:
+                marque = str(p.get('marque', '')).lower().strip()
+                modele = str(p.get('modele', '')).lower().strip()
+                annee = str(p.get('annee', ''))
+                etat = str(p.get('etat', ''))
+                key = f"{marque}|{modele}|{annee}|{etat}" if marque and modele else f"{p.get('name', '')}|{annee}|{etat}"
+                key = key.lower()
 
             if key in groups:
                 existing = groups[key]

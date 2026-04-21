@@ -221,7 +221,16 @@ export function exportComparisonToExcel(
     competitors.forEach(c => {
       const entry = row.prices.find(p => p.dealer === c)
       line.push(entry?.price ?? null)
-      line.push(entry?.delta ?? null)
+      const delta = entry?.delta ?? null
+      if (delta === null) {
+        line.push(null)
+      } else if (delta > 0) {
+        line.push(`+${delta.toFixed(0)} $`)
+      } else if (delta < 0) {
+        line.push(`${delta.toFixed(0)} $`)
+      } else {
+        line.push("= 0 $")
+      }
     })
     return line
   })

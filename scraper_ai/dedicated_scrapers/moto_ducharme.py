@@ -17,11 +17,10 @@ Sections:
 Marques: Honda, Kawasaki, Husqvarna, Polaris, Talaria, E-Bike
 """
 import re
-import json
-import math
 import time
 import random
 import threading
+import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -38,6 +37,7 @@ class MotoDucharmeScraper(DedicatedScraper):
     SITE_SLUG = "moto-ducharme"
     SITE_URL = "https://www.motoducharme.com/"
     SITE_DOMAIN = "motoducharme.com"
+    SITEMAP_URL = "https://www.motoducharme.com/pub/media/sitemap/sitemap_fr.xml"
 
     LISTING_PAGES = {
         'inventaire': {
@@ -129,7 +129,7 @@ class MotoDucharmeScraper(DedicatedScraper):
         super().__init__()
         self._request_lock = threading.Lock()
         self._last_request_time = 0.0
-        self._min_request_interval = 0.8
+        self._min_request_interval = 1.0
         self._scrape_start_time = 0.0
         self._shutdown = threading.Event()
 
@@ -238,28 +238,136 @@ class MotoDucharmeScraper(DedicatedScraper):
     # ================================================================
 
     def _discover_all_product_urls(self, categories: List[str]) -> List[Dict]:
-        """Parcourt toutes les pages listing et collecte les URLs + métadonnées."""
-        all_entries: List[Dict] = []
-        seen_urls: set = set()
+        """Combine le sitemap XML (source principale, ~1171 URLs) avec les listings
+        page 1 (pour catégoriser neuf/occasion). La pagination `?p=N` est bloquée
+        par reCAPTCHA Enterprise — voir robots.txt (`Disallow: /*?p=*`).
+        """
+        want_neuf = any(c in ('inventaire', 'neuf') for c in categories)
+        want_occasion = any(c == 'occasion' for c in categories)
 
+        sitemap_entries = self._discover_via_sitemap()
+
+        listing_entries: List[Dict] = []
         active_pages = self._resolve_listing_pages(categories)
-
         for cat_key, config in active_pages.items():
             print(f"\n   📋 [{cat_key}]: {config['url']}")
             entries = self._crawl_listing_pages(config)
+            for e in entries:
+                e['_source'] = 'listing'
+            listing_entries.extend(entries)
+            print(f"      ✅ {len(entries)} URLs catégorisées")
 
-            fresh = 0
-            for entry in entries:
-                url_norm = entry['url'].rstrip('/').lower()
-                if url_norm not in seen_urls:
-                    seen_urls.add(url_norm)
-                    all_entries.append(entry)
-                    fresh += 1
+        url_to_entry: Dict[str, Dict] = {}
+        for e in sitemap_entries:
+            key = self._product_key(e['url'])
+            url_to_entry[key] = dict(e)
 
-            print(f"      ✅ {fresh} URLs produits découvertes")
+        for e in listing_entries:
+            key = self._product_key(e['url'])
+            if key in url_to_entry:
+                existing = url_to_entry[key]
+                existing['etat'] = e.get('etat', existing.get('etat'))
+                existing['sourceCategorie'] = e.get(
+                    'sourceCategorie', existing.get('sourceCategorie'))
+                for field in ('prix', 'image', 'name'):
+                    if e.get(field) and not existing.get(field):
+                        existing[field] = e[field]
+                existing['_source'] = 'sitemap+listing'
+            else:
+                url_to_entry[key] = dict(e)
 
-        print(f"\n   ✅ Total: {len(all_entries)} URLs produits uniques")
-        return all_entries
+        result: List[Dict] = []
+        for entry in url_to_entry.values():
+            etat = entry.get('etat', 'neuf')
+            if etat == 'neuf' and not want_neuf:
+                continue
+            if etat == 'occasion' and not want_occasion:
+                continue
+            result.append(entry)
+
+        from_sitemap_only = sum(1 for e in result if e.get('_source') == 'sitemap')
+        from_both = sum(1 for e in result if e.get('_source') == 'sitemap+listing')
+        from_listing_only = sum(1 for e in result if e.get('_source') == 'listing')
+        print(f"\n   ✅ Total: {len(result)} URLs produits uniques "
+              f"(sitemap: {from_sitemap_only}, sitemap+listing: {from_both}, "
+              f"listing: {from_listing_only})")
+        return result
+
+    def _discover_via_sitemap(self) -> List[Dict]:
+        """Parse le sitemap XML officiel pour obtenir les URLs produits.
+
+        Les pages paginées `?p=N` sont bloquées par reCAPTCHA, donc on s'appuie
+        sur `/pub/media/sitemap/sitemap_fr.xml` qui expose toutes les URLs
+        canoniques (~1171 produits) en un seul appel.
+        """
+        print(f"\n   🗺️  Sitemap: {self.SITEMAP_URL}")
+        resp = self._fetch_with_retry(self.SITEMAP_URL)
+        if not resp:
+            print("      ⚠️ Sitemap inaccessible — fallback listings seulement")
+            return []
+
+        try:
+            root = ET.fromstring(resp.content)
+        except ET.ParseError as exc:
+            print(f"      ⚠️ Sitemap XML invalide ({exc}) — fallback listings seulement")
+            return []
+
+        locs: List[str] = []
+        for el in root.iter():
+            tag = el.tag.rsplit('}', 1)[-1]
+            if tag == 'loc' and el.text:
+                locs.append(el.text.strip())
+
+        entries: List[Dict] = []
+        seen: set = set()
+        for url in locs:
+            if not self._is_sitemap_product_url(url):
+                continue
+            key = url.rstrip('/').lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append({
+                'url': url,
+                'etat': 'neuf',
+                'sourceCategorie': 'inventaire',
+                '_source': 'sitemap',
+            })
+
+        print(f"      ✅ {len(entries)} URLs produits extraites "
+              f"({len(locs)} entrées sitemap totales)")
+        return entries
+
+    @staticmethod
+    def _product_key(url: str) -> str:
+        """Clé unique basée sur l'ID produit `cs-<id>` ou `cs-w-get-<id>`.
+
+        Les mêmes produits sont exposés via deux URLs (sitemap canonique vs
+        listing avec préfixe `/vehicules-neufs/`). On normalise par l'ID final.
+        """
+        path = url.split('?')[0].lower().rstrip('/')
+        match = re.search(r'-cs-(w-get-)?(\d+)$', path)
+        if match:
+            prefix = match.group(1) or ''
+            return f"cs-{prefix}{match.group(2)}"
+        return path
+
+    def _is_sitemap_product_url(self, url: str) -> bool:
+        """URLs produits canoniques du sitemap: /fr/<slug>-cs-[w-get-]?<id>$."""
+        url_lower = url.lower()
+        if self.SITE_DOMAIN not in url_lower:
+            return False
+        path = url_lower.split('?')[0].rstrip('/')
+        non_product_segments = (
+            '/blog/', '/boutique/', '/financement/', '/entreposage/',
+            '/carriere/', '/notre-', '/politique', '/pieces/',
+            '/programme/', '/vehicules-neufs', '/vehicules-d-occasion',
+            '/brand/', '/search/', '/catalogsearch/',
+        )
+        for seg in non_product_segments:
+            if seg in path:
+                return False
+        return bool(re.search(r'/fr/[^/]+-cs-(w-get-)?\d+$', path))
 
     def _resolve_listing_pages(self, categories: List[str]) -> Dict[str, Dict]:
         """Résout les catégories demandées vers les pages listing correspondantes."""
@@ -278,44 +386,25 @@ class MotoDucharmeScraper(DedicatedScraper):
         return active
 
     def _crawl_listing_pages(self, config: Dict) -> List[Dict]:
-        """Parcourt toutes les pages d'un listing Magento paginé."""
+        """Récupère uniquement la page 1 d'un listing.
+
+        La pagination `?p=N` (N >= 2) est systématiquement interceptée par
+        Google reCAPTCHA — voir robots.txt (`Disallow: /*?p=*`). Le sitemap XML
+        fournit la couverture complète des URLs produits.
+        """
         listing_url = config['url']
         etat = config['etat']
         source_cat = config['sourceCategorie']
-        all_entries: List[Dict] = []
 
         resp = self._fetch_with_retry(listing_url)
         if not resp:
             return []
 
         soup = BeautifulSoup(resp.text, 'lxml')
-
         total_products = self._parse_total_products(soup)
-        total_pages = max(1, math.ceil(total_products / self.PRODUCTS_PER_PAGE))
-        print(f"      📊 {total_products} produits, {total_pages} page(s)")
-
-        entries_p1 = self._extract_urls_from_listing(resp.text, etat, source_cat)
-        all_entries.extend(entries_p1)
-
-        for page in range(2, total_pages + 1):
-            if self._time_remaining() < 120:
-                print(f"      ⏱️  Budget temps bas — arrêt pagination à page {page}/{total_pages}")
-                break
-            page_url = f"{listing_url}?p={page}"
-            time.sleep(0.25)
-            try:
-                resp_p = self._fetch_with_retry(page_url)
-                if not resp_p:
-                    print(f"      ⚠️ Page {page} inaccessible, arrêt pagination")
-                    break
-                entries_p = self._extract_urls_from_listing(resp_p.text, etat, source_cat)
-                if not entries_p:
-                    break
-                all_entries.extend(entries_p)
-            except Exception:
-                break
-
-        return all_entries
+        entries = self._extract_urls_from_listing(resp.text, etat, source_cat)
+        print(f"      📊 Page 1: {len(entries)} URLs (total annoncé: {total_products})")
+        return entries
 
     def _parse_total_products(self, soup: BeautifulSoup) -> int:
         """Extrait le nombre total de produits depuis le toolbar Magento."""
@@ -510,6 +599,8 @@ class MotoDucharmeScraper(DedicatedScraper):
             resp = self._throttled_get(url, timeout=10, allow_redirects=True)
             if resp.status_code != 200:
                 return None
+            if self._is_recaptcha_challenge(resp.text):
+                return None
 
             resp.encoding = resp.apparent_encoding or 'utf-8'
             soup = BeautifulSoup(resp.text, 'lxml')
@@ -559,6 +650,11 @@ class MotoDucharmeScraper(DedicatedScraper):
                 vtype = self._extract_type_from_url(url)
                 if vtype:
                     product['vehicule_type'] = vtype
+
+            km = product.get('kilometrage')
+            if isinstance(km, int) and km > 0:
+                product['etat'] = 'occasion'
+                product['sourceCategorie'] = 'vehicules_occasion'
 
             return product
 
@@ -850,6 +946,14 @@ class MotoDucharmeScraper(DedicatedScraper):
             try:
                 resp = self.session.get(url, timeout=30)
                 if resp.status_code == 200:
+                    if self._is_recaptcha_challenge(resp.text):
+                        if attempt < self.LISTING_MAX_RETRIES:
+                            wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1))
+                            print(f"      ⏳ reCAPTCHA challenge — retry dans {wait}s ({attempt}/{self.LISTING_MAX_RETRIES})")
+                            time.sleep(wait)
+                            continue
+                        print(f"      ⚠️ reCAPTCHA persistant pour {url}")
+                        return None
                     return resp
                 if resp.status_code >= 500 and attempt < self.LISTING_MAX_RETRIES:
                     wait = self.LISTING_RETRY_DELAY * (2 ** (attempt - 1))
@@ -868,20 +972,34 @@ class MotoDucharmeScraper(DedicatedScraper):
                     return None
         return None
 
+    @staticmethod
+    def _is_recaptcha_challenge(html: str) -> bool:
+        """Détecte une page de challenge Google reCAPTCHA."""
+        if not html:
+            return False
+        snippet = html[:1200]
+        return ('recaptcha/challengepage' in snippet
+                or 'RecaptchaChallengePageUi' in snippet)
+
     def _is_product_url(self, url: str) -> bool:
         url_lower = url.lower()
         if self.SITE_DOMAIN not in url_lower:
             return False
-        if '/vehicules-neufs/' in url_lower or '/vehicules-d-occasion/' in url_lower:
-            excludes = ['/customer/', '/checkout/', '/financement/', '/contacts/',
-                        '/newsletter/', '/review/', '/wishlist/', '/catalogsearch/',
-                        '?p=', '?price=', '?manufacturer=', '?year=',
-                        '?category_ids=', '?is_onsale=', '?mpp_model_ld=']
-            if any(x in url_lower for x in excludes):
-                return False
-            path = url_lower.split('?')[0]
+        excludes = ('/customer/', '/checkout/', '/financement/', '/contacts/',
+                    '/newsletter/', '/review/', '/wishlist/', '/catalogsearch/',
+                    '/blog/', '/boutique/', '/carriere/', '/entreposage/',
+                    '/politique', '/pieces/', '/programme/', '/notre-',
+                    '/brand/', '/search/',
+                    '?p=', '?price=', '?manufacturer=', '?year=',
+                    '?category_ids=', '?is_onsale=', '?mpp_model_ld=')
+        if any(x in url_lower for x in excludes):
+            return False
+        path = url_lower.split('?')[0]
+        if '/vehicules-neufs/' in path or '/vehicules-d-occasion/' in path:
             segments = [s for s in path.split('/') if s]
             return len(segments) >= 4
+        if re.search(r'/fr/[^/]+-cs-(w-get-)?\d+$', path):
+            return True
         return False
 
     def _extract_type_from_url(self, url: str) -> Optional[str]:

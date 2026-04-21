@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getCurrentUser } from '@/lib/supabase/helpers'
-import { sendEmail } from '@/lib/resend'
 import { spawn } from 'child_process'
 import path from 'path'
 import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
+import { dispatchAlertNotifications, type UserChannelsConfig } from '@/lib/notifications/dispatcher'
+import { analyzeFromCache } from '@/lib/analyze-from-cache'
 
 export const maxDuration = 300
 
@@ -18,6 +19,17 @@ interface Product {
   sourceSite?: string
   marque?: string
   modele?: string
+  image?: string
+  // Champs enrichis par /api/products/analyze (matching vs référence)
+  prixReference?: number
+  differencePrix?: number | null
+  produitReference?: {
+    name?: string
+    sourceUrl?: string
+    prix?: number
+    image?: string
+  } | null
+  matchLevel?: string
   [key: string]: any
 }
 
@@ -399,16 +411,21 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
                 console.error(`[Alert Check] Erreur insertion changements:`, insertErr)
               }
 
-              if (alert.email_notification) {
-                await sendAlertEmailSafe(
-                  userId,
-                  refUrl,
-                  cappedChanges,
-                  totalCurrentCount,
-                  totalPreviousCount,
-                  serviceSupabase
-                )
-              }
+            const wantsEmail = alert.email_notification !== false
+            const wantsSms = alert.sms_notification !== false
+            const wantsSlack = alert.slack_notification !== false
+
+            if (wantsEmail || wantsSms || wantsSlack) {
+              await sendAlertNotificationsSafe(
+                userId,
+                refUrl,
+                cappedChanges,
+                totalCurrentCount,
+                totalPreviousCount,
+                { email: wantsEmail, sms: wantsSms, slack: wantsSlack },
+                serviceSupabase
+              )
+            }
 
               totalChanges += cappedChanges.length
 
@@ -466,14 +483,15 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
   }
 }
 
-// ─── Envoi d'email sécurisé ─────────────────────────────────────────
+// ─── Envoi multi-canal sécurisé (email / SMS / Slack) ───────────────
 
-async function sendAlertEmailSafe(
+async function sendAlertNotificationsSafe(
   userId: string,
   siteUrl: string,
   changes: Change[],
   currentCount: number,
   previousCount: number,
+  flags: { email: boolean; sms: boolean; slack: boolean },
   serviceSupabase: any
 ) {
   try {
@@ -483,22 +501,53 @@ async function sendAlertEmailSafe(
       .eq('id', userId)
       .single()
 
-    if (!userData?.email) {
-      console.warn(`[Alert Check] User ${userId} n'a pas d'email, email non envoyé`)
-      return
-    }
+    const { data: channelsRow } = await serviceSupabase
+      .from('user_notification_channels')
+      .select('email_enabled, email_address, sms_enabled, sms_phone, slack_enabled, slack_webhook_url, slack_channel')
+      .eq('user_id', userId)
+      .maybeSingle()
 
-    await sendAlertEmail(
-      userData.email,
-      userData.name || 'Utilisateur',
-      siteUrl,
-      changes,
-      currentCount,
-      previousCount
+    const userChannels: UserChannelsConfig | null = channelsRow
+      ? {
+          email_enabled: channelsRow.email_enabled ?? true,
+          email_address: channelsRow.email_address || userData?.email || null,
+          sms_enabled: !!channelsRow.sms_enabled,
+          sms_phone: channelsRow.sms_phone || null,
+          slack_enabled: !!channelsRow.slack_enabled,
+          slack_webhook_url: channelsRow.slack_webhook_url || null,
+          slack_channel: channelsRow.slack_channel || null,
+        }
+      : {
+          email_enabled: true,
+          email_address: userData?.email || null,
+          sms_enabled: false,
+          sms_phone: null,
+          slack_enabled: false,
+          slack_webhook_url: null,
+          slack_channel: null,
+        }
+
+    const result = await dispatchAlertNotifications(
+      {
+        userId,
+        userName: userData?.name || 'Utilisateur',
+        userEmail: userData?.email || null,
+        siteUrl,
+        changes,
+        currentCount,
+        previousCount,
+      },
+      userChannels,
+      flags
     )
-    console.log(`[Alert Check] Email envoyé à ${userData.email}`)
-  } catch (emailErr) {
-    console.error('[Alert Check] Erreur email (non bloquante):', emailErr)
+
+    const summary: string[] = []
+    if (result.email.attempted) summary.push(`email:${result.email.ok ? 'OK' : 'FAIL'}`)
+    if (result.sms.attempted) summary.push(`sms:${result.sms.ok ? 'OK' : 'FAIL'}`)
+    if (result.slack.attempted) summary.push(`slack:${result.slack.ok ? 'OK' : 'FAIL'}`)
+    console.log(`[Alert Check] Notifications user=${userId} — ${summary.join(' · ') || 'aucune'}`)
+  } catch (notifyErr) {
+    console.error('[Alert Check] Erreur notifications (non bloquante):', notifyErr)
   }
 }
 
@@ -521,6 +570,27 @@ async function triggerAlertScraping(userId: string, config: ScrapingConfig): Pro
       ok = await triggerCacheAnalysisViaBackend(userId, config)
     } else {
       ok = await triggerCacheAnalysisLocal(userId, config)
+    }
+
+    // Fallback ultime : matching JS intégré pour garantir que les produits
+    // appariés (prixReference / produitReference) soient présents dans le
+    // dernier scraping — critique pour l'email de matching vs référence.
+    if (!ok) {
+      console.log(`[Alert Scrape] Fallback analyze-from-cache (JS) pour user ${userId}`)
+      try {
+        const result = await analyzeFromCache(userId)
+        ok = result.ok
+        if (ok) {
+          console.log(
+            `[Alert Scrape] Fallback OK: ${result.stats?.matchedProducts || 0} matches, ` +
+            `${result.stats?.totalProducts || 0} produits`
+          )
+        } else {
+          console.warn(`[Alert Scrape] Fallback échoué: ${result.error} — ${result.message}`)
+        }
+      } catch (err: any) {
+        console.error(`[Alert Scrape] Fallback erreur:`, err.message)
+      }
     }
 
     if (ok) {
@@ -747,6 +817,19 @@ function formatPrice(price: number): string {
   return `${price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} $`
 }
 
+function matchInfoFromProduct(p: Product): Record<string, any> {
+  const matched = !!p.produitReference || typeof p.prixReference === 'number'
+  if (!matched) return { is_matched_with_reference: false }
+  return {
+    is_matched_with_reference: true,
+    reference_product_name: p.produitReference?.name || null,
+    reference_product_url: p.produitReference?.sourceUrl || null,
+    reference_price: typeof p.prixReference === 'number' ? p.prixReference : (p.produitReference?.prix ?? null),
+    price_diff_vs_reference: typeof p.differencePrix === 'number' ? p.differencePrix : null,
+    match_level: p.matchLevel || 'exact',
+  }
+}
+
 function detectChanges(previous: Product[], current: Product[], config: AlertConfig, sourceSite: string): Change[] {
   const changes: Change[] = []
 
@@ -790,7 +873,13 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
           old_value: null,
           new_value: formatPrice(curr.prix),
           percentage_change: null,
-          details: { prix: curr.prix, disponibilite: curr.disponibilite, sourceUrl: curr.sourceUrl },
+          details: {
+            prix: curr.prix,
+            disponibilite: curr.disponibilite,
+            sourceUrl: curr.sourceUrl,
+            image: curr.image || null,
+            ...matchInfoFromProduct(curr),
+          },
           source_site: sourceSite,
         })
       }
@@ -823,6 +912,8 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
               new_prix: curr.prix,
               diff: Math.round(diff * 100) / 100,
               sourceUrl: curr.sourceUrl,
+              image: curr.image || null,
+              ...matchInfoFromProduct(curr),
             },
             source_site: sourceSite,
           })
@@ -841,7 +932,11 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
         old_value: prev.disponibilite,
         new_value: curr.disponibilite,
         percentage_change: null,
-        details: { sourceUrl: curr.sourceUrl },
+        details: {
+          sourceUrl: curr.sourceUrl,
+          image: curr.image || null,
+          ...matchInfoFromProduct(curr),
+        },
         source_site: sourceSite,
       })
     }
@@ -860,7 +955,12 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
           old_value: formatPrice(prev.prix),
           new_value: null,
           percentage_change: null,
-          details: { prix: prev.prix, sourceUrl: prev.sourceUrl },
+          details: {
+            prix: prev.prix,
+            sourceUrl: prev.sourceUrl,
+            image: prev.image || null,
+            ...matchInfoFromProduct(prev),
+          },
           source_site: sourceSite,
         })
       }
@@ -870,108 +970,5 @@ function detectChanges(previous: Product[], current: Product[], config: AlertCon
   return changes
 }
 
-// ─── Email d'alerte ─────────────────────────────────────────────────
-
-async function sendAlertEmail(
-  email: string,
-  name: string,
-  siteUrl: string,
-  changes: Change[],
-  currentCount: number,
-  previousCount: number
-) {
-  const priceIncreases = changes.filter(c => c.change_type === 'price_increase')
-  const priceDecreases = changes.filter(c => c.change_type === 'price_decrease')
-  const newProducts = changes.filter(c => c.change_type === 'new_product')
-  const removedProducts = changes.filter(c => c.change_type === 'removed_product')
-  const stockChanges = changes.filter(c => c.change_type === 'stock_change')
-
-  let hostname = siteUrl
-  try { hostname = new URL(siteUrl).hostname.replace('www.', '') } catch { /* ignore */ }
-
-  const changesHtml = changes.slice(0, 20).map(c => {
-    const icon = c.change_type === 'price_increase' ? '📈' :
-                 c.change_type === 'price_decrease' ? '📉' :
-                 c.change_type === 'new_product' ? '🆕' :
-                 c.change_type === 'removed_product' ? '❌' : '🔄'
-    const label = c.change_type === 'price_increase' ? 'Hausse' :
-                  c.change_type === 'price_decrease' ? 'Baisse' :
-                  c.change_type === 'new_product' ? 'Nouveau' :
-                  c.change_type === 'removed_product' ? 'Retiré' : 'Stock'
-    const pctBadge = c.percentage_change
-      ? ` <span style="color:${c.percentage_change > 0 ? '#dc2626' : '#16a34a'};font-weight:700;">(${c.percentage_change > 0 ? '+' : ''}${c.percentage_change}%)</span>`
-      : ''
-    const siteBadge = c.source_site
-      ? `<span style="display:inline-block;background:#eff6ff;color:#2563eb;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-left:4px;">${c.source_site}</span>`
-      : ''
-
-    return `<tr>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;white-space:nowrap;">${icon} ${label}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;">${c.product_name || 'N/A'}${siteBadge}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${c.old_value || '—'}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600;color:${
-        c.change_type === 'price_decrease' ? '#16a34a' :
-        c.change_type === 'price_increase' ? '#dc2626' : '#2563eb'
-      };">${c.new_value || '—'}${pctBadge}</td>
-    </tr>`
-  }).join('')
-
-  const badges: string[] = []
-  if (priceIncreases.length) badges.push(`<span style="color:#dc2626;">📈 ${priceIncreases.length} hausse${priceIncreases.length > 1 ? 's' : ''}</span>`)
-  if (priceDecreases.length) badges.push(`<span style="color:#16a34a;">📉 ${priceDecreases.length} baisse${priceDecreases.length > 1 ? 's' : ''}</span>`)
-  if (newProducts.length) badges.push(`<span style="color:#2563eb;">🆕 ${newProducts.length} nouveau${newProducts.length > 1 ? 'x' : ''}</span>`)
-  if (removedProducts.length) badges.push(`<span style="color:#ea580c;">❌ ${removedProducts.length} retiré${removedProducts.length > 1 ? 's' : ''}</span>`)
-  if (stockChanges.length) badges.push(`<span style="color:#7c3aed;">🔄 ${stockChanges.length} stock</span>`)
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://go-data-dashboard.vercel.app'
-
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#1f2937;max-width:700px;margin:0 auto;padding:24px;background:#f9fafb;">
-  <div style="background:white;border-radius:12px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.1);">
-    <div style="margin-bottom:24px;">
-      <h1 style="color:#2563eb;margin:0 0 4px;font-size:22px;">Go-Data — Rapport d'alerte</h1>
-      <p style="color:#6b7280;margin:0;font-size:14px;">Bonjour ${name},</p>
-    </div>
-
-    <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;padding:20px;border-radius:10px;margin-bottom:24px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:16px;color:#1e40af;">
-        ${changes.length} changement${changes.length > 1 ? 's' : ''} sur ${hostname}
-      </p>
-      <div style="font-size:13px;">${badges.join(' &middot; ')}</div>
-      <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">Produits : ${previousCount} &rarr; ${currentCount}</p>
-    </div>
-
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead>
-        <tr style="background:#1e293b;color:white;">
-          <th style="padding:10px 12px;text-align:left;border-radius:8px 0 0 0;">Type</th>
-          <th style="padding:10px 12px;text-align:left;">Produit</th>
-          <th style="padding:10px 12px;text-align:left;">Avant</th>
-          <th style="padding:10px 12px;text-align:left;border-radius:0 8px 0 0;">Après</th>
-        </tr>
-      </thead>
-      <tbody style="background:#f9fafb;">${changesHtml}</tbody>
-    </table>
-
-    ${changes.length > 20 ? `<p style="color:#6b7280;font-size:13px;margin-top:8px;">Et ${changes.length - 20} autres changements…</p>` : ''}
-
-    <div style="margin-top:28px;text-align:center;">
-      <a href="${appUrl}/dashboard/alerte" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;font-size:14px;">
-        Voir tous les détails
-      </a>
-    </div>
-  </div>
-
-  <p style="color:#9ca3af;font-size:11px;margin-top:24px;text-align:center;">
-    Cet email est envoyé automatiquement par Go-Data.
-    <a href="${appUrl}/dashboard/alerte" style="color:#9ca3af;">Gérer mes alertes</a>
-  </p>
-</body></html>`.trim()
-
-  await sendEmail({
-    to: email,
-    subject: `Go-Data — ${changes.length} changement${changes.length > 1 ? 's' : ''} sur ${hostname}`,
-    html,
-  })
-}
+// Le rendu HTML des emails d'alerte est désormais géré par
+// @/lib/notifications/dispatcher (buildAlertEmailHtml).

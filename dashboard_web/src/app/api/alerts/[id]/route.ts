@@ -69,9 +69,11 @@ export async function PATCH(
       }
     }
 
-    // Toggle & email
+    // Toggle & canaux de notification (email / SMS / Slack)
     if (body.is_active !== undefined) updates.is_active = body.is_active
     if (body.email_notification !== undefined) updates.email_notification = body.email_notification
+    if (body.sms_notification !== undefined) updates.sms_notification = body.sms_notification === true
+    if (body.slack_notification !== undefined) updates.slack_notification = body.slack_notification === true
 
     // Watch types
     if (body.watch_price_increase !== undefined) updates.watch_price_increase = body.watch_price_increase

@@ -2,8 +2,8 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { User, Home, BarChart2, CreditCard, Activity } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { User, Home, BarChart2, CreditCard, Activity, ChevronDown, LayoutGrid, Radar } from "lucide-react"
 
 import Profile01 from "./profile-01"
 import { useLanguage } from "@/contexts/language-context"
@@ -43,9 +43,73 @@ export default function TopNav() {
         <div className="flex items-center gap-1 sm:gap-2">
           {navItems.map(item => {
             const Icon = item.icon
-            const isExact = item.href === "/dashboard"
-              ? pathname === "/dashboard"
+            const isDashboard = item.href === "/dashboard"
+            const isExact = isDashboard
+              ? pathname === "/dashboard" ||
+                pathname.startsWith("/dashboard/comparaisons") ||
+                pathname.startsWith("/dashboard/surveillance")
               : pathname.startsWith(item.href)
+
+            if (isDashboard) {
+              return (
+                <div
+                  key={item.href}
+                  className={cn(
+                    "group relative flex items-center text-sm transition-colors",
+                    isExact
+                      ? "text-[var(--color-text-primary)] font-semibold"
+                      : "text-[var(--color-text-secondary)] font-medium hover:text-[var(--color-text-primary)]"
+                  )}
+                >
+                  <Link
+                    href={item.href}
+                    className="flex items-center gap-2 pl-3 pr-1.5 py-2.5"
+                  >
+                    <Icon className={cn("h-4 w-4", isExact ? "text-emerald-600 dark:text-emerald-400" : "")} />
+                    <span>{t(item.labelKey)}</span>
+                  </Link>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      aria-label={t("nav.dashboardMenu")}
+                      className="flex items-center justify-center pr-3 pl-0.5 py-2.5 focus:outline-none hover:text-[var(--color-text-primary)] transition-colors"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      sideOffset={8}
+                      className="w-[240px] bg-background border-border rounded-lg shadow-lg"
+                    >
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href="/dashboard/comparaisons"
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <LayoutGrid className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          <span>{t("nav.compareBySite")}</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href="/dashboard/surveillance"
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <Radar className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          <span>{t("nav.marketMonitoringNav")}</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <span className={cn(
+                    "absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 pointer-events-none",
+                    isExact
+                      ? "opacity-100 bg-emerald-600 dark:bg-emerald-400"
+                      : "opacity-0 group-hover:opacity-40 group-hover:bg-gray-300 dark:group-hover:bg-gray-600"
+                  )} />
+                </div>
+              )
+            }
+
             return (
               <Link
                 key={item.href}

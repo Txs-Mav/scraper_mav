@@ -1,8 +1,9 @@
 -- Migration: Ajout de Moto Ducharme dans shared_scrapers
--- Date: 2026-04-03
+-- Date: 2026-04-03 (v1.0), 2026-04-20 (v1.1)
 -- Description: Scraper dédié Moto Ducharme — Magento 2, Joliette QC
---              Listing paginé (?p=N, 36/page) + pages détail pour extraction complète.
---              875 URLs → 586 produits (0 erreurs, regroupement multi-unités).
+--              v1.1: Découverte via sitemap XML (~1171 URLs) + listings page 1 pour
+--                    catégoriser neuf/occasion. La pagination `?p=N` est bloquée par
+--                    reCAPTCHA Enterprise (robots.txt: Disallow: /*?p=*).
 --              Concessionnaire Honda, Kawasaki, Husqvarna, Polaris, Talaria à Joliette.
 
 INSERT INTO shared_scrapers (
@@ -32,12 +33,15 @@ INSERT INTO shared_scrapers (
   '{
     "platform": "magento2",
     "discovery": {
-      "method": "listing_pages_paginated",
+      "method": "sitemap_xml",
+      "sitemap_url": "https://www.motoducharme.com/pub/media/sitemap/sitemap_fr.xml",
+      "product_url_pattern": "/fr/<slug>-cs-(w-get-)?<id>$",
+      "listing_page1_fallback": true,
       "products_per_page": 36,
-      "pagination_param": "p",
       "product_item_selector": "li.product-item, div.product-item",
       "product_link_selector": "a.product-item-link, a[href*=vehicules-]",
-      "total_products_selector": "#toolbar-amount"
+      "total_products_selector": "#toolbar-amount",
+      "note": "La pagination ?p=N est bloquée par reCAPTCHA Enterprise — sitemap XML utilisé comme source principale."
     },
     "detail": {
       "title": "h1.page-title span, h1.page-title, h1",
@@ -63,10 +67,10 @@ INSERT INTO shared_scrapers (
     {"url": "https://www.motoducharme.com/fr/vehicules-d-occasion/motoneiges", "type": "listing", "category": "occasion", "etat": "occasion"}
   ]'::JSONB,
   '{
-    "type": "magento_paginated",
-    "param": "p",
+    "type": "sitemap_xml",
+    "sitemap_url": "https://www.motoducharme.com/pub/media/sitemap/sitemap_fr.xml",
     "per_page": 36,
-    "note": "Pagination Magento 2 standard via ?p=N, 36 produits par page. Véhicules neufs: ~850 produits sur ~24 pages. Occasions réparties sur 4 sous-catégories."
+    "note": "La pagination Magento ?p=N est bloquée par reCAPTCHA Enterprise (robots.txt: Disallow: /*?p=*). Découverte via sitemap XML (~1171 URLs produits canoniques) + listing page 1 (36 URLs par catégorie) pour déterminer neuf/occasion. L''état est aussi ré-évalué depuis kilométrage sur la page détail."
   }'::JSONB,
   'Concessionnaire powersports à Joliette, QC (Lanaudière), près de Repentigny. Honda, Kawasaki, Husqvarna, Polaris, Talaria. Motos, VTT, côte-à-côte, motoneiges, e-bike. Plateforme Magento 2. Entreprise familiale depuis 1961.',
   ARRAY['inventaire', 'occasion'],
@@ -74,7 +78,7 @@ INSERT INTO shared_scrapers (
   ARRAY['name', 'prix', 'prix_regulier', 'marque', 'modele', 'annee', 'etat', 'kilometrage', 'couleur', 'image', 'inventaire', 'vehicule_type', 'description', 'cylindree', 'transmission', 'puissance', 'poids', 'reservoir', 'hauteur_selle', 'suspension_avant', 'suspension_arriere', 'abs', 'type_moteur', 'refroidissement'],
   TRUE,
   NOW(),
-  '1.0'
+  '1.1'
 )
 ON CONFLICT (site_slug) DO UPDATE SET
   selectors = EXCLUDED.selectors,

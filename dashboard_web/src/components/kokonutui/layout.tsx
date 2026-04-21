@@ -6,6 +6,7 @@ import CommandSearch from "../command-search"
 import OnboardingChecklist from "../onboarding-checklist"
 import HelpWidget from "../help-widget"
 import Breadcrumbs from "../breadcrumbs"
+import AnnouncementModal from "../announcement-modal"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 
@@ -39,6 +40,7 @@ export default function Layout({ children }: LayoutProps) {
       <CommandSearch />
       <OnboardingChecklist />
       <HelpWidget />
+      <AnnouncementModal />
     </div>
   )
 }

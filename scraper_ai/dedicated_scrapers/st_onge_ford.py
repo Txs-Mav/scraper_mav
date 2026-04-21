@@ -20,9 +20,9 @@ class StOngeFordScraper(DedicatedScraper):
 
     SITE_NAME = "St-Onge Ford | Ford Dealership in Shawinigan and La Tuque"
     SITE_SLUG = "st-onge-ford"
-    SITE_URL = "https://www.st-onge-ford.com/eng/"
+    SITE_URL = "https://www.st-onge-ford.com/fr/"
     SITE_DOMAIN = "st-onge-ford.com"
-    SITEMAP_URL = "https://www.st-onge-ford.com/en/sitemap_demo.xml"
+    SITEMAP_URL = "https://www.st-onge-ford.com/sitemaps.xml"
     WORKERS = 8
     HTTP_TIMEOUT = 20
     def __init__(self):
@@ -31,11 +31,36 @@ class StOngeFordScraper(DedicatedScraper):
         if categories is None:
             categories = ['inventaire', 'occasion']
 
-        all_urls = self._parse_sitemap_live()
+        raw_urls = self._parse_sitemap_live()
+
+        # Déduplication par ID de produit: préférer les chemins FR non-brochure
+        # (ex: /neufs/ > /new/, mais /used/ > /occasion/-brochure si FR vide)
+        _FR_PREFIXES = ('neufs', 'demonstrateurs')
+        id_map: Dict[str, str] = {}
+        no_id: list = []
+        for u in raw_urls:
+            m = re.search(r'-id(\d+)', u)
+            if m:
+                pid = m.group(1)
+                existing = id_map.get(pid)
+                if existing is None:
+                    id_map[pid] = u
+                else:
+                    seg = u.lower().split('/')
+                    # Préférer FR seulement si pas une brochure
+                    if any(any(s.startswith(p) for p in _FR_PREFIXES) for s in seg):
+                        id_map[pid] = u
+            else:
+                no_id.append(u)
 
         seen = set()
-        return [u for u in all_urls
-                if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
+        result = list(id_map.values())
+        for u in no_id:
+            k = u.rstrip('/').lower()
+            if k not in seen:
+                seen.add(k)
+                result.append(u)
+        return result
 
     def _parse_sitemap_live(self) -> List[str]:
         """Parse le sitemap XML en live à chaque exécution (pas de cache)."""
@@ -93,12 +118,15 @@ class StOngeFordScraper(DedicatedScraper):
                     loc = url_tag.find('loc')
                     if loc:
                         u = loc.text.strip()
-                        if '/en/' in u and '/fr/' not in u:
+                        # Garder uniquement les pages de détail individuelles (avec -id)
+                        if '-id' not in u:
+                            continue
+                        # Exclure PDFs, brochures et pages placeholder
+                        if any(x in u for x in ('-pdf', '-brochure', '-0-id')):
+                            continue
+                        if u.endswith('-0.html'):
                             continue
                         product_urls.append(u)
-
-                if product_urls:
-                    break
             except Exception:
                 continue
 
@@ -188,62 +216,109 @@ class StOngeFordScraper(DedicatedScraper):
         return out if out.get('name') else None
 
     def _extract_json_ld(self, soup: BeautifulSoup, out: Dict) -> None:
-        for script in soup.find_all('script', type='application/ld+json'):
+        # Prioritiser les types Vehicle/Car pour avoir VIN et données complètes
+        scripts = soup.find_all('script', type='application/ld+json')
+        all_items = []
+        for script in scripts:
             try:
                 data = json.loads(script.string or '')
                 items = data if isinstance(data, list) else [data]
-                for item in items:
-                    t = item.get('@type', '')
-                    if t not in ('Product', 'Vehicle', 'Car', 'MotorizedBicycle',
-                                 'IndividualProduct', 'AutomotiveVehicle'):
-                        if 'offers' not in item:
-                            continue
-
-                    out.setdefault('name', item.get('name', ''))
-                    out.setdefault('description', item.get('description', ''))
-
-                    brand = item.get('brand', '')
-                    if isinstance(brand, dict):
-                        out.setdefault('marque', brand.get('name', ''))
-                    elif brand:
-                        out.setdefault('marque', str(brand))
-
-                    out.setdefault('modele', item.get('model', ''))
-                    out.setdefault('vin', item.get('vehicleIdentificationNumber', item.get('vin', '')))
-
-                    img = item.get('image', '')
-                    if isinstance(img, list) and img:
-                        img = img[0]
-                    out.setdefault('image', img)
-
-                    if item.get('modelDate'):
-                        out.setdefault('annee', self.clean_year(str(item['modelDate'])))
-                    if item.get('vehicleModelDate'):
-                        out.setdefault('annee', self.clean_year(str(item['vehicleModelDate'])))
-                    if item.get('productionDate'):
-                        out.setdefault('annee', self.clean_year(str(item['productionDate'])))
-
-                    mileage = item.get('mileageFromOdometer', item.get('mileage', ''))
-                    if mileage:
-                        if isinstance(mileage, dict):
-                            out.setdefault('kilometrage', self.clean_mileage(str(mileage.get('value', ''))))
-                        else:
-                            out.setdefault('kilometrage', self.clean_mileage(str(mileage)))
-
-                    offers = item.get('offers', {})
-                    if isinstance(offers, dict):
-                        price = offers.get('price')
-                        if price:
-                            out.setdefault('prix', float(price) if isinstance(price, (int, float)) else self.clean_price(str(price)))
-                    elif isinstance(offers, list) and offers:
-                        price = offers[0].get('price')
-                        if price:
-                            out.setdefault('prix', float(price) if isinstance(price, (int, float)) else self.clean_price(str(price)))
+                all_items.extend(items)
             except (json.JSONDecodeError, TypeError, ValueError):
                 continue
 
+        type_priority = ('Vehicle', 'Car', 'AutomotiveVehicle', 'MotorizedBicycle', 'Product', 'IndividualProduct')
+        all_items.sort(key=lambda x: next((i for i, t in enumerate(type_priority) if x.get('@type') == t), 99))
+
+        for item in all_items:
+            t = item.get('@type', '')
+            if t not in type_priority:
+                if 'offers' not in item:
+                    continue
+
+            if item.get('name') and not out.get('name'):
+                out['name'] = item['name']
+            if item.get('description') and not out.get('description'):
+                out['description'] = item['description']
+
+            brand = item.get('brand', '')
+            if not out.get('marque'):
+                if isinstance(brand, dict):
+                    out['marque'] = brand.get('name', '')
+                elif brand:
+                    out['marque'] = str(brand)
+
+            if item.get('model') and not out.get('modele'):
+                out['modele'] = item['model']
+
+            # VIN: ne pas utiliser setdefault pour éviter de bloquer avec une valeur vide
+            vin = item.get('vehicleIdentificationNumber') or item.get('vin') or ''
+            if vin and not out.get('vin'):
+                out['vin'] = str(vin)
+
+            img = item.get('image', '')
+            if isinstance(img, list) and img:
+                img = img[0]
+            if img and not out.get('image'):
+                out['image'] = img
+
+            for date_field in ('modelDate', 'vehicleModelDate', 'productionDate'):
+                if item.get(date_field) and not out.get('annee'):
+                    out['annee'] = self.clean_year(str(item[date_field]))
+
+            mileage = item.get('mileageFromOdometer', item.get('mileage', ''))
+            if mileage and not out.get('kilometrage'):
+                if isinstance(mileage, dict):
+                    out['kilometrage'] = self.clean_mileage(str(mileage.get('value', '')))
+                else:
+                    out['kilometrage'] = self.clean_mileage(str(mileage))
+
+            offers = item.get('offers', {})
+            if isinstance(offers, list) and offers:
+                offers = offers[0]
+            if isinstance(offers, dict):
+                price = offers.get('price')
+                if price and not out.get('prix'):
+                    out['prix'] = float(price) if isinstance(price, (int, float)) else self.clean_price(str(price))
+
+        # Extraire l'année depuis le nom si absente
+        if not out.get('annee') and out.get('name'):
+            m = re.search(r'\b(20\d{2}|19\d{2})\b', out['name'])
+            if m:
+                out['annee'] = int(m.group(1))
+
+        # Extraire le modèle depuis le nom si absent (après année et marque)
+        if not out.get('modele') and out.get('name') and out.get('marque'):
+            name_clean = out['name']
+            if out.get('annee'):
+                name_clean = name_clean.replace(str(out['annee']), '').strip()
+            name_clean = name_clean.replace(out['marque'], '').strip()
+            if name_clean:
+                out['modele'] = name_clean.split()[0] if name_clean else ''
+
     def _extract_css(self, soup: BeautifulSoup, out: Dict) -> None:
-        pass
+        for li in soup.find_all('li', class_='divListItem2'):
+            text = li.get_text(strip=True)
+            if not text:
+                continue
+            lower = text.lower()
+            # Kilométrage (FR et EN)
+            if ('kilometers:' in lower or 'kilométrage:' in lower or 'kilometrage:' in lower) and not out.get('kilometrage'):
+                m = re.search(r'([\d\s,]+)\s*km', text, re.IGNORECASE)
+                if m:
+                    km_val = self.clean_mileage(m.group(1))
+                    if km_val:
+                        out['kilometrage'] = km_val
+            # Couleur extérieure (FR et EN)
+            elif any(kw in lower for kw in ('exterior colour:', 'couleur extérieure:', 'couleur exterieure:')) and not out.get('couleur'):
+                val = text.split(':', 1)[-1].strip()
+                if val:
+                    out['couleur'] = val
+            # Couleur intérieure (FR et EN)
+            elif any(kw in lower for kw in ('interior colour:', 'couleur intérieure:', 'couleur interieure:')) and not out.get('couleur_int'):
+                val = text.split(':', 1)[-1].strip()
+                if val:
+                    out['couleur_int'] = val
 
     def scrape(self, categories: List[str] = None, inventory_only: bool = False) -> Dict[str, Any]:
         start_time = time.time()
@@ -448,12 +523,17 @@ class StOngeFordScraper(DedicatedScraper):
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
         groups: Dict[str, Dict] = {}
         for p in products:
-            marque = str(p.get('marque', '')).lower().strip()
-            modele = str(p.get('modele', '')).lower().strip()
-            annee = str(p.get('annee', ''))
-            etat = str(p.get('etat', ''))
-            key = f"{marque}|{modele}|{annee}|{etat}" if marque and modele else f"{p.get('name', '')}|{annee}|{etat}"
-            key = key.lower()
+            # Chaque VIN identifie un véhicule unique — ne jamais fusionner
+            vin = str(p.get('vin', '')).strip().upper()
+            if vin and len(vin) >= 10:
+                key = f"vin:{vin}"
+            else:
+                marque = str(p.get('marque', '')).lower().strip()
+                modele = str(p.get('modele', '')).lower().strip()
+                annee = str(p.get('annee', ''))
+                etat = str(p.get('etat', ''))
+                key = f"{marque}|{modele}|{annee}|{etat}" if marque and modele else f"{p.get('name', '')}|{annee}|{etat}"
+                key = key.lower()
 
             if key in groups:
                 existing = groups[key]

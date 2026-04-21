@@ -461,11 +461,32 @@ class SiteAnalyzer:
             analysis.needs_playwright = True
             self._log(f"    SPA détecté: {', '.join(spa_reasons)}")
 
+        infinite_scroll_signals = [
+            "infinite-scroll", "infinitescroll", "infinite_scroll",
+            "data-infinite", "waypoint", "scroll-trigger",
+            "loadOnScroll", "scroll-load", "lazy-load-trigger",
+        ]
+        for signal in infinite_scroll_signals:
+            if signal in html_lower:
+                analysis.has_infinite_scroll = True
+                self._log(f"    Scroll infini détecté via signal: {signal}")
+                break
+
+        if not analysis.has_infinite_scroll:
+            for script in soup.find_all("script"):
+                if script.string:
+                    s = script.string.lower()
+                    if ("scroll" in s and ("load" in s or "fetch" in s or "page" in s)
+                            and any(w in s for w in ["product", "item", "vehicle", "inventory"])):
+                        analysis.has_infinite_scroll = True
+                        self._log("    Scroll infini détecté via script JS (scroll+load+product)")
+                        break
+
         load_more_patterns = [
             "charger plus", "load more", "afficher plus",
-            "show more", "charger la suite",
+            "show more", "charger la suite", "voir plus",
         ]
-        for btn in soup.find_all("button"):
+        for btn in soup.find_all(["button", "a"]):
             btn_text = btn.get_text(strip=True).lower()
             if len(btn_text) > 50:
                 continue

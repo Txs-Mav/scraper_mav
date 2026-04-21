@@ -12,7 +12,7 @@ import CategoryAnalysis from "@/components/analytics/category-analysis"
 import AlertsAndInsights from "@/components/analytics/alerts-insights"
 import ExplanatoryFactors from "@/components/analytics/explanatory-factors"
 import Visualizations from "@/components/analytics/visualizations"
-import { Lock, RefreshCw, RotateCcw, Calendar, Package, Store, TrendingUp, Printer } from "lucide-react"
+import { Lock, RefreshCw, RotateCcw, Package, Store, TrendingUp, Printer } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import BlocTemplate from "@/components/ui/bloc-template"
@@ -112,7 +112,6 @@ export default function AnalyticsPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [dataAsOf, setDataAsOf] = useState<Date | null>(null)
 
-  // Fonction pour obtenir des analytics vides
   const getEmptyAnalytics = (): AnalyticsData => ({
     positionnement: {
       position: 'average',
@@ -136,12 +135,9 @@ export default function AnalyticsPage() {
     }
   })
 
-  // Vérifier l'accès : Analytics réservé aux plans Pro et Ultime
-  // Fallback : si subscription_source est null mais promo_code_id est défini → promo
   const effectiveSource = user?.subscription_source || (user?.promo_code_id ? 'promo' : null)
   const hasAccess = canAccessAnalytics(user?.subscription_plan ?? "standard", effectiveSource)
 
-  // Fonction de chargement des analytics
   const loadAnalytics = useCallback(async (isRefresh = false) => {
     try {
       setError(null)
@@ -176,7 +172,6 @@ export default function AnalyticsPage() {
     }
   }, [])
 
-  // Fonction de réinitialisation (efface les données de la page Analyse)
   const handleReset = useCallback(async () => {
     if (!confirm(t("analytics.resetConfirm"))) {
       return
@@ -194,7 +189,6 @@ export default function AnalyticsPage() {
         return
       }
 
-      // Mettre à jour l'interface avec des données vides
       setAnalytics(getEmptyAnalytics())
       setLastUpdated(new Date())
     } catch (err) {
@@ -205,21 +199,18 @@ export default function AnalyticsPage() {
     }
   }, [])
 
-  // Rediriger les utilisateurs sans accès (plan Gratuit)
   useEffect(() => {
     if (!authLoading && user && !hasAccess) {
       router.replace("/dashboard?restricted=analytics")
     }
   }, [authLoading, user, hasAccess, router])
 
-  // Charger les analytics au montage (seulement si accès)
   useEffect(() => {
     if (hasAccess) {
       loadAnalytics(false)
     }
   }, [loadAnalytics, hasAccess])
 
-  // Si pas d'analytics, utiliser des données vides
   const displayAnalytics = analytics || getEmptyAnalytics()
 
   if (authLoading || loading) {
@@ -230,7 +221,6 @@ export default function AnalyticsPage() {
     )
   }
 
-  // Accès réservé aux plans Pro et Ultime : redirection
   if (user && !hasAccess) {
     return (
       <Layout>
@@ -243,7 +233,6 @@ export default function AnalyticsPage() {
     )
   }
 
-  // Formatage de la date
   const formatDate = (date: Date) => {
     return date.toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-CA', {
       day: 'numeric',
@@ -252,92 +241,124 @@ export default function AnalyticsPage() {
     })
   }
 
+  const totalProducts = displayAnalytics.produits.length
   const competitifCount = displayAnalytics.produits.filter(p => p.competitif && p.hasCompetitor).length
   const nonCompetitifCount = displayAnalytics.produits.filter(p => !p.competitif && p.hasCompetitor).length
+  const comparableCount = competitifCount + nonCompetitifCount
+  const competitifRatio = comparableCount > 0 ? (competitifCount / comparableCount) * 100 : 0
+  const isEmpty = displayAnalytics.stats.nombreScrapes === 0 && totalProducts === 0
+
+  const kpis = [
+    { label: t("analytics.productsAnalyzed"), value: totalProducts, icon: Package, dot: "bg-emerald-500" },
+    { label: t("analytics.retailers"), value: displayAnalytics.detailleurs.length, icon: Store, dot: "bg-sky-500" },
+    { label: t("analytics.opportunities"), value: displayAnalytics.opportunites.length, icon: TrendingUp, dot: "bg-amber-500" },
+    { label: t("analytics.scrapes"), value: displayAnalytics.stats.nombreScrapes, icon: RefreshCw, dot: "bg-violet-500" },
+  ]
 
   return (
     <Layout>
-      <div id="analytics-print-area" className="space-y-4">
-        {/* ── KPI Hero + Secondary ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {/* Hero — Produits analysés */}
-          <div className="col-span-2 md:col-span-1 relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-emerald-600 to-teal-600 dark:from-emerald-600 dark:to-teal-700 shadow-lg shadow-emerald-600/10 dark:shadow-emerald-900/20">
-            <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-200/70 mb-1.5">{t("analytics.productsAnalyzed")}</p>
-                <p className="text-4xl font-black text-white tabular-nums leading-none tracking-tight">{displayAnalytics.produits.length}</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-white/15">
-                <Package className="h-5 w-5 text-white/80" />
-              </div>
-            </div>
+      <div id="analytics-print-area" className="space-y-5">
+        {/* ── Page header ── */}
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)] mb-1">
+              {t("analytics.overline")}
+            </p>
+            <h1 className="text-2xl font-bold text-[var(--color-text-primary)] leading-tight">
+              {t("analytics.title")}
+            </h1>
+            <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+              {t("analytics.subtitle")}
+            </p>
           </div>
 
-          {/* Secondary KPIs */}
-          {[
-            { label: t("analytics.retailers"), value: displayAnalytics.detailleurs.length, icon: Store, accent: "text-emerald-500 dark:text-emerald-400", dot: "bg-emerald-400" },
-            { label: t("analytics.opportunities"), value: displayAnalytics.opportunites.length, icon: TrendingUp, accent: "text-amber-500 dark:text-amber-400", dot: "bg-amber-400" },
-            { label: t("analytics.scrapes"), value: displayAnalytics.stats.nombreScrapes, icon: RefreshCw, accent: "text-emerald-500 dark:text-emerald-400", dot: "bg-emerald-400" },
-          ].map((s, i) => {
-            const Icon = s.icon
-            return (
-              <div key={i} className="rounded-2xl border border-gray-200 dark:border-[#3A3A3A] bg-white dark:bg-[#222222] backdrop-blur-sm p-5 flex flex-col justify-between group hover:shadow-md hover:-translate-y-0.5 transition-all">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-                    <p className="text-xs font-medium text-gray-500 dark:text-[#B0B0B0] tracking-wide">{s.label}</p>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => printCurrentPage(t("analytics.title"))}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
+              title={t("analytics.printAction")}
+            >
+              <Printer className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t("analytics.printAction")}</span>
+            </button>
+            <button
+              onClick={() => loadAnalytics(true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{t("analytics.refreshAction")}</span>
+            </button>
+            <button
+              onClick={handleReset}
+              disabled={refreshing || loading}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-red-600/80 dark:text-red-400/80 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-50"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t("analytics.resetAction")}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── KPI strip ── */}
+        <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] overflow-hidden">
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[var(--color-border-tertiary)]">
+            {kpis.map((k, i) => {
+              const Icon = k.icon
+              return (
+                <div key={i} className="p-5 flex flex-col justify-center">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-1.5 w-1.5 rounded-full ${k.dot}`} />
+                      <p className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                        {k.label}
+                      </p>
+                    </div>
+                    <Icon className="h-3.5 w-3.5 text-[var(--color-text-secondary)] opacity-40" />
                   </div>
-                  <Icon className={`h-3.5 w-3.5 ${s.accent} opacity-50`} />
+                  <p className="text-3xl font-extrabold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
+                    {k.value.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+                  </p>
                 </div>
-                <p className="text-3xl font-extrabold text-gray-900 dark:text-white leading-none tabular-nums tracking-tight">{s.value}</p>
+              )
+            })}
+          </div>
+
+          {/* Competitive ratio bar */}
+          {comparableCount > 0 && (
+            <div className="border-t border-[var(--color-border-tertiary)] px-5 py-3.5 flex items-center gap-4">
+              <div className="flex items-center gap-6 text-xs font-medium">
+                <span className="flex items-center gap-1.5 text-[#27500A] dark:text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  <span className="tabular-nums font-bold">{competitifCount}</span>
+                  <span className="text-[var(--color-text-secondary)] font-normal">{t("analytics.competitive")}</span>
+                </span>
+                <span className="flex items-center gap-1.5 text-[#791F1F] dark:text-red-400">
+                  <span className="h-2 w-2 rounded-full bg-red-500" />
+                  <span className="tabular-nums font-bold">{nonCompetitifCount}</span>
+                  <span className="text-[var(--color-text-secondary)] font-normal">{t("analytics.aboveMarket")}</span>
+                </span>
               </div>
-            )
-          })}
-        </div>
+              <div className="flex-1 h-1.5 rounded-full bg-[var(--color-background-secondary)] overflow-hidden max-w-xs ml-auto">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
+                  style={{ width: `${competitifRatio}%` }}
+                />
+              </div>
+              <span className="text-xs font-semibold text-[var(--color-text-primary)] tabular-nums min-w-[3rem] text-right">
+                {competitifRatio.toFixed(0)}%
+              </span>
+            </div>
+          )}
 
-        {/* ── Semantic mini-stats — Competitive vs Non-competitive ── */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl border border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE] dark:bg-[#3B6D11]/15 px-4 py-3 flex items-center gap-3">
-            <div className="h-2 w-2 rounded-full bg-[#3B6D11]" />
-            <p className="text-xs font-medium text-[#27500A] dark:text-[#3B6D11]"><span className="tabular-nums font-bold text-sm">{competitifCount}</span> {t("analytics.competitive")}</p>
-          </div>
-          <div className="rounded-xl border border-[#A32D2D]/20 dark:border-[#A32D2D]/30 bg-[#FCEBEB] dark:bg-[#A32D2D]/15 px-4 py-3 flex items-center gap-3">
-            <div className="h-2 w-2 rounded-full bg-[#A32D2D]" />
-            <p className="text-xs font-medium text-[#791F1F] dark:text-[#A32D2D]"><span className="tabular-nums font-bold text-sm">{nonCompetitifCount}</span> {t("analytics.aboveMarket")}</p>
-          </div>
-        </div>
-
-        {/* ── Actions toolbar ── */}
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-gray-50 dark:bg-[#2A2A2A] px-4 py-2.5">
-          <button
-            onClick={() => printCurrentPage(t("analytics.title"))}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/50 transition"
-            title={t("analytics.printAction")}
-          >
-            <Printer className="h-3.5 w-3.5" />
-            {t("analytics.printAction")}
-          </button>
-          <button
-            onClick={() => loadAnalytics(true)}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            {t("analytics.refreshAction")}
-          </button>
-          <button
-            onClick={handleReset}
-            disabled={refreshing || loading}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/20 hover:border-red-500/50 transition disabled:opacity-50"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            {t("analytics.resetAction")}
-          </button>
-          <div className="w-px h-5 bg-gray-100 dark:bg-[#2E2E2E] mx-1" />
-          <div className="flex items-center gap-1.5 text-[11px] font-normal text-gray-400 dark:text-[#707070]">
-            <Calendar className="h-3 w-3" />
-            <span className="tabular-nums">{t("analytics.data")} {dataAsOf ? formatDate(dataAsOf) : t("analytics.na")} | {t("analytics.updated")} {lastUpdated ? formatDate(lastUpdated) : formatDate(new Date())}</span>
+          {/* Data freshness footer */}
+          <div className="border-t border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]/40 px-5 py-2.5 flex items-center justify-between gap-4 text-[11px] text-[var(--color-text-secondary)]">
+            <span className="tabular-nums">
+              {t("analytics.data")} <span className="font-medium text-[var(--color-text-primary)]">{dataAsOf ? formatDate(dataAsOf) : t("analytics.na")}</span>
+            </span>
+            <span className="tabular-nums">
+              {t("analytics.updated")} <span className="font-medium text-[var(--color-text-primary)]">{lastUpdated ? formatDate(lastUpdated) : formatDate(new Date())}</span>
+            </span>
           </div>
         </div>
 
@@ -348,66 +369,117 @@ export default function AnalyticsPage() {
         )}
 
         {/* Empty state */}
-        {displayAnalytics.stats.nombreScrapes === 0 && displayAnalytics.produits.length === 0 && (
-          <div className="rounded-2xl border border-gray-200 dark:border-[#3A3A3A] bg-white dark:bg-[#222222] backdrop-blur-sm p-10 text-center">
+        {isEmpty && (
+          <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-10 text-center">
             <div className="max-w-md mx-auto">
               <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 flex items-center justify-center mb-5">
                 <Package className="h-7 w-7 text-emerald-500 dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t("analytics.noData")}</h3>
-              <p className="text-sm text-gray-500 dark:text-[#B0B0B0] leading-relaxed">
+              <h3 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">{t("analytics.noData")}</h3>
+              <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
                 {t("analytics.noDataDesc")}
               </p>
             </div>
           </div>
         )}
 
-        {/* ── Analysis sections — elevated cards ── */}
-        <div className="space-y-4">
-          <BlocTemplate className="hover-elevate">
-            <PricePositioningCard positionnement={displayAnalytics.positionnement} />
-          </BlocTemplate>
+        {/* ── Analysis sections ── */}
+        {!isEmpty && (
+          <div className="space-y-8">
+            <AnalyticsSection
+              caption={t("analytics.section.positioning")}
+              description={t("analytics.section.positioningDesc")}
+            >
+              <BlocTemplate className="hover-elevate">
+                <PricePositioningCard positionnement={displayAnalytics.positionnement} />
+              </BlocTemplate>
+            </AnalyticsSection>
 
-          <BlocTemplate className="hover-elevate">
-            <ProductCategoryAnalysis produits={displayAnalytics.produits} />
-          </BlocTemplate>
+            <AnalyticsSection
+              caption={t("analytics.section.products")}
+              description={t("analytics.section.productsDesc")}
+            >
+              <BlocTemplate className="hover-elevate">
+                <ProductCategoryAnalysis produits={displayAnalytics.produits} />
+              </BlocTemplate>
+              <BlocTemplate className="hover-elevate">
+                <CategoryAnalysis categories={displayAnalytics.categories} />
+              </BlocTemplate>
+              <BlocTemplate className="hover-elevate">
+                <ExplanatoryFactors produits={displayAnalytics.produits} />
+              </BlocTemplate>
+            </AnalyticsSection>
 
-          <BlocTemplate className="hover-elevate">
-            <PriceEvolutionChart
-              evolutionPrix={displayAnalytics.evolutionPrix}
-              scrapesParJour={displayAnalytics.stats.scrapesParJour}
-            />
-          </BlocTemplate>
+            <AnalyticsSection
+              caption={t("analytics.section.market")}
+              description={t("analytics.section.marketDesc")}
+            >
+              <BlocTemplate className="hover-elevate">
+                <PriceEvolutionChart
+                  evolutionPrix={displayAnalytics.evolutionPrix}
+                  scrapesParJour={displayAnalytics.stats.scrapesParJour}
+                />
+              </BlocTemplate>
+              <BlocTemplate className="hover-elevate">
+                <RetailerAnalysis detailleurs={displayAnalytics.detailleurs} />
+              </BlocTemplate>
+            </AnalyticsSection>
 
-          <BlocTemplate className="hover-elevate">
-            <OpportunitiesDetection opportunites={displayAnalytics.opportunites} />
-          </BlocTemplate>
+            <AnalyticsSection
+              caption={t("analytics.section.actions")}
+              description={t("analytics.section.actionsDesc")}
+            >
+              <BlocTemplate className="hover-elevate">
+                <OpportunitiesDetection opportunites={displayAnalytics.opportunites} />
+              </BlocTemplate>
+              <BlocTemplate className="hover-elevate">
+                <AlertsAndInsights alertes={displayAnalytics.alertes} stats={displayAnalytics.stats} />
+              </BlocTemplate>
+            </AnalyticsSection>
 
-          <BlocTemplate className="hover-elevate">
-            <RetailerAnalysis detailleurs={displayAnalytics.detailleurs} />
-          </BlocTemplate>
-
-          <BlocTemplate className="hover-elevate">
-            <CategoryAnalysis categories={displayAnalytics.categories} />
-          </BlocTemplate>
-
-          <BlocTemplate className="hover-elevate">
-            <AlertsAndInsights alertes={displayAnalytics.alertes} stats={displayAnalytics.stats} />
-          </BlocTemplate>
-
-          <BlocTemplate className="hover-elevate">
-            <ExplanatoryFactors produits={displayAnalytics.produits} />
-          </BlocTemplate>
-
-          <BlocTemplate className="hover-elevate">
-            <Visualizations
-              produits={displayAnalytics.produits}
-              detailleurs={displayAnalytics.detailleurs}
-            />
-          </BlocTemplate>
-        </div>
+            <AnalyticsSection
+              caption={t("analytics.section.visualizations")}
+              description={t("analytics.section.visualizationsDesc")}
+            >
+              <BlocTemplate className="hover-elevate">
+                <Visualizations
+                  produits={displayAnalytics.produits}
+                  detailleurs={displayAnalytics.detailleurs}
+                />
+              </BlocTemplate>
+            </AnalyticsSection>
+          </div>
+        )}
       </div>
     </Layout>
   )
 }
 
+interface AnalyticsSectionProps {
+  caption: string
+  description?: string
+  children: React.ReactNode
+}
+
+function AnalyticsSection({ caption, description, children }: AnalyticsSectionProps) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline gap-3 px-1">
+        <div className="h-px flex-shrink-0 w-6 bg-[var(--color-border-tertiary)]" />
+        <div className="flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)]">
+            {caption}
+          </p>
+          {description && (
+            <p className="text-xs text-[var(--color-text-secondary)]/70 mt-0.5">
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="space-y-4">
+        {children}
+      </div>
+    </section>
+  )
+}

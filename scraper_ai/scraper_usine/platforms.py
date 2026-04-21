@@ -272,6 +272,8 @@ def probe_sitemap(session: requests.Session, base_url: str, recipe: PlatformReci
                     line = line.strip()
                     if line.lower().startswith("sitemap:"):
                         sm_url = line.split(":", 1)[1].strip()
+                        if sm_url and not sm_url.startswith("http"):
+                            sm_url = base + ("" if sm_url.startswith("/") else "/") + sm_url
                         if sm_url and sm_url not in seen_sitemaps:
                             print(f"    [Sitemap]   -> robots.txt: trouvé {sm_url[:60]}")
                             candidates.append(sm_url)
@@ -290,7 +292,10 @@ def probe_sitemap(session: requests.Session, base_url: str, recipe: PlatformReci
                 for sm in sitemapindex:
                     loc = sm.find("loc")
                     if loc:
-                        sub_urls.append(loc.text.strip())
+                        loc_url = loc.text.strip()
+                        if loc_url and not loc_url.startswith("http"):
+                            loc_url = base + ("" if loc_url.startswith("/") else "/") + loc_url
+                        sub_urls.append(loc_url)
 
                 prioritized = _prioritize_sitemaps(sub_urls)
                 print(f"    [Sitemap]   -> sitemap-index avec {len(sub_urls)} sous-sitemaps, "

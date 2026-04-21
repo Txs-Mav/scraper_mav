@@ -18,4 +18,13 @@
             out['{{ target }}'] = str(val)
 {% endif %}
 {% endfor %}
+        for url_key in ('url', 'detailUrl', 'detail_url', 'link', 'href', 'permalink'):
+            raw_url = raw.get(url_key)
+            if raw_url and isinstance(raw_url, str):
+                if raw_url.startswith('http'):
+                    out['sourceUrl'] = raw_url
+                else:
+                    out['sourceUrl'] = urljoin(self.SITE_URL, raw_url)
+                break
+
         return out if out.get('name') else None

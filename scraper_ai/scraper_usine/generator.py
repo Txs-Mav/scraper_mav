@@ -90,12 +90,21 @@ class ScraperCodeGenerator:
         pagination_param = analysis.platform.default_pagination_param or "page"
         pagination_pattern = f"?{pagination_param}={{page_num}}"
 
+        css_field_map = {
+            "name": "detail_name",
+            "prix": "detail_price",
+            "marque": "detail_brand",
+            "modele": "detail_model",
+            "annee": "detail_year",
+            "kilometrage": "detail_mileage",
+            "couleur": "detail_color",
+            "description": "detail_description",
+        }
         css_selectors = {}
-        for field in ("name", "prix", "marque", "modele", "annee",
-                      "kilometrage", "couleur", "description"):
-            entry = getattr(sel, f"detail_{field}" if hasattr(sel, f"detail_{field}") else "detail_name", None)
+        for output_field, selector_attr in css_field_map.items():
+            entry = getattr(sel, selector_attr, None)
             if entry and entry.selector:
-                css_selectors[field] = entry.selector
+                css_selectors[output_field] = entry.selector
 
         products_per_page = 12
         if analysis.platform.platform_type.value == "prestashop":
@@ -171,6 +180,7 @@ class ScraperCodeGenerator:
             "needs_mojibake_fix": analysis.needs_mojibake_fix,
 
             "extra_domain": "",
+            "iframe_src": analysis.iframe_src or "",
         }
 
     # ------------------------------------------------------------------
@@ -240,13 +250,17 @@ class ScraperCodeGenerator:
         elif strategy.discovery_method == DiscoveryMethod.SITEMAP:
             if ctx.get("sitemap_url"):
                 lines.append(f'    SITEMAP_URL = "{ctx["sitemap_url"]}"')
-        elif strategy.discovery_method == DiscoveryMethod.API:
+        elif strategy.discovery_method in (DiscoveryMethod.API, DiscoveryMethod.SCROLL_INTERCEPT):
             lines.append(f'    API_ENDPOINT = "{ctx["api_url"]}"')
             lines.append(f"    API_PAGE_SIZE = {ctx['api_page_size']}")
             if strategy.api_config and strategy.api_config.headers:
                 safe_headers = {k: v for k, v in strategy.api_config.headers.items()
                                 if k.lower() not in ("cookie", "host")}
                 lines.append(f"    API_HEADERS = {repr(safe_headers)}")
+            else:
+                lines.append("    API_HEADERS = {}")
+        if strategy.discovery_method == DiscoveryMethod.IFRAME and ctx.get("iframe_src"):
+            lines.append(f'    IFRAME_SRC = "{ctx["iframe_src"]}"')
         lines.append(f"    WORKERS = {ctx['max_workers']}")
         lines.append(f"    HTTP_TIMEOUT = {ctx['http_timeout']}")
         return "\n".join(lines)
@@ -264,11 +278,20 @@ class ScraperCodeGenerator:
         dm = strategy.discovery_method
         if dm == DiscoveryMethod.SITEMAP:
             tpl = self.env.get_template("discovery_sitemap.py.j2")
-        elif dm == DiscoveryMethod.API:
+        elif dm in (DiscoveryMethod.API, DiscoveryMethod.SCROLL_INTERCEPT):
             tpl = self.env.get_template("discovery_api.py.j2")
+        elif dm == DiscoveryMethod.IFRAME:
+            return self._render_iframe_discovery(ctx)
         else:
             tpl = self.env.get_template("discovery_listing.py.j2")
         return tpl.render(**ctx)
+
+    def _render_iframe_discovery(self, ctx: Dict) -> str:
+        iframe_src = ctx.get("iframe_src", "")
+        return (
+            "    def discover_product_urls(self, categories: List[str] = None) -> List[str]:\n"
+            "        return []\n"
+        )
 
     def _render_extraction(self, ctx: Dict, strategy: ScrapingStrategy) -> str:
         em = strategy.extraction_method

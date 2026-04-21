@@ -39,8 +39,24 @@ class StrategyPlanner:
         # --- Iframe inventaire tiers ---
         if analysis.has_iframe_inventory and analysis.iframe_src:
             strategy.discovery_method = DiscoveryMethod.IFRAME
+            strategy.extraction_method = ExtractionMethod.HYBRID
+            strategy.rendering = RenderingMethod.PLAYWRIGHT
+            strategy.pagination_method = PaginationMethod.NONE
             strategy.needs_scrape_override = True
-            self._log("Iframe inventaire tiers détecté → IFRAME discovery")
+            strategy.needs_detail_pages = False
+            self._log("Iframe inventaire tiers détecté → IFRAME + HYBRID via PLAYWRIGHT")
+
+        # --- Scroll infini / Load More avec API interceptée ---
+        elif (analysis.has_infinite_scroll or analysis.has_load_more_button) and analysis.detected_apis:
+            best_api = analysis.detected_apis[0]
+            strategy.api_config = best_api
+            strategy.discovery_method = DiscoveryMethod.SCROLL_INTERCEPT
+            strategy.pagination_method = PaginationMethod.SCROLL_CAPTURE
+            strategy.extraction_method = ExtractionMethod.API_JSON
+            strategy.rendering = RenderingMethod.PLAYWRIGHT
+            strategy.needs_scrape_override = True
+            strategy.needs_detail_pages = False
+            self._log("Scroll/LoadMore + API interceptée → SCROLL_INTERCEPT")
 
         # --- API interne ---
         elif analysis.detected_apis:
@@ -62,18 +78,6 @@ class StrategyPlanner:
             else:
                 strategy.rendering = RenderingMethod.PLAYWRIGHT
                 self._log(f"API interne détectée (nécessite browser) → API_JSON via PLAYWRIGHT")
-
-        # --- Scroll infini / Load More avec API interceptée ---
-        elif (analysis.has_infinite_scroll or analysis.has_load_more_button) and analysis.detected_apis:
-            best_api = analysis.detected_apis[0]
-            strategy.api_config = best_api
-            strategy.discovery_method = DiscoveryMethod.SCROLL_INTERCEPT
-            strategy.pagination_method = PaginationMethod.SCROLL_CAPTURE
-            strategy.extraction_method = ExtractionMethod.API_JSON
-            strategy.rendering = RenderingMethod.PLAYWRIGHT
-            strategy.needs_scrape_override = True
-            strategy.needs_detail_pages = False
-            self._log("Scroll/LoadMore + API interceptée → SCROLL_INTERCEPT")
 
         # --- Sitemap complet ---
         elif self._sitemap_is_complete(analysis):

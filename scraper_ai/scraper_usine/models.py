@@ -329,8 +329,18 @@ def _to_serializable(obj: Any) -> Any:
     return obj
 
 
+_ENUM_FIELDS = {
+    'PriceDisplayMode': PriceDisplayMode,
+    'DiscoveryMethod': DiscoveryMethod,
+    'ExtractionMethod': ExtractionMethod,
+    'PaginationMethod': PaginationMethod,
+    'RenderingMethod': RenderingMethod,
+    'PlatformType': PlatformType,
+}
+
+
 def _from_dict(cls, data: dict) -> Any:
-    """Reconstruction simplifiée depuis un dict JSON (sans récursion profonde complète)."""
+    """Reconstruction depuis un dict JSON avec support complet des enums et dataclasses."""
     if not isinstance(data, dict):
         return data
 
@@ -343,7 +353,10 @@ def _from_dict(cls, data: dict) -> Any:
 
         if ft == 'PlatformRecipe' and isinstance(val, dict):
             if 'platform_type' in val:
-                val['platform_type'] = PlatformType(val['platform_type'])
+                try:
+                    val['platform_type'] = PlatformType(val['platform_type'])
+                except ValueError:
+                    val['platform_type'] = PlatformType.GENERIC
             if 'signature' in val and isinstance(val['signature'], dict):
                 val['signature'] = PlatformSignature(**val['signature'])
             kwargs[key] = PlatformRecipe(**val)
@@ -355,14 +368,21 @@ def _from_dict(cls, data: dict) -> Any:
                 else:
                     sm_kwargs[sk] = sv
             kwargs[key] = SelectorMap(**sm_kwargs)
-        elif ft == 'PriceDisplayMode' and isinstance(val, str):
-            kwargs[key] = PriceDisplayMode(val)
         elif ft == 'ThrottleConfig' and isinstance(val, dict):
             kwargs[key] = ThrottleConfig(**val)
         elif 'List[DetectedAPI]' in str(ft) and isinstance(val, list):
             kwargs[key] = [DetectedAPI(**v) if isinstance(v, dict) else v for v in val]
         elif 'List[ListingPage]' in str(ft) and isinstance(val, list):
             kwargs[key] = [ListingPage(**v) if isinstance(v, dict) else v for v in val]
+        elif 'List[FieldCoverage]' in str(ft) and isinstance(val, list):
+            kwargs[key] = [FieldCoverage(**v) if isinstance(v, dict) else v for v in val]
+        elif isinstance(val, str) and ft in _ENUM_FIELDS:
+            try:
+                kwargs[key] = _ENUM_FIELDS[ft](val)
+            except ValueError:
+                kwargs[key] = val
+        elif ft == 'Optional[DetectedAPI]' and isinstance(val, dict):
+            kwargs[key] = DetectedAPI(**val)
         else:
             kwargs[key] = val
 

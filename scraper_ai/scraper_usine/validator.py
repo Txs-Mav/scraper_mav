@@ -105,6 +105,8 @@ class ScraperValidator:
             scraper = scraper_class()
 
             scraper.MAX_WORKERS = 3
+            if hasattr(scraper, 'WORKERS'):
+                scraper.WORKERS = 3
             scraper.HTTP_TIMEOUT = 25
 
             self._log("Exécution scrape(categories=['inventaire']) (basse intensité, 3 workers)...")
