@@ -134,7 +134,7 @@ export default function AdminNewsPage() {
       const payload: Record<string, any> = {
         slug: form.slug.trim() || undefined,
         title: form.title.trim(),
-        summary: form.summary.trim() || null,
+        summary: (form.summary ?? "").trim() || null,
         body_md: form.body_md,
         show_in_modal: form.show_in_modal,
         is_published: form.is_published,
@@ -352,7 +352,7 @@ export default function AdminNewsPage() {
                 <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">Résumé (1 ligne)</label>
                 <input
                   type="text"
-                  value={form.summary}
+                  value={form.summary ?? ""}
                   onChange={(e) => setForm(f => ({ ...f, summary: e.target.value }))}
                   placeholder="Aperçu qui apparaît dans le feed"
                   className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
