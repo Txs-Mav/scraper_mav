@@ -310,9 +310,17 @@ class DedicatedScraper(ABC):
             'scraper_info': {'type': 'dedicated', 'module': self.SITE_SLUG}
         }
 
+    # Bornes de sanité pour les prix extraits (CAD). Au-delà, on considère
+    # qu'il s'agit d'une erreur de parsing (SKU, VIN, année concaténée,
+    # numéro de téléphone, etc.) plutôt que d'un prix réel. Les produits
+    # motorsport/véhicules récréatifs les plus chers plafonnent autour de
+    # 500k$ ; on garde une marge conservatrice à 1 000 000 $.
+    PRICE_MIN: float = 1.0
+    PRICE_MAX: float = 1_000_000.0
+
     @staticmethod
     def clean_price(text: str) -> Optional[float]:
-        """Parse un prix depuis du texte."""
+        """Parse un prix depuis du texte, en rejetant les valeurs aberrantes."""
         if not text:
             return None
         cleaned = re.sub(r'[^\d.,]', '', text.strip())
@@ -323,9 +331,11 @@ class DedicatedScraper(ABC):
                 cleaned = cleaned.replace('.', '')
         try:
             val = float(cleaned)
-            return val if val > 0 else None
         except (ValueError, TypeError):
             return None
+        if val < DedicatedScraper.PRICE_MIN or val > DedicatedScraper.PRICE_MAX:
+            return None
+        return val
 
     @staticmethod
     def clean_mileage(text: str) -> Optional[int]:

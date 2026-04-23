@@ -69,22 +69,25 @@ def extract_price(text: str) -> Optional[float]:
 
     all_prices = []
 
+    # Bornes de sanité : en dessous de 1$ et au-dessus de 1M$, on considère
+    # que c'est une erreur de parsing (SKU, VIN, année concaténée, etc.).
+    PRICE_MIN = 1
+    PRICE_MAX = 1_000_000
+
     for pattern in price_patterns:
         for match in re.finditer(pattern, text):
             price = _clean_price_string(match.group(
                 1) if match.lastindex else match.group(0))
-            # Prix raisonnable (100$ à 10M$)
-            if price and 100 < price < 10000000:
+            if price and PRICE_MIN <= price <= PRICE_MAX:
                 all_prices.append((match.start(), price))
 
-    # Si aucun prix trouvé avec les patterns, essayer l'extraction simple
     if not all_prices:
         current_pos = 0
         for part in text.split():
             cleaned = re.sub(r'[^\d.,]', '', part)
             if cleaned:
                 price = _clean_price_string(cleaned)
-                if price and 100 < price < 10000000:
+                if price and PRICE_MIN <= price <= PRICE_MAX:
                     all_prices.append((current_pos, price))
             current_pos += len(part) + 1
 

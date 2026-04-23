@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { sanitizeProducts, PRICE_MIN, PRICE_MAX } from '@/lib/product-sanitizer'
 
 /**
  * POST /api/scrapings/save
@@ -14,6 +15,14 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 export async function POST(request: Request) {
   try {
     const scrapingData = await request.json()
+
+    const sanitized = sanitizeProducts(scrapingData.products)
+    scrapingData.products = sanitized.products
+    if (sanitized.rejected > 0) {
+      console.warn(
+        `[Scrapings Save] ${sanitized.rejected} prix aberrant(s) filtré(s) avant insertion (hors [${PRICE_MIN}, ${PRICE_MAX}] CAD)`
+      )
+    }
 
     if (!scrapingData.reference_url) {
       scrapingData.reference_url =
