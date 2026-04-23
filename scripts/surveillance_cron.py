@@ -21,12 +21,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
-
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from _http_helpers import get_with_retry
 
 COMPARE_SCRIPT = str(SCRIPT_DIR / "compare_from_cache.py")
 MAX_USERS = 50
@@ -53,18 +55,25 @@ def main():
     print(f"   Rafraîchissement des comparaisons depuis scraped_site_data")
     print(f"{'='*60}")
 
-    resp = requests.get(
+    resp = get_with_retry(
         f"{supabase_url}/rest/v1/scraper_config",
         params={
             "select": "user_id,reference_url,competitor_urls",
             "reference_url": "not.is.null",
         },
         headers=_headers(supabase_key),
-        timeout=15,
+        timeout=30,
+        max_attempts=5,
+        base_backoff=3.0,
+        logger=print,
     )
 
+    if resp is None:
+        print("❌ Supabase injoignable après plusieurs tentatives — abandon")
+        sys.exit(1)
+
     if resp.status_code != 200:
-        print(f"❌ Erreur lecture scraper_config: {resp.status_code}")
+        print(f"❌ Erreur lecture scraper_config: {resp.status_code} — {resp.text[:300]}")
         sys.exit(1)
 
     configs = resp.json() or []

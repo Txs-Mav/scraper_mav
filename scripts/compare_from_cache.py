@@ -27,12 +27,14 @@ from pathlib import Path
 from typing import Dict, List
 from urllib.parse import urlparse
 
-import requests
-
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from _http_helpers import get_with_retry, post_with_retry
 
 from scraper_ai.comparison import (
     find_matching_products,
@@ -62,16 +64,18 @@ def _headers(supabase_key: str) -> dict:
 
 
 def _fetch_user_config(supabase_url: str, supabase_key: str, user_id: str) -> dict:
-    resp = requests.get(
+    resp = get_with_retry(
         f"{supabase_url}/rest/v1/scraper_config",
         params={
             "select": "reference_url,competitor_urls,ignore_colors,match_mode,filter_catalogue_reference",
             "user_id": f"eq.{user_id}",
         },
         headers=_headers(supabase_key),
-        timeout=10,
+        timeout=20,
+        max_attempts=4,
+        logger=print,
     )
-    if resp.status_code != 200 or not resp.json():
+    if resp is None or resp.status_code != 200 or not resp.json():
         return {}
     return resp.json()[0]
 
@@ -88,16 +92,17 @@ def _is_cron_running(supabase_url: str, supabase_key: str) -> bool:
     Retourne True si status='running' et scraped_at < 45 min (pas un lock périmé).
     """
     try:
-        resp = requests.get(
+        resp = get_with_retry(
             f"{supabase_url}/rest/v1/scraped_site_data",
             params={
                 "select": "status,scraped_at",
                 "site_domain": f"eq.{CRON_LOCK_DOMAIN}",
             },
             headers=_headers(supabase_key),
-            timeout=5,
+            timeout=15,
+            max_attempts=3,
         )
-        if resp.status_code != 200 or not resp.json():
+        if resp is None or resp.status_code != 200 or not resp.json():
             return False
 
         row = resp.json()[0]
@@ -127,16 +132,18 @@ def _fetch_site_products(supabase_url: str, supabase_key: str, domain: str) -> t
     Retourne (products, True, age) si les données existent mais sont vieilles de >2h.
     Retourne (products, False, age) si les données sont fraîches.
     """
-    resp = requests.get(
+    resp = get_with_retry(
         f"{supabase_url}/rest/v1/scraped_site_data",
         params={
             "select": "products,product_count,scraped_at,status",
             "site_domain": f"eq.{domain}",
         },
         headers=_headers(supabase_key),
-        timeout=15,
+        timeout=30,
+        max_attempts=4,
+        logger=print,
     )
-    if resp.status_code != 200 or not resp.json():
+    if resp is None or resp.status_code != 200 or not resp.json():
         return [], False, 0
     row = resp.json()[0]
     if row.get("status") != "success":
@@ -216,14 +223,18 @@ def _save_fallback_to_cache(supabase_url: str, supabase_key: str,
         "Prefer": "resolution=merge-duplicates,return=representation",
     }
     try:
-        resp = requests.post(
+        resp = post_with_retry(
             f"{supabase_url}/rest/v1/scraped_site_data",
             json=row,
             headers=headers,
             params={"on_conflict": "site_domain"},
-            timeout=30,
+            timeout=45,
+            max_attempts=3,
+            logger=print,
         )
-        if resp.status_code in (200, 201):
+        if resp is None:
+            print(f"   ⚠️  {domain}: sauvegarde fallback impossible (Supabase injoignable)")
+        elif resp.status_code in (200, 201):
             print(f"   💾 {domain}: fallback sauvegardé dans scraped_site_data")
         else:
             print(f"   ⚠️  {domain}: erreur sauvegarde fallback ({resp.status_code})")
@@ -237,12 +248,17 @@ def _save_scrapings(supabase_url: str, supabase_key: str, row: dict) -> bool:
         "Content-Type": "application/json",
         "Prefer": "return=representation",
     }
-    resp = requests.post(
+    resp = post_with_retry(
         f"{supabase_url}/rest/v1/scrapings",
         json=row,
         headers=headers,
-        timeout=30,
+        timeout=45,
+        max_attempts=4,
+        logger=print,
     )
+    if resp is None:
+        print("⚠️  Supabase injoignable — sauvegarde scrapings échouée")
+        return False
     if resp.status_code in (200, 201):
         data = resp.json()
         record = data[0] if isinstance(data, list) and data else data

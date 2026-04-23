@@ -27,13 +27,16 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import Lock
 
-import requests as http_requests
 from supabase import create_client
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from _http_helpers import post_with_retry
 
 from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
@@ -85,30 +88,23 @@ def _set_cron_lock(supabase_url: str, supabase_key: str, status: str):
         "product_count": 0,
         "products": [],
     }
-    for attempt in range(3):
-        try:
-            resp = http_requests.post(
-                f"{supabase_url}/rest/v1/scraped_site_data",
-                json=row,
-                headers=headers,
-                params={"on_conflict": "site_domain"},
-                timeout=15,
-            )
-            if resp.status_code in (200, 201):
-                _log(f"🔒 Cron lock → {status}")
-                return
-            if resp.status_code == 503 and attempt < 2:
-                _log(f"⚠️  Cron lock ({status}): PostgREST 503 — retry {attempt+1}/3")
-                time.sleep(10)
-                continue
-            _log(f"⚠️  Cron lock ({status}): PostgREST {resp.status_code}")
-            return
-        except Exception as e:
-            if attempt < 2:
-                _log(f"⚠️  Cron lock ({status}): {e} — retry {attempt+1}/3")
-                time.sleep(10)
-            else:
-                _log(f"⚠️  Cron lock ({status}): {e}")
+    resp = post_with_retry(
+        f"{supabase_url}/rest/v1/scraped_site_data",
+        json=row,
+        headers=headers,
+        params={"on_conflict": "site_domain"},
+        timeout=30,
+        max_attempts=4,
+        base_backoff=5.0,
+        logger=_log,
+    )
+    if resp is None:
+        _log(f"⚠️  Cron lock ({status}): Supabase injoignable")
+        return
+    if resp.status_code in (200, 201):
+        _log(f"🔒 Cron lock → {status}")
+    else:
+        _log(f"⚠️  Cron lock ({status}): PostgREST {resp.status_code}")
 
 
 def _scrape_single_site(slug: str, site_url: str, site_domain: str) -> dict:
@@ -184,14 +180,19 @@ def _save_site_data(supabase_url: str, supabase_key: str, site: dict, scrape_res
         }
 
     try:
-        resp = http_requests.post(
+        resp = post_with_retry(
             f"{supabase_url}/rest/v1/scraped_site_data",
             json=row,
             headers=headers,
             params={"on_conflict": "site_domain"},
-            timeout=30,
+            timeout=45,
+            max_attempts=5,
+            base_backoff=3.0,
+            logger=_log,
         )
-        if resp.status_code in (200, 201):
+        if resp is None:
+            _log(f"   ⚠️  {site['site_domain']}: Supabase injoignable — sauvegarde perdue")
+        elif resp.status_code in (200, 201):
             status = "✅" if scrape_result["success"] else "⚠️  (erreur, ancien cache conservé)"
             _log(f"   {status} {site['site_domain']}")
         else:
@@ -227,14 +228,18 @@ def _hide_failing_sites(supabase_url: str, supabase_key: str, sites: list[dict])
             "updated_at": now,
         }
         try:
-            resp = http_requests.post(
+            resp = post_with_retry(
                 f"{supabase_url}/rest/v1/scraped_site_data",
                 json=row,
                 headers=headers,
                 params={"on_conflict": "site_domain"},
-                timeout=10,
+                timeout=20,
+                max_attempts=3,
+                logger=_log,
             )
-            if resp.status_code in (200, 201):
+            if resp is None:
+                _log(f"   ⚠️  {domain}: Supabase injoignable — impossible de cacher")
+            elif resp.status_code in (200, 201):
                 _log(f"   🙈 {domain}: caché de la recherche (échec après {MAX_RETRY_ROUNDS} retries)")
             else:
                 _log(f"   ⚠️  {domain}: erreur hide ({resp.status_code})")
