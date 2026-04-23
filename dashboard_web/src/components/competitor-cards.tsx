@@ -92,11 +92,26 @@ interface CompetitorStats {
   priceDelta: number | null
 }
 
+// Bornes de prix "réalistes" (CAD) — élimine les erreurs de scraping
+// où un SKU, VIN, numéro de téléphone ou année concaténée est parsé
+// comme un prix (ex. 8 443 072 833 025 $). Les produits motorsport
+// les plus chers (motorhomes, bateaux premium) restent bien en-dessous
+// de 500 000 $, on garde une marge à 1 000 000 $ pour être conservateur.
+const PRICE_MIN = 1
+const PRICE_MAX = 1_000_000
+
+function isValidPrice(value: number | null | undefined): value is number {
+  return typeof value === "number"
+    && Number.isFinite(value)
+    && value >= PRICE_MIN
+    && value <= PRICE_MAX
+}
+
 function computeStats(siteUrl: string, products: Product[]): CompetitorStats {
-  const valid = products.filter(p => typeof p.prix === "number" && p.prix > 0)
+  const valid = products.filter(p => isValidPrice(p.prix))
   const avg = valid.length ? valid.reduce((s, p) => s + p.prix, 0) / valid.length : 0
 
-  const matched = products.filter(p => p.prixReference != null && p.prixReference !== undefined && p.prix > 0)
+  const matched = products.filter(p => isValidPrice(p.prix) && isValidPrice(p.prixReference))
   let aggressivity = 0
   let priceDelta: number | null = null
 
