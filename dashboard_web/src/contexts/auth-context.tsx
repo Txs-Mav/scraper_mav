@@ -11,7 +11,7 @@ interface AuthContextType {
   isMainAccount: boolean
   login: (email: string, password: string) => Promise<{ error: any }>
   logout: () => Promise<void>
-  register: (data: { name: string; email: string; password: string; plan?: string; promoCode?: string }) => Promise<{ error: any }>
+  register: (data: { name: string; email: string; password: string; plan?: string; promoCode?: string; businessType?: string }) => Promise<{ error: any }>
   refreshUser: () => Promise<void>
 }
 
@@ -233,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string
     plan?: string
     promoCode?: string
+    businessType?: string
   }) => {
     try {
       const hasPromo = !!data.promoCode
@@ -247,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: data.name,
             subscription_plan: subscriptionPlan,
             pending_plan: pendingPlan,
+            business_type: data.businessType ?? 'recreational_vehicles',
             ...(hasPromo ? { promo_code: data.promoCode } : {}),
           },
           emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined

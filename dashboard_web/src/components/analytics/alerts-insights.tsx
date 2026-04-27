@@ -30,7 +30,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
       case 'medium':
         return 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-900'
       default:
-        return 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900'
+        return 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30'
     }
   }
 
@@ -41,7 +41,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
       case 'medium':
         return <Bell className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
       default:
-        return <Info className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        return <Info className="h-5 w-5 text-[#3B6D11]" />
     }
   }
 
@@ -50,12 +50,12 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
   return (
     <div className="space-y-6">
       {/* Insights automatiques */}
-      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           {t("ap.insights")}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
             <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.avgPriceStat")}
             </div>
@@ -63,7 +63,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
               {stats.prixMoyen.toFixed(2)}$
             </div>
           </div>
-          <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
             <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.hoursSaved")}
             </div>
@@ -74,7 +74,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
               {t("ap.perVehicle")}
             </div>
           </div>
-          <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
             <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.scrapesDone")}
             </div>
@@ -93,7 +93,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
                     ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-900'
                     : insight.type === 'success'
                     ? 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30'
-                    : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900'
+                    : 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30'
                 }`}
               >
                 <div className="text-sm text-gray-900 dark:text-white">
@@ -106,7 +106,7 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
       </div>
 
       {/* Alertes */}
-      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           {t("ap.alertsNotif")}
         </h3>

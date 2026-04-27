@@ -11,6 +11,7 @@ from .models import (
     PlatformType, PriceDisplayMode, RenderingMethod,
     ScrapingStrategy, SiteAnalysis, ThrottleConfig,
 )
+from .domain_profiles import get_profile
 
 
 class StrategyPlanner:
@@ -186,7 +187,14 @@ class StrategyPlanner:
         strategy.language = "fr" if "fr" in analysis.language_versions else "fr"
         strategy.warm_up = analysis.warm_up_required
 
-        if analysis.price_display_mode in (PriceDisplayMode.CALL_FOR_PRICE, PriceDisplayMode.NONE):
+        # Si profil non-auto, on ne s'attend pas à des marqueurs "prix sur demande"
+        # comme un véhicule. On reste prudent.
+        profile = get_profile(analysis.domain_profile_key or "auto")
+        if profile.domain_type.value != "auto":
+            strategy.price_absent_expected = False
+
+        if analysis.price_display_mode in (PriceDisplayMode.CALL_FOR_PRICE, PriceDisplayMode.NONE) \
+                and profile.domain_type.value == "auto":
             strategy.price_absent_expected = True
 
         avg_ms = analysis.avg_response_time_ms

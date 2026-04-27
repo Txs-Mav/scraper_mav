@@ -20,6 +20,7 @@ from .models import (
     GeneratedScraper, PaginationMethod, RenderingMethod,
     ScrapingStrategy, SiteAnalysis,
 )
+from .domain_profiles import get_profile
 
 BLOCKS_DIR = Path(__file__).parent / "blocks"
 DEDICATED_DIR = Path(__file__).resolve().parent.parent / "dedicated_scrapers"
@@ -106,6 +107,23 @@ class ScraperCodeGenerator:
             if entry and entry.selector:
                 css_selectors[output_field] = entry.selector
 
+        # Champs spécifiques au DomainProfile (immo: address/city/bedrooms,
+        # jobs: company/location, ecommerce: sku/availability…)
+        profile = get_profile(analysis.domain_profile_key or "auto")
+        profile_extra_fields = []
+        for field_spec in profile.fields:
+            if field_spec.name in css_field_map:
+                continue
+            entry = sel.extra_fields.get(field_spec.name) if hasattr(sel, "extra_fields") else None
+            if entry and entry.selector:
+                css_selectors[field_spec.name] = entry.selector
+                profile_extra_fields.append({
+                    "name": field_spec.name,
+                    "parser": field_spec.parser,
+                    "jsonld_keys": field_spec.jsonld_keys,
+                    "api_keys": field_spec.api_keys,
+                })
+
         products_per_page = 12
         if analysis.platform.platform_type.value == "prestashop":
             products_per_page = 12
@@ -119,6 +137,16 @@ class ScraperCodeGenerator:
         pagination_increment = "page += 1"
         pagination_url_part = ""
         api_page_size = 50
+        api_method = "GET"
+        api_request_body = None
+        api_request_body_json = None
+        api_is_graphql = False
+        api_graphql_query = ""
+        api_graphql_variables = {}
+        api_graphql_pagination_var = ""
+        api_pagination_type = ""
+        api_next_cursor_field = ""
+        api_has_next_field = ""
 
         if strategy.api_config:
             api = strategy.api_config
@@ -126,7 +154,19 @@ class ScraperCodeGenerator:
             field_mapping = api.field_mapping
             items_field = api.items_field
             api_page_size = api.page_size or 50
-            if api.pagination_param:
+            api_method = api.method or "GET"
+            api_request_body = api.request_body
+            api_request_body_json = api.request_body_json
+            api_is_graphql = api.is_graphql
+            api_graphql_query = api.graphql_query
+            api_graphql_variables = api.graphql_variables
+            api_graphql_pagination_var = api.graphql_pagination_var
+            api_pagination_type = api.pagination_type
+            api_next_cursor_field = api.next_cursor_field
+            api_has_next_field = api.has_next_field
+            if api.pagination_param and api_pagination_type != "cursor":
+                # NOTE: pagination_url_part conservé pour rétrocompat des templates existants.
+                # Les nouveaux templates utilisent build_paginated_url() (URL-safe).
                 pagination_url_part = f"&{api.pagination_param}={{page}}" if "?" in api_url else f"?{api.pagination_param}={{page}}"
 
         site_name = analysis.site_name or analysis.domain
@@ -167,12 +207,26 @@ class ScraperCodeGenerator:
             "language_filter": "fr" in analysis.language_versions and "en" in analysis.language_versions,
 
             "api_url": api_url,
+            "api_method": api_method,
+            "api_request_body": api_request_body,
+            "api_request_body_json": api_request_body_json,
+            "api_is_graphql": api_is_graphql,
+            "api_graphql_query": api_graphql_query,
+            "api_graphql_variables": api_graphql_variables,
+            "api_graphql_pagination_var": api_graphql_pagination_var,
+            "api_pagination_type": api_pagination_type,
+            "api_pagination_param": (strategy.api_config.pagination_param
+                                      if strategy.api_config else ""),
+            "api_next_cursor_field": api_next_cursor_field,
+            "api_has_next_field": api_has_next_field,
             "field_mapping": field_mapping,
             "items_field": items_field,
             "pagination_init": pagination_init,
             "pagination_increment": pagination_increment,
             "pagination_url_part": pagination_url_part,
             "api_page_size": api_page_size,
+            "domain_profile_key": analysis.domain_profile_key or "auto",
+            "profile_extra_fields": profile_extra_fields,
 
             "extraction_method": strategy.extraction_method.value,
             "needs_state_classification": True,

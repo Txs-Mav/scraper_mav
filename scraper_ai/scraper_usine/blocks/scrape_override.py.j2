@@ -235,7 +235,7 @@
                     products.append(p)
 
             for page_num in range(2, total_pages + 1):
-                page_url = f"{listing_url}{{ pagination_pattern }}"
+                page_url = self._build_paginated_url(listing_url, '{{ pagination_param }}', page_num)
                 time.sleep({{ request_delay }})
                 try:
                     resp_p = self.session.get(page_url, timeout=self.HTTP_TIMEOUT)
@@ -250,6 +250,7 @@
         except Exception:
             pass
         return products
+
 {% endif %}
 {% if extraction_method == 'api_json' %}
 

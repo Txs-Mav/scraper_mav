@@ -120,7 +120,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
   }, [produits, threshold, compareMode])
 
   return (
-    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
         {t("ap.productAnalysis")}
       </h3>
@@ -129,12 +129,12 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
       </p>
 
       {/* Toggle: Moyenne vs Prix le plus bas */}
-      <div className="mb-4 flex items-center gap-1 rounded-xl border border-gray-200 dark:border-[#3A3A3A] bg-gray-50 dark:bg-[#2A2A2A] p-1 w-fit">
+      <div className="mb-4 flex items-center gap-1 rounded-xl border border-gray-200 dark:border-[#2a2c2e] bg-gray-50 dark:bg-[#242628] p-1 w-fit">
         <button
           onClick={() => setCompareMode("avg")}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             compareMode === "avg"
-              ? "bg-white dark:bg-[#3A3A3A] text-gray-900 dark:text-white shadow-sm"
+              ? "bg-white dark:bg-[#2a2c2e] text-gray-900 dark:text-white shadow-sm"
               : "text-gray-500 dark:text-[#B0B0B0] hover:text-gray-700 dark:hover:text-white"
           }`}
         >
@@ -144,7 +144,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           onClick={() => setCompareMode("min")}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             compareMode === "min"
-              ? "bg-white dark:bg-[#3A3A3A] text-gray-900 dark:text-white shadow-sm"
+              ? "bg-white dark:bg-[#2a2c2e] text-gray-900 dark:text-white shadow-sm"
               : "text-gray-500 dark:text-[#B0B0B0] hover:text-gray-700 dark:hover:text-white"
           }`}
         >
@@ -158,12 +158,12 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           onClick={() => setShowFilter("compared")}
           className={`rounded-lg p-3 text-left transition-all border ${
             showFilter === "compared"
-              ? "ring-2 ring-emerald-500 border-emerald-200 dark:border-emerald-800"
+              ? "ring-2 ring-[#3B6D11] border-[#3B6D11]/30 dark:border-[#3B6D11]/40"
               : "border-transparent"
-          } bg-emerald-50 dark:bg-emerald-900/20`}
+          } bg-[#EAF3DE] dark:bg-[#3B6D11]/15`}
         >
-          <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t("ap.comparedProducts")}</div>
-          <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{counts.compared}</div>
+          <div className="text-xs font-medium text-[#3B6D11] dark:text-[#3B6D11]">{t("ap.comparedProducts")}</div>
+          <div className="text-xl font-bold text-[#27500A] dark:text-[#3B6D11]">{counts.compared}</div>
         </button>
         <div className="rounded-lg p-3 bg-[#EAF3DE] dark:bg-[#3B6D11]/15">
           <div className="text-xs font-medium text-[#3B6D11] dark:text-[#3B6D11]">{t("ap.competitiveProducts")}</div>
@@ -177,9 +177,9 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           onClick={() => setShowFilter(showFilter === "no-competitor" ? "compared" : "no-competitor")}
           className={`rounded-lg p-3 text-left transition-all border ${
             showFilter === "no-competitor"
-              ? "ring-2 ring-gray-400 border-gray-200 dark:border-[#3A3A3A]"
+              ? "ring-2 ring-gray-400 border-gray-200 dark:border-[#2a2c2e]"
               : "border-transparent"
-          } bg-gray-50 dark:bg-[#2A2A2A]`}
+          } bg-gray-50 dark:bg-[#242628]`}
         >
           <div className="text-xs font-medium text-gray-500 dark:text-[#B0B0B0]">{t("ap.noCompetitor")}</div>
           <div className="text-xl font-bold text-gray-500 dark:text-[#B0B0B0]">{counts.sansCompetitor}</div>
@@ -200,7 +200,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
             step={0.5}
             value={threshold}
             onChange={e => setThreshold(parseFloat(e.target.value))}
-            className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200 dark:bg-[#3A3A3A] accent-emerald-600 dark:accent-emerald-500"
+            className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200 dark:bg-[#2a2c2e] accent-[#3B6D11]"
           />
           <span className="tabular-nums text-sm font-bold text-gray-900 dark:text-white min-w-[52px] text-right">
             {threshold.toFixed(1)}%
@@ -209,7 +209,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
         {threshold !== DEFAULT_THRESHOLD && (
           <button
             onClick={() => setThreshold(DEFAULT_THRESHOLD)}
-            className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+            className="text-[11px] font-medium text-[#3B6D11] hover:text-[#27500A] dark:hover:text-[#3B6D11] transition-colors"
           >
             {t("ap.thresholdReset")}
           </button>
@@ -228,7 +228,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                 ? 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30 text-[#27500A] dark:text-[#3B6D11]'
                 : cs.ecartMoyen > 2
                 ? 'bg-[#FCEBEB] dark:bg-[#A32D2D]/15 border-[#A32D2D]/20 dark:border-[#A32D2D]/30 text-[#791F1F] dark:text-[#A32D2D]'
-                : 'bg-gray-50 dark:bg-[#2A2A2A] border-gray-200 dark:border-[#3A3A3A] text-gray-900 dark:text-white'
+                : 'bg-gray-50 dark:bg-[#242628] border-gray-200 dark:border-[#2a2c2e] text-gray-900 dark:text-white'
               return (
                 <button
                   key={cs.categorie}
@@ -236,7 +236,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                     selectedCategory === cs.categorie ? 'all' : cs.categorie
                   )}
                   className={`rounded-lg px-3 py-2 border text-xs font-medium transition-all ${ecartColor} ${
-                    selectedCategory === cs.categorie ? 'ring-2 ring-emerald-500' : ''
+                    selectedCategory === cs.categorie ? 'ring-2 ring-[#3B6D11]' : ''
                   }`}
                 >
                   <span className="font-semibold">{categoryLabels[cs.categorie] || cs.categorie}</span>
@@ -262,13 +262,13 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
             placeholder={t("ap.searchProduct")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-[#3A3A3A] rounded-lg bg-white dark:bg-[#222222] text-gray-900 dark:text-white text-sm"
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-[#2a2c2e] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white text-sm"
           />
         </div>
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
-          className="px-3 py-2 border border-gray-200 dark:border-[#3A3A3A] rounded-lg bg-white dark:bg-[#222222] text-gray-900 dark:text-white text-sm"
+          className="px-3 py-2 border border-gray-200 dark:border-[#2a2c2e] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white text-sm"
         >
           <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.allCategories")}</option>
           {categories.map(cat => (
@@ -278,7 +278,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as "name" | "prix" | "ecart")}
-          className="px-3 py-2 border border-gray-200 dark:border-[#3A3A3A] rounded-lg bg-white dark:bg-[#222222] text-gray-900 dark:text-white text-sm"
+          className="px-3 py-2 border border-gray-200 dark:border-[#2a2c2e] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white text-sm"
         >
           <option value="ecart" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByGap")}</option>
           <option value="prix" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByPrice")}</option>
@@ -288,8 +288,8 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           onClick={() => setShowFilter(showFilter === "all" ? "compared" : "all")}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
             showFilter === "all"
-              ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
-              : "border-gray-200 dark:border-[#3A3A3A] text-gray-500 dark:text-[#B0B0B0] hover:hover:bg-gray-50 dark:hover:bg-[#333333]"
+              ? "bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/30 dark:border-[#3B6D11]/40 text-[#27500A] dark:text-[#3B6D11]"
+              : "border-gray-200 dark:border-[#2a2c2e] text-gray-500 dark:text-[#B0B0B0] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e]"
           }`}
         >
           <Filter className="h-3.5 w-3.5" />
@@ -301,7 +301,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200 dark:border-[#3A3A3A]">
+            <tr className="border-b border-gray-200 dark:border-[#2a2c2e]">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] uppercase tracking-wider">
                 {t("ap.headerProduct")}
               </th>
@@ -326,7 +326,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
             {paginatedProducts.map((produit, index) => (
               <tr
                 key={index}
-                className="border-b border-gray-100 dark:border-[#2E2E2E] hover:hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors"
+                className="border-b border-gray-100 dark:border-[#2a2c2e] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e] transition-colors"
               >
                 <td className="py-3 px-4 text-sm text-gray-900 dark:text-white">
                   {produit.name}
@@ -359,7 +359,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                 </td>
                 <td className="py-3 px-4 text-center">
                   {!produit.hasCompetitor ? (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 dark:bg-[#2A2A2A] text-gray-500 dark:text-[#B0B0B0]">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 dark:bg-[#242628] text-gray-500 dark:text-[#B0B0B0]">
                       {t("ap.noCompetitorBadge")}
                     </span>
                   ) : isCompetitif(produit) ? (
@@ -397,7 +397,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
               type="button"
               onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
               disabled={currentPage === 0}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-[#B0B0B0] border border-gray-200 dark:border-[#3A3A3A] bg-white dark:bg-white/[0.03] hover:hover:bg-gray-50 dark:hover:bg-[#333333] transition disabled:opacity-30 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-[#B0B0B0] border border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-white/[0.03] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e] transition disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-3 w-3" />
               {t("ap.paginationPrev")}
@@ -413,7 +413,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                       className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition ${
                         page === currentPage
                           ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                          : "text-gray-500 dark:text-[#B0B0B0] hover:hover:bg-gray-50 dark:hover:bg-[#333333]"
+                          : "text-gray-500 dark:text-[#B0B0B0] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e]"
                       }`}
                     >
                       {page + 1}
@@ -429,7 +429,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
               type="button"
               onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={currentPage >= totalPages - 1}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-[#B0B0B0] border border-gray-200 dark:border-[#3A3A3A] bg-white dark:bg-white/[0.03] hover:hover:bg-gray-50 dark:hover:bg-[#333333] transition disabled:opacity-30 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-[#B0B0B0] border border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-white/[0.03] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e] transition disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {t("ap.paginationNext")}
               <ChevronRight className="h-3 w-3" />

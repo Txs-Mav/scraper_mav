@@ -370,7 +370,7 @@ export default function DemoPage() {
   const [tab, setTab] = useState<Tab>("analyse")
 
   return (
-    <div className="min-h-screen bg-[#121415] text-white">
+    <div className="min-h-screen bg-[#111314] text-white">
       {/* Landing page header (above dashboard frame) */}
       <header className="relative z-20 px-4 sm:px-6 py-5 border-b border-white/[0.06]">
         <div className="max-w-[1800px] mx-auto flex items-center justify-between gap-3">
@@ -528,7 +528,7 @@ function AnalyseView() {
             <OpportunitiesDetection opportunites={MOCK_OPPORTUNITIES} />
           </div>
           {/* Dégradé + lock sur la moitié inférieure */}
-          <div className="absolute inset-x-0 bottom-0 h-[55%] rounded-b-2xl backdrop-blur-md bg-gradient-to-b from-[#222222]/30 via-[#1c1e20]/80 to-[#1c1e20]/95 flex items-end justify-center pb-6 border-b border-x border-[#3A3A3A]">
+          <div className="absolute inset-x-0 bottom-0 h-[55%] rounded-b-2xl backdrop-blur-md bg-gradient-to-b from-[#1c1e20]/30 via-[#1c1e20]/80 to-[#1c1e20]/95 flex items-end justify-center pb-6 border-b border-x border-[#2a2c2e]">
             <div className="flex flex-col items-center gap-3 px-5 py-4 rounded-2xl bg-[#242628]/95 border border-white/[0.08] shadow-2xl">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-600/30">
                 <Lock className="h-4 w-4 text-white" />
@@ -603,7 +603,7 @@ function ComparaisonView() {
       {/* Graphique détaillé flouté */}
       <div className="relative">
         <div className="pointer-events-none select-none filter blur-[3px] opacity-80">
-          <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+          <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
               Analyse par catégorie × concessionnaire
             </h3>
@@ -631,7 +631,7 @@ function ComparaisonView() {
               {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={i}
-                  className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-3 h-16"
+                  className="bg-gray-50 dark:bg-[#242628] rounded-lg p-3 h-16"
                 />
               ))}
             </div>
@@ -828,7 +828,7 @@ function AlertRow({ change }: { change: (typeof MOCK_CHANGES)[number] }) {
     price_decrease: "bg-[#A32D2D]/15 text-[#A32D2D]",
     price_increase: "bg-[#3B6D11]/15 text-[#3B6D11]",
     new_product: "bg-emerald-900/30 text-emerald-400",
-    removed_product: "bg-[#2A2A2A] text-[var(--color-text-secondary)]",
+    removed_product: "bg-[#242628] text-[var(--color-text-secondary)]",
   }
 
   return (

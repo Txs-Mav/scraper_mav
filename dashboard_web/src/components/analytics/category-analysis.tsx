@@ -71,9 +71,9 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
 
   if (categories.length === 0) {
     return (
-      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Layers className="h-5 w-5 text-emerald-500" />
+          <Layers className="h-5 w-5 text-[#3B6D11]" />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {t("ap.categoryAnalysis")}
           </h3>
@@ -98,9 +98,9 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
   }
 
   return (
-    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
       <div className="flex items-center gap-2 mb-1">
-        <Layers className="h-5 w-5 text-emerald-500" />
+        <Layers className="h-5 w-5 text-[#3B6D11]" />
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.categoryAnalysis")}
         </h3>
@@ -123,12 +123,12 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
               onClick={() => setExpandedCategory(isExpanded ? null : cat.categorie)}
               className={`text-left rounded-xl p-4 border transition-all hover:shadow-sm ${
                 isExpanded
-                  ? 'ring-2 ring-emerald-500/40 border-emerald-300 dark:border-emerald-800'
+                  ? 'ring-2 ring-[#3B6D11]/40 border-[#3B6D11]/40 dark:border-[#3B6D11]/50'
                   : isGood
-                  ? 'border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-900/10'
+                  ? 'border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE]/50 dark:bg-[#3B6D11]/10'
                   : isBad
                   ? 'border-[#A32D2D]/20 dark:border-[#A32D2D]/30 bg-[#FCEBEB]/50 dark:bg-[#A32D2D]/15'
-                  : 'border-gray-200 dark:border-[#3A3A3A] bg-gray-50 dark:bg-[#2A2A2A]'
+                  : 'border-gray-200 dark:border-[#2a2c2e] bg-gray-50 dark:bg-[#242628]'
               }`}
             >
               <div className="flex items-center justify-between mb-1.5">
@@ -169,18 +169,18 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
             ecart: Number(d.ecartPourcentage.toFixed(1)),
             prixMoyen: d.prixMoyen,
             nombreProduits: d.nombreProduits,
-            fill: d.ecartPourcentage > 2 ? '#34D399' : d.ecartPourcentage < -2 ? '#F87171' : '#6B7280',
+            fill: d.ecartPourcentage > 2 ? '#3B6D11' : d.ecartPourcentage < -2 ? '#A32D2D' : '#6B7280',
           }))
 
         return (
-          <div className="border border-gray-200 dark:border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="border border-gray-200 dark:border-[#2a2c2e] rounded-xl overflow-hidden">
             {/* Header */}
-            <div className="bg-gray-50 dark:bg-[#2A2A2A] px-5 py-3 border-b border-gray-200 dark:border-[#3A3A3A]">
+            <div className="bg-gray-50 dark:bg-[#242628] px-5 py-3 border-b border-gray-200 dark:border-[#2a2c2e]">
               <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
                 {categoryLabels[cat.categorie] || cat.categorie}
               </h4>
               <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
-                <span>{t("ap.yourAvgPrice")} <strong className="text-emerald-600 dark:text-emerald-400">{cat.prixMoyenReference > 0 ? `${cat.prixMoyenReference.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
+                <span>{t("ap.yourAvgPrice")} <strong className="text-[#3B6D11]">{cat.prixMoyenReference > 0 ? `${cat.prixMoyenReference.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
                 <span>{t("ap.compAvgPrice")} <strong className="text-gray-900 dark:text-white">{cat.prixMoyenConcurrents > 0 ? `${cat.prixMoyenConcurrents.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
               </div>
             </div>
@@ -226,7 +226,7 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
 
                 <div className="mt-2 flex items-center justify-center gap-5 text-[11px] text-gray-500">
                   <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-sm bg-emerald-400" />
+                    <div className="w-2 h-2 rounded-sm bg-[#3B6D11]" />
                     <span>{t("ap.expensiveLegend")}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -239,10 +239,10 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
 
             {/* Compact table */}
             {cat.detailParDetaillant.length > 0 && (
-              <div className="border-t border-gray-200 dark:border-[#3A3A3A]">
+              <div className="border-t border-gray-200 dark:border-[#2a2c2e]">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-50 dark:bg-[#2A2A2A]">
+                    <tr className="bg-gray-50 dark:bg-[#242628]">
                       <th className="text-left py-2 px-5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
                         {t("ap.competitor")}
                       </th>
@@ -261,7 +261,7 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                     {cat.detailParDetaillant.map((det, i) => (
                       <tr
                         key={i}
-                        className="border-t border-gray-100 dark:border-[#2E2E2E] hover:hover:bg-gray-50 dark:hover:bg-[#333333]"
+                        className="border-t border-gray-100 dark:border-[#2a2c2e] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e]"
                       >
                         <td className="py-2 px-5 text-sm text-gray-900 dark:text-white">
                           {det.site}

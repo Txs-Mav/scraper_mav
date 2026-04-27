@@ -36,22 +36,29 @@ class DedicatedScraper(ABC):
         except ImportError:
             accept_enc = 'gzip, deflate'
 
-        self.session.headers.update({
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/131.0.0.0 Safari/537.36'
-            ),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'fr-CA,fr;q=0.9,en-US;q=0.7,en;q=0.5',
-            'Accept-Encoding': accept_enc,
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-        })
+        # Headers stealth + UA rotation depuis le pool scraper_usine.stealth
+        # (fallback gracieux si le module n'est pas disponible).
+        try:
+            from scraper_ai.scraper_usine.stealth import stealth_headers
+            base_headers = stealth_headers()
+        except Exception:
+            base_headers = {
+                'User-Agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/131.0.0.0 Safari/537.36'
+                ),
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'fr-CA,fr;q=0.9,en-US;q=0.7,en;q=0.5',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+            }
+        base_headers['Accept-Encoding'] = accept_enc
+        self.session.headers.update(base_headers)
         adapter = requests.adapters.HTTPAdapter(
             pool_connections=20,
             pool_maxsize=20,

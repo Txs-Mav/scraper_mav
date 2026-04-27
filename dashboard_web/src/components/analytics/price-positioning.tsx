@@ -51,7 +51,7 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
   }
 
   return (
-    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.positioning")}
@@ -72,7 +72,7 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
 
         {/* Écart */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
             <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.gapPercent")}
             </div>
@@ -81,7 +81,7 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
               {positionnement.ecartPourcentage.toFixed(1)}%
             </div>
           </div>
-          <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
             <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
               {t("ap.gapValue")}
             </div>
@@ -103,7 +103,7 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
         </div>
 
         {/* Message résumé */}
-        <div className="bg-gray-50 dark:bg-[#2A2A2A] rounded-lg p-4">
+        <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
           <p className="text-sm text-gray-900 dark:text-white">
             {positionnement.message}
           </p>

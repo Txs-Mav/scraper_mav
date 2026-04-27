@@ -809,21 +809,21 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
 
   return (
     <div className="pb-5">
-      {/* Toolbar: search + toggles + export */}
-      <div className="flex items-center gap-2 px-5 py-2.5 bg-[var(--color-background-secondary)]">
+      {/* Toolbar: search + toggles + export — Stripe-style uniform */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] flex-wrap">
         {onSearchChange && (
           <div className="relative w-56">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
             <input
               type="text"
               value={searchQuery || ""}
               onChange={e => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder || "Ex: Kawasaki 2025, Ninja 650..."}
-              className="w-full pl-9 pr-8 py-2 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition"
+              className="w-full h-8 pl-8 pr-7 rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition"
             />
             {searchQuery && (
-              <button type="button" onClick={() => onSearchChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition">
-                <X className="h-3.5 w-3.5" />
+              <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition">
+                <X className="h-3 w-3" />
               </button>
             )}
           </div>
@@ -832,7 +832,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           <button
             type="button"
             onClick={onToggleColors}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-primary)] transition shrink-0"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0"
           >
             <Palette className="h-3.5 w-3.5" />
             {stripColorsFromDisplay ? (showColorsLabel || "Afficher couleurs") : (hideColorsLabel || "Masquer couleurs")}
@@ -847,10 +847,11 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
               return next
             })
           }}
-          className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition shrink-0 ${groupByFamily
-              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
-              : 'border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-primary)]'
-            }`}
+          className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition shrink-0 ${
+            groupByFamily
+              ? 'text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]'
+              : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
+          }`}
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
           {groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}
@@ -859,7 +860,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           <select
             value={matchMode}
             onChange={(e) => onMatchModeChange(e.target.value)}
-            className="text-xs pl-2 pr-6 py-2 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-emerald-500/20 shrink-0"
+            className="h-8 text-xs pl-2 pr-6 rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-emerald-500/20 shrink-0"
           >
             <option value="exact">{t("config.matchMode.exact")}</option>
             <option value="base">{t("config.matchMode.base")}</option>
@@ -869,40 +870,39 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         )}
 
         {/* Filtres compétitivité */}
-        <div className="flex items-center gap-1 shrink-0 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-0.5">
+        <div className="flex items-center shrink-0">
           <button
             type="button"
             onClick={() => setCompFilter(prev => prev === 'competitive' ? 'all' : 'competitive')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition ${
+            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition ${
               compFilter === 'competitive'
-                ? 'bg-emerald-500 text-white shadow-sm'
-                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-secondary)]'
+                ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
+                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
             }`}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-current inline-block" />
+            <span className={`h-1.5 w-1.5 rounded-full ${compFilter === 'competitive' ? 'bg-emerald-500' : 'bg-emerald-500/60'}`} />
             Compétitif
           </button>
           <button
             type="button"
             onClick={() => setCompFilter(prev => prev === 'non-competitive' ? 'all' : 'non-competitive')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition ${
+            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition ${
               compFilter === 'non-competitive'
-                ? 'bg-red-500 text-white shadow-sm'
-                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-secondary)]'
+                ? 'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10'
+                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
             }`}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-current inline-block" />
+            <span className={`h-1.5 w-1.5 rounded-full ${compFilter === 'non-competitive' ? 'bg-red-500' : 'bg-red-500/60'}`} />
             Non compétitif
           </button>
         </div>
 
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <div className="w-px h-6 bg-[var(--color-border-tertiary)]" />
+        <div className="ml-auto flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={handleExportExcel}
             disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Excel
@@ -911,7 +911,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
             type="button"
             onClick={handlePrint}
             disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Printer className="h-3.5 w-3.5" />
             {t("table.print")}
@@ -920,7 +920,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
             type="button"
             onClick={() => { setShareResult(null); setShowShareModal(true) }}
             disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-violet-500/30 bg-violet-500/10 text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Mail className="h-3.5 w-3.5" />
             {t("table.share")}

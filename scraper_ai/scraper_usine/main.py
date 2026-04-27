@@ -46,6 +46,13 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="Health check sur un scraper existant")
     parser.add_argument("--check-all", action="store_true",
                         help="Health check sur tous les scrapers")
+    parser.add_argument("--profile", metavar="DOMAIN",
+                        choices=["auto", "ecommerce", "real_estate", "jobs", "generic"],
+                        help="Force le profil de domaine (sinon: auto-détection)")
+    parser.add_argument("--golden-record", metavar="SLUG",
+                        help="Enregistre un golden test depuis un run live")
+    parser.add_argument("--golden-diff", metavar="SLUG",
+                        help="Compare le golden au run actuel (détecte régressions)")
     parser.add_argument("--quiet", action="store_true", help="Mode silencieux")
 
     args = parser.parse_args(argv)
@@ -57,6 +64,22 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if args.check:
         _run_check(args.check, verbose)
+        return
+
+    if args.golden_record:
+        from .golden_tests import record_golden
+        record_golden(args.golden_record)
+        return
+
+    if args.golden_diff:
+        from .golden_tests import run_golden_diff
+        result = run_golden_diff(args.golden_diff)
+        if result.regressions:
+            print(f"\n  RÉGRESSIONS ({len(result.regressions)}):")
+            for r in result.regressions[:20]:
+                print(f"    - {r}")
+            sys.exit(1)
+        print(f"\n  OK: {result.samples_matched}/{result.samples_total} samples conformes")
         return
 
     if args.batch:
@@ -75,6 +98,7 @@ def main(argv: Optional[List[str]] = None) -> None:
             no_llm_fix=args.no_llm_fix,
             force_playwright=args.force_playwright,
             verbose=verbose,
+            profile=args.profile,
         )
 
 
@@ -90,6 +114,7 @@ def _process_url(
     no_llm_fix: bool = False,
     force_playwright: bool = False,
     verbose: bool = True,
+    profile: Optional[str] = None,
 ) -> Optional[ValidationReport]:
     total_start = time.time()
 
@@ -110,7 +135,10 @@ def _process_url(
     if analysis is None:
         print(f"  [{_ts()}] Phase 1 : Analyse du site...")
         phase1_start = time.time()
-        analyzer = SiteAnalyzer(use_playwright=True, verbose=verbose)
+        analyzer = SiteAnalyzer(
+            use_playwright=True, verbose=verbose,
+            force_profile_key=profile,
+        )
         analysis = analyzer.analyze(url)
         print(f"  [{_ts()}] Phase 1 terminée en {time.time()-phase1_start:.1f}s")
 

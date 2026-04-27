@@ -31,9 +31,17 @@ from .models import (
 from .platforms import (
     detect_platform, detect_iframe_inventory, probe_sitemap,
 )
+from .domain_profiles import (
+    DomainProfile, DomainType, AUTO_PROFILE,
+    detect_domain_profile, get_profile,
+)
+from .listing_detector import best_listing, measure_completeness
+from .stealth import stealth_headers, random_user_agent
 
 ANALYSIS_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache" / "analysis"
 
+# Conservé pour rétrocompatibilité — équivaut à AUTO_PROFILE.nav_keywords.
+# Les nouveaux flux utilisent self.profile.nav_keywords (DomainProfile).
 NAV_KEYWORDS = [
     # Inventaire general
     "inventaire", "inventory", "en-stock", "en stock", "in stock", "in-stock",
@@ -76,20 +84,34 @@ MOJIBAKE_PATTERNS = [
 
 
 class SiteAnalyzer:
-    """Analyse un site de concessionnaire et produit un SiteAnalysis."""
+    """Analyse un site (concessionnaire, ecommerce, immo, jobs, générique) et
+    produit un SiteAnalysis."""
 
-    def __init__(self, *, use_playwright: bool = True, verbose: bool = True):
+    def __init__(self, *, use_playwright: bool = True, verbose: bool = True,
+                 domain_profile: Optional[DomainProfile] = None,
+                 force_profile_key: Optional[str] = None):
+        """
+        Args:
+            use_playwright : autorise l'usage de Playwright (interception API + fallback Phase 1)
+            verbose : logs détaillés
+            domain_profile : profil métier imposé (auto, ecommerce, real_estate, jobs)
+            force_profile_key : alternative string ('auto'|'ecommerce'|...) pour CLI
+        """
         self.verbose = verbose
         self.use_playwright = use_playwright
+
+        # Profil de domaine : explicite > forcé > auto (par défaut, rétrocompat)
+        if domain_profile is not None:
+            self.profile = domain_profile
+        elif force_profile_key:
+            self.profile = get_profile(force_profile_key)
+        else:
+            self.profile = AUTO_PROFILE  # défaut rétrocompat — détection auto en Phase 1
+
+        self._auto_detect_profile = (domain_profile is None and not force_profile_key)
+
         self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "fr-CA,fr;q=0.9,en-US;q=0.7,en;q=0.5",
-        })
+        self.session.headers.update(stealth_headers())
 
     # ------------------------------------------------------------------
     # Point d'entrée principal
@@ -130,6 +152,18 @@ class SiteAnalyzer:
         analysis.platform = detect_platform(homepage_html, homepage_headers, url)
         self._log(f"    -> {analysis.platform.name} ({time.time()-t0:.1f}s)")
 
+        # 1.1bis Détection automatique du profil de domaine (si non imposé)
+        if self._auto_detect_profile:
+            self._log("1.1bis Détection profil de domaine...")
+            preview_jsonld = self._scan_jsonld_types(soup)
+            detected = detect_domain_profile(homepage_html, analysis.site_url, preview_jsonld)
+            if detected.domain_type != self.profile.domain_type:
+                self._log(f"    -> profil détecté: {detected.name} (était: {self.profile.name})")
+                self.profile = detected
+            else:
+                self._log(f"    -> profil confirmé: {self.profile.name}")
+        analysis.domain_profile_key = self.profile.domain_type.value
+
         # 1.2 Anti-bot EARLY (avant de bombarder le site de requêtes)
         self._log("1.2 Détection anti-bot + timing...")
         t0 = time.time()
@@ -147,6 +181,36 @@ class SiteAnalyzer:
         self._map_structure(analysis, soup, analysis.site_url)
         self._log(f"    -> {len(analysis.listing_pages)} listings, "
                   f"{len(analysis.sitemap_urls)} sitemap URLs ({time.time()-t0:.1f}s)")
+
+        # 1.3bis Si requests n'a rien trouvé (0 listing actif), tenter le rendu Playwright
+        if self.use_playwright and not any(lp.estimated_products > 0 for lp in analysis.listing_pages):
+            self._log("1.3bis Aucun listing exploitable en HTML brut → fallback Playwright...")
+            rendered_html = self._render_with_playwright(analysis.site_url)
+            if rendered_html:
+                analysis.playwright_used_in_phase1 = True
+                rendered_soup = BeautifulSoup(rendered_html, "lxml")
+                # Re-cartographie la nav avec le DOM hydraté
+                t0 = time.time()
+                self._map_structure(analysis, rendered_soup, analysis.site_url)
+                self._log(f"    -> après rendu: {len(analysis.listing_pages)} listings "
+                          f"({time.time()-t0:.1f}s)")
+                # Retente la détection statistique sur la home rendue si toujours vide
+                if not any(lp.estimated_products > 0 for lp in analysis.listing_pages):
+                    cand = best_listing(rendered_html,
+                                        item_hints=self.profile.listing_item_hints,
+                                        base_url=analysis.site_url, min_items=4)
+                    if cand:
+                        analysis.statistical_listing_selector = cand.selector
+                        analysis.statistical_listing_count = len(cand.items)
+                        self._log(f"    -> listings via statistique sur home rendue: "
+                                  f"'{cand.selector}' ({len(cand.items)} items)")
+                        analysis.listing_pages.append(ListingPage(
+                            url=analysis.site_url,
+                            etat="neuf",
+                            source_categorie="inventaire",
+                            estimated_products=len(cand.items),
+                            listing_data_completeness=measure_completeness(rendered_html, cand.selector),
+                        ))
 
         # 1.4 Test rendu JS (iframes, scroll infini, load more)
         self._log("1.4 Test rendu JavaScript...")
@@ -215,17 +279,21 @@ class SiteAnalyzer:
         nav_links = self._discover_nav_links(soup, base_url)
         self._log(f"    {len(nav_links)} liens trouvés dans la nav")
 
+        # Utilise le DomainProfile actif (auto, ecommerce, immo, jobs…)
+        nav_keywords = [kw.lower() for kw in self.profile.nav_keywords]
+        excluded = [p.lower() for p in self.profile.excluded_paths]
+
         domain = analysis.domain
         listing_candidates = []
         for link_url, link_text in nav_links:
             text_lower = link_text.lower()
             path_lower = urlparse(link_url).path.lower()
 
-            if self._is_excluded_path(path_lower):
+            if self._is_excluded_path(path_lower, excluded):
                 continue
 
             matched = False
-            for kw in NAV_KEYWORDS:
+            for kw in nav_keywords:
                 if kw in text_lower or kw in path_lower:
                     matched = True
                     break
@@ -288,21 +356,13 @@ class SiteAnalyzer:
         self._log(f"    Sitemap : {len(sitemap_urls)} URLs produit, xml={sitemap_xml_url[:60] if sitemap_xml_url else 'none'} ({time.time()-t0:.1f}s)")
 
     @staticmethod
-    def _is_excluded_path(path: str) -> bool:
-        excludes = [
-            "/contact", "/nous-contacter", "/about", "/a-propos",
-            "/content/", "/blog", "/nouvelles", "/news",
-            "/emploi", "/carrieres", "/careers",
-            "/politique", "/privacy", "/terms", "/conditions",
-            "/evenement", "/event",
-            "/heures", "/hours",
-            "/login", "/compte", "/account", "/panier", "/cart",
-            "/temoignages", "/testimonials", "/reviews",
-            "/directions", "/map", "/carte",
-            "/faq", "/aide", "/help",
-            "/gallery", "/galerie", "/photos",
-            "/media", "/presse", "/press",
-        ]
+    def _is_excluded_path(path: str, excludes: Optional[List[str]] = None) -> bool:
+        # Exclusions par défaut (rétrocompat) si aucune liste fournie
+        if excludes is None:
+            excludes = [
+                "/contact", "/about", "/blog", "/login", "/account",
+                "/cart", "/panier", "/privacy", "/terms",
+            ]
         path_lower = path.lower()
         for ex in excludes:
             if ex in path_lower:
@@ -360,10 +420,31 @@ class SiteAnalyzer:
                 m = re.search(r"(\d+)", total_el.get_text())
                 if m:
                     return int(m.group(1))
-            items = soup.select(
+
+            # 1) Heuristique : sélecteurs communs + hints du DomainProfile
+            hint_selectors = ", ".join(self.profile.listing_item_hints)
+            base_selectors = (
                 "article, .product, .product-miniature, .product-card, "
                 ".vehicle-card, .inventory-item, .pg-vehicle-card, .item"
             )
+            full_sel = f"{hint_selectors}, {base_selectors}" if hint_selectors else base_selectors
+            try:
+                items = soup.select(full_sel)
+            except Exception:
+                items = soup.select(base_selectors)
+            if items and len(items) >= 4:
+                return len(items)
+
+            # 2) Fallback statistique : détecte les groupes d'items répétés
+            cand = best_listing(
+                resp.text,
+                item_hints=self.profile.listing_item_hints,
+                base_url=url,
+                min_items=4,
+            )
+            if cand:
+                return len(cand.items)
+
             return len(items) if items else 0
         except Exception:
             return 0
@@ -641,46 +722,95 @@ class SiteAnalyzer:
         return []
 
     def _detect_listing_selectors(self, listing_url: str) -> Optional[SelectorMap]:
+        """Détecte les sélecteurs d'un listing : (1) hints DomainProfile, (2) candidats
+        e-commerce communs, (3) détecteur statistique en fallback."""
         try:
             resp = self.session.get(listing_url, timeout=15)
             if resp.status_code != 200:
                 return None
             soup = BeautifulSoup(resp.text, "lxml")
 
-            candidates = [
+            # 1) Hints du DomainProfile actif
+            profile_candidates = [(s, "a") for s in self.profile.listing_item_hints]
+            base_candidates = [
                 ("article.product-miniature", "h3 a, .product-title a"),
                 ("li.product", "a.woocommerce-LoopProduct-link, h2 a"),
                 (".product-card", "a, h3 a"),
+                (".product-tile", "a"),
                 (".vehicle-card", "a"),
                 (".pg-vehicle-card", "a"),
                 (".inventory-item", "a"),
                 (".item", "a"),
             ]
+            candidates = profile_candidates + base_candidates
+
             for item_sel, link_sel in candidates:
-                items = soup.select(item_sel)
-                if len(items) >= 2:
-                    sm = SelectorMap()
-                    sm.listing_item = SelectorEntry(selector=item_sel, reliability=len(items) / max(len(items), 1))
-                    sm.listing_link = SelectorEntry(selector=f"{item_sel} {link_sel}", reliability=1.0)
+                try:
+                    items = soup.select(item_sel)
+                except Exception:
+                    continue
+                if len(items) >= 4:
+                    return self._build_listing_selector_map(items, item_sel, link_sel)
 
-                    price_text = items[0].get_text()
-                    if re.search(r"\d[\d\s,.]*\$|\$[\d\s,.]+", price_text):
-                        sm.listing_price = SelectorEntry(selector=f"{item_sel} .price, {item_sel} .prix", reliability=0.5)
+            # 2) Fallback statistique
+            cand = best_listing(
+                resp.text,
+                item_hints=self.profile.listing_item_hints,
+                base_url=listing_url,
+                min_items=4,
+            )
+            if cand:
+                self._log(f"      Statistical detector: '{cand.selector}' "
+                          f"(score={cand.score:.2f}, {len(cand.items)} items)")
+                return self._build_listing_selector_map(cand.items, cand.selector, "a")
 
-                    img = items[0].find("img")
-                    if img:
-                        attr = "src"
-                        for data_attr in ["data-src", "data-lazy-src", "data-original"]:
-                            if img.get(data_attr):
-                                attr = data_attr
-                                break
-                        sm.listing_image = SelectorEntry(selector=f"{item_sel} img", attribute=attr, reliability=1.0)
-                        sm.image_attr = attr
-
-                    return sm
         except Exception:
             pass
         return None
+
+    def _build_listing_selector_map(self, items: List, item_sel: str, link_sel: str) -> SelectorMap:
+        """Construit un SelectorMap à partir d'un sample d'items détectés."""
+        sm = SelectorMap()
+        sm.listing_item = SelectorEntry(selector=item_sel, reliability=1.0)
+        sm.listing_link = SelectorEntry(selector=f"{item_sel} {link_sel}", reliability=1.0)
+
+        first = items[0]
+        price_text = first.get_text()
+        if re.search(r"\d[\d\s,.]*\$|\$[\d\s,.]+", price_text):
+            sm.listing_price = SelectorEntry(
+                selector=f"{item_sel} .price, {item_sel} .prix, {item_sel} [itemprop='price']",
+                reliability=0.5,
+            )
+
+        img = first.find("img")
+        if img:
+            attr = "src"
+            for data_attr in ["data-src", "data-lazy-src", "data-original"]:
+                if img.get(data_attr):
+                    attr = data_attr
+                    break
+            sm.listing_image = SelectorEntry(
+                selector=f"{item_sel} img", attribute=attr, reliability=1.0,
+            )
+            sm.image_attr = attr
+        return sm
+
+    def _scan_jsonld_types(self, soup: BeautifulSoup) -> List[str]:
+        """Lit rapidement les @type JSON-LD présents dans la page (pour détection profil)."""
+        types: List[str] = []
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(script.string or "")
+                items = data if isinstance(data, list) else [data]
+                for it in items:
+                    t = it.get("@type", "") if isinstance(it, dict) else ""
+                    if isinstance(t, list):
+                        types.extend(str(x) for x in t)
+                    elif t:
+                        types.append(str(t))
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                continue
+        return types
 
     def _detect_detail_selectors(self, detail_url: str, analysis: SiteAnalysis) -> None:
         try:
@@ -727,10 +857,36 @@ class SiteAnalyzer:
                     )
                     analysis.selectors.image_attr = attr
 
+            # Détection des champs spécifiques au DomainProfile (extra_fields)
+            for field_spec in self.profile.fields:
+                # On saute les champs déjà mappés sur les attributs auto-spécifiques
+                if field_spec.name in ("name", "prix", "marque", "modele", "annee",
+                                       "kilometrage", "vin", "couleur", "image",
+                                       "description"):
+                    continue
+                if field_spec.name in analysis.selectors.extra_fields:
+                    continue
+                for hint in field_spec.css_hints:
+                    try:
+                        el = soup.select_one(hint)
+                    except Exception:
+                        continue
+                    if el and el.get_text(strip=True):
+                        analysis.selectors.extra_fields[field_spec.name] = SelectorEntry(
+                            selector=hint, reliability=0.7,
+                            sample_values=[el.get_text(strip=True)[:80]],
+                        )
+                        break
+
         except Exception:
             pass
 
     def _detect_json_ld(self, detail_urls: List[str], analysis: SiteAnalysis) -> None:
+        # Types pertinents pour le profil + types généraux toujours acceptés
+        relevant_types = set(self.profile.jsonld_types) | {
+            "Product", "Vehicle", "Car", "MotorizedBicycle",
+            "JobPosting", "RealEstateListing", "Residence",
+        }
         for url in detail_urls:
             try:
                 resp = self.session.get(url, timeout=15)
@@ -742,8 +898,12 @@ class SiteAnalyzer:
                         data = json.loads(script.string or "")
                         items = data if isinstance(data, list) else [data]
                         for item in items:
+                            if not isinstance(item, dict):
+                                continue
                             t = item.get("@type", "")
-                            if t in ("Product", "Vehicle", "Car", "MotorizedBicycle"):
+                            if isinstance(t, list):
+                                t = t[0] if t else ""
+                            if t in relevant_types:
                                 analysis.json_ld_available = True
                                 analysis.json_ld_type = t
                                 self._log(f"    JSON-LD @type={t} trouvé")
@@ -907,6 +1067,43 @@ class SiteAnalyzer:
     # ------------------------------------------------------------------
     # Utilitaires
     # ------------------------------------------------------------------
+
+    def _render_with_playwright(self, url: str) -> Optional[str]:
+        """Rend une page avec Playwright (stealth) et retourne le HTML hydraté.
+        Retourne None si Playwright indisponible ou erreur."""
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self._log("    Playwright non installé, fallback impossible")
+            return None
+
+        from .stealth import apply_stealth_to_playwright_context, random_user_agent
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                ctx = browser.new_context(
+                    user_agent=random_user_agent(),
+                    locale="fr-CA",
+                    viewport={"width": 1366, "height": 800},
+                )
+                apply_stealth_to_playwright_context(ctx)
+                page = ctx.new_page()
+                try:
+                    page.goto(url, timeout=25000, wait_until="networkidle")
+                except Exception:
+                    try:
+                        page.goto(url, timeout=20000, wait_until="domcontentloaded")
+                        page.wait_for_timeout(3000)
+                    except Exception as e:
+                        self._log(f"    Erreur Playwright goto: {e}")
+                        browser.close()
+                        return None
+                html = page.content()
+                browser.close()
+                return html
+        except Exception as e:
+            self._log(f"    Erreur Playwright: {type(e).__name__}: {e}")
+            return None
 
     def _fetch_homepage(self, url: str) -> Tuple[Optional[str], dict, List[float]]:
         times: List[float] = []

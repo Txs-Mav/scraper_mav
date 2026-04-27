@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { useLanguage, LanguageToggle } from "@/contexts/language-context"
 import {
   Loader2, Eye, EyeOff, ArrowRight, Check, Sparkles, Zap, Crown,
-  Tag, Shield, Mail,
+  Tag, Shield, Mail, Lock, Store, Car, Anchor, Bike, Shirt, Cpu, MoreHorizontal,
 } from "lucide-react"
 import Image from "next/image"
 import type { TranslationKey } from "@/lib/translations"
@@ -35,6 +35,8 @@ function CreateAccountContent() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState("standard")
+  const [businessType, setBusinessType] = useState<string>("recreational_vehicles")
+  const [businessTypeOpen, setBusinessTypeOpen] = useState(false)
   const [promoCode, setPromoCode] = useState("")
   const [promoCodeValid, setPromoCodeValid] = useState<boolean | null>(null)
   const [validatingPromo, setValidatingPromo] = useState(false)
@@ -51,6 +53,19 @@ function CreateAccountContent() {
 
   const pwStrength = useMemo(() => getPasswordStrength(password, t), [password, t])
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword
+
+  const BUSINESS_TYPES = useMemo(() => [
+    { id: "recreational_vehicles", labelKey: "register.bt.recreationalVehicles" as const, icon: Bike, locked: false },
+    { id: "automotive", labelKey: "register.bt.automotive" as const, icon: Car, locked: true },
+    { id: "marine", labelKey: "register.bt.marine" as const, icon: Anchor, locked: true },
+    { id: "sports_outdoor", labelKey: "register.bt.sportsOutdoor" as const, icon: Store, locked: true },
+    { id: "fashion", labelKey: "register.bt.fashion" as const, icon: Shirt, locked: true },
+    { id: "electronics", labelKey: "register.bt.electronics" as const, icon: Cpu, locked: true },
+    { id: "other", labelKey: "register.bt.other" as const, icon: MoreHorizontal, locked: true },
+  ], [])
+
+  const selectedBusiness = BUSINESS_TYPES.find((b) => b.id === businessType) ?? BUSINESS_TYPES[0]
+  const SelectedBusinessIcon = selectedBusiness.icon
 
   const PLANS = useMemo(() => [
     {
@@ -129,7 +144,7 @@ function CreateAccountContent() {
 
     try {
       const planForRegister = hasValidPromo ? "ultime" : selectedPlan
-      const { error } = await register({ name, email, password, plan: planForRegister, promoCode: hasValidPromo ? promoCode.trim() : undefined })
+      const { error } = await register({ name, email, password, plan: planForRegister, promoCode: hasValidPromo ? promoCode.trim() : undefined, businessType })
 
       if (error) {
         let msg = t("register.genericError")
@@ -286,6 +301,76 @@ function CreateAccountContent() {
                   <p className={`text-[13px] ${accountExists ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{error}</p>
                 </div>
               )}
+
+              <div>
+                <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("register.businessType")}</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setBusinessTypeOpen((v) => !v)}
+                    aria-haspopup="listbox"
+                    aria-expanded={businessTypeOpen}
+                    className={`${inputClass} flex items-center justify-between text-left`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <SelectedBusinessIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-[14px] text-gray-900 dark:text-white truncate">
+                        {t(selectedBusiness.labelKey)}
+                      </span>
+                    </span>
+                    <ArrowRight className={`h-3.5 w-3.5 text-gray-400 transition-transform ${businessTypeOpen ? "rotate-90" : ""}`} />
+                  </button>
+                  {businessTypeOpen && (
+                    <div
+                      role="listbox"
+                      className="absolute z-30 mt-1 w-full rounded-[8px] border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-[#1c1e20] shadow-lg overflow-hidden"
+                    >
+                      {BUSINESS_TYPES.map((bt) => {
+                        const Icon = bt.icon
+                        const isSelected = bt.id === businessType
+                        return (
+                          <button
+                            key={bt.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            disabled={bt.locked}
+                            onClick={() => {
+                              if (bt.locked) return
+                              setBusinessType(bt.id)
+                              setBusinessTypeOpen(false)
+                            }}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] transition-colors ${
+                              bt.locked
+                                ? "opacity-60 cursor-not-allowed bg-gray-50/60 dark:bg-white/[0.02]"
+                                : isSelected
+                                  ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"
+                                  : "hover:bg-gray-50 dark:hover:bg-white/[0.04] text-gray-700 dark:text-gray-200"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2 min-w-0">
+                              <Icon className={`h-4 w-4 flex-shrink-0 ${bt.locked ? "text-gray-400 dark:text-gray-500" : "text-emerald-600 dark:text-emerald-400"}`} />
+                              <span className="truncate">{t(bt.labelKey)}</span>
+                            </span>
+                            {bt.locked ? (
+                              <span className="flex items-center gap-1 flex-shrink-0 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                                <Lock className="h-3 w-3" />
+                                {t("register.businessTypeComingSoon")}
+                              </span>
+                            ) : isSelected ? (
+                              <Check className="h-4 w-4 flex-shrink-0 text-emerald-500" />
+                            ) : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                  <Lock className="h-3 w-3" />
+                  {t("register.businessTypeHint")}
+                </p>
+              </div>
 
               <div>
                 <label htmlFor="name" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("register.fullName")}</label>

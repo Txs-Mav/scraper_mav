@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     siteName: "Go-Data",
     title: "Go-Data | Collecte et structuration de données automatisée",
     description:
-      "Go-Data collecte, structure et livre vos données en quelques clics. Zéro code, zéro friction.",
+      "Go-Data collecte, structure et livre vos données en quelques clics. Zérocode, zéro friction.",
     images: [
       {
         url: "/og-image.png",

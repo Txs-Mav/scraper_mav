@@ -53,7 +53,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
     const hasData = scrapesParJour.length > 0
 
     return (
-      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {t("ap.scrapingActivity")}
@@ -135,7 +135,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
   }
 
   return (
-    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.priceEvolution")}
@@ -188,11 +188,11 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
           <Line
             type="monotone"
             dataKey={t("ap.avgCompetitors")}
-            stroke="#34D399"
+            stroke="#3B6D11"
             strokeWidth={2}
             strokeDasharray="6 3"
-            dot={{ fill: '#34D399', r: 3, strokeWidth: 0 }}
-            activeDot={{ fill: '#34D399', r: 5, strokeWidth: 2, stroke: '#1c1e20' }}
+            dot={{ fill: '#3B6D11', r: 3, strokeWidth: 0 }}
+            activeDot={{ fill: '#3B6D11', r: 5, strokeWidth: 2, stroke: '#1c1e20' }}
           />
         </LineChart>
       </ResponsiveContainer>

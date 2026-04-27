@@ -150,15 +150,22 @@ function DashboardContent() {
     }
   }, [searchParams, router])
 
-  if (isLoading || checkingPendingPlan) {
+  const restricted = searchParams.get("restricted")
+
+  useEffect(() => {
+    if (isLoading || checkingPendingPlan) return
+    if (!user) return
+    if (restricted) return
+    router.replace("/dashboard/comparaisons")
+  }, [isLoading, checkingPendingPlan, user, restricted, router])
+
+  if (isLoading || checkingPendingPlan || (user && !restricted)) {
     return (
       <Layout>
         <DashboardSkeleton />
       </Layout>
     )
   }
-
-  const restricted = searchParams.get("restricted")
 
   return (
     <Layout>

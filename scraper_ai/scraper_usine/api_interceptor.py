@@ -15,6 +15,10 @@ from urllib.parse import urlparse
 import requests
 
 from .models import DetectedAPI
+from .stealth import (
+    apply_stealth_to_playwright_context, random_user_agent, stealth_headers,
+)
+from .url_utils import extract_path_field
 
 PRODUCT_FIELD_SIGNALS = {
     "name", "nom", "title", "titre", "vehiclename", "vehicle_name",
@@ -33,18 +37,49 @@ PRODUCT_FIELD_SIGNALS = {
 }
 
 COOKIE_DISMISS_SELECTORS = [
+    # OneTrust
     "button#onetrust-accept-btn-handler",
+    "#onetrust-accept-btn-handler",
+    # Didomi
+    "button#didomi-notice-agree-button",
+    ".didomi-continue-without-agreeing",
+    # Quantcast Choice
+    "button.qc-cmp2-summary-buttons button[mode='primary']",
+    "button.qc-cmp2-accept-all",
+    # TrustArc
+    "#truste-consent-button",
+    ".trustarc-agree-btn",
+    # Cookiebot
+    "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
+    "#CybotCookiebotDialogBodyButtonAccept",
+    # Usercentrics
+    "button[data-testid='uc-accept-all-button']",
+    # CookieYes
+    ".cky-btn-accept",
+    # Generic patterns
     "button[id*='cookie']",
     "button[id*='accept']",
+    "button[class*='accept']",
+    "button[aria-label*='accept' i]",
+    "button[aria-label*='accepter' i]",
     ".cookie-consent button",
     ".cookie-banner button",
     "#cookie-notice button",
     "button.cc-accept",
     "[data-action='accept-cookies']",
+    "[data-cookie-accept]",
+    # Texte FR/EN
     "button:has-text('Accepter')",
-    "button:has-text('Accept')",
-    "button:has-text('J\\'accepte')",
+    "button:has-text('Tout accepter')",
+    "button:has-text('Accept all')",
+    "button:has-text('Accept All')",
+    "button:has-text('I Accept')",
+    "button:has-text(\"J'accepte\")",
+    "button:has-text(\"J'ACCEPTE\")",
     "button:has-text('OK')",
+    "button:has-text('Got it')",
+    "button:has-text('Allow all')",
+    "button:has-text('I agree')",
 ]
 
 
@@ -83,7 +118,8 @@ def intercept_apis(
             if any(skip in url for skip in [
                 "google", "facebook", "analytics", "hotjar", "sentry",
                 "cloudflare", "fonts.", "recaptcha", ".css", ".js",
-                "gtm.", "doubleclick", "adsense",
+                "gtm.", "doubleclick", "adsense", "segment.io", "amplitude",
+                "mixpanel", "newrelic", "datadog",
             ]):
                 _capture_count["skipped"] += 1
                 return
@@ -94,10 +130,25 @@ def intercept_apis(
                 return
             data = json.loads(body)
             _capture_count["json"] += 1
+            req = response.request
+            # Capture le body POST/GraphQL pour pouvoir rejouer
+            req_body = None
+            req_body_json = None
+            try:
+                req_body = req.post_data
+                if req_body:
+                    try:
+                        req_body_json = json.loads(req_body)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            except Exception:
+                pass
             captured.append({
                 "url": url,
-                "method": response.request.method,
-                "headers": dict(response.request.headers),
+                "method": req.method,
+                "headers": dict(req.headers),
+                "request_body": req_body,
+                "request_body_json": req_body_json,
                 "data": data,
             })
         except Exception:
@@ -111,16 +162,15 @@ def intercept_apis(
     with sync_playwright() as p:
         _log_api(f"[APIInterceptor] Playwright prêt ({_time.time()-t_start:.1f}s), lancement Chromium...")
         t_browser = _time.time()
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True,
+                                    args=["--disable-blink-features=AutomationControlled"])
         _log_api(f"[APIInterceptor] Chromium lancé ({_time.time()-t_browser:.1f}s)")
         context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
+            user_agent=random_user_agent(),
             locale="fr-CA",
+            viewport={"width": 1366, "height": 800},
         )
+        apply_stealth_to_playwright_context(context)
         page = context.new_page()
         page.on("response", _on_response)
 
@@ -220,7 +270,8 @@ def _click_load_more(page, selector: str, max_clicks: int = 3) -> None:
 
 
 def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:
-    """Analyse une réponse capturée pour déterminer si elle contient des données produit."""
+    """Analyse une réponse capturée pour déterminer si elle contient des données produit.
+    Supporte GET, POST et GraphQL."""
     data = cap["data"]
     items = _find_product_array(data)
     if not items:
@@ -236,46 +287,117 @@ def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:
     if len(overlap) < 2:
         return None
 
+    # Mapping multi-domaine : auto + ecommerce + immo + jobs
     field_mapping = {}
     for orig_key in sample.keys():
         lower = str(orig_key).lower()
-        if lower in ("name", "nom", "title", "titre"):
+        # Communs
+        if lower in ("name", "nom", "title", "titre", "vehiclename", "vehicle_name", "productname", "jobtitle"):
             field_mapping["name"] = orig_key
-        elif lower in ("prix", "price", "msrp"):
+        elif lower in ("prix", "price", "msrp", "saleprice", "sale_price", "askingprice", "amount", "currentprice"):
             field_mapping["prix"] = orig_key
-        elif lower in ("brand", "marque", "make", "manufacturer"):
+        elif lower in ("brand", "marque", "make", "manufacturer", "vendor", "brandname"):
             field_mapping["marque"] = orig_key
-        elif lower in ("model", "modele", "modèle"):
+        elif lower in ("model", "modele", "modèle", "modelname", "model_name"):
             field_mapping["modele"] = orig_key
-        elif lower in ("year", "annee", "année"):
+        elif lower in ("year", "annee", "année", "modelyear", "model_year", "yearbuilt"):
             field_mapping["annee"] = orig_key
-        elif lower in ("image", "photo", "thumbnail", "img", "picture"):
+        elif lower in ("image", "photo", "thumbnail", "img", "picture", "imageurl", "image_url",
+                       "mainphoto", "featured_image"):
             field_mapping["image"] = orig_key
         elif lower in ("mileage", "kilometrage", "kilométrage", "km", "odometer"):
             field_mapping["kilometrage"] = orig_key
-        elif lower in ("vin",):
+        elif lower in ("vin", "vinnumber", "vin_number"):
             field_mapping["vin"] = orig_key
-        elif lower in ("color", "couleur", "colour"):
+        elif lower in ("color", "couleur", "colour", "exteriorcolor"):
             field_mapping["couleur"] = orig_key
+        elif lower in ("description", "desc", "summary", "remarks", "publicremarks"):
+            field_mapping["description"] = orig_key
+        elif lower in ("sku", "mpn", "gtin", "stocknumber", "stock_number"):
+            field_mapping["sku"] = orig_key
+        elif lower in ("address", "addresstext", "fulladdress"):
+            field_mapping["address"] = orig_key
+        elif lower in ("city", "ville", "addresslocality"):
+            field_mapping["city"] = orig_key
+        elif lower in ("bedrooms", "beds", "chambres", "nbchambres"):
+            field_mapping["bedrooms"] = orig_key
+        elif lower in ("bathrooms", "baths", "sallesdebain", "nbsallesdebain"):
+            field_mapping["bathrooms"] = orig_key
+        elif lower in ("sqft", "area", "size", "superficie", "livingarea"):
+            field_mapping["area_sqft"] = orig_key
+        elif lower in ("company", "employer", "hiringorganization", "companyname"):
+            field_mapping["company"] = orig_key
+        elif lower in ("location", "joblocation"):
+            field_mapping["location"] = orig_key
 
     confidence = min(1.0, len(overlap) / 5.0) * min(1.0, len(items) / 3.0)
 
     items_field = _find_items_field_path(data, items)
     pagination_param, pagination_type = _detect_api_pagination(cap["url"], data)
 
+    # Détection GraphQL : POST avec body contenant 'query' + 'variables' (souvent)
+    method = cap.get("method", "GET")
+    req_body = cap.get("request_body")
+    req_body_json = cap.get("request_body_json")
+    is_graphql = False
+    graphql_query = ""
+    graphql_op = ""
+    graphql_vars: Dict[str, Any] = {}
+    graphql_pagination_var = ""
+    if method == "POST" and isinstance(req_body_json, dict):
+        if "query" in req_body_json or "operationName" in req_body_json:
+            is_graphql = True
+            graphql_query = str(req_body_json.get("query", ""))[:8000]
+            graphql_op = str(req_body_json.get("operationName", ""))
+            graphql_vars = req_body_json.get("variables", {}) or {}
+            for var_name in ("after", "cursor", "first", "page", "offset", "skip"):
+                if var_name in graphql_vars:
+                    graphql_pagination_var = var_name
+                    break
+
+    # Détection pagination cursor depuis la réponse (page-info GraphQL ou similaire)
+    next_cursor_field, has_next_field = _detect_cursor_fields(data)
+    if next_cursor_field and pagination_type != "cursor":
+        pagination_type = "cursor"
+
     return DetectedAPI(
         url=cap["url"],
-        method=cap["method"],
+        method=method,
         headers={k: v for k, v in cap["headers"].items()
                  if k.lower() not in ("host", "connection", "accept-encoding")},
+        request_body=req_body if isinstance(req_body, str) else None,
+        request_body_json=req_body_json if isinstance(req_body_json, dict) else None,
         field_mapping=field_mapping,
         items_field=items_field,
+        next_cursor_field=next_cursor_field,
+        has_next_field=has_next_field,
         response_sample={k: _truncate(v) for k, v in sample.items()},
         page_size=len(items),
         pagination_param=pagination_param,
         pagination_type=pagination_type,
+        is_graphql=is_graphql,
+        graphql_query=graphql_query,
+        graphql_operation=graphql_op,
+        graphql_variables=graphql_vars,
+        graphql_pagination_var=graphql_pagination_var,
         confidence=confidence,
     )
+
+
+def _detect_cursor_fields(data: Any) -> tuple:
+    """Détecte les chemins du curseur 'next' dans une réponse (style GraphQL Relay).
+    Retourne (next_cursor_field, has_next_field) ou ('', '')."""
+    paths_to_try = [
+        ("pageInfo.endCursor", "pageInfo.hasNextPage"),
+        ("data.pageInfo.endCursor", "data.pageInfo.hasNextPage"),
+        ("nextCursor", "hasMore"),
+        ("next_cursor", "has_more"),
+        ("cursor.next", "cursor.hasNext"),
+    ]
+    for cursor_path, has_next_path in paths_to_try:
+        if extract_path_field(data, cursor_path) is not None:
+            return cursor_path, has_next_path
+    return "", ""
 
 
 def _find_product_array(data: Any, depth: int = 0) -> Optional[List[dict]]:
@@ -326,14 +448,30 @@ def _detect_api_pagination(url: str, data: Any) -> tuple:
 
 
 def _test_direct_access(api: DetectedAPI) -> bool:
-    """Teste si l'API est accessible directement avec requests."""
+    """Teste si l'API est accessible directement avec requests (GET/POST/GraphQL)."""
     try:
         headers = dict(api.headers)
-        headers.pop("cookie", None)
-        headers.pop("Cookie", None)
-        resp = requests.get(api.url, headers=headers, timeout=10)
-        if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
-            return True
+        # Cookies souvent nécessaires pour APIs authentifiées — on garde par défaut
+        # sauf pour les sites où ils sont restreints. Stratégie : essayer d'abord SANS
+        # cookie, puis fallback avec.
+        method = (api.method or "GET").upper()
+        for keep_cookie in (False, True):
+            test_headers = dict(headers)
+            if not keep_cookie:
+                test_headers.pop("cookie", None)
+                test_headers.pop("Cookie", None)
+            try:
+                if method == "POST":
+                    resp = requests.post(
+                        api.url, headers=test_headers, data=api.request_body,
+                        timeout=10,
+                    )
+                else:
+                    resp = requests.get(api.url, headers=test_headers, timeout=10)
+                if resp.status_code == 200 and "json" in resp.headers.get("content-type", "").lower():
+                    return True
+            except Exception:
+                continue
     except Exception:
         pass
     return False

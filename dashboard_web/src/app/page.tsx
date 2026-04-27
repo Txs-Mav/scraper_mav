@@ -34,7 +34,7 @@ export default function Home() {
   // Show spinner only briefly while checking auth
   if (!showContent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-[#121415]">
+      <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-[#111314]">
         <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -94,7 +94,7 @@ export default function Home() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#fafbfc] dark:bg-[#121415] text-gray-900 dark:text-white overflow-hidden">
+    <div className="min-h-screen bg-[#fafbfc] dark:bg-[#111314] text-gray-900 dark:text-white overflow-hidden">
       {/* Animated Grid Background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.02)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:60px_60px]" />
@@ -109,7 +109,7 @@ export default function Home() {
         <div className="absolute top-[15%] left-[40%] w-10 h-10 bg-emerald-100/30 dark:bg-emerald-500/5 rounded-md animate-float-medium" />
         {/* Gradient overlays */}
         <div className="absolute top-0 left-0 w-full h-[50%] bg-gradient-to-b from-emerald-50/50 via-transparent to-transparent dark:from-emerald-950/20" />
-        <div className="absolute bottom-0 left-0 w-full h-[30%] bg-gradient-to-t from-[#fafbfc] dark:from-[#121415] to-transparent" />
+        <div className="absolute bottom-0 left-0 w-full h-[30%] bg-gradient-to-t from-[#fafbfc] dark:from-[#111314] to-transparent" />
       </div>
 
       {/* Header */}
@@ -197,11 +197,38 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Trusted By Section */}
+        <section className="max-w-5xl mx-auto pb-24">
+          <p className="text-center text-sm font-medium uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-10">
+            Ils nous font confiance
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-x-16 gap-y-8">
+            <div className="relative h-16 w-44 grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+              <Image
+                src="/logo_mvm.png"
+                alt="MVM Motosport"
+                fill
+                sizes="176px"
+                className="object-contain"
+              />
+            </div>
+            <div className="relative h-16 w-44 grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all duration-300">
+              <Image
+                src="/logo_moto_db.png"
+                alt="Moto DB"
+                fill
+                sizes="176px"
+                className="object-contain"
+              />
+            </div>
+          </div>
+        </section>
+
         {/* Dashboard Preview Section */}
         <section id="demo" className="max-w-6xl mx-auto pb-32">
           <div className="relative rounded-2xl border border-gray-200/80 dark:border-gray-800/80 bg-white/80 dark:bg-[#1c1e20]/80 backdrop-blur-sm shadow-2xl shadow-gray-900/5 dark:shadow-black/30 overflow-hidden">
             {/* Browser chrome */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-[#121415]/80">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-[#111314]/80">
               <div className="flex gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-red-400" />
                 <div className="w-3 h-3 rounded-full bg-yellow-400" />
@@ -412,7 +439,7 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-[#121415]/50 backdrop-blur-sm">
+      <footer className="relative z-10 border-t border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-[#111314]/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-12">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">

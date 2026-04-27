@@ -12,6 +12,7 @@ import CategoryAnalysis from "@/components/analytics/category-analysis"
 import AlertsAndInsights from "@/components/analytics/alerts-insights"
 import ExplanatoryFactors from "@/components/analytics/explanatory-factors"
 import Visualizations from "@/components/analytics/visualizations"
+import RetailerPriceTrends from "@/components/analytics/retailer-price-trends"
 import { Lock, RefreshCw, RotateCcw, Package, Store, TrendingUp, Printer } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
@@ -249,30 +250,47 @@ export default function AnalyticsPage() {
   const isEmpty = displayAnalytics.stats.nombreScrapes === 0 && totalProducts === 0
 
   const kpis = [
-    { label: t("analytics.productsAnalyzed"), value: totalProducts, icon: Package, dot: "bg-emerald-500" },
+    { label: t("analytics.productsAnalyzed"), value: totalProducts, icon: Package, dot: "bg-[#3B6D11]" },
     { label: t("analytics.retailers"), value: displayAnalytics.detailleurs.length, icon: Store, dot: "bg-sky-500" },
     { label: t("analytics.opportunities"), value: displayAnalytics.opportunites.length, icon: TrendingUp, dot: "bg-amber-500" },
     { label: t("analytics.scrapes"), value: displayAnalytics.stats.nombreScrapes, icon: RefreshCw, dot: "bg-violet-500" },
   ]
 
+  const updatedAgoLabel = (() => {
+    if (!lastUpdated) return null
+    const diffMs = Date.now() - lastUpdated.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    if (diffMin < 1) return t("analytics.updatedJustNow")
+    if (diffMin < 60) return t("analytics.updatedMinAgo").replace("{n}", String(diffMin))
+    const diffH = Math.floor(diffMin / 60)
+    return t("analytics.updatedHAgo").replace("{n}", String(diffH))
+  })()
+
   return (
     <Layout>
       <div id="analytics-print-area" className="space-y-5">
         {/* ── Page header ── */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)] mb-1">
-              {t("analytics.overline")}
-            </p>
-            <h1 className="text-2xl font-bold text-[var(--color-text-primary)] leading-tight">
+            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--color-text-primary)] leading-tight">
               {t("analytics.title")}
             </h1>
-            <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+            <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
               {t("analytics.subtitle")}
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
+            {updatedAgoLabel && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#3B6D11]/15 border border-[#3B6D11]/30">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3B6D11] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B6D11]" />
+                </span>
+                <span className="text-xs font-medium text-[#27500A] dark:text-[#3B6D11]">{updatedAgoLabel}</span>
+              </div>
+            )}
+
             <button
               onClick={() => printCurrentPage(t("analytics.title"))}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
@@ -292,7 +310,7 @@ export default function AnalyticsPage() {
             <button
               onClick={handleReset}
               disabled={refreshing || loading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-red-600/80 dark:text-red-400/80 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[#A32D2D]/80 hover:text-[#A32D2D] hover:bg-[#A32D2D]/10 transition disabled:opacity-50"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t("analytics.resetAction")}</span>
@@ -328,20 +346,20 @@ export default function AnalyticsPage() {
           {comparableCount > 0 && (
             <div className="border-t border-[var(--color-border-tertiary)] px-5 py-3.5 flex items-center gap-4">
               <div className="flex items-center gap-6 text-xs font-medium">
-                <span className="flex items-center gap-1.5 text-[#27500A] dark:text-emerald-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="flex items-center gap-1.5 text-[#27500A] dark:text-[#3B6D11]">
+                  <span className="h-2 w-2 rounded-full bg-[#3B6D11]" />
                   <span className="tabular-nums font-bold">{competitifCount}</span>
                   <span className="text-[var(--color-text-secondary)] font-normal">{t("analytics.competitive")}</span>
                 </span>
-                <span className="flex items-center gap-1.5 text-[#791F1F] dark:text-red-400">
-                  <span className="h-2 w-2 rounded-full bg-red-500" />
+                <span className="flex items-center gap-1.5 text-[#791F1F] dark:text-[#A32D2D]">
+                  <span className="h-2 w-2 rounded-full bg-[#A32D2D]" />
                   <span className="tabular-nums font-bold">{nonCompetitifCount}</span>
                   <span className="text-[var(--color-text-secondary)] font-normal">{t("analytics.aboveMarket")}</span>
                 </span>
               </div>
               <div className="flex-1 h-1.5 rounded-full bg-[var(--color-background-secondary)] overflow-hidden max-w-xs ml-auto">
                 <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
+                  className="h-full bg-[#3B6D11] rounded-full transition-all"
                   style={{ width: `${competitifRatio}%` }}
                 />
               </div>
@@ -363,8 +381,8 @@ export default function AnalyticsPage() {
         </div>
 
         {error && (
-          <div className="rounded-xl border border-red-200/60 dark:border-red-900/40 bg-red-50/80 dark:bg-red-950/20 px-4 py-3">
-            <p className="text-red-700 dark:text-red-300 text-sm font-medium">{error}</p>
+          <div className="rounded-xl border border-[#A32D2D]/30 dark:border-[#A32D2D]/40 bg-[#FCEBEB]/80 dark:bg-[#A32D2D]/15 px-4 py-3">
+            <p className="text-[#791F1F] dark:text-[#A32D2D] text-sm font-medium">{error}</p>
           </div>
         )}
 
@@ -372,8 +390,8 @@ export default function AnalyticsPage() {
         {isEmpty && (
           <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-10 text-center">
             <div className="max-w-md mx-auto">
-              <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 flex items-center justify-center mb-5">
-                <Package className="h-7 w-7 text-emerald-500 dark:text-emerald-400" />
+              <div className="mx-auto w-16 h-16 rounded-2xl bg-[#EAF3DE] dark:bg-[#3B6D11]/15 flex items-center justify-center mb-5">
+                <Package className="h-7 w-7 text-[#3B6D11]" />
               </div>
               <h3 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">{t("analytics.noData")}</h3>
               <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
@@ -385,101 +403,69 @@ export default function AnalyticsPage() {
 
         {/* ── Analysis sections ── */}
         {!isEmpty && (
-          <div className="space-y-8">
-            <AnalyticsSection
-              caption={t("analytics.section.positioning")}
-              description={t("analytics.section.positioningDesc")}
-            >
-              <BlocTemplate className="hover-elevate">
-                <PricePositioningCard positionnement={displayAnalytics.positionnement} />
-              </BlocTemplate>
-            </AnalyticsSection>
+          <div className="space-y-4">
+            {/* Positionnement + Évolution des prix */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-1">
+                <BlocTemplate className="hover-elevate h-full">
+                  <PricePositioningCard positionnement={displayAnalytics.positionnement} />
+                </BlocTemplate>
+              </div>
+              <div className="lg:col-span-2">
+                <BlocTemplate className="hover-elevate h-full">
+                  <PriceEvolutionChart
+                    evolutionPrix={displayAnalytics.evolutionPrix}
+                    scrapesParJour={displayAnalytics.stats.scrapesParJour}
+                  />
+                </BlocTemplate>
+              </div>
+            </div>
 
-            <AnalyticsSection
-              caption={t("analytics.section.products")}
-              description={t("analytics.section.productsDesc")}
-            >
-              <BlocTemplate className="hover-elevate">
-                <ProductCategoryAnalysis produits={displayAnalytics.produits} />
-              </BlocTemplate>
-              <BlocTemplate className="hover-elevate">
-                <CategoryAnalysis categories={displayAnalytics.categories} />
-              </BlocTemplate>
-              <BlocTemplate className="hover-elevate">
-                <ExplanatoryFactors produits={displayAnalytics.produits} />
-              </BlocTemplate>
-            </AnalyticsSection>
-
-            <AnalyticsSection
-              caption={t("analytics.section.market")}
-              description={t("analytics.section.marketDesc")}
-            >
-              <BlocTemplate className="hover-elevate">
-                <PriceEvolutionChart
-                  evolutionPrix={displayAnalytics.evolutionPrix}
-                  scrapesParJour={displayAnalytics.stats.scrapesParJour}
-                />
-              </BlocTemplate>
-              <BlocTemplate className="hover-elevate">
-                <RetailerAnalysis detailleurs={displayAnalytics.detailleurs} />
-              </BlocTemplate>
-            </AnalyticsSection>
-
-            <AnalyticsSection
-              caption={t("analytics.section.actions")}
-              description={t("analytics.section.actionsDesc")}
-            >
-              <BlocTemplate className="hover-elevate">
+            {/* Opportunités + Alertes / insights */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <BlocTemplate className="hover-elevate h-full">
                 <OpportunitiesDetection opportunites={displayAnalytics.opportunites} />
               </BlocTemplate>
-              <BlocTemplate className="hover-elevate">
+              <BlocTemplate className="hover-elevate h-full">
                 <AlertsAndInsights alertes={displayAnalytics.alertes} stats={displayAnalytics.stats} />
               </BlocTemplate>
-            </AnalyticsSection>
+            </div>
 
-            <AnalyticsSection
-              caption={t("analytics.section.visualizations")}
-              description={t("analytics.section.visualizationsDesc")}
-            >
-              <BlocTemplate className="hover-elevate">
-                <Visualizations
-                  produits={displayAnalytics.produits}
-                  detailleurs={displayAnalytics.detailleurs}
-                />
-              </BlocTemplate>
-            </AnalyticsSection>
+            {/* Tendances de prix par concessionnaire (sous Alertes) */}
+            <BlocTemplate className="hover-elevate">
+              <RetailerPriceTrends evolutionPrix={displayAnalytics.evolutionPrix} />
+            </BlocTemplate>
+
+            {/* Facteurs explicatifs (strip compact pleine largeur) */}
+            <BlocTemplate className="hover-elevate">
+              <ExplanatoryFactors produits={displayAnalytics.produits} />
+            </BlocTemplate>
+
+            {/* Analyse produit (pleine largeur) */}
+            <BlocTemplate className="hover-elevate">
+              <ProductCategoryAnalysis produits={displayAnalytics.produits} />
+            </BlocTemplate>
+
+            {/* Analyse par catégorie (pleine largeur) */}
+            <BlocTemplate className="hover-elevate">
+              <CategoryAnalysis categories={displayAnalytics.categories} />
+            </BlocTemplate>
+
+            {/* Détaillants (pleine largeur) */}
+            <BlocTemplate className="hover-elevate">
+              <RetailerAnalysis detailleurs={displayAnalytics.detailleurs} />
+            </BlocTemplate>
+
+            {/* Visualisations avancées (pleine largeur) */}
+            <BlocTemplate className="hover-elevate">
+              <Visualizations
+                produits={displayAnalytics.produits}
+                detailleurs={displayAnalytics.detailleurs}
+              />
+            </BlocTemplate>
           </div>
         )}
       </div>
     </Layout>
-  )
-}
-
-interface AnalyticsSectionProps {
-  caption: string
-  description?: string
-  children: React.ReactNode
-}
-
-function AnalyticsSection({ caption, description, children }: AnalyticsSectionProps) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-baseline gap-3 px-1">
-        <div className="h-px flex-shrink-0 w-6 bg-[var(--color-border-tertiary)]" />
-        <div className="flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)]">
-            {caption}
-          </p>
-          {description && (
-            <p className="text-xs text-[var(--color-text-secondary)]/70 mt-0.5">
-              {description}
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="space-y-4">
-        {children}
-      </div>
-    </section>
   )
 }

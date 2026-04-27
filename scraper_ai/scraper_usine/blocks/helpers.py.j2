@@ -43,6 +43,37 @@
             return 'neuf'
         return 'neuf'
 
+    @staticmethod
+    def _build_paginated_url(base_url: str, param: str, value) -> str:
+        """Construit une URL avec pagination URL-safe (préserve query params existants)."""
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        if not param:
+            return base_url
+        parsed = urlparse(base_url)
+        qs = parse_qs(parsed.query, keep_blank_values=True)
+        qs[param] = [str(value)]
+        return urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
+
+    @staticmethod
+    def _extract_path_field(data, path: str):
+        """Extrait une valeur depuis un dict imbriqué via un chemin pointé (ex: 'data.items')."""
+        if not path:
+            return data
+        cur = data
+        for key in path.split('.'):
+            if isinstance(cur, dict):
+                cur = cur.get(key)
+            elif isinstance(cur, list):
+                try:
+                    cur = cur[int(key)]
+                except (ValueError, IndexError):
+                    return None
+            else:
+                return None
+            if cur is None:
+                return None
+        return cur
+
     def _is_soft_404(self, soup: BeautifulSoup) -> bool:
         title = soup.find('title')
         if title:

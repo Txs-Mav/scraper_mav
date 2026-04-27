@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
 import { Award, TrendingDown, TrendingUp, ChevronDown, ChevronUp } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 
@@ -45,51 +44,13 @@ function ecartColor(ecart: number): string {
   return 'text-gray-500 dark:text-[#B0B0B0]'
 }
 
-function barFill(ecart: number): string {
-  if (ecart > 0.5) return '#F87171'
-  if (ecart < -0.5) return '#34D399'
-  return '#6B7280'
-}
-
-function EcartTooltip({ active, payload }: any) {
-  const { t } = useLanguage()
-  if (!active || !payload?.[0]) return null
-  const d = payload[0].payload
-  const sign = d.ecart > 0 ? '+' : ''
-  return (
-    <div className="bg-[#1c1e20] border border-[#343638] rounded-xl px-4 py-3 shadow-2xl max-w-xs">
-      <p className="text-sm font-medium text-white mb-2">{d.fullSite}</p>
-      <div className="space-y-1.5 text-xs">
-        <div className="flex justify-between gap-6">
-          <span className="text-gray-400">{t("ap.avgGapVsOthers")}</span>
-          <span className={`font-bold ${ecartColor(d.ecart).replace('dark:', '')}`}>
-            {sign}{d.ecart.toFixed(1)}%
-          </span>
-        </div>
-        <div className="flex justify-between gap-6">
-          <span className="text-gray-400">{t("ap.comparedCount")}</span>
-          <span className="text-white">{d.produitsComparables}</span>
-        </div>
-        <div className="h-px bg-[#343638]" />
-        <div className="text-gray-500 leading-relaxed">
-          {d.ecart > 0.5
-            ? t("ap.retailerMoreExpensive").replace("{0}", d.ecart.toFixed(1))
-            : d.ecart < -0.5
-            ? t("ap.retailerCheaper").replace("{0}", Math.abs(d.ecart).toFixed(1))
-            : t("ap.retailerAligned")}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps) {
   const { t } = useLanguage()
   const [expandedRetailer, setExpandedRetailer] = useState<string | null>(null)
 
   if (detailleurs.length === 0) {
     return (
-      <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           {t("ap.retailerComparison")}
         </h3>
@@ -104,19 +65,24 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
   const refEcart = refSite?.agressivite ?? 0
   const totalCompared = detailleurs.reduce((s, d) => s + d.produitsComparables, 0)
 
-  const chartData = detailleurs
+  // Données triées et normalisées pour la liste de barres divergentes
+  const rankedRetailers = detailleurs
     .filter(d => d.produitsComparables > 0)
     .map(d => ({
-      site: d.site.length > 25 ? d.site.substring(0, 25) + '...' : d.site,
-      fullSite: d.site,
-      ecart: Number(d.agressivite.toFixed(1)),
+      site: d.site,
+      ecart: d.agressivite,
       produitsComparables: d.produitsComparables,
       isReference: d.isReference,
-      fill: barFill(d.agressivite),
     }))
+    .sort((a, b) => a.ecart - b.ecart)
+
+  const maxAbs = Math.max(
+    1,
+    ...rankedRetailers.map(d => Math.abs(d.ecart))
+  )
 
   return (
-    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           {t("ap.retailerComparison")}
@@ -127,7 +93,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
       </div>
 
       {refSite && (
-        <div className="mb-5 p-3.5 bg-gray-50 dark:bg-[#2A2A2A] rounded-xl border border-gray-200 dark:border-[#3A3A3A]">
+        <div className="mb-5 p-3.5 bg-gray-50 dark:bg-[#242628] rounded-xl border border-gray-200 dark:border-[#2a2c2e]">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs text-gray-500 uppercase tracking-wider font-medium">{t("ap.yourSitePosition")}</div>
@@ -150,66 +116,116 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
         </div>
       )}
 
-      {chartData.length > 0 && (
-        <>
-          <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 48)}>
-            <BarChart
-              data={chartData}
-              layout="vertical"
-              margin={{ top: 0, right: 40, bottom: 0, left: 8 }}
-            >
-              <XAxis
-                type="number"
-                stroke="transparent"
-                tick={{ fill: '#6B7280', fontSize: 11 }}
-                tickFormatter={(v: number) => `${v > 0 ? '+' : ''}${v}%`}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="site"
-                stroke="transparent"
-                tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                width={180}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                content={<EcartTooltip />}
-                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-              />
-              <ReferenceLine x={0} stroke="#374151" strokeWidth={1} />
-              <Bar dataKey="ecart" radius={[4, 4, 4, 4]} barSize={22}>
-                {chartData.map((entry, index) => (
-                  <Cell key={index} fill={entry.fill} fillOpacity={0.85} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-
-          <div className="mt-3 flex items-center justify-center gap-6 text-xs text-gray-500">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
-              <span>{t("ap.cheaperLegendNew")}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm bg-[#A32D2D]" />
-              <span>{t("ap.expensiveLegendNew")}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm bg-gray-500" />
-              <span>{t("ap.similarLegend")}</span>
-            </div>
+      {rankedRetailers.length > 0 && (
+        <div>
+          {/* En-tête de la liste avec axe */}
+          <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-[#B0B0B0]/70 px-2 mb-2">
+            <span className="flex items-center gap-1.5">
+              <TrendingDown className="h-3 w-3" />
+              {t("ap.cheaperLegendNew")}
+            </span>
+            <span className="text-gray-500">{t("ap.avgGapVsOthers")}</span>
+            <span className="flex items-center gap-1.5">
+              {t("ap.expensiveLegendNew")}
+              <TrendingUp className="h-3 w-3" />
+            </span>
           </div>
-        </>
+
+          {/* Liste de barres divergentes */}
+          <ul className="divide-y divide-gray-100 dark:divide-[#2a2c2e] rounded-xl border border-gray-200 dark:border-[#2a2c2e] overflow-hidden bg-gray-50/40 dark:bg-[#161819]/40">
+            {rankedRetailers.map((d, i) => {
+              const ratio = Math.abs(d.ecart) / maxAbs
+              const widthPct = Math.max(2, ratio * 50)
+              const isCheap = d.ecart < -0.5
+              const isExpensive = d.ecart > 0.5
+              const sign = d.ecart > 0 ? '+' : ''
+
+              const barColor = isCheap
+                ? 'bg-[#3B6D11]/80'
+                : isExpensive
+                ? 'bg-[#A32D2D]/80'
+                : 'bg-gray-400/60 dark:bg-gray-500/60'
+
+              const labelColor = isCheap
+                ? 'text-[#3B6D11]'
+                : isExpensive
+                ? 'text-[#A32D2D]'
+                : 'text-gray-500 dark:text-[#B0B0B0]'
+
+              return (
+                <li
+                  key={d.site}
+                  className={`group grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,2fr)_4.5rem] items-center gap-2 sm:gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-white dark:hover:bg-[#1f2123] ${
+                    d.isReference ? 'bg-[#EAF3DE]/50 dark:bg-[#3B6D11]/10' : ''
+                  }`}
+                >
+                  {/* Rang */}
+                  <span className="text-[11px] font-semibold tabular-nums text-gray-400 dark:text-[#B0B0B0]/60">
+                    #{i + 1}
+                  </span>
+
+                  {/* Nom du site */}
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    {d.isReference && (
+                      <Award className="h-3.5 w-3.5 text-[#3B6D11] flex-shrink-0" />
+                    )}
+                    <span className="truncate font-medium text-gray-900 dark:text-white">
+                      {d.site}
+                    </span>
+                    {d.isReference && (
+                      <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold leading-none bg-[#EAF3DE] text-[#27500A] dark:bg-[#3B6D11]/30 dark:text-[#3B6D11] flex-shrink-0">
+                        {t("ap.yourSite")}
+                      </span>
+                    )}
+                  </span>
+
+                  {/* Barre divergente (50% gauche / 50% droite) */}
+                  <div className="relative h-4 w-full">
+                    {/* Axe central */}
+                    <div className="absolute inset-y-0 left-1/2 w-px bg-gray-300 dark:bg-[#3a3c3e]" />
+                    {/* Barre */}
+                    {isCheap && (
+                      <div
+                        className={`absolute top-0 bottom-0 right-1/2 rounded-l-md ${barColor}`}
+                        style={{ width: `${widthPct}%` }}
+                      />
+                    )}
+                    {isExpensive && (
+                      <div
+                        className={`absolute top-0 bottom-0 left-1/2 rounded-r-md ${barColor}`}
+                        style={{ width: `${widthPct}%` }}
+                      />
+                    )}
+                    {!isCheap && !isExpensive && (
+                      <div
+                        className={`absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full ${barColor}`}
+                      />
+                    )}
+                  </div>
+
+                  {/* % */}
+                  <span className={`text-right tabular-nums font-bold text-sm ${labelColor}`}>
+                    {sign}{d.ecart.toFixed(1)}%
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+
+          {/* Échelle */}
+          <div className="mt-2 flex items-center justify-between text-[10px] tabular-nums text-gray-400 dark:text-[#B0B0B0]/60 px-2">
+            <span>−{maxAbs.toFixed(1)}%</span>
+            <span>0%</span>
+            <span>+{maxAbs.toFixed(1)}%</span>
+          </div>
+        </div>
       )}
 
       {/* Tableau détaillé */}
       <div className="mt-6 overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200 dark:border-[#3A3A3A]">
+            <tr className="border-b border-gray-200 dark:border-[#2a2c2e]">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 {t("ap.retailer")}
               </th>
@@ -232,16 +248,16 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                 <tr key={`row-${index}`} className="group">
                   <td colSpan={5} className="p-0">
                     <div
-                      className="flex items-center cursor-pointer hover:hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors rounded-lg"
+                      className="flex items-center cursor-pointer hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e] transition-colors rounded-lg"
                       onClick={() => setExpandedRetailer(
                         expandedRetailer === det.site ? null : det.site
                       )}
                     >
                       <div className="flex-1 py-3 px-4 text-sm text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
-                        {det.isReference && <Award className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />}
+                        {det.isReference && <Award className="h-3.5 w-3.5 text-[#3B6D11] flex-shrink-0" />}
                         <span className="truncate">{det.site}</span>
                         {det.isReference && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex-shrink-0">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none bg-[#EAF3DE] text-[#27500A] dark:bg-[#3B6D11]/30 dark:text-[#3B6D11] flex-shrink-0">
                             {t("ap.yourSite")}
                           </span>
                         )}
@@ -254,7 +270,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                               +{ecart.toFixed(1)}%
                             </span>
                           ) : ecart < -0.5 ? (
-                            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center justify-end gap-1 font-semibold tabular-nums">
+                            <span className="text-[#3B6D11] inline-flex items-center justify-end gap-1 font-semibold tabular-nums">
                               <TrendingDown className="h-3.5 w-3.5" />
                               {ecart.toFixed(1)}%
                             </span>
@@ -281,7 +297,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                     </div>
 
                     {expandedRetailer === det.site && det.categorieStats && det.categorieStats.length > 0 && (
-                      <div className="bg-gray-50 dark:bg-[#2A2A2A] mx-2 mb-2 rounded-lg px-4 py-3">
+                      <div className="bg-gray-50 dark:bg-[#242628] mx-2 mb-2 rounded-lg px-4 py-3">
                         <div className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">
                           {t("ap.avgGapCategory")}
                         </div>
@@ -294,10 +310,10 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                                 key={ci}
                                 className={`rounded-lg p-2.5 border ${
                                   isCheap
-                                    ? 'bg-emerald-50/80 dark:bg-emerald-900/10 border-emerald-200/60 dark:border-emerald-900/30'
+                                    ? 'bg-[#EAF3DE]/80 dark:bg-[#3B6D11]/10 border-[#3B6D11]/20 dark:border-[#3B6D11]/30'
                                     : isExpensive
                                     ? 'bg-[#FCEBEB]/80 dark:bg-[#A32D2D]/15 border-[#A32D2D]/20 dark:border-[#A32D2D]/30'
-                                    : 'bg-white dark:bg-[#222222] border-gray-200 dark:border-[#3A3A3A]'
+                                    : 'bg-white dark:bg-[#1c1e20] border-gray-200 dark:border-[#2a2c2e]'
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
@@ -322,7 +338,7 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                       </div>
                     )}
 
-                    <div className="h-px bg-gray-100 dark:bg-[#2E2E2E] mx-4" />
+                    <div className="h-px bg-gray-100 dark:bg-[#2a2c2e] mx-4" />
                   </td>
                 </tr>
               )

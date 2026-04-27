@@ -23,9 +23,9 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
       case 'augmentation':
         return <TrendingUp className="h-5 w-5 text-[#3B6D11]" />
       case 'baisse':
-        return <TrendingDown className="h-5 w-5 text-emerald-500" />
+        return <TrendingDown className="h-5 w-5 text-[#3B6D11]" />
       case 'marge':
-        return <DollarSign className="h-5 w-5 text-emerald-500" />
+        return <DollarSign className="h-5 w-5 text-[#3B6D11]" />
       default:
         return <Lightbulb className="h-5 w-5 text-yellow-500" />
     }
@@ -36,11 +36,11 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
       case 'augmentation':
         return 'border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE] dark:bg-[#3B6D11]/15'
       case 'baisse':
-        return 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20'
+        return 'border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE] dark:bg-[#3B6D11]/15'
       case 'marge':
-        return 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20'
+        return 'border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE] dark:bg-[#3B6D11]/15'
       default:
-        return 'border-gray-200 dark:border-[#3A3A3A] bg-gray-50 dark:bg-[#2A2A2A]'
+        return 'border-gray-200 dark:border-[#2a2c2e] bg-gray-50 dark:bg-[#242628]'
     }
   }
 
@@ -61,7 +61,7 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
   const sortedOpportunities = [...opportunites].sort((a, b) => b.impactPotentiel - a.impactPotentiel)
 
   return (
-    <div className="bg-white dark:bg-[#222222] rounded-2xl border border-gray-200 dark:border-[#3A3A3A] p-6">
+    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
         {t("ap.opportunityDetection")}
       </h3>
@@ -88,7 +88,7 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                   <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">
                     {opp.produit}
                     {opp.categorie && (
-                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-50 dark:bg-[#2A2A2A] text-gray-500 dark:text-[#B0B0B0]">
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-50 dark:bg-[#242628] text-gray-500 dark:text-[#B0B0B0]">
                         {opp.categorie}
                       </span>
                     )}

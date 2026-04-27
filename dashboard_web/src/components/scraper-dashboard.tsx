@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { Search, X, ArrowRightLeft, Star, Globe, Sparkles, Trash2, Wand2, RefreshCw, Link, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Settings2, BarChart3, Radar, Clock, Eye, Palette, Loader2 } from "lucide-react"
-import Image from "next/image"
+import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Settings2, Radar, Eye, Loader2 } from "lucide-react"
 import ScraperConfig, { ScraperConfigHandle } from "./scraper-config"
-import AIAgent from "./ai-agent"
 import { useAuth } from "@/contexts/auth-context"
 import { getLocalScrapingsCount, migrateLocalScrapingsToSupabase } from "@/lib/local-storage"
 import LimitWarning from "./limit-warning"
@@ -682,48 +680,51 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
 
       <LimitWarning type="scrapings" current={scrapingLimit.current} limit={scrapingLimit.limit} plan={user?.subscription_plan || null} isAuthenticated={!!user} />
 
-      {/* ── KPI row ── */}
-      <div data-onboarding="scrape" className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] overflow-hidden">
-        <div className="grid grid-cols-4 divide-x divide-[var(--color-border-tertiary)]">
-          {/* Produits — hero */}
-          <div className="relative p-7 bg-gradient-to-br from-emerald-600 to-teal-600 dark:from-emerald-600 dark:to-teal-700 overflow-hidden">
-            <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/10" />
-            <div className="relative">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-200/70 mb-1.5">{t("dash.products")}</p>
-              <p className="text-4xl font-black text-white tabular-nums leading-none tracking-tight">{displayResultCount}</p>
-            </div>
+      {/* ── KPI row — Stripe-style: monochrome, sober, uniform ── */}
+      <div data-onboarding="scrape" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
+        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[var(--color-border-tertiary)]">
+          {/* Produits */}
+          <div className="px-6 py-5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+              {t("dash.products")}
+            </p>
+            <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
+              {displayResultCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+            </p>
           </div>
 
           {/* Référence */}
-          <div className="p-7 flex flex-col justify-center">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="h-2 w-2 rounded-full bg-amber-400" />
-              <p className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t("dash.reference")}</p>
-            </div>
-            <p className={`font-extrabold text-[var(--color-text-primary)] leading-tight ${(configuredReferenceSite || referenceSite || "").length > 16 ? 'text-base' : 'text-xl'}`}>
+          <div className="px-6 py-5 min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+              {t("dash.reference")}
+            </p>
+            <p
+              className={`font-semibold text-[var(--color-text-primary)] leading-none tracking-tight truncate ${
+                (configuredReferenceSite || referenceSite || "").length > 18 ? 'text-base' : 'text-lg'
+              }`}
+              title={configuredReferenceSite || referenceSite || "—"}
+            >
               {configuredReferenceSite || referenceSite || "—"}
             </p>
           </div>
 
           {/* Concurrents */}
-          <div className="p-7 flex flex-col justify-center">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              <p className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t("dash.competitors")}</p>
-            </div>
-            <p className="text-4xl font-extrabold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
+          <div className="px-6 py-5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+              {t("dash.competitors")}
+            </p>
+            <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
               {Object.keys(productsBySite.otherSites).length}
             </p>
           </div>
 
           {/* Comparés */}
-          <div className="p-7 flex flex-col justify-center">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              <p className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t("dash.compared")}</p>
-            </div>
-            <p className="text-4xl font-extrabold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
-              {comparedUniqueCount}
+          <div className="px-6 py-5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+              {t("dash.compared")}
+            </p>
+            <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
+              {comparedUniqueCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
             </p>
           </div>
         </div>
@@ -773,96 +774,109 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
       )}
 
       {showSurveillance && (<>
-      {/* ── Surveillance + Actions ── */}
-      <div data-onboarding="scrape" className="rounded-2xl border border-gray-200/60 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20]">
-        <div className="flex items-center gap-0">
-          {/* Gauche : status + config + filtres */}
-          <div className="flex items-center gap-4 px-5 py-4 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+      {/* ── Surveillance + Actions — Stripe-style toolbar ── */}
+      <div data-onboarding="scrape" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-4 py-3">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          {/* Gauche : status compact */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+              {t("dash.marketMonitoring")}
+            </span>
+            {monitoringStatus.lastAnalysisText && monitoringStatus.lastAnalysisText !== "—" && (
+              <span className="text-xs text-[var(--color-text-secondary)] hidden sm:inline tabular-nums">
+                · {monitoringStatus.lastAnalysisText}
               </span>
-              <span className="text-sm font-bold text-gray-900 dark:text-white">{t("dash.marketMonitoring")}</span>
-            </div>
+            )}
+          </div>
 
-            <div className="w-px h-6 bg-gray-200 dark:bg-[#2a2c2e]" />
-
-            <button data-onboarding="config" type="button" onClick={() => setShowScraperConfig(true)} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#242628] transition-colors">
-              <Settings2 className="h-4 w-4" />
-              {t("dash.configuration")}
+          {/* Droite : actions */}
+          <div className="flex items-center gap-1">
+            <button
+              data-onboarding="config"
+              type="button"
+              onClick={() => setShowScraperConfig(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition-colors"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t("dash.configuration")}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium transition-colors ${
                 showFilters || hasActiveFilters
-                  ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#242628]'
+                  ? 'text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
               }`}
             >
-              <Search className="h-4 w-4" />
-              {t("dash.filters")}
-              {hasActiveFilters && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
+              <Search className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t("dash.filters")}</span>
+              {hasActiveFilters && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+            </button>
+
+            <div className="w-px h-5 bg-[var(--color-border-tertiary)] mx-1" />
+
+            <button
+              type="button"
+              disabled={refreshingFromCron}
+              onClick={async () => {
+                setRefreshingFromCron(true)
+                try {
+                  const res = await fetch('/api/products/analyze', { method: 'POST' })
+                  const data = await res.json()
+                  if (data.success) {
+                    toast.success(t("dash.dataRefreshed"), { duration: 3000 })
+                    setTimeout(() => setRefreshKey(prev => prev + 1), 1000)
+                  } else {
+                    toast.warning(t("dash.noCachedData"), { duration: 5000 })
+                    setRefreshKey(prev => prev + 1)
+                  }
+                } catch {
+                  setRefreshKey(prev => prev + 1)
+                } finally {
+                  setTimeout(() => setRefreshingFromCron(false), 2000)
+                }
+              }}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-medium bg-[var(--color-text-primary)] text-[var(--color-background-primary)] hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {refreshingFromCron ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+              {t("dash.analyzeNow")}
             </button>
           </div>
-
-          {/* Droite : Analyser maintenant — remplit l'espace restant, bord à bord */}
-          <button
-            type="button"
-            disabled={refreshingFromCron}
-            onClick={async () => {
-              setRefreshingFromCron(true)
-              try {
-                const res = await fetch('/api/products/analyze', { method: 'POST' })
-                const data = await res.json()
-                if (data.success) {
-                  toast.success(t("dash.dataRefreshed"), { duration: 3000 })
-                  setTimeout(() => setRefreshKey(prev => prev + 1), 1000)
-                } else {
-                  toast.warning(t("dash.noCachedData"), { duration: 5000 })
-                  setRefreshKey(prev => prev + 1)
-                }
-              } catch {
-                setRefreshKey(prev => prev + 1)
-              } finally {
-                setTimeout(() => setRefreshingFromCron(false), 2000)
-              }
-            }}
-            className="flex-1 flex items-center justify-center gap-2.5 self-stretch border-l border-gray-200/60 dark:border-[#2a2c2e] bg-gray-50 dark:bg-[#242628] text-sm font-bold text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-[#2a2c2e] rounded-r-2xl transition-all disabled:opacity-50"
-          >
-            {refreshingFromCron ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-            {t("dash.analyzeNow")}
-          </button>
         </div>
       </div>
 
-      {/* ── Filtres — Popup ── */}
+      {/* ── Filtres — Popup, Stripe-style ── */}
       {showFilters && mounted && createPortal(
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9997] flex items-start justify-center pt-[15vh] px-4"
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9997] flex items-start justify-center pt-[15vh] px-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowFilters(false) }}
         >
-          <div className="bg-white dark:bg-[#1c1e20] rounded-2xl w-full max-w-2xl border border-gray-200 dark:border-[#2a2c2e] shadow-2xl dark:shadow-black/40 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="bg-[var(--color-background-primary)] rounded-xl w-full max-w-2xl border border-[var(--color-border-tertiary)] shadow-xl animate-in fade-in slide-in-from-top-4 duration-200">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-[#2a2c2e]">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-gray-100 dark:bg-[#242628]">
-                  <Search className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("dash.filters")}</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{displayResultCount} {displayResultCount !== 1 ? t("dash.results") : t("dash.result")}</p>
-                </div>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--color-border-tertiary)]">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{t("dash.filters")}</h3>
+                <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 tabular-nums">
+                  {displayResultCount} {displayResultCount !== 1 ? t("dash.results") : t("dash.result")}
+                </p>
               </div>
-              <button type="button" onClick={() => setShowFilters(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#242628] transition">
-                <X className="h-5 w-5" />
+              <button
+                type="button"
+                onClick={() => setShowFilters(false)}
+                className="p-1.5 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Body */}
-            <div className="px-6 py-5">
+            <div className="px-5 py-5">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {[
                   { label: t("dash.site"), value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: t("dash.allSites") },
@@ -873,11 +887,11 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                   { label: t("dash.competitiveness"), value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: t("dash.all"), labelMap: competitiviteLabelsTr },
                 ].map(f => (
                   <div key={f.label}>
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">{f.label}</p>
+                    <p className="text-[11px] font-medium text-[var(--color-text-secondary)] mb-1.5 uppercase tracking-wider">{f.label}</p>
                     <select
                       value={f.value}
                       onChange={e => f.onChange(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 dark:border-[#2a2c2e] bg-gray-50 dark:bg-[#242628] px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/30 transition"
+                      className="w-full rounded-lg border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition"
                     >
                       <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>
                         {f.all}
@@ -894,15 +908,24 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-[#2a2c2e]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-t border-[var(--color-border-tertiary)]">
               {hasActiveFilters ? (
-                <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#242628] transition">
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
+                >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Reset
+                  Réinitialiser
                 </button>
               ) : <div />}
-              <button type="button" onClick={() => setShowFilters(false)} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-bold hover:bg-gray-800 dark:hover:bg-gray-100 transition-all shadow-sm">
-                {t("dash.filters")} · {displayResultCount} {displayResultCount !== 1 ? t("dash.results") : t("dash.result")}
+              <button
+                type="button"
+                onClick={() => setShowFilters(false)}
+                className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-[var(--color-text-primary)] text-[var(--color-background-primary)] text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Appliquer
+                <span className="text-xs opacity-70 tabular-nums">· {displayResultCount}</span>
               </button>
             </div>
           </div>
@@ -923,10 +946,10 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
         </div>
       )}
 
-      {/* ── Produits — section principale, élévation max ── */}
-      <div data-onboarding="analyze" className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] overflow-hidden shadow-lg shadow-gray-900/[0.05] dark:shadow-black/20">
+      {/* ── Produits — section principale ── */}
+      <div data-onboarding="analyze" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
 
-        {/* Tab bar */}
+        {/* Tab bar — Stripe minimal underline */}
         <div className="px-0">
           <div className="relative border-b border-[var(--color-border-tertiary)]">
             {canScrollTabLeft && (
@@ -939,49 +962,83 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                 <ChevronRight className="h-4 w-4 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors" />
               </button>
             )}
-            <div ref={tabScrollRef} className="flex items-end gap-0 px-6 overflow-x-auto scrollbar-hide">
+            <div ref={tabScrollRef} className="flex items-end gap-0 px-4 overflow-x-auto scrollbar-hide">
               {[
-                { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length, icon: Star, color: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-                { key: "allCompetitors", label: t("dash.competitors"), count: productsBySite.allCompetitors.length, icon: Globe, color: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-                { key: "compared", label: t("dash.compared"), count: comparedUniqueCount, icon: ArrowRightLeft, color: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-              ].map(t => {
-                const Icon = t.icon
-                const isActive = activeTab === t.key
+                { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length },
+                { key: "allCompetitors", label: t("dash.competitors"), count: productsBySite.allCompetitors.length },
+                { key: "compared", label: t("dash.compared"), count: comparedUniqueCount },
+              ].map(tab => {
+                const isActive = activeTab === tab.key
                 return (
-                  <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
-                    className="relative flex items-center gap-2.5 px-5 pb-3.5 pt-5 group transition-colors whitespace-nowrap"
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className="relative flex items-center gap-2 px-3.5 py-3.5 group transition-colors whitespace-nowrap"
                   >
-                    <Icon className={`h-4 w-4 transition-colors ${isActive ? t.color : 'text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'}`} />
-                    <span className={`text-[15px] transition-colors ${isActive ? 'font-semibold text-[var(--color-text-primary)]' : 'font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'}`}>
-                      {t.label}
+                    <span
+                      className={`text-sm transition-colors ${
+                        isActive
+                          ? 'font-semibold text-[var(--color-text-primary)]'
+                          : 'font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'
+                      }`}
+                    >
+                      {tab.label}
                     </span>
-                    <span className={`text-xs font-semibold tabular-nums px-2 py-0.5 rounded-md transition-colors ${
-                      isActive ? t.badge : 'bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)]'
-                    }`}>
-                      {t.count}
+                    <span
+                      className={`text-[11px] font-medium tabular-nums transition-colors ${
+                        isActive ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-tertiary)]'
+                      }`}
+                    >
+                      {tab.count.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
                     </span>
-                    <span className={`absolute bottom-0 left-3 right-3 h-[2px] rounded-full transition-all duration-200 ${isActive ? `${t.bar} opacity-100` : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-[var(--color-border-secondary)]'}`} />
+                    <span
+                      className={`absolute -bottom-px left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${
+                        isActive
+                          ? 'bg-[var(--color-text-primary)] opacity-100'
+                          : 'bg-transparent opacity-0 group-hover:opacity-30 group-hover:bg-[var(--color-text-secondary)]'
+                      }`}
+                    />
                   </button>
                 )
               })}
 
-              {Object.keys(productsBySite.otherSites).length > 0 && <div className="w-px h-6 bg-[var(--color-border-tertiary)] self-center mx-2 mb-3" />}
+              {Object.keys(productsBySite.otherSites).length > 0 && (
+                <div className="w-px h-4 bg-[var(--color-border-tertiary)] self-center mx-2" />
+              )}
 
               {Object.entries(productsBySite.otherSites).map(([siteUrl, siteProducts]) => {
                 const isActive = activeTab === `site-${siteUrl}`
                 return (
-                  <button key={siteUrl} type="button" onClick={() => setActiveTab(`site-${siteUrl}`)}
-                    className="relative flex items-center gap-2.5 px-5 pb-3.5 pt-5 group transition-colors whitespace-nowrap"
+                  <button
+                    key={siteUrl}
+                    type="button"
+                    onClick={() => setActiveTab(`site-${siteUrl}`)}
+                    className="relative flex items-center gap-2 px-3.5 py-3.5 group transition-colors whitespace-nowrap"
                   >
-                    <span className={`text-[15px] transition-colors ${isActive ? 'font-semibold text-[var(--color-text-primary)]' : 'font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'}`}>
+                    <span
+                      className={`text-sm transition-colors ${
+                        isActive
+                          ? 'font-semibold text-[var(--color-text-primary)]'
+                          : 'font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'
+                      }`}
+                    >
                       {extractDomain(siteUrl)}
                     </span>
-                    <span className={`text-xs font-semibold tabular-nums px-2 py-0.5 rounded-md transition-colors ${
-                      isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)]'
-                    }`}>
-                      {siteProducts.length}
+                    <span
+                      className={`text-[11px] font-medium tabular-nums transition-colors ${
+                        isActive ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-tertiary)]'
+                      }`}
+                    >
+                      {siteProducts.length.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
                     </span>
-                    <span className={`absolute bottom-0 left-3 right-3 h-[2px] rounded-full transition-all duration-200 ${isActive ? 'bg-emerald-500 opacity-100' : 'bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-[var(--color-border-secondary)]'}`} />
+                    <span
+                      className={`absolute -bottom-px left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${
+                        isActive
+                          ? 'bg-[var(--color-text-primary)] opacity-100'
+                          : 'bg-transparent opacity-0 group-hover:opacity-30 group-hover:bg-[var(--color-text-secondary)]'
+                      }`}
+                    />
                   </button>
                 )
               })}

@@ -120,9 +120,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="border-t border-[var(--color-border-secondary)] pt-6 mt-6">
-            <div className="flex flex-col gap-4 rounded-2xl border border-[var(--color-border-secondary)] bg-gray-50/70 p-4 dark:bg-[#141418] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4 rounded-2xl border border-[var(--color-border-secondary)] bg-gray-50/70 p-4 dark:bg-[#141617] sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <div className="rounded-xl bg-white p-2 text-[var(--color-text-secondary)] shadow-sm dark:bg-[#1B1B20]">
+                <div className="rounded-xl bg-white p-2 text-[var(--color-text-secondary)] shadow-sm dark:bg-[#1c1e20]">
                   <Globe className="h-4 w-4" />
                 </div>
                 <div>

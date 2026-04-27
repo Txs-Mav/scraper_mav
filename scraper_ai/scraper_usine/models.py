@@ -21,6 +21,11 @@ class PlatformType(Enum):
     WOOCOMMERCE = "woocommerce"
     FACETWP = "facetwp"
     SHOPIFY = "shopify"
+    MAGENTO = "magento"
+    BIGCOMMERCE = "bigcommerce"
+    SQUARESPACE = "squarespace"
+    WIX = "wix"
+    WEBFLOW = "webflow"
     DEALERSOCKET = "dealersocket"
     D2C_MEDIA = "d2c_media"
     DEALER_COM = "dealer_com"
@@ -104,17 +109,23 @@ class DetectedAPI:
     method: str = "GET"
     headers: Dict[str, str] = field(default_factory=dict)
     query_params: Dict[str, str] = field(default_factory=dict)
-    request_body: Optional[str] = None
+    request_body: Optional[str] = None              # body brut (POST/GraphQL)
+    request_body_json: Optional[Dict] = None        # body parsé en JSON si possible
     response_sample: Optional[Dict] = None
     field_mapping: Dict[str, str] = field(default_factory=dict)
     pagination_param: str = ""
-    pagination_type: str = ""
+    pagination_type: str = ""                       # 'page' | 'offset' | 'cursor' | 'link'
     page_size: int = 0
     total_items_field: str = ""
-    items_field: str = ""
+    items_field: str = ""                           # chemin pointé pour items (ex: 'data.products')
+    next_cursor_field: str = ""                     # chemin du curseur "next" (ex: 'pageInfo.endCursor')
+    has_next_field: str = ""                        # chemin booléen ex: 'pageInfo.hasNextPage'
     accessible_sans_browser: bool = False
     is_graphql: bool = False
     graphql_query: str = ""
+    graphql_operation: str = ""                     # nom de l'opération GraphQL
+    graphql_variables: Dict = field(default_factory=dict)
+    graphql_pagination_var: str = ""                # variable GraphQL pour pagination (ex: 'after')
     confidence: float = 0.0
 
 
@@ -163,6 +174,26 @@ class SelectorMap:
 
     image_attr: str = "src"
 
+    # Champs génériques pour profils non-auto (immo, jobs, ecommerce…).
+    # Clé = nom du champ FieldSpec (ex: 'address', 'company', 'sku').
+    extra_fields: Dict[str, SelectorEntry] = field(default_factory=dict)
+
+    def get_selector(self, field_name: str) -> Optional[SelectorEntry]:
+        """Récupère un sélecteur par nom de champ logique (auto + extra_fields)."""
+        mapping = {
+            "name": "detail_name", "prix": "detail_price",
+            "marque": "detail_brand", "modele": "detail_model",
+            "annee": "detail_year", "kilometrage": "detail_mileage",
+            "vin": "detail_vin", "couleur": "detail_color",
+            "image": "detail_image", "description": "detail_description",
+        }
+        attr = mapping.get(field_name)
+        if attr:
+            entry = getattr(self, attr, None)
+            if entry and entry.selector:
+                return entry
+        return self.extra_fields.get(field_name)
+
 
 @dataclass
 class SiteAnalysis:
@@ -205,6 +236,14 @@ class SiteAnalysis:
     cookie_consent: bool = False
     avg_response_time_ms: float = 0.0
     warm_up_required: bool = False
+
+    # Profil de domaine détecté ('auto' | 'ecommerce' | 'real_estate' | 'jobs' | 'generic')
+    domain_profile_key: str = "auto"
+    # Sélecteur racine "item de listing" détecté statistiquement (peut compléter selectors.listing_item)
+    statistical_listing_selector: str = ""
+    statistical_listing_count: int = 0
+    # Indique si l'analyse a dû passer en mode Playwright pour cartographier
+    playwright_used_in_phase1: bool = False
 
     analysis_timestamp: str = ""
 
@@ -363,7 +402,12 @@ def _from_dict(cls, data: dict) -> Any:
         elif ft == 'SelectorMap' and isinstance(val, dict):
             sm_kwargs = {}
             for sk, sv in val.items():
-                if isinstance(sv, dict) and 'selector' in sv:
+                if sk == 'extra_fields' and isinstance(sv, dict):
+                    sm_kwargs[sk] = {
+                        ek: SelectorEntry(**ev) if isinstance(ev, dict) and 'selector' in ev else ev
+                        for ek, ev in sv.items()
+                    }
+                elif isinstance(sv, dict) and 'selector' in sv:
                     sm_kwargs[sk] = SelectorEntry(**sv)
                 else:
                     sm_kwargs[sk] = sv

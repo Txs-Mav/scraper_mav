@@ -19,8 +19,17 @@ from .models import (
     FieldCoverage, GeneratedScraper, PriceDisplayMode,
     ScrapingStrategy, SiteAnalysis, ValidationReport,
 )
+from .domain_profiles import DomainProfile, get_profile, AUTO_PROFILE
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache" / "reports"
+
+# Limite par défaut d'exécution d'un scraper validé (en secondes).
+# Au-delà, le sous-processus est tué pour éviter de bloquer la pipeline.
+DEFAULT_RUN_TIMEOUT_SECONDS = 180
+
+# Taille max d'un code à envoyer en une fois à Gemini pour auto-correction.
+# Au-delà, on découpe en chunks et on demande des corrections ciblées.
+MAX_CODE_INLINE_BYTES = 30_000
 
 
 class ScraperValidator:
@@ -45,7 +54,11 @@ class ScraperValidator:
             price_display_mode=analysis.price_display_mode.value,
         )
 
-        products, errors, elapsed = self._run_scraper(generated)
+        # Profil de domaine pour scoring adaptatif (auto, ecommerce, immo, jobs)
+        profile = get_profile(analysis.domain_profile_key or "auto")
+        categories = profile.default_categories or ["all"]
+
+        products, errors, elapsed = self._run_scraper(generated, categories=categories)
         report.execution_time_seconds = elapsed
         report.errors = errors
 
@@ -70,9 +83,10 @@ class ScraperValidator:
         effective_total = max(1, len(products) - soft_404)
         report.success_rate = len(valid) / effective_total if effective_total > 0 else 0.0
 
-        score, field_details = self._score(
+        score, field_details = self._score_by_profile(
             products=valid,
             total_attempted=effective_total,
+            profile=profile,
             price_absent_expected=strategy.price_absent_expected,
         )
         report.score = score
@@ -82,7 +96,8 @@ class ScraperValidator:
 
         self._add_warnings(report, field_details, strategy)
 
-        self._log(f"Score: {score}/100 ({report.grade}) — {len(valid)} produits valides")
+        self._log(f"Score: {score}/100 ({report.grade}) — {len(valid)} produits valides "
+                  f"[profil: {profile.name}]")
         self._save_report(report, generated.slug)
         return report
 
@@ -90,37 +105,57 @@ class ScraperValidator:
     # Exécution du scraper
     # ------------------------------------------------------------------
 
-    def _run_scraper(self, generated: GeneratedScraper) -> tuple:
+    def _run_scraper(self, generated: GeneratedScraper,
+                     categories: Optional[List[str]] = None,
+                     timeout: int = DEFAULT_RUN_TIMEOUT_SECONDS) -> tuple:
+        """Exécute le scraper généré dans un sous-processus avec timeout dur.
+        Évite qu'un scraper qui boucle bloque la pipeline."""
+        import multiprocessing as mp
+
         products: List[Dict] = []
         errors: List[str] = []
         start = time.time()
+        cats = categories or ["inventaire"]
 
+        # Multiprocessing avec timeout dur (signal.SIGTERM si dépassement)
+        ctx = mp.get_context("spawn")  # spawn = pas de fork, plus sûr
+        parent_conn, child_conn = ctx.Pipe(duplex=False)
+        proc = ctx.Process(
+            target=_run_scraper_subprocess,
+            args=(generated.module_name, generated.class_name, cats, child_conn),
+            daemon=True,
+        )
         try:
-            module_path = f"scraper_ai.dedicated_scrapers.{generated.module_name}"
-            self._log(f"Import dynamique: {module_path}")
-            mod = importlib.import_module(module_path)
-            self._log(f"Module importé, recherche classe {generated.class_name}...")
-            scraper_class = getattr(mod, generated.class_name)
-            self._log(f"Classe trouvée, instanciation...")
-            scraper = scraper_class()
+            self._log(f"Lancement sous-processus (timeout {timeout}s, categories={cats})...")
+            proc.start()
+            proc.join(timeout=timeout)
 
-            scraper.MAX_WORKERS = 3
-            if hasattr(scraper, 'WORKERS'):
-                scraper.WORKERS = 3
-            scraper.HTTP_TIMEOUT = 25
-
-            self._log("Exécution scrape(categories=['inventaire']) (basse intensité, 3 workers)...")
-            t0 = time.time()
-            result = scraper.scrape(categories=["inventaire"], inventory_only=False)
-            self._log(f"Scrape terminé en {time.time()-t0:.1f}s")
-            products = result.get("products", [])
-            self._log(f"{len(products)} produits extraits")
+            if proc.is_alive():
+                self._log(f"TIMEOUT après {timeout}s → kill sous-processus")
+                proc.terminate()
+                proc.join(timeout=5)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join(timeout=3)
+                errors.append(f"Timeout: scraper > {timeout}s")
+            else:
+                if parent_conn.poll(timeout=2):
+                    payload = parent_conn.recv()
+                    if isinstance(payload, dict):
+                        products = payload.get("products", [])
+                        if payload.get("error"):
+                            errors.append(payload["error"])
+                else:
+                    errors.append("Sous-processus terminé sans résultat (probable crash)")
 
         except Exception as e:
             errors.append(f"{type(e).__name__}: {str(e)[:500]}")
-            self._log(f"ERREUR scraper: {type(e).__name__}: {e}")
-            import traceback
-            self._log(f"Traceback:\n{traceback.format_exc()}")
+            self._log(f"ERREUR runner: {type(e).__name__}: {e}")
+        finally:
+            try:
+                parent_conn.close()
+            except Exception:
+                pass
 
         elapsed = time.time() - start
         self._log(f"Run complet en {elapsed:.1f}s — {len(products)} produits, {len(errors)} erreurs")
@@ -130,6 +165,83 @@ class ScraperValidator:
     # Scoring (0-100)
     # ------------------------------------------------------------------
 
+    def _score_by_profile(self, products: List[Dict], total_attempted: int,
+                          profile: DomainProfile,
+                          price_absent_expected: bool) -> tuple:
+        """Scoring adaptatif au DomainProfile :
+          - 30 pts : taux de réussite
+          - 50 pts : couverture des champs (pondérée par FieldSpec.weight)
+          - 10 pts : cohérence des valeurs (prix dans range, années valides…)
+          - 10 pts : santé technique (mojibake, images accessibles)
+        """
+        if not products:
+            return 0, []
+
+        details: List[FieldCoverage] = []
+        total = len(products)
+        score = 0.0
+
+        # --- Taux de réussite (30 pts) ---
+        success_ratio = total / max(1, total_attempted)
+        score += min(1.0, success_ratio) * 30
+
+        # --- Couverture des champs (50 pts répartis par poids du profil) ---
+        total_weight = profile.total_weight() or 1
+        coverage_pts = 50.0
+
+        for field_spec in profile.fields:
+            cov = self._coverage(field_spec.name, products)
+            details.append(cov)
+            field_max = coverage_pts * (field_spec.weight / total_weight)
+
+            if field_spec.name == "prix" and price_absent_expected:
+                score += field_max  # bonus si absence attendue
+                continue
+
+            if cov.coverage > 0:
+                ratio = min(1.0, cov.coverage / max(0.01, field_spec.coverage_threshold))
+                score += field_max * ratio
+
+        # --- Cohérence (10 pts) ---
+        coherence = 0.0
+        if not price_absent_expected:
+            prices = [p["prix"] for p in products if isinstance(p.get("prix"), (int, float))]
+            valid_prices = [pr for pr in prices
+                            if profile.ranges.price_min <= pr <= profile.ranges.price_max]
+            if prices:
+                coherence += (len(valid_prices) / len(prices)) * 5
+            else:
+                coherence += 5
+        else:
+            coherence += 5
+
+        years = [p["annee"] for p in products if isinstance(p.get("annee"), (int, float))]
+        valid_years = [y for y in years
+                       if profile.ranges.year_min <= y <= profile.ranges.year_max]
+        if years:
+            coherence += (len(valid_years) / len(years)) * 5
+        else:
+            coherence += 5
+
+        score += coherence
+
+        # --- Santé technique (10 pts) ---
+        tech = 5.0  # base
+        mojibake = sum(1 for p in products for v in p.values()
+                       if isinstance(v, str) and any(bad in v for bad in ("Ã©", "Ã¨", "Ã ")))
+        if mojibake == 0:
+            tech += 3
+        images = [p.get("image", "") for p in products if p.get("image")]
+        if images:
+            accessible = self._check_images(images[:5])
+            tech += (accessible / max(1, min(5, len(images)))) * 2
+        else:
+            tech += 0
+        score += tech
+
+        return min(100, round(score)), details
+
+    # Conservé pour rétrocompat (ancien scoring auto-only, dépréc.)
     def _score(self, products: List[Dict], total_attempted: int,
                price_absent_expected: bool) -> tuple:
         if not products:
@@ -298,18 +410,107 @@ class ScraperValidator:
     def _build_correction_prompt(self, report: ValidationReport,
                                  generated: GeneratedScraper,
                                  analysis: SiteAnalysis) -> str:
+        """Construit un prompt d'auto-correction. Si le code est trop volumineux,
+        on inclut un sommaire structurel + uniquement les méthodes concernées par
+        les warnings de couverture."""
         issues = "\n".join(f"- {w}" for w in report.warnings + report.errors)
-        sample = json.dumps(report.sample_products[:2], indent=2, ensure_ascii=False, default=str)
+        sample = json.dumps(report.sample_products[:2], indent=2,
+                            ensure_ascii=False, default=str)
+
+        code_bytes = len(generated.code.encode("utf-8"))
+        if code_bytes <= MAX_CODE_INLINE_BYTES:
+            code_block = generated.code
+            mode = "code complet"
+        else:
+            # Code trop gros : extraire structure + méthodes pertinentes
+            code_block = self._summarize_large_code(generated.code, report)
+            mode = f"sommaire (code original = {code_bytes} bytes, > {MAX_CODE_INLINE_BYTES})"
+
+        profile_hint = ""
+        if analysis.domain_profile_key:
+            profile_hint = f"\nDOMAINE: {analysis.domain_profile_key}"
 
         return (
-            f"Tu es un expert en web scraping Python. Le scraper suivant pour "
-            f"{analysis.site_url} a obtenu un score de {report.score}/100.\n\n"
-            f"PROBLÈMES:\n{issues}\n\n"
-            f"ÉCHANTILLON DE PRODUITS:\n{sample}\n\n"
-            f"CODE DU SCRAPER:\n```python\n{generated.code[:8000]}\n```\n\n"
-            f"Corrige le code pour résoudre les problèmes identifiés. "
-            f"Retourne UNIQUEMENT le code Python corrigé, sans explication."
+            f"Tu es un expert en web scraping Python. Le scraper pour "
+            f"{analysis.site_url} a obtenu un score de {report.score}/100.{profile_hint}\n"
+            f"\nPROBLÈMES IDENTIFIÉS:\n{issues}\n"
+            f"\nÉCHANTILLON DES PRODUITS EXTRAITS (ce qui fonctionne déjà):\n"
+            f"{sample}\n"
+            f"\nCODE DU SCRAPER ({mode}):\n```python\n{code_block}\n```\n"
+            f"\nRÈGLES STRICTES:\n"
+            f"  1. Conserver IDENTIQUES la signature de la classe, les attributs SITE_*, "
+            f"     l'héritage et les imports (sauf ajout nécessaire).\n"
+            f"  2. Ne pas ajouter de docstring de >5 lignes.\n"
+            f"  3. Cibler en priorité les champs avec couverture < 50%.\n"
+            f"  4. Si extraction CSS échoue, ajouter fallback JSON-LD ou regex sur le HTML.\n"
+            f"  5. Préserver les méthodes qui fonctionnent (ne pas les réécrire si non listées).\n"
+            f"\nRetourne UNIQUEMENT le code Python complet du fichier corrigé, "
+            f"sans markdown, sans explication."
         )
+
+    def _summarize_large_code(self, code: str, report: ValidationReport) -> str:
+        """Pour les scrapers > 30 KB, on garde la structure (classe, signatures) +
+        les méthodes liées aux champs en faible couverture."""
+        # Champs problématiques (couverture < 60%)
+        weak_fields = {fd.field_name for fd in report.field_details
+                       if fd.coverage < 0.6 and fd.field_name not in ("sourceUrl", "sourceSite")}
+
+        # Mots-clés à chercher dans les méthodes pour les inclure intégralement
+        keywords = {
+            "name": ["extract_from_detail", "_extract_css", "_extract_json_ld"],
+            "prix": ["_parse_price", "_extract_css", "_map_api_product"],
+            "image": ["image_attr", "detail_image", "_extract_css"],
+            "marque": ["_extract_css", "_extract_json_ld"],
+            "modele": ["_extract_css", "_extract_json_ld"],
+            "annee": ["clean_year", "_extract_json_ld"],
+            "kilometrage": ["clean_mileage", "_extract_json_ld"],
+        }
+        wanted_methods = set()
+        for f in weak_fields:
+            wanted_methods.update(keywords.get(f, []))
+        wanted_methods.update(["extract_from_detail_page", "_map_api_product",
+                               "_extract_from_listing_item", "discover_product_urls"])
+
+        lines = code.split("\n")
+        out: List[str] = []
+        in_method = False
+        keep_method = False
+        method_buffer: List[str] = []
+
+        for line in lines:
+            stripped = line.strip()
+            # Toujours garder header de classe + attributs SITE_*
+            if stripped.startswith(("class ", "SITE_", "MAX_", "WORKERS", "HTTP_",
+                                    "API_", "LISTING_PAGES", "PRODUCTS_PER_PAGE",
+                                    "SITEMAP_URL")):
+                out.append(line)
+                continue
+
+            if line.lstrip().startswith("def "):
+                # Flush méthode précédente si on la garde
+                if in_method and keep_method:
+                    out.extend(method_buffer)
+                # Nouvelle méthode
+                method_buffer = [line]
+                in_method = True
+                method_name = line.lstrip()[4:].split("(")[0]
+                keep_method = any(kw in method_name for kw in wanted_methods)
+                continue
+
+            if in_method:
+                method_buffer.append(line)
+            else:
+                out.append(line)
+
+        if in_method and keep_method:
+            out.extend(method_buffer)
+
+        # Limite stricte à 25 KB après filtrage
+        result = "\n".join(out)
+        if len(result.encode("utf-8")) > 25_000:
+            result = result.encode("utf-8")[:25_000].decode("utf-8", errors="ignore")
+            result += "\n# ... [truncated for prompt size]\n"
+        return result
 
     # ------------------------------------------------------------------
     # Health check
@@ -397,3 +598,32 @@ def _sanitize(product: Dict) -> Dict:
         else:
             out[k] = v
     return out
+
+
+def _run_scraper_subprocess(module_name: str, class_name: str,
+                             categories: List[str], conn) -> None:
+    """Exécuté dans un sous-processus séparé pour isoler le scraper.
+    Communique avec le parent via une Connection Pipe."""
+    import importlib as _imp
+    payload: Dict[str, object] = {"products": [], "error": ""}
+    try:
+        module_path = f"scraper_ai.dedicated_scrapers.{module_name}"
+        mod = _imp.import_module(module_path)
+        scraper_class = getattr(mod, class_name)
+        scraper = scraper_class()
+
+        scraper.MAX_WORKERS = 3
+        if hasattr(scraper, "WORKERS"):
+            scraper.WORKERS = 3
+        scraper.HTTP_TIMEOUT = 25
+
+        result = scraper.scrape(categories=categories, inventory_only=False)
+        payload["products"] = result.get("products", [])
+    except Exception as e:
+        import traceback
+        payload["error"] = f"{type(e).__name__}: {str(e)[:500]}\n{traceback.format_exc()[-1500:]}"
+    try:
+        conn.send(payload)
+        conn.close()
+    except Exception:
+        pass

@@ -2,35 +2,123 @@
         return []
 
     def _fetch_all_api_products(self) -> List[Dict]:
+        """Pagine sur l'API interne — supporte GET/POST/GraphQL et cursor/page/offset."""
         all_items = []
-        {{ pagination_init }}
-
-        while True:
-            url = f"{{ api_url }}{{ pagination_url_part }}"
+{% if api_is_graphql %}
+        # --- API GraphQL (POST) ---
+        variables = dict({{ api_graphql_variables|tojson }})
+        cursor = None
+        page = 1
+        max_pages = 200
+        while page <= max_pages:
+            if '{{ api_graphql_pagination_var }}':
+                if '{{ api_graphql_pagination_var }}' in ('after', 'cursor'):
+                    if cursor:
+                        variables['{{ api_graphql_pagination_var }}'] = cursor
+                else:
+                    variables['{{ api_graphql_pagination_var }}'] = page
+            payload = {
+                'query': {{ api_graphql_query|tojson }},
+                'variables': variables,
+            }
+{% if api_graphql_variables.get('operationName') %}
+            payload['operationName'] = '{{ api_graphql_variables.operationName }}'
+{% endif %}
+            try:
+                resp = self.session.post(self.API_ENDPOINT, json=payload,
+                                         headers=self.API_HEADERS, timeout=self.HTTP_TIMEOUT)
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+                if isinstance(data, dict) and 'errors' in data and data['errors']:
+                    break
+{% if items_field %}
+                items = self._extract_path_field(data, '{{ items_field }}') or []
+{% else %}
+                items = data.get('data', data) if isinstance(data, dict) else []
+                if not isinstance(items, list):
+                    items = []
+{% endif %}
+                if not items:
+                    break
+                all_items.extend(items)
+{% if api_next_cursor_field %}
+                next_cursor = self._extract_path_field(data, '{{ api_next_cursor_field }}')
+                has_next = self._extract_path_field(data, '{{ api_has_next_field }}') if '{{ api_has_next_field }}' else bool(next_cursor)
+                if not has_next or not next_cursor or next_cursor == cursor:
+                    break
+                cursor = next_cursor
+{% else %}
+                if len(items) < self.API_PAGE_SIZE:
+                    break
+{% endif %}
+                page += 1
+                time.sleep({{ request_delay }})
+            except Exception:
+                break
+        return all_items
+{% elif api_method == 'POST' %}
+        # --- API REST POST ---
+        body = {{ (api_request_body_json or {})|tojson }}
+        page = 1
+        max_pages = 200
+        while page <= max_pages:
+{% if api_pagination_param %}
+            body['{{ api_pagination_param }}'] = page
+{% endif %}
+            try:
+                resp = self.session.post(self.API_ENDPOINT, json=body,
+                                         headers=self.API_HEADERS, timeout=self.HTTP_TIMEOUT)
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+{% if items_field %}
+                items = self._extract_path_field(data, '{{ items_field }}') or []
+{% else %}
+                items = data if isinstance(data, list) else (data.get('data', data.get('results', data.get('items', []))) if isinstance(data, dict) else [])
+{% endif %}
+                if not isinstance(items, list) or not items:
+                    break
+                all_items.extend(items)
+                if len(items) < self.API_PAGE_SIZE:
+                    break
+                page += 1
+                time.sleep({{ request_delay }})
+            except Exception:
+                break
+        return all_items
+{% else %}
+        # --- API REST GET ---
+        page = 1
+        max_pages = 200
+        while page <= max_pages:
+{% if api_pagination_param %}
+            url = self._build_paginated_url(self.API_ENDPOINT, '{{ api_pagination_param }}', page)
+{% else %}
+            url = self.API_ENDPOINT
+{% endif %}
             try:
                 resp = self.session.get(url, headers=self.API_HEADERS, timeout=self.HTTP_TIMEOUT)
                 if resp.status_code != 200:
                     break
                 data = resp.json()
 {% if items_field %}
-                items = data
-                for key in "{{ items_field }}".split('.'):
-                    items = items.get(key, []) if isinstance(items, dict) else items
+                items = self._extract_path_field(data, '{{ items_field }}') or []
 {% else %}
-                items = data if isinstance(data, list) else data.get('data', data.get('results', data.get('items', [])))
+                items = data if isinstance(data, list) else (data.get('data', data.get('results', data.get('items', []))) if isinstance(data, dict) else [])
 {% endif %}
                 if not isinstance(items, list) or not items:
                     break
                 all_items.extend(items)
-{% if pagination_param %}
-                {{ pagination_increment }}
+{% if not api_pagination_param %}
+                break
+{% else %}
                 if len(items) < self.API_PAGE_SIZE:
                     break
-{% else %}
-                break
-{% endif %}
+                page += 1
                 time.sleep({{ request_delay }})
+{% endif %}
             except Exception:
                 break
-
         return all_items
+{% endif %}
