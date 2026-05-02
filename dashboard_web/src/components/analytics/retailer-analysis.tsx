@@ -63,7 +63,11 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
 
   const refSite = detailleurs.find(d => d.isReference)
   const refEcart = refSite?.agressivite ?? 0
-  const totalCompared = detailleurs.reduce((s, d) => s + d.produitsComparables, 0)
+  // Nombre de produits matchés uniques = nombre de groupes où le site de
+  // référence apparaît avec au moins un concurrent. Aligné avec le compteur
+  // affiché dans la carte « Positionnement de Prix ».
+  const totalCompared = refSite?.produitsComparables
+    ?? Math.max(0, ...detailleurs.map(d => d.produitsComparables))
 
   // Données triées et normalisées pour la liste de barres divergentes
   const rankedRetailers = detailleurs

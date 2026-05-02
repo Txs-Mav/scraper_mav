@@ -4,8 +4,8 @@
  * CACHE_SCRAPING_MODE ("méthode du cache")
  * ─────────────────────────────────────────
  * Quand ACTIVÉ :
- *   - Un cron GitHub Actions scrape tous les sites universels toutes les heures
- *     (étalé par paires sur 60 min), et stocke les produits dans `scraped_site_data`.
+ *   - Un cron horaire scrape tous les sites universels et stocke les produits
+ *     dans `scraped_site_data`.
  *   - "Analyser maintenant" → lecture instantanée depuis le cache pré-scrapé
  *     + comparaison en ~2-5 s → résultat affiché.
  *   - Un bouton secondaire "Forcer un scraping" permet quand même un scraping

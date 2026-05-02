@@ -6,7 +6,7 @@ export interface User {
     id: string
     name: string
     email: string
-    role: 'main' | 'employee' | 'user' | 'owner' | 'member'
+    role: 'main' | 'developer' | 'employee' | 'user' | 'owner' | 'member'
     subscription_plan?: 'standard' | 'pro' | 'ultime'
     /** Source de l'abonnement : stripe = payé, promo = code promo. Si null, plan non confirmé. */
     subscription_source?: 'stripe' | 'promo' | null

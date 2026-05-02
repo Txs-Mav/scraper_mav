@@ -449,6 +449,12 @@ function avgPrice(prods: Product[]): number {
 /**
  * Positionnement de prix : compare le prix de référence aux concurrents
  * uniquement pour les produits matchés (présents sur ≥2 sites).
+ *
+ * Cohérence : on s'appuie sur exactement le même calcul que
+ * `calculateRetailerAnalysis` afin que la carte « Positionnement de Prix »
+ * affiche le même % et le même classement que le tableau « Position de
+ * votre site ». L'écart est pondéré par site (et non par produit) et le
+ * classement est tiré du tri par agressivité.
  */
 export function calculatePricePositioning(
   products: Product[],
@@ -465,15 +471,11 @@ export function calculatePricePositioning(
     }
   }
 
-  const groups = buildMatchedProducts(products, referenceSite)
+  const detailleurs = calculateRetailerAnalysis(products, referenceSite)
+  const comparableDetailleurs = detailleurs.filter(d => d.produitsComparables > 0)
+  const refSite = detailleurs.find(d => d.isReference)
 
-  // Ne garder que les groupes avec au moins 1 produit référence ET 1 concurrent
-  const matched = groups.filter(
-    g => g.referenceProducts.length > 0 && g.competitorProducts.length > 0
-  )
-
-  if (matched.length === 0) {
-    // Pas de produits matchés — soit un seul site, soit pas de correspondances
+  if (!refSite || refSite.produitsComparables === 0) {
     const validProducts = products.filter(p => p.prix > 0 && p.prix < 500000)
     const sites = new Set(validProducts.map(p => normalizeSiteKey(p.sourceSite || p.sourceUrl)))
 
@@ -498,42 +500,37 @@ export function calculatePricePositioning(
     }
   }
 
-  // Pour chaque produit matché, calculer l'écart référence vs moyenne concurrents
-  let totalEcartPct = 0
-  let totalEcartVal = 0
+  // % d'écart de la référence vs moyenne des autres sites (pondéré par site)
+  // — strictement aligné avec la valeur affichée dans RetailerAnalysis.
+  const ecartPourcentage = refSite.agressivite
 
-  for (const g of matched) {
-    const prixRef = avgPrice(g.referenceProducts)
-    const prixComp = avgPrice(g.competitorProducts)
-    if (prixRef > 0 && prixComp > 0) {
-      totalEcartPct += ((prixRef - prixComp) / prixRef) * 100
-      totalEcartVal += prixRef - prixComp
-    }
-  }
-
-  const ecartPourcentage = totalEcartPct / matched.length
-  const ecartValeur = totalEcartVal / matched.length
-
-  // Classement: calculer le prix moyen par site (seulement produits matchés)
+  // Écart moyen en valeur ($) calculé sur la même base : prixRef vs moyenne
+  // des autres sites présents dans chaque groupe matché.
   const normalizedReference = normalizeSiteKey(referenceSite)
-  const sitePriceSums: Record<string, { total: number; count: number }> = {}
-
-  for (const g of matched) {
-    for (const p of g.allProducts) {
-      const site = normalizeSiteKey(p.sourceSite || p.sourceUrl)
-      if (!sitePriceSums[site]) sitePriceSums[site] = { total: 0, count: 0 }
-      sitePriceSums[site].total += p.prix
-      sitePriceSums[site].count++
+  const groups = buildMatchedProducts(products, referenceSite)
+  let valSum = 0
+  let valCount = 0
+  for (const g of groups) {
+    if (g.referenceProducts.length === 0) continue
+    const prixRef = avgPrice(g.referenceProducts)
+    const otherSitePrices: number[] = []
+    for (const [site, prods] of Object.entries(g.competitorsBySite)) {
+      if (site !== normalizedReference && prods.length > 0) {
+        otherSitePrices.push(avgPrice(prods))
+      }
     }
+    if (otherSitePrices.length === 0 || prixRef <= 0) continue
+    const avgOthers = otherSitePrices.reduce((s, v) => s + v, 0) / otherSitePrices.length
+    valSum += prixRef - avgOthers
+    valCount++
   }
+  const ecartValeur = valCount > 0 ? valSum / valCount : 0
 
-  const siteAvgs = Object.entries(sitePriceSums)
-    .map(([site, { total, count }]) => ({ site, avg: total / count }))
-    .sort((a, b) => a.avg - b.avg)
-
-  const indexTrouve = siteAvgs.findIndex(s => s.site === normalizedReference)
-  const classement = indexTrouve >= 0 ? indexTrouve + 1 : 1
-  const totalDetailleurs = Math.max(siteAvgs.length, 1)
+  // Classement = rang dans la liste triée par agressivité (asc), strictement
+  // identique au rang affiché dans le tableau « Position de votre site ».
+  const indexRef = comparableDetailleurs.findIndex(d => d.isReference)
+  const classement = indexRef >= 0 ? indexRef + 1 : 1
+  const totalDetailleurs = Math.max(comparableDetailleurs.length, 1)
 
   let position: 'lowest' | 'average' | 'above'
   if (ecartPourcentage < -2) {
@@ -546,7 +543,7 @@ export function calculatePricePositioning(
 
   const signe = ecartPourcentage >= 0 ? 'supérieur' : 'inférieur'
   const valeurAbs = Math.abs(ecartPourcentage)
-  const message = `Votre prix est ${signe} de ${valeurAbs.toFixed(1)}% à la moyenne des concurrents (basé sur ${matched.length} produit(s) comparable(s)). Classement: ${classement}${getOrdinalSuffix(classement)} sur ${totalDetailleurs} détaillant(s).`
+  const message = `Votre prix est ${signe} de ${valeurAbs.toFixed(1)}% à la moyenne des concurrents (basé sur ${refSite.produitsComparables} produit(s) comparable(s)). Classement: ${classement}${getOrdinalSuffix(classement)} sur ${totalDetailleurs} détaillant(s).`
 
   return {
     position,

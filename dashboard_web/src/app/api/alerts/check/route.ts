@@ -563,9 +563,9 @@ async function triggerAlertScraping(userId: string, config: ScrapingConfig): Pro
   try {
     let ok = false
 
-    // Toujours utiliser compare_from_cache (lecture depuis scraped_site_data)
-    // Le cron GitHub Actions scrape tous les sites toutes les 30 min,
-    // donc on n'a jamais besoin de re-scraper ici.
+    // Toujours utiliser compare_from_cache (lecture depuis scraped_site_data).
+    // Le cron horaire remplit scraped_site_data, donc on n'a pas besoin
+    // de re-scraper ici.
     if (hasBackend()) {
       ok = await triggerCacheAnalysisViaBackend(userId, config)
     } else {
