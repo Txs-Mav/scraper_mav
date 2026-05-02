@@ -144,12 +144,12 @@ class StrategyPlanner:
     # ------------------------------------------------------------------
 
     def _pick_base_class(self, analysis: SiteAnalysis) -> tuple:
-        pt = analysis.platform.platform_type
+        """Choisit la classe de base. Toute plateforme avec `inheritable_scraper_class`
+        est éligible à l'héritage (ex: POWERGO_NEXTJS → MotoplexScraper). Les autres
+        retombent sur DedicatedScraper."""
         inheritable = analysis.platform.inheritable_scraper_class
-
-        if pt == PlatformType.POWERGO_NEXTJS and inheritable:
+        if inheritable:
             return inheritable, f"from .{_to_snake(inheritable)} import {inheritable}"
-
         return "DedicatedScraper", "from .base import DedicatedScraper"
 
     def _sitemap_is_complete(self, analysis: SiteAnalysis) -> bool:

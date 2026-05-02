@@ -1,59 +1,85 @@
+    # ================================================================
+    # PHASE 1 — Découverte d'URLs via pages listing
+    # ================================================================
+
     def discover_product_urls(self, categories: List[str] = None) -> List[str]:
         if categories is None:
-            categories = {{ default_categories|default("['all']") }}
+            categories = {{ default_categories|default("['inventaire', 'occasion']") }}
 
-        all_urls = []
+        all_urls: List[str] = []
+        domain = self.SITE_DOMAIN.replace('www.', '').lower()
+
         for cat_key, config in self.LISTING_PAGES.items():
-            if categories and cat_key not in categories and not any(c in cat_key for c in categories):
+            if not self._category_matches(cat_key, categories):
                 continue
 
             listing_url = config['url']
-            try:
-                resp = self.session.get(listing_url, timeout=self.HTTP_TIMEOUT)
-                if resp.status_code != 200:
-                    continue
-
-                soup = BeautifulSoup(resp.text, 'lxml')
-                total = self._parse_total_products(soup)
-                total_pages = max(1, math.ceil(total / self.PRODUCTS_PER_PAGE)) if total > 0 else 1
-
-                urls = self._extract_urls_from_listing(soup, listing_url)
-                all_urls.extend(urls)
-
-                for page_num in range(2, total_pages + 1):
-                    page_url = self._build_paginated_url(listing_url, '{{ pagination_param }}', page_num)
-                    time.sleep({{ request_delay }})
-                    try:
-                        resp_p = self.session.get(page_url, timeout=self.HTTP_TIMEOUT)
-                        if resp_p and resp_p.status_code == 200:
-                            soup_p = BeautifulSoup(resp_p.text, 'lxml')
-                            all_urls.extend(self._extract_urls_from_listing(soup_p, listing_url))
-                    except Exception:
-                        break
-            except Exception:
+            html = self._fetch_listing_html(listing_url)
+            if not html:
                 continue
 
-        seen = set()
-        return [u for u in all_urls
-                if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
+            soup = BeautifulSoup(html, 'lxml')
+            total = self._parse_total_products(soup)
+            total_pages = max(1, math.ceil(total / self.PRODUCTS_PER_PAGE)) if total > 0 else 1
 
+            all_urls.extend(self._extract_urls_from_listing(soup, listing_url))
+
+{% if pagination_param %}
+            for page_num in range(2, total_pages + 1):
+                page_url = self._build_paginated_url(listing_url, '{{ pagination_param }}', page_num)
+                time.sleep({{ request_delay }})
+                html_p = self._fetch_listing_html(page_url)
+                if not html_p:
+                    break
+                soup_p = BeautifulSoup(html_p, 'lxml')
+                all_urls.extend(self._extract_urls_from_listing(soup_p, listing_url))
+{% endif %}
+
+        # Déduplication + préférence FR sur EN
+        all_urls = self._filter_language_duplicates(all_urls, prefer='fr')
+        seen = set()
+        unique: List[str] = []
+        for u in all_urls:
+            key = u.rstrip('/').lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(u)
+        return unique
 
     def _parse_total_products(self, soup: BeautifulSoup) -> int:
-        el = soup.select_one('.total-products, .result-count, .woocommerce-result-count')
-        if el:
-            m = re.search(r'(\d+)', el.get_text())
+        """Cherche le nombre total de produits dans des conteneurs communs."""
+        candidates = (
+            '.total-products', '.result-count', '.woocommerce-result-count',
+            '.products-count', '[data-total]', '.search-result-count',
+            '.results-count', '.product-count', '.items-count',
+        )
+        for sel in candidates:
+            el = soup.select_one(sel)
+            if not el:
+                continue
+            text = el.get_text(' ', strip=True)
+            m = re.search(r'(\d{1,6})', text.replace(',', '').replace(' ', ''))
             if m:
                 return int(m.group(1))
         return 0
 
     def _extract_urls_from_listing(self, soup: BeautifulSoup, base_url: str) -> List[str]:
-        urls = []
+        """Extrait les URLs produit d'une page listing en filtrant via
+        _is_product_url (rejette /comparer/, /financement/, mailto, etc.)."""
+        urls: List[str] = []
         items = soup.select('{{ item_selector }}')
         for item in items:
             link = item.select_one('{{ link_selector }}')
             if not link:
                 link = item.find('a', href=True)
-            if link and link.get('href'):
-                full = urljoin(base_url, link['href'])
-                urls.append(full)
+            if not link or not link.get('href'):
+                continue
+            href = link['href']
+            if href.startswith(('#', 'javascript:', 'mailto:', 'tel:')):
+                continue
+            full = urljoin(base_url, href)
+            full = self._normalize_url(full)
+            if not self._is_product_url(full):
+                continue
+            urls.append(full)
         return urls

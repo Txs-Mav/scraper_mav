@@ -1,0 +1,149 @@
+{
+  "slug": "adrenalinesports",
+  "site_url": "https://www.adrenalinesports.ca/fr/",
+  "site_name": "AdrÃ©naline Sports | Multi-concessionnaire au QuÃ©bec",
+  "domain_profile_key": "auto",
+  "platform_type": "powergo_nextjs",
+  "price_display_mode": "visible",
+  "strategy": {
+    "discovery_method": "sitemap",
+    "pagination_method": "sitemap_only",
+    "extraction_method": "json_ld",
+    "rendering": "requests",
+    "base_class": "MotoplexScraper",
+    "base_class_import": "from .motoplex import MotoplexScraper",
+    "needs_scrape_override": false,
+    "needs_detail_pages": true,
+    "throttle_config": {
+      "delay": 0.2,
+      "max_workers": 8,
+      "http_timeout": 20
+    },
+    "selected_selectors": {
+      "listing_container": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "listing_item": {
+        "selector": "div.inline-flex.h-full.border",
+        "attribute": "",
+        "reliability": 1.0,
+        "sample_values": []
+      },
+      "listing_link": {
+        "selector": "div.inline-flex.h-full.border a",
+        "attribute": "",
+        "reliability": 1.0,
+        "sample_values": []
+      },
+      "listing_name": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "listing_price": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "listing_image": {
+        "selector": "div.inline-flex.h-full.border img",
+        "attribute": "src",
+        "reliability": 1.0,
+        "sample_values": []
+      },
+      "listing_stock": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_name": {
+        "selector": "h1.flex.flex-col.text-4xl.font-extrabold.uppercase.leading-none.text-main-color",
+        "attribute": "",
+        "reliability": 1.0,
+        "sample_values": [
+          "Regal LS2 2023"
+        ]
+      },
+      "detail_price": {
+        "selector": "div.pg-vehicle-price.flex.items-center.font-bold.text-main-color",
+        "attribute": "",
+        "reliability": 1.0,
+        "sample_values": [
+          "144Â 995Â $Ãpargnez 20Â 000Â $124Â 995Â $"
+        ]
+      },
+      "detail_brand": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_model": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_year": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_mileage": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_vin": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_color": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_image": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_description": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_state": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "detail_specs": {
+        "selector": "",
+        "attribute": "",
+        "reliability": 0.0,
+        "sample_values": []
+      },
+      "image_attr": "src",
+      "extra_fields": {}
+    },
+    "api_config": null,
+    "language": "fr",
+    "warm_up": false,
+    "price_absent_expected": false
+  }
+}

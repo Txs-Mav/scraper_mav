@@ -1,27 +1,22 @@
 """
-Scraper dédié pour {{ site_name }} ({{ site_domain }}).
-Généré par scraper_usine le {{ generation_date }}.
-Stratégie: héritage {{ base_class }} (même plateforme)
+Scraper dédié pour Adrenaline Sports | Multi-concessionnaire au Quebec (adrenalinesports.ca).
+Généré par scraper_usine le 2026-04-30.
+Stratégie: héritage MotoplexScraper (même plateforme)
 """
-{{ base_class_import }}
+from .motoplex import MotoplexScraper
 
 
-class {{ class_name }}({{ base_class }}):
+class AdrenalinesportsScraper(MotoplexScraper):
 
-    SITE_NAME = "{{ site_name }}"
-    SITE_SLUG = "{{ slug }}"
-    SITE_URL = "{{ site_url }}"
-    SITE_DOMAIN = "{{ site_domain }}"
-{% if sitemap_url %}
-    SITEMAP_URL = "{{ sitemap_url }}"
-{% endif %}
-{% if extra_domain %}
-    SITE_DOMAIN_ALT = "{{ extra_domain }}"
-{% endif %}
+    SITE_NAME = "Adrenaline Sports | Multi-concessionnaire au Quebec"
+    SITE_SLUG = "adrenalinesports"
+    SITE_URL = "https://www.adrenalinesports.ca/fr/"
+    SITE_DOMAIN = "adrenalinesports.ca"
+    SITEMAP_URL = "https://www.adrenalinesports.ca/sitemaps/inventory-detail.xml"
 
     # ----------------------------------------------------------------
     # Hooks override-friendly disponibles si besoin (héritage de la
-    # plateforme {{ base_class }} couvre la majorité du cas général) :
+    # plateforme MotoplexScraper couvre la majorité du cas général) :
     #
     #   - _clean_name(name)                  → nettoyage spécifique du nom
     #                                          (suffixes ville, marque dupliquée...)

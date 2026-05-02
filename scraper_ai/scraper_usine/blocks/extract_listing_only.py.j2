@@ -9,7 +9,14 @@
 
         link = item.find('a', href=True)
         if link and link.get('href'):
-            out['sourceUrl'] = urljoin(base_url, link['href'])
+            href = link['href']
+            if href.startswith(('#', 'javascript:', 'mailto:', 'tel:')):
+                return None
+            full = urljoin(base_url, href)
+            full = self._normalize_url(full)
+            if not self._is_product_url(full):
+                return None
+            out['sourceUrl'] = full
 
 {% if name_selector %}
         name_el = item.select_one('{{ name_selector }}')
@@ -37,7 +44,7 @@
             if src:
                 out['image'] = src if src.startswith('http') else urljoin(base_url, src)
 
-        if not out.get('name'):
+        if not out.get('name') or not out.get('sourceUrl'):
             return None
 
         out['sourceSite'] = self.SITE_URL

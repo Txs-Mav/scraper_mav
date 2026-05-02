@@ -37,6 +37,10 @@ from .domain_profiles import (
 )
 from .listing_detector import best_listing, measure_completeness
 from .stealth import stealth_headers, random_user_agent
+from .url_filters import (
+    classify_listing as _classify_listing_helper,
+    classify_state, fix_mojibake, is_product_url_for_site, normalize_url,
+)
 
 ANALYSIS_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache" / "analysis"
 
@@ -292,11 +296,16 @@ class SiteAnalyzer:
             if self._is_excluded_path(path_lower, excluded):
                 continue
 
-            matched = False
-            for kw in nav_keywords:
-                if kw in text_lower or kw in path_lower:
-                    matched = True
-                    break
+            # Si l'URL ressemble déjà à une fiche produit, ce n'est PAS un
+            # listing — on évite ainsi de bouffer des liens "Voir détail" qui
+            # passeraient le filtre keyword-substring.
+            if is_product_url_for_site(
+                link_url, domain=domain,
+                profile=self.profile, platform=analysis.platform,
+            ):
+                continue
+
+            matched = self._matches_nav_keyword(text_lower, path_lower, nav_keywords)
             if matched:
                 listing_candidates.append((link_url, link_text))
 
@@ -311,7 +320,11 @@ class SiteAnalyzer:
 
         max_candidates = min(len(unique_candidates), 25)
         consecutive_zeros = 0
-        max_consecutive_zeros = 8
+        # Quand la plateforme est connue (PowerGO, PrestaShop, Shopify…), on
+        # tolère plus de zéros consécutifs avant de conclure "site SPA". Les
+        # plateformes inconnues gardent un seuil plus bas pour ne pas spammer.
+        platform_known = analysis.platform.platform_type.value not in ("generic",)
+        max_consecutive_zeros = 15 if platform_known else 10
 
         for i, (link_url, link_text) in enumerate(unique_candidates[:max_candidates]):
             self._log(f"    Analyse listing {i+1}/{max_candidates}: {link_url[:80]}...")
@@ -355,14 +368,10 @@ class SiteAnalyzer:
         analysis.sitemap_xml_url = sitemap_xml_url
         self._log(f"    Sitemap : {len(sitemap_urls)} URLs produit, xml={sitemap_xml_url[:60] if sitemap_xml_url else 'none'} ({time.time()-t0:.1f}s)")
 
-    @staticmethod
-    def _is_excluded_path(path: str, excludes: Optional[List[str]] = None) -> bool:
-        # Exclusions par défaut (rétrocompat) si aucune liste fournie
+    def _is_excluded_path(self, path: str, excludes: Optional[List[str]] = None) -> bool:
+        """Vérifie si un chemin est exclu (combine l'exclusion fournie et le profil)."""
         if excludes is None:
-            excludes = [
-                "/contact", "/about", "/blog", "/login", "/account",
-                "/cart", "/panier", "/privacy", "/terms",
-            ]
+            excludes = [p.lower() for p in self.profile.excluded_paths]
         path_lower = path.lower()
         for ex in excludes:
             if ex in path_lower:
@@ -373,16 +382,48 @@ class SiteAnalyzer:
 
         return False
 
+    @staticmethod
+    def _matches_nav_keyword(text: str, path: str, keywords: List[str]) -> bool:
+        """Match un mot-clé sur le texte du lien (libre) ou comme segment du path
+        (entre / et /). Évite les faux positifs type 'neuf' ⊂ 'inventaire-neufs-2024'."""
+        if not keywords:
+            return False
+        # Texte du lien : substring suffit (le lien dit ce qu'il est).
+        for kw in keywords:
+            if kw and kw in text:
+                return True
+        # Path : on exige un segment complet pour éviter 'neuf' ⊂ '/...-neuf-2024-id123'.
+        segments = [s for s in path.split("/") if s]
+        for seg in segments:
+            if seg in keywords:
+                return True
+        return False
+
     def _discover_nav_links(self, soup: BeautifulSoup, base_url: str) -> List[Tuple[str, str]]:
+        """Découvre les liens de navigation en élargissant aux patterns modernes
+        (ARIA, mega-menu, footer-sitemap, drawer mobile)."""
         domain = urlparse(base_url).netloc
         links: List[Tuple[str, str]] = []
         seen = set()
 
-        for a in soup.select("nav a, header a, .menu a, .navbar a, #menu a"):
+        nav_selectors = (
+            "nav a, header a, footer a, aside a, "
+            ".menu a, .navbar a, #menu a, "
+            ".main-menu a, .primary-menu a, .mega-menu a, "
+            ".navigation a, .site-nav a, .top-nav a, "
+            "[role='navigation'] a, [role='menu'] a, [role='menubar'] a, "
+            "[aria-label*='menu' i] a, [aria-label*='navigation' i] a, "
+            "[class*='menu'] a, [class*='nav'] a, [id*='menu'] a"
+        )
+
+        for a in soup.select(nav_selectors):
             href = a.get("href", "")
-            if not href or href.startswith("#") or href.startswith("javascript:"):
+            if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
                 continue
             full = urljoin(base_url, href)
+            full = normalize_url(full, strip_tracking=True)
+            if not full:
+                continue
             if urlparse(full).netloc.replace("www.", "") != domain.replace("www.", ""):
                 continue
             if full not in seen:
@@ -392,19 +433,16 @@ class SiteAnalyzer:
         return links
 
     def _classify_listing(self, text: str, url: str) -> Tuple[str, str]:
-        combined = (text + " " + url).lower()
-        if any(w in combined for w in [
-            "occasion", "used", "usagé", "usages", "pre-owned", "preowned",
-            "certified", "certifié", "/used/", "/usage/", "/occasion/",
-        ]):
-            return "occasion", "vehicules_occasion"
-        if any(w in combined for w in [
-            "neuf", "new", "inventaire", "inventory", "/new/", "/neuf/",
-        ]):
-            return "neuf", "inventaire"
-        if "catalogue" in combined or "catalog" in combined:
-            return "neuf", "catalogue"
-        return "neuf", "inventaire"
+        """Classifie un listing en (etat, source_categorie).
+
+        Délègue à url_filters.classify_listing (source de vérité unique partagée
+        avec le code généré). Les 4 combinaisons valides sont:
+          - ('neuf',          'inventaire')
+          - ('neuf',          'catalogue')
+          - ('occasion',      'vehicules_occasion')
+          - ('demonstrateur', 'vehicules_occasion')
+        """
+        return _classify_listing_helper(text, url)
 
     def _estimate_product_count(self, url: str) -> int:
         try:
@@ -704,16 +742,15 @@ class SiteAnalyzer:
                 urls = []
                 for a in soup.find_all("a", href=True):
                     href = urljoin(lp.url, a["href"])
+                    href = normalize_url(href, strip_tracking=True)
+                    if not href or href == lp.url:
+                        continue
                     if urlparse(href).netloc.replace("www.", "") != domain.replace("www.", ""):
                         continue
-                    if href == lp.url:
-                        continue
-                    path = urlparse(href).path.lower()
-                    if any(kw in path for kw in ["/neuf/", "/occasion/", "/usage/",
-                                                   "/inventory/", "/inventaire/", "/product/",
-                                                   "/vehicle/", "/vehicule/", "/detail/"]):
-                        urls.append(href)
-                    elif re.search(r'/\d+-[a-z]', path) and len(path) > 10:
+                    if is_product_url_for_site(
+                        href, domain=domain,
+                        profile=self.profile, platform=analysis.platform,
+                    ):
                         urls.append(href)
                 if urls:
                     return list(dict.fromkeys(urls))[:5]

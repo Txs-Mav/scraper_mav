@@ -1,32 +1,64 @@
+    # ================================================================
+    # PHASE 1 — Découverte d'URLs via sitemap XML
+    # ================================================================
+
+    # Patterns de catégorie injectés par le générateur.
+    _SITEMAP_CATEGORY_PATTERNS = {
+        'inventaire': ('/neuf/', '/neufs/', '/new/', '/inventaire-neuf/', '/inventaire/'),
+        'occasion':   ('/usage/', '/usages/', '/occasion/', '/occasions/', '/used/',
+                       '/pre-owned/', '/preowned/', '/certified/'),
+    }
+
     def discover_product_urls(self, categories: List[str] = None) -> List[str]:
         if categories is None:
-            categories = ['inventaire', 'occasion']
+            categories = {{ default_categories|default("['inventaire', 'occasion']") }}
 
         raw_urls = self._parse_sitemap_live()
+        if not raw_urls:
+            return []
 
-        # Déduplication intelligente: pour les sites bilingues (EN/FR),
-        # deux URLs peuvent pointer vers le même véhicule (ex: /new/ et /neufs/).
-        # On déduplique par ID de produit en préférant les chemins francophones.
-        _FR_PREFIXES = ('neufs', 'occasion', 'demonstrateurs', 'usages', 'fr')
+        # Filtre 1 : règles _is_product_url (paramétrées par DomainProfile + Plateforme)
+        product_urls = [u for u in raw_urls if self._is_product_url(u)]
+
+        # Filtre 2 : catégories demandées (si patterns disponibles pour le profil)
+        if categories and 'all' not in [c.lower() for c in categories]:
+            wanted_patterns: List[str] = []
+            cats_lower = {c.lower() for c in categories}
+            for cat, patterns in self._SITEMAP_CATEGORY_PATTERNS.items():
+                if cat in cats_lower or any(c in cat for c in cats_lower):
+                    wanted_patterns.extend(patterns)
+            if wanted_patterns:
+                filtered = [u for u in product_urls
+                            if any(p in u.lower() for p in wanted_patterns)]
+                # Si le filtre tue tout, on retombe sur la liste large (le profil
+                # n'a peut-être pas de marqueur catégorie clair pour ce site).
+                if filtered:
+                    product_urls = filtered
+
+        # Filtre 3 : préférer FR sur EN
+        product_urls = self._filter_language_duplicates(product_urls, prefer='fr')
+
+        # Déduplication par ID produit (eDealer/PowerGO ont parfois /fr/.../id123 et
+        # /en/.../id123 pour le même véhicule).
         id_map: Dict[str, str] = {}
-        no_id: list = []
-        for u in raw_urls:
-            m = re.search(r'-id(\d+)', u)
+        no_id: List[str] = []
+        _FR_HINT = ('/fr/', '/neuf', '/usage', '/occasion')
+        for u in product_urls:
+            m = re.search(r'(?:-id|/id)(\d{2,})', u)
             if m:
                 pid = m.group(1)
                 existing = id_map.get(pid)
                 if existing is None:
                     id_map[pid] = u
                 else:
-                    # Préférer le chemin FR si les deux existent
-                    seg = u.lower().split('/')
-                    if any(any(s.startswith(p) for p in _FR_PREFIXES) for s in seg):
+                    if any(h in u.lower() for h in _FR_HINT) and not any(
+                            h in existing.lower() for h in _FR_HINT):
                         id_map[pid] = u
             else:
                 no_id.append(u)
 
         seen = set()
-        result = list(id_map.values())
+        result: List[str] = list(id_map.values())
         for u in no_id:
             k = u.rstrip('/').lower()
             if k not in seen:
@@ -35,22 +67,43 @@
         return result
 
     def _parse_sitemap_live(self) -> List[str]:
-        """Parse le sitemap XML en live à chaque exécution (pas de cache)."""
+        """Récupère les URLs de tous les sitemaps connus (live, pas de cache).
+
+        Étend la liste de candidats aux patterns Yoast (motorcycle-sitemap1.xml,
+        atv-sitemap.xml, inventory-sitemap.xml, etc.) en plus des sitemaps standard.
+        """
         base = self.SITE_URL.rstrip('/')
         parsed = urlparse(base)
-        origin = f"{parsed.scheme}://{parsed.netloc}"
+        origin = f'{parsed.scheme}://{parsed.netloc}'
 
-        candidates = []
+        candidates: List[str] = []
         if hasattr(self, 'SITEMAP_URL') and self.SITEMAP_URL:
             candidates.append(self.SITEMAP_URL)
+        if hasattr(self, 'SITEMAPS') and self.SITEMAPS:
+            try:
+                candidates.extend(list(self.SITEMAPS.values()))
+            except Exception:
+                pass
         candidates += [
             origin + '/sitemaps/inventory-detail.xml',
+            origin + '/sitemap-inventory.xml',
+            origin + '/sitemap_inventory.xml',
+            origin + '/inventory-sitemap.xml',
+            origin + '/inventory-sitemap1.xml',
+            origin + '/inventory-sitemap2.xml',
+            origin + '/motorcycle-sitemap.xml',
+            origin + '/motorcycle-sitemap1.xml',
+            origin + '/motorcycle-sitemap2.xml',
+            origin + '/atv-sitemap.xml',
+            origin + '/power-equipment-sitemap.xml',
+            origin + '/vehicle-sitemap.xml',
             origin + '/sitemap.xml',
+            origin + '/sitemap_index.xml',
             origin + '/robots.txt',
         ]
 
-        product_urls = []
-        seen_sitemaps = set()
+        product_urls: List[str] = []
+        seen_sitemaps: set = set()
 
         for sitemap_url in candidates:
             if sitemap_url in seen_sitemaps:
@@ -65,7 +118,7 @@
                     for line in resp.text.splitlines():
                         if line.strip().lower().startswith('sitemap:'):
                             sm = line.split(':', 1)[1].strip()
-                            if sm not in seen_sitemaps:
+                            if sm and sm not in seen_sitemaps:
                                 candidates.append(sm)
                     continue
 
@@ -90,10 +143,8 @@
                     loc = url_tag.find('loc')
                     if loc:
                         u = loc.text.strip()
-                        # Exclure les pages non-produits communes aux plateformes eDealer
-                        if any(x in u for x in ('-pdf', '-brochure', '/compare', '/search')):
-                            continue
-                        product_urls.append(u)
+                        if u:
+                            product_urls.append(u)
             except Exception:
                 continue
 

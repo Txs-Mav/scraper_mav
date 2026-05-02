@@ -130,7 +130,7 @@ def main():
         print(f"🔔 ALERT CRON — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
         print(f"{'='*60}")
         print(f"⏭️  MODE CACHE ACTIVÉ — scraping par utilisateur désactivé")
-        print(f"   Le scraper_cron.py gère le scraping centralisé (toutes les 30 min)")
+        print(f"   Le scraper_cron.py gère le scraping centralisé (toutes les heures)")
         print(f"   Les utilisateurs récupèrent les données depuis scraped_site_data")
         print(f"{'='*60}\n")
         return

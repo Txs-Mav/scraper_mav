@@ -1,84 +1,170 @@
-    def _parse_price(self, text: str) -> Optional[float]:
+    # ================================================================
+    # Helpers — délégués au module partagé _usine_helpers
+    # (source de vérité unique entre Phase 1 d'analyse et code généré)
+    # ================================================================
+
+    # Règles "URL produit" injectées par le générateur (DomainProfile +
+    # PlatformRecipe). Recompilées en regex au premier appel.
+    _IS_PRODUCT_URL_EXCLUDED_PATHS = {{ is_product_url_excluded|default([])|tojson }}
+    _IS_PRODUCT_URL_DETAIL_PATTERNS = {{ is_product_url_patterns|default([])|tojson }}
+    _IS_PRODUCT_URL_EXTRA_SIGNALS = {{ is_product_url_signals|default([])|tojson }}
+
+    # Alias bidirectionnels entre catégories logiques et clés de LISTING_PAGES.
+    _CATEGORY_ALIASES = {
+        'inventaire': ('inventaire', 'neuf', 'neufs', 'new'),
+        'occasion':   ('occasion', 'occasions', 'usage', 'usages', 'used', 'pre-owned'),
+        'catalogue':  ('catalogue', 'catalog', 'showroom'),
+    }
+
+    def _category_matches(self, cat_key: str, requested) -> bool:
+        """True si cat_key correspond à au moins une des catégories demandées
+        (ou si requested est vide)."""
+        if not requested:
+            return True
+        cat_lower = (cat_key or '').lower()
+        for r in requested:
+            r_lower = (r or '').lower()
+            if r_lower == cat_lower or r_lower == 'all':
+                return True
+            for canon, aliases in self._CATEGORY_ALIASES.items():
+                if r_lower in aliases and cat_lower in aliases:
+                    return True
+        return False
+
+    def _is_product_url(self, url: str) -> bool:
+        """Filtre une URL: fiche produit (True) ou page de service/contact/etc (False).
+        Paramétré par DomainProfile + PlatformRecipe au moment de la génération."""
+        from ._usine_helpers import is_product_url
+        return is_product_url(
+            url,
+            domain=self.SITE_DOMAIN,
+            excluded_paths=self._IS_PRODUCT_URL_EXCLUDED_PATHS,
+            detail_url_patterns=self._IS_PRODUCT_URL_DETAIL_PATTERNS,
+            extra_path_signals=self._IS_PRODUCT_URL_EXTRA_SIGNALS,
+        )
+
+    def _parse_price(self, text):
+        """Parse un prix depuis du texte. Délègue à base.clean_price (bornes
+        PRICE_MIN/PRICE_MAX cohérentes avec le reste du code)."""
         if not text:
             return None
-        text = text.strip()
-        skip_patterns = [
+        text = str(text).strip()
+        skip_patterns = (
             'prix sur demande', 'call for price', 'appelez', 'contactez',
             'nous contacter', 'request a quote', 'sur demande',
-        ]
-        if any(p in text.lower() for p in skip_patterns):
+            'price on request', 'a partir de', 'à partir de', 'starting at',
+        )
+        low = text.lower()
+        if any(p in low for p in skip_patterns):
             return None
-
         text = re.sub(r'<[^>]+>', '', text)
-        text = re.sub(r'PDSF|MSRP|Prix\s*:', '', text, flags=re.IGNORECASE)
-
-        prices = re.findall(r'[\d\s,.]+', text.replace('\xa0', ' '))
-        for raw in prices:
-            cleaned = raw.strip().replace(' ', '').replace(',', '').replace('\xa0', '')
-            if '.' in cleaned:
-                parts = cleaned.split('.')
-                if len(parts[-1]) > 2:
-                    cleaned = cleaned.replace('.', '')
-            try:
-                val = float(cleaned)
-                if 100 <= val <= 500000:
-                    return val
-            except (ValueError, TypeError):
-                continue
+        text = re.sub(r'PDSF|MSRP|Prix\s*:|Price\s*:', '', text, flags=re.IGNORECASE)
+        amounts = re.findall(r'[\d][\d\s,.]+', text.replace('\xa0', ' '))
+        for raw in amounts:
+            parsed = self.clean_price(raw)
+            if parsed:
+                return parsed
         return None
 
     def _classify_state(self, product: Dict) -> str:
-        signals = ' '.join([
+        """Détecte 'neuf' | 'occasion' | 'demonstrateur' depuis les signaux d'un
+        produit (name, sourceUrl, sourceCategorie, etat existant).
+
+        Enrichit aussi 'sourceCategorie' si absente (in-place) avec une des
+        valeurs : 'inventaire' | 'vehicules_occasion' | 'catalogue'.
+        """
+        from ._usine_helpers import classify_listing
+        text_blob = ' '.join([
             str(product.get('name', '')),
-            str(product.get('sourceUrl', '')),
             str(product.get('sourceCategorie', '')),
             str(product.get('etat', '')),
-        ]).lower()
-
-        if any(w in signals for w in ['occasion', 'used', 'usagé', 'usages', 'pre-owned', 'préowned']):
-            return 'occasion'
-        if any(w in signals for w in ['demo', 'démo', 'demonstrateur', 'démonstrateur']):
-            return 'demonstrateur'
-        if any(w in signals for w in ['liquidation', 'clearance']):
-            return 'neuf'
-        return 'neuf'
+        ])
+        url = str(product.get('sourceUrl', ''))
+        etat, source_cat = classify_listing(text_blob, url)
+        if not product.get('sourceCategorie'):
+            product['sourceCategorie'] = source_cat
+        return etat
 
     @staticmethod
     def _build_paginated_url(base_url: str, param: str, value) -> str:
         """Construit une URL avec pagination URL-safe (préserve query params existants)."""
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-        if not param:
-            return base_url
-        parsed = urlparse(base_url)
-        qs = parse_qs(parsed.query, keep_blank_values=True)
-        qs[param] = [str(value)]
-        return urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
+        from ._usine_helpers import build_paginated_url
+        return build_paginated_url(base_url, param, value)
 
     @staticmethod
     def _extract_path_field(data, path: str):
-        """Extrait une valeur depuis un dict imbriqué via un chemin pointé (ex: 'data.items')."""
-        if not path:
-            return data
-        cur = data
-        for key in path.split('.'):
-            if isinstance(cur, dict):
-                cur = cur.get(key)
-            elif isinstance(cur, list):
-                try:
-                    cur = cur[int(key)]
-                except (ValueError, IndexError):
+        """Extrait une valeur depuis un dict imbriqué via un chemin pointé."""
+        from ._usine_helpers import extract_path_field
+        return extract_path_field(data, path)
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        """Enlève fragment + tracking params (utm_*, gclid, fbclid…)."""
+        from ._usine_helpers import normalize_url
+        return normalize_url(url, strip_tracking=True)
+
+    @staticmethod
+    def _filter_language_duplicates(urls, prefer: str = 'fr'):
+        """Si /fr/ et /en/ existent, garde seulement la langue préférée."""
+        from ._usine_helpers import filter_language_duplicates
+        return filter_language_duplicates(urls, prefer=prefer)
+
+    # Activé par le générateur si rendering=PLAYWRIGHT pour la découverte de
+    # listings (sites SPA dont le HTML brut est vide).
+    USE_PLAYWRIGHT_FOR_DISCOVERY = {{ use_playwright_for_discovery|default(False)|tojson }}
+
+    def _fetch_listing_html(self, url: str):
+        """Récupère le HTML d'une page listing. Utilise Playwright si la
+        stratégie l'exige (USE_PLAYWRIGHT_FOR_DISCOVERY=True), sinon requests."""
+        if not self.USE_PLAYWRIGHT_FOR_DISCOVERY:
+            try:
+                resp = self.session.get(url, timeout=self.HTTP_TIMEOUT)
+                if resp.status_code != 200:
                     return None
-            else:
+                return resp.text
+            except Exception:
                 return None
-            if cur is None:
+
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            try:
+                resp = self.session.get(url, timeout=self.HTTP_TIMEOUT)
+                if resp.status_code != 200:
+                    return None
+                return resp.text
+            except Exception:
                 return None
-        return cur
+
+        try:
+            if not hasattr(self, '_pw_listing'):
+                self._pw_listing = sync_playwright().start()
+                self._pw_listing_browser = self._pw_listing.chromium.launch(headless=True)
+                self._pw_listing_ctx = self._pw_listing_browser.new_context(
+                    user_agent=self.session.headers.get('User-Agent', ''),
+                    locale='fr-CA',
+                )
+            page = self._pw_listing_ctx.new_page()
+            try:
+                page.goto(url, timeout=20000, wait_until='networkidle')
+            except Exception:
+                try:
+                    page.goto(url, timeout=20000, wait_until='domcontentloaded')
+                    page.wait_for_timeout(3000)
+                except Exception:
+                    page.close()
+                    return None
+            html = page.content()
+            page.close()
+            return html
+        except Exception:
+            return None
 
     def _is_soft_404(self, soup: BeautifulSoup) -> bool:
         title = soup.find('title')
         if title:
             t = title.get_text(strip=True).lower()
-            if any(w in t for w in ['404', 'introuvable', 'not found', 'page removed', 'erreur']):
+            if any(w in t for w in ('404', 'introuvable', 'not found', 'page removed', 'erreur')):
                 return True
         body_text = soup.get_text(separator=' ', strip=True)
         if len(body_text) < 500:
@@ -86,12 +172,14 @@
         h1 = soup.find('h1')
         if h1:
             h1_text = h1.get_text(strip=True).lower()
-            if any(w in h1_text for w in ['404', 'not found', 'introuvable', 'page non trouvée']):
+            if any(w in h1_text for w in ('404', 'not found', 'introuvable', 'page non trouvée')):
                 return True
         return False
 {% if warm_up %}
 
     def _warm_session(self):
+        """Visite la page d'accueil pour récupérer cookies/session avant les
+        requêtes de listing/détail."""
         try:
             self.session.get(self.SITE_URL, timeout=15)
         except Exception:
@@ -99,14 +187,14 @@
 {% endif %}
 {% if needs_mojibake_fix %}
 
+    @staticmethod
+    def _fix_mojibake_dict(out: Dict) -> None:
+        """Corrige le mojibake UTF-8 (Ã©→é, etc.) sur toutes les valeurs string
+        d'un dict. Utilise encode('latin-1').decode('utf-8') quand possible."""
+        from ._usine_helpers import fix_mojibake_dict
+        fix_mojibake_dict(out)
+
+    # Alias pour compat avec les templates existants.
     def _fix_mojibake(self, out: Dict) -> None:
-        fixes = [
-            ('Ã©', 'é'), ('Ã¨', 'è'), ('Ãª', 'ê'), ('Ã\xa0', 'à'),
-            ('Ã®', 'î'), ('Ã´', 'ô'), ('Ã¹', 'ù'), ('Ã§', 'ç'),
-            ('Ã‰', 'É'), ('Ã€', 'À'), ('\xe2\x80\x99', "'"), ('\xe2\x80\x94', '—'),
-        ]
-        for key in list(out.keys()):
-            if isinstance(out[key], str):
-                for bad, good in fixes:
-                    out[key] = out[key].replace(bad, good)
+        self._fix_mojibake_dict(out)
 {% endif %}

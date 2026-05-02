@@ -17,8 +17,10 @@ Thumbs.db
 # Logs
 scraper_logs/
 
-# Cache
-scraper_cache/
+# Cache : analyses + rapports + batches volumineux ignorés ; strategies trackées
+# (les fichiers strategies/<slug>_strategy.json servent au validator --check)
+scraper_cache/*
+!scraper_cache/strategies/
 
 # Password backups (manage_client_password.py)
 tools/.password_backups/

@@ -21,10 +21,12 @@ from .models import (
     ScrapingStrategy, SiteAnalysis,
 )
 from .domain_profiles import get_profile
+from .url_filters import build_is_product_url_rules
 
 BLOCKS_DIR = Path(__file__).parent / "blocks"
 DEDICATED_DIR = Path(__file__).resolve().parent.parent / "dedicated_scrapers"
 GENERATED_REGISTRY_PATH = DEDICATED_DIR / "_generated_registry.py"
+STRATEGIES_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache" / "strategies"
 
 
 class ScraperCodeGenerator:
@@ -58,6 +60,7 @@ class ScraperCodeGenerator:
         self._log(f"Scraper généré : {file_path}")
 
         self._update_generated_registry(slug, module_name, class_name, analysis.domain)
+        self._persist_strategy(slug, analysis, strategy)
 
         return GeneratedScraper(
             slug=slug,
@@ -88,8 +91,15 @@ class ScraperCodeGenerator:
                     "sourceCategorie": lp.source_categorie,
                 }
 
-        pagination_param = analysis.platform.default_pagination_param or "page"
-        pagination_pattern = f"?{pagination_param}={{page_num}}"
+        # On n'émet pagination_param que pour les stratégies qui paginent par
+        # query string (LISTING + QUERY_PARAM). Pour SITEMAP/API/SCROLL_INTERCEPT,
+        # le param n'est pas utilisé → on évite le code mort.
+        if (strategy.discovery_method == DiscoveryMethod.LISTING
+                and strategy.pagination_method == PaginationMethod.QUERY_PARAM):
+            pagination_param = analysis.platform.default_pagination_param or "page"
+        else:
+            pagination_param = analysis.platform.default_pagination_param or ""
+        pagination_pattern = f"?{pagination_param}={{page_num}}" if pagination_param else ""
 
         css_field_map = {
             "name": "detail_name",
@@ -172,6 +182,14 @@ class ScraperCodeGenerator:
         site_name = analysis.site_name or analysis.domain
         site_name = _fix_mojibake(site_name)
 
+        # Règles _is_product_url paramétrées par le profil métier + plateforme.
+        # Le template helpers.py.j2 les compile en regex au runtime.
+        url_rules = build_is_product_url_rules(profile, analysis.platform)
+
+        # Catégories par défaut pour discover_product_urls() — sérialisées en
+        # littéral Python pour le template Jinja.
+        default_cats_repr = repr(profile.default_categories or ["all"])
+
         return {
             "site_name": site_name,
             "site_domain": analysis.domain,
@@ -235,6 +253,19 @@ class ScraperCodeGenerator:
 
             "extra_domain": "",
             "iframe_src": analysis.iframe_src or "",
+
+            # Règles _is_product_url injectées dans helpers.py.j2 (DomainProfile + Plateforme)
+            "is_product_url_excluded": url_rules["excluded_paths"],
+            "is_product_url_patterns": url_rules["detail_url_patterns"],
+            "is_product_url_signals": url_rules["extra_path_signals"],
+            "default_categories": default_cats_repr,
+
+            # Si discovery LISTING + rendering PLAYWRIGHT, _fetch_listing_html
+            # utilisera Playwright pour récupérer les pages listing (SPA).
+            "use_playwright_for_discovery": (
+                strategy.discovery_method == DiscoveryMethod.LISTING
+                and strategy.rendering == RenderingMethod.PLAYWRIGHT
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -392,6 +423,34 @@ class ScraperCodeGenerator:
         self._log(f"Registry mis à jour : {slug} -> {class_name}")
 
         self._ensure_registry_import()
+
+    def _persist_strategy(self, slug: str, analysis: SiteAnalysis,
+                          strategy: ScrapingStrategy) -> None:
+        """Persiste la stratégie de scraping dans scraper_cache/strategies/.
+        Permet au validator (--check) de scorer un site avec le contexte
+        d'origine (price_absent_expected, base_class, etc.)."""
+        try:
+            STRATEGIES_DIR.mkdir(parents=True, exist_ok=True)
+            from dataclasses import asdict
+            from .models import _to_serializable
+            payload = {
+                "slug": slug,
+                "site_url": analysis.site_url,
+                "site_name": analysis.site_name,
+                "domain_profile_key": analysis.domain_profile_key,
+                "platform_type": analysis.platform.platform_type.value,
+                "price_display_mode": analysis.price_display_mode.value,
+                "strategy": _to_serializable(asdict(strategy)),
+            }
+            import json
+            path = STRATEGIES_DIR / f"{slug}_strategy.json"
+            path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False, default=str),
+                encoding="utf-8",
+            )
+            self._log(f"Stratégie persistée : {path}")
+        except Exception as e:
+            self._log(f"Erreur persistance stratégie: {type(e).__name__}: {e}")
 
     def _ensure_registry_import(self) -> None:
         registry_path = DEDICATED_DIR / "registry.py"

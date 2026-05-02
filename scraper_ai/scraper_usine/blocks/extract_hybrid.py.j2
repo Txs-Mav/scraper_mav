@@ -17,7 +17,7 @@
 
 {% if needs_mojibake_fix %}
         if out:
-            self._fix_mojibake(out)
+            self._fix_mojibake_dict(out)
 {% endif %}
 
         if not out.get('image'):

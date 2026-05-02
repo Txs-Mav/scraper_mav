@@ -1,5 +1,5 @@
 """
-Scraping automatique — exécuté par GitHub Actions toutes les heures.
+Scraping automatique — exécuté toutes les heures par le backend.
 
 Stratégie :
   - Le cron tourne toutes les heures
@@ -7,6 +7,16 @@ Stratégie :
   - TOUS les sites scrapés en parallèle (8 workers max)
   - Durée totale ≈ durée du site le plus lent (~16 min) au lieu de la somme
   - 2 rounds de retry en parallèle après le scraping principal
+
+Sharding (batches de 20 par défaut) :
+  - Sans flag, le script tourne en mode ORCHESTRATEUR : il lit tous les
+    `shared_scrapers` actifs triés par site_slug et, si on a > BATCH_SIZE
+    sites, il spawn un sous-processus de lui-même par tranche de 20 sites
+    (--batch-index 0, 1, 2 ...) et attend qu'ils terminent.
+  - Avec --batch-index N, il tourne en mode WORKER : il scrape uniquement
+    la tranche [N*BATCH_SIZE : (N+1)*BATCH_SIZE] des sites triés et n'écrit
+    PAS le cron lock ni les comparaisons utilisateurs (ces deux étapes sont
+    gérées une seule fois par l'orchestrateur).
 
 Règle de persistance :
   - Succès  → UPSERT complet (products, product_count, status, scraped_at)
@@ -18,7 +28,10 @@ Variables d'environnement requises :
   SUPABASE_SERVICE_ROLE_KEY — Clé service role (bypass RLS)
 """
 
+import argparse
+import math
 import os
+import subprocess
 import sys
 import signal
 import time
@@ -43,6 +56,9 @@ from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 STALE_THRESHOLD_MINUTES = 55
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45
+
+DEFAULT_BATCH_SIZE = 20
+BATCH_WORKER_TIMEOUT_SECONDS = 60 * 60
 
 KNOWN_LARGE_DOMAINS = {
     'motosillimitees.com',    # ~1900 produits, ~15 min
@@ -355,7 +371,136 @@ def _run_user_comparisons(supabase, supabase_url: str, supabase_key: str):
             _log(f"   ❌ User {uid[:8]}... — {e}")
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Cron de scraping centralisé")
+    parser.add_argument(
+        "--batch-index",
+        type=int,
+        default=None,
+        help=(
+            "Index de la tranche à scraper (0-based). Si fourni, le script "
+            "tourne en mode worker : pas de cron lock, pas de comparaisons."
+        ),
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Nombre maximal de sites par batch (défaut : {DEFAULT_BATCH_SIZE}).",
+    )
+    return parser.parse_args()
+
+
+def _read_active_sites(supabase) -> list:
+    """Lit tous les shared_scrapers actifs, triés par site_slug (ordre stable).
+
+    Le tri par site_slug garantit qu'un même site retombe toujours dans le
+    même batch tant que la liste ne change pas — utile pour le debug et
+    pour limiter le « churn » entre runs successifs.
+    """
+    for attempt in range(3):
+        try:
+            result = (
+                supabase.table("shared_scrapers")
+                .select("id, site_name, site_slug, site_url, site_domain, scraper_module")
+                .eq("is_active", True)
+                .order("site_slug")
+                .execute()
+            )
+            return result.data or []
+        except Exception as e:
+            if attempt < 2:
+                _log(f"⚠️  Supabase pas prêt (tentative {attempt+1}/3): {e}")
+                time.sleep(10 * (attempt + 1))
+            else:
+                raise
+    return []
+
+
+def _enrich_with_product_count(supabase, sites: list) -> None:
+    """Enrichit chaque site avec son product_count cache pour le tri par taille."""
+    if not sites:
+        return
+    try:
+        domains = [s["site_domain"] for s in sites]
+        cached = (
+            supabase.table("scraped_site_data")
+            .select("site_domain, product_count")
+            .in_("site_domain", domains)
+            .execute()
+        )
+        pc_map = {r["site_domain"]: r.get("product_count", 0) or 0 for r in (cached.data or [])}
+        for site in sites:
+            site["_known_product_count"] = pc_map.get(site["site_domain"], 0)
+    except Exception as e:
+        _log(f"⚠️  Erreur lecture product_count: {e}")
+
+
+def _scrape_sites(
+    supabase,
+    supabase_url: str,
+    supabase_key: str,
+    sites_subset: list,
+    batch_label: str,
+) -> bool:
+    """Pipeline de scraping pour une liste de sites (filtrage stale + scrape)."""
+    _enrich_with_product_count(supabase, sites_subset)
+    sites_subset.sort(key=lambda s: s.get("_known_product_count", 0), reverse=True)
+
+    print(f"\n📋 {batch_label} : {len(sites_subset)} sites à examiner")
+
+    sites = _get_stale_sites(supabase, sites_subset)
+    if not sites:
+        print(f"✅ {batch_label} : tous les {len(sites_subset)} sites sont à jour")
+        return True
+
+    print(f"🔧 {batch_label} : {len(sites)}/{len(sites_subset)} sites à scraper\n")
+    return _run_scraping(supabase_url, supabase_key, sites)
+
+
+def _spawn_batch_workers(num_batches: int, batch_size: int) -> bool:
+    """Lance N sous-processus du script (mode worker) en parallèle.
+
+    Chaque worker lit lui-même la liste des sites actifs et ne traite que sa
+    tranche. Les workers héritent de stdout/stderr → leurs logs apparaissent
+    dans la sortie de l'orchestrateur.
+    Retourne True si au moins un worker s'est terminé proprement (rc==0).
+    """
+    procs: list[tuple[int, subprocess.Popen]] = []
+    for i in range(num_batches):
+        cmd = [
+            sys.executable, "-u", str(Path(__file__).resolve()),
+            "--batch-index", str(i),
+            "--batch-size", str(batch_size),
+        ]
+        _log(f"🧵 Spawn batch worker #{i} (size={batch_size})")
+        proc = subprocess.Popen(cmd, env=os.environ.copy())
+        procs.append((i, proc))
+
+    any_success = False
+    deadline = time.time() + BATCH_WORKER_TIMEOUT_SECONDS
+    for idx, proc in procs:
+        remaining = max(1, int(deadline - time.time()))
+        try:
+            rc = proc.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            _log(f"⏰ Batch worker #{idx} timeout — kill")
+            proc.kill()
+            try:
+                rc = proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                rc = -1
+        if rc == 0:
+            any_success = True
+            _log(f"✅ Batch worker #{idx} terminé proprement")
+        else:
+            _log(f"⚠️  Batch worker #{idx} terminé avec rc={rc}")
+    return any_success
+
+
 def main():
+    args = _parse_args()
+
     supabase_url = os.environ.get("SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -365,70 +510,71 @@ def main():
 
     supabase = create_client(supabase_url, supabase_key)
 
+    if args.batch_index is not None:
+        _run_batch_worker(supabase, supabase_url, supabase_key, args.batch_index, args.batch_size)
+    else:
+        _run_orchestrator(supabase, supabase_url, supabase_key, args.batch_size)
+
+
+def _run_batch_worker(
+    supabase, supabase_url: str, supabase_key: str,
+    batch_index: int, batch_size: int,
+):
+    """Mode worker : ne traite que la tranche [batch_index] de la liste triée.
+
+    N'écrit PAS le cron lock et ne lance PAS les comparaisons : ces deux
+    étapes sont du ressort de l'orchestrateur qui a spawn ce worker.
+    """
+    label = f"BATCH #{batch_index}"
+    print(f"\n{'='*70}")
+    print(f"🔄 {label} — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"{'='*70}")
+
+    all_sites = _read_active_sites(supabase)
+    start = batch_index * batch_size
+    end = start + batch_size
+    my_sites = all_sites[start:end]
+
+    if not my_sites:
+        print(f"✅ {label} : tranche vide ({start}:{end} sur {len(all_sites)} sites)")
+        return
+
+    had_success = _scrape_sites(supabase, supabase_url, supabase_key, my_sites, label)
+    sys.exit(0 if had_success else 1)
+
+
+def _run_orchestrator(
+    supabase, supabase_url: str, supabase_key: str, batch_size: int,
+):
+    """Mode orchestrateur : pose le lock, dispatche, lance les comparaisons."""
     print(f"\n{'='*70}")
     print(f"🔄 SCRAPER CRON — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"   Intervalle : toutes les heures, scrape si stale >{STALE_THRESHOLD_MINUTES} min")
-    print(f"   Tous les sites en parallèle ({MAX_CONCURRENT_SITES} workers max)")
+    print(f"   Batch size : {batch_size} sites/action")
     print(f"{'='*70}")
 
     _set_cron_lock(supabase_url, supabase_key, "running")
 
     should_compare = False
     try:
-        # ── 1. Lire tous les shared_scrapers actifs (avec retry si Supabase cold start) ──
-        all_sites = []
-        for attempt in range(3):
-            try:
-                result = (
-                    supabase.table("shared_scrapers")
-                    .select("id, site_name, site_slug, site_url, site_domain, scraper_module")
-                    .eq("is_active", True)
-                    .order("site_slug")
-                    .execute()
-                )
-                all_sites = result.data or []
-                break
-            except Exception as e:
-                if attempt < 2:
-                    _log(f"⚠️  Supabase pas prêt (tentative {attempt+1}/3): {e}")
-                    time.sleep(10 * (attempt + 1))
-                else:
-                    raise
-
+        all_sites = _read_active_sites(supabase)
         if not all_sites:
             print("✅ Aucun scraper universel actif trouvé")
+            should_compare = False
             return
 
-        print(f"\n📋 {len(all_sites)} sites universels actifs")
+        total = len(all_sites)
+        num_batches = math.ceil(total / batch_size)
+        print(f"\n📋 {total} scrapers actifs → {num_batches} batch(es) de ≤{batch_size}")
 
-        # ── 1b. Enrichir avec le product_count connu (pour le batching) ──
-        try:
-            domains = [s["site_domain"] for s in all_sites]
-            cached = (
-                supabase.table("scraped_site_data")
-                .select("site_domain, product_count")
-                .in_("site_domain", domains)
-                .execute()
+        if num_batches <= 1:
+            had_success = _scrape_sites(
+                supabase, supabase_url, supabase_key, all_sites, "BATCH #0",
             )
-            pc_map = {r["site_domain"]: r.get("product_count", 0) or 0 for r in (cached.data or [])}
-            for site in all_sites:
-                site["_known_product_count"] = pc_map.get(site["site_domain"], 0)
-            all_sites.sort(key=lambda s: s["_known_product_count"], reverse=True)
-        except Exception as e:
-            _log(f"⚠️  Erreur lecture product_count: {e}")
-
-        # ── 2. Filtrer : ne garder que les sites "stale" (>50 min ou en erreur) ──
-        sites = _get_stale_sites(supabase, all_sites)
-
-        if not sites:
-            print(f"✅ Tous les {len(all_sites)} sites sont à jour — rien à scraper")
-            should_compare = True
-            return
-
-        print(f"🔧 {len(sites)}/{len(all_sites)} sites à scraper (stale ou manquants)\n")
-
-        had_success = _run_scraping(supabase_url, supabase_key, sites)
-        should_compare = had_success
+            should_compare = had_success
+        else:
+            print(f"🚀 Spawn de {num_batches} workers parallèles (chacun avec ses {MAX_CONCURRENT_SITES} threads)\n")
+            should_compare = _spawn_batch_workers(num_batches, batch_size)
 
     finally:
         _set_cron_lock(supabase_url, supabase_key, "idle")

@@ -45,6 +45,8 @@ class JobState:
     start_time: float = field(default_factory=time.time)
 
 jobs: dict[str, JobState] = {}
+cron_job_id: str | None = None
+cron_job_lock = threading.Lock()
 
 COMPLETION_PATTERNS = [
     "✅ SCRAPING TERMINÉ!",
@@ -104,6 +106,17 @@ def _cleanup_old_jobs():
         del jobs[jid]
 
 
+def _process_is_running(pid: int | None) -> bool:
+    """Return whether a child process still exists."""
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
@@ -129,6 +142,33 @@ class AnalyzeRequest(BaseModel):
     userId: str
     url: str
     forceRefresh: bool = False
+
+
+class PendingScraperTestRequest(BaseModel):
+    """Lance un test live d'un scraper en attente de validation."""
+    slug: str
+    sampleLimit: int = 10
+    categories: list[str] | None = None
+
+
+class ScraperUsineRunRequest(BaseModel):
+    """Génère un nouveau scraper dédié pour une URL via scraper_usine."""
+    url: str
+    dryRun: bool = False
+    forcePlaywright: bool = False
+    publishThreshold: int = 95
+
+
+class ScraperUsineBatchRequest(BaseModel):
+    """Génère plusieurs scrapers en série depuis une liste d'URLs.
+
+    Une URL = un scraper. Le job tourne en arrière-plan, l'admin sonde les
+    logs via le même endpoint que pour un run unique (/scraper/logs).
+    """
+    urls: list[str]
+    dryRun: bool = False
+    forcePlaywright: bool = False
+    publishThreshold: int = 95
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +238,67 @@ async def scraper_run(body: ScraperRunRequest):
         "urls": all_urls,
         "referenceUrl": body.referenceUrl,
     }
+
+
+@app.post("/cron/scrape", dependencies=[Depends(verify_secret)])
+async def cron_scrape():
+    """Start the centralized hourly scraper in the background."""
+    global cron_job_id
+
+    _cleanup_old_jobs()
+
+    with cron_job_lock:
+        current = jobs.get(cron_job_id) if cron_job_id else None
+        if current and not current.is_complete and _process_is_running(current.pid):
+            return {
+                "success": True,
+                "alreadyRunning": True,
+                "message": "Cron de scraping déjà en cours",
+                "jobId": current.job_id,
+                "pid": current.pid,
+                "timestamp": int(current.start_time * 1000),
+            }
+
+        args = [sys.executable, "-u", str(PROJECT_ROOT / "scripts" / "scraper_cron.py")]
+        job_id = str(uuid.uuid4())
+        job = JobState(job_id=job_id)
+        jobs[job_id] = job
+        cron_job_id = job_id
+
+        env = {
+            **os.environ,
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+            "AI_PROVIDER": os.environ.get("AI_PROVIDER", "genai"),
+            "NEXT_PUBLIC_SUPABASE_URL": os.environ.get(
+                "NEXT_PUBLIC_SUPABASE_URL",
+                os.environ.get("SUPABASE_URL", ""),
+            ),
+            "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+            "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+        }
+
+        proc = subprocess.Popen(
+            args,
+            cwd=str(PROJECT_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
+        job.pid = proc.pid
+
+        thread = threading.Thread(target=_stream_output, args=(proc, job), daemon=True)
+        thread.start()
+
+        return {
+            "success": True,
+            "message": "Cron de scraping lancé",
+            "jobId": job_id,
+            "pid": proc.pid,
+            "timestamp": int(job.start_time * 1000),
+        }
 
 
 @app.get("/scraper/logs", dependencies=[Depends(verify_secret)])
@@ -416,6 +517,231 @@ async def products_analyze(body: CacheAnalyzeRequest):
             "error": "timeout",
             "message": "La comparaison a pris trop de temps (>120s)",
         })
+
+
+@app.post("/scraper-usine/run", dependencies=[Depends(verify_secret)])
+async def scraper_usine_run(body: ScraperUsineRunRequest):
+    """Lance scraper_usine en arrière-plan pour générer un nouveau scraper.
+
+    Le job est asynchrone (peut prendre 5-15 min). On renvoie un jobId que
+    l'admin peut sonder via /scraper/logs.
+    """
+    _cleanup_old_jobs()
+
+    if not body.url or not body.url.strip():
+        raise HTTPException(400, detail={"error": "URL requise"})
+
+    args = [sys.executable, "-u", "-m", "scraper_ai.scraper_usine.main", body.url]
+    if body.dryRun:
+        args.append("--dry-run")
+    if body.forcePlaywright:
+        args.append("--force-playwright")
+    args.extend(["--publish-threshold", str(body.publishThreshold)])
+
+    job_id = str(uuid.uuid4())
+    job = JobState(job_id=job_id)
+    jobs[job_id] = job
+
+    env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+        "AI_PROVIDER": os.environ.get("AI_PROVIDER", "genai"),
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+        # Auto-push Git après génération réussie (Phase 6 du pipeline)
+        "GITHUB_PAT": os.environ.get("GITHUB_PAT", ""),
+        "GITHUB_REPO": os.environ.get("GITHUB_REPO", ""),
+        "GITHUB_BRANCH": os.environ.get("GITHUB_BRANCH", "main"),
+        "GIT_AUTHOR_NAME": os.environ.get("GIT_AUTHOR_NAME", "scraper_usine"),
+        "GIT_AUTHOR_EMAIL": os.environ.get("GIT_AUTHOR_EMAIL", "scraper-usine@go-data.ca"),
+    }
+
+    proc = subprocess.Popen(
+        args,
+        cwd=str(PROJECT_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+    )
+    job.pid = proc.pid
+
+    thread = threading.Thread(target=_stream_output, args=(proc, job), daemon=True)
+    thread.start()
+
+    return {
+        "success": True,
+        "jobId": job_id,
+        "pid": proc.pid,
+        "url": body.url,
+        "dryRun": body.dryRun,
+        "message": f"scraper_usine lancé pour {body.url}",
+    }
+
+
+@app.post("/scraper-usine/batch", dependencies=[Depends(verify_secret)])
+async def scraper_usine_batch(body: ScraperUsineBatchRequest):
+    """Lance scraper_usine en mode batch sur une liste d'URLs.
+
+    Crée un fichier temporaire `urls_batch_<jobId>.txt` et appelle
+    `scraper_usine.main --batch <fichier>`. Retourne un jobId pour le polling
+    des logs (même endpoint que pour un run unique).
+    """
+    import re as _re
+
+    _cleanup_old_jobs()
+
+    raw_urls = [u.strip() for u in (body.urls or []) if isinstance(u, str)]
+    valid_urls = []
+    seen: set[str] = set()
+    skipped: list[str] = []
+    for u in raw_urls:
+        if not u or u.startswith("#"):
+            continue
+        if not _re.match(r"^https?://", u, _re.I):
+            skipped.append(u)
+            continue
+        if u in seen:
+            continue
+        seen.add(u)
+        valid_urls.append(u)
+
+    if not valid_urls:
+        raise HTTPException(400, detail={
+            "error": "no_valid_urls",
+            "message": "Aucune URL valide trouvée (doit commencer par http:// ou https://)",
+            "skipped": skipped[:20],
+        })
+
+    if len(valid_urls) > 100:
+        raise HTTPException(400, detail={
+            "error": "too_many_urls",
+            "message": f"Maximum 100 URLs par batch (reçu {len(valid_urls)})",
+        })
+
+    job_id = str(uuid.uuid4())
+    job = JobState(job_id=job_id)
+    jobs[job_id] = job
+
+    # Fichier temp avec les URLs (commenté avec date pour audit)
+    batch_dir = PROJECT_ROOT / "scraper_cache" / "batches"
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    batch_file = batch_dir / f"urls_batch_{job_id}.txt"
+    header = f"# Batch scraper_usine — job {job_id}\n# {len(valid_urls)} URL(s)\n"
+    batch_file.write_text(header + "\n".join(valid_urls) + "\n", encoding="utf-8")
+
+    args = [
+        sys.executable, "-u", "-m", "scraper_ai.scraper_usine.main",
+        "--batch", str(batch_file),
+        "--publish-threshold", str(body.publishThreshold),
+    ]
+    if body.dryRun:
+        args.append("--dry-run")
+    if body.forcePlaywright:
+        args.append("--force-playwright")
+
+    env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+        "AI_PROVIDER": os.environ.get("AI_PROVIDER", "genai"),
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+        "GITHUB_PAT": os.environ.get("GITHUB_PAT", ""),
+        "GITHUB_REPO": os.environ.get("GITHUB_REPO", ""),
+        "GITHUB_BRANCH": os.environ.get("GITHUB_BRANCH", "main"),
+        "GIT_AUTHOR_NAME": os.environ.get("GIT_AUTHOR_NAME", "scraper_usine"),
+        "GIT_AUTHOR_EMAIL": os.environ.get("GIT_AUTHOR_EMAIL", "scraper-usine@go-data.ca"),
+    }
+
+    proc = subprocess.Popen(
+        args,
+        cwd=str(PROJECT_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+    )
+    job.pid = proc.pid
+
+    thread = threading.Thread(target=_stream_output, args=(proc, job), daemon=True)
+    thread.start()
+
+    return {
+        "success": True,
+        "jobId": job_id,
+        "pid": proc.pid,
+        "urls": valid_urls,
+        "url_count": len(valid_urls),
+        "skipped_count": len(skipped),
+        "skipped_examples": skipped[:5],
+        "batch_file": str(batch_file.relative_to(PROJECT_ROOT)),
+        "message": (
+            f"scraper_usine batch lancé : {len(valid_urls)} URL(s) à traiter en série "
+            f"(estimation : {len(valid_urls) * 8} min max)"
+        ),
+    }
+
+
+@app.post("/scrapers-pending/test", dependencies=[Depends(verify_secret)])
+async def scrapers_pending_test(body: PendingScraperTestRequest):
+    """Test live d'un scraper dédié, par slug, avec un échantillon limité.
+
+    Utilisé par la page admin /dashboard/admin/scrapers pour valider un
+    scraper généré par scraper_usine avant de l'approuver.
+    """
+    try:
+        from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
+    except ImportError as e:
+        raise HTTPException(500, detail={
+            "error": "import_error",
+            "message": f"Impossible de charger le registre des scrapers : {e}",
+        })
+
+    scraper = DedicatedScraperRegistry.get_by_slug(body.slug)
+    if not scraper:
+        raise HTTPException(404, detail={
+            "error": "scraper_not_found",
+            "message": f"Aucun scraper dédié avec slug='{body.slug}'",
+        })
+
+    categories = body.categories or ["inventaire", "occasion", "catalogue"]
+    sample_limit = max(1, min(body.sampleLimit or 10, 50))
+
+    start = time.time()
+    try:
+        result = scraper.scrape(
+            categories=categories,
+            inventory_only=False,
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "slug": body.slug,
+                "error": str(e)[:500],
+                "elapsed_seconds": round(time.time() - start, 1),
+            },
+        )
+
+    products = result.get("products") or []
+    metadata = result.get("metadata") or {}
+
+    sample = products[:sample_limit]
+    return {
+        "success": True,
+        "slug": body.slug,
+        "elapsed_seconds": round(time.time() - start, 1),
+        "product_count": len(products),
+        "sample": sample,
+        "sample_count": len(sample),
+        "metadata": metadata,
+        "categories_tested": categories,
+    }
 
 
 @app.get("/health")

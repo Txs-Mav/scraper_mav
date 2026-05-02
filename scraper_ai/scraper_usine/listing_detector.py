@@ -114,14 +114,19 @@ def best_listing(
     item_hints: Optional[List[str]] = None,
     base_url: str = "",
     min_items: int = 4,
+    min_score: float = 0.40,
 ) -> Optional[ListingCandidate]:
-    """Retourne le meilleur candidat ou None si rien de pertinent."""
+    """Retourne le meilleur candidat ou None si rien de pertinent.
+
+    Le seuil par défaut a été relevé de 0.25 à 0.40 pour réduire les faux
+    positifs (cartes 'équipe', 'blog', 'marques partenaires', sliders).
+    """
     candidates = detect_listings(html, item_hints=item_hints, base_url=base_url,
                                  min_items=min_items)
     if not candidates:
         return None
     best = candidates[0]
-    if best.score < 0.25:
+    if best.score < min_score:
         return None
     return best
 
@@ -181,6 +186,7 @@ def _score_candidate(cand: ListingCandidate, hints: List[str], domain: str) -> f
     with_price = 0
     with_internal_link = 0
     text_lengths = []
+    link_paths: List[str] = []
 
     for it in items[:30]:  # cap pour perf
         text = it.get_text(separator=" ", strip=True)
@@ -191,6 +197,7 @@ def _score_candidate(cand: ListingCandidate, hints: List[str], domain: str) -> f
             href = link["href"]
             if href.startswith("/") or (domain and domain in href):
                 with_internal_link += 1
+                link_paths.append(href.split("?")[0].split("#")[0].rstrip("/"))
         if it.find("img"):
             with_image += 1
         if PRICE_PATTERN.search(text):
@@ -198,6 +205,15 @@ def _score_candidate(cand: ListingCandidate, hints: List[str], domain: str) -> f
 
     sample_n = min(len(items), 30)
     if sample_n == 0:
+        return 0.0
+
+    # Rejet : aucun lien interne dans le groupe (sliders externes, témoignages…)
+    if with_internal_link == 0:
+        return 0.0
+
+    # Rejet : tous les items pointent vers la même URL (ex: slider de marques
+    # qui ouvre une seule page filtrée).
+    if link_paths and len(set(link_paths)) == 1:
         return 0.0
 
     link_ratio = with_link / sample_n

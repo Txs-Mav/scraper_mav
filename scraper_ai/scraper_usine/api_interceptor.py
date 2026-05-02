@@ -335,6 +335,11 @@ def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:
     items_field = _find_items_field_path(data, items)
     pagination_param, pagination_type = _detect_api_pagination(cap["url"], data)
 
+    # Sanitize l'URL : on retire les params de pagination/cursor capturés au
+    # vol pour que le scraper généré démarre toujours à page=1 (sinon le
+    # template hérite d'un ?page=2 baked-in).
+    canonical_url = _strip_pagination_params(cap["url"])
+
     # Détection GraphQL : POST avec body contenant 'query' + 'variables' (souvent)
     method = cap.get("method", "GET")
     req_body = cap.get("request_body")
@@ -361,7 +366,7 @@ def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:
         pagination_type = "cursor"
 
     return DetectedAPI(
-        url=cap["url"],
+        url=canonical_url,
         method=method,
         headers={k: v for k, v in cap["headers"].items()
                  if k.lower() not in ("host", "connection", "accept-encoding")},
@@ -425,6 +430,28 @@ def _find_items_field_path(data: Any, target_list: list, path: str = "") -> str:
             if result:
                 return result
     return ""
+
+
+_PAGINATION_QUERY_KEYS: tuple = (
+    "page", "p", "offset", "skip", "start", "from",
+    "cursor", "after", "before", "next",
+    "_t", "timestamp", "_ts",  # cache-busters fréquents
+)
+
+
+def _strip_pagination_params(url: str) -> str:
+    """Retire les params de pagination/cache-bust de l'URL capturée pour que le
+    scraper généré démarre toujours à page=1."""
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if not parsed.query:
+        return url
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    cleaned = {k: v for k, v in qs.items() if k.lower() not in _PAGINATION_QUERY_KEYS}
+    new_query = urlencode(cleaned, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
 
 
 def _detect_api_pagination(url: str, data: Any) -> tuple:

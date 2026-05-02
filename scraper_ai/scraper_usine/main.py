@@ -24,7 +24,10 @@ from .analyzer import SiteAnalyzer, ANALYSIS_DIR
 from .models import SiteAnalysis, ValidationReport
 from .planner import StrategyPlanner
 from .generator import ScraperCodeGenerator
+from .publisher import publish_pending_scraper
+from .git_push import commit_and_push_scraper, GitPushResult
 from .validator import ScraperValidator
+from .workflow_generator import write_workflow_for_scraper
 
 
 def main(argv: Optional[List[str]] = None) -> None:
@@ -54,6 +57,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument("--golden-diff", metavar="SLUG",
                         help="Compare le golden au run actuel (détecte régressions)")
     parser.add_argument("--quiet", action="store_true", help="Mode silencieux")
+    parser.add_argument("--no-publish", action="store_true",
+                        help="Ne pas publier le scraper en pending dans shared_scrapers")
+    parser.add_argument("--publish-threshold", type=int, default=95,
+                        help="Score minimum pour publier en pending (défaut: 95)")
 
     args = parser.parse_args(argv)
     verbose = not args.quiet
@@ -99,6 +106,8 @@ def main(argv: Optional[List[str]] = None) -> None:
             force_playwright=args.force_playwright,
             verbose=verbose,
             profile=args.profile,
+            publish=not args.no_publish,
+            publish_threshold=args.publish_threshold,
         )
 
 
@@ -115,6 +124,8 @@ def _process_url(
     force_playwright: bool = False,
     verbose: bool = True,
     profile: Optional[str] = None,
+    publish: bool = True,
+    publish_threshold: int = 95,
 ) -> Optional[ValidationReport]:
     total_start = time.time()
 
@@ -212,6 +223,77 @@ def _process_url(
                 print(f"  [{_ts()}] Pas de correction disponible")
                 break
 
+    # --- Correction ciblée des champs faibles (même si score global >= 80) ---
+    if not no_llm_fix and report.score >= 80:
+        weak = validator.weak_fields(report, threshold=0.9)
+        if weak:
+            print(f"\n  [{_ts()}] Score global OK ({report.score}) mais champs faibles: {weak}")
+            corrected_code = validator.auto_correct(
+                report, generated, analysis, target_fields=weak,
+            )
+            if corrected_code:
+                print(f"  [{_ts()}] Correction ciblée reçue, re-validation...")
+                generated_path = Path(generated.file_path)
+                generated_path.write_text(corrected_code, encoding="utf-8")
+                generated.code = corrected_code
+                report = validator.validate(generated, analysis, strategy)
+                print(f"  [{_ts()}] Score après correction ciblée: {report.score}/100")
+
+    # --- Phase 5 : Publication en pending dans shared_scrapers ---
+    published = False
+    if publish:
+        print(f"\n  [{_ts()}] Phase 5 : Publication en pending dans shared_scrapers...")
+        publish_result = publish_pending_scraper(
+            analysis=analysis,
+            strategy=strategy,
+            generated=generated,
+            report=report,
+            threshold=publish_threshold,
+            verbose=verbose,
+        )
+        published = publish_result is not None
+
+    # --- Phase 6 : Génération du workflow GitHub Action dédié ---
+    # On crée un workflow YAML par scraper qui le scrape toutes les heures via
+    # `scripts/scrape_single_site.py`. Couche de redondance vis-à-vis du cron
+    # orchestrateur principal (Vercel → Railway), avec skip auto si cache frais.
+    workflow_relpath: Optional[str] = None
+    if publish and published:
+        print(f"\n  [{_ts()}] Phase 6 : Génération du workflow GitHub Action...")
+        repo_root = Path(generated.file_path).resolve().parent.parent.parent
+        site_name = analysis.site_name or generated.slug.replace("-", " ").title()
+        try:
+            wf_result = write_workflow_for_scraper(
+                repo_root=repo_root,
+                site_slug=generated.slug,
+                site_name=site_name,
+                verbose=verbose,
+            )
+            workflow_relpath = wf_result.relative_path
+        except Exception as e:
+            print(f"  [{_ts()}] ⚠️ Échec génération workflow: {type(e).__name__}: {e}")
+
+    # --- Phase 7 : Auto-push du code Python + workflow sur Git ---
+    # Critique pour Railway : sans ça le fichier .py vit sur disque éphémère et
+    # disparaît au prochain redéploiement. Skip si publication a échoué (score
+    # trop bas) — pas la peine de polluer le Git avec un scraper inactivé.
+    push_result: Optional[GitPushResult] = None
+    if publish and published:
+        print(f"\n  [{_ts()}] Phase 7 : Push du code + workflow sur Git...")
+        push_result = commit_and_push_scraper(
+            generated=generated,
+            score=report.score,
+            message_extra=(
+                f"Score {report.score}/100 ({report.grade}) — "
+                f"{report.products_tested} produits testés.\n"
+                f"Stratégie : {generated.strategy_summary}.\n"
+                f"Plateforme : {analysis.platform.name}."
+            ),
+            verbose=verbose,
+        )
+    elif publish and not published:
+        print(f"\n  [{_ts()}] Phases 6-7 SKIP : score insuffisant pour générer + push.")
+
     elapsed = time.time() - total_start
 
     # --- Résumé ---
@@ -227,6 +309,22 @@ def _process_url(
         print(f"  Warnings   :")
         for w in report.warnings:
             print(f"    - {w}")
+    if publish and report.score >= publish_threshold:
+        print(f"  Statut     : PENDING (à valider sur /admin/scrapers)")
+    elif publish:
+        print(f"  Statut     : score < seuil ({publish_threshold}) — non publié")
+    if workflow_relpath:
+        print(f"  Workflow   : {workflow_relpath}")
+    if push_result and push_result.pushed:
+        short_sha = (push_result.commit_sha or "")[:8]
+        print(f"  Git        : commit {short_sha} pushé sur {push_result.repo}@{push_result.branch}")
+        print(f"               → Railway redéploiera dans ~2 min, scraper actif au prochain cron")
+    elif push_result and push_result.skipped_reason == "env_missing":
+        print(f"  Git        : push manuel requis (GITHUB_PAT/GITHUB_REPO non configurés)")
+    elif push_result and push_result.skipped_reason == "no_changes_to_commit":
+        print(f"  Git        : aucun changement (fichiers déjà à jour)")
+    elif push_result and push_result.error:
+        print(f"  Git        : ÉCHEC — {push_result.error[:100]}")
     print(f"{'='*70}\n")
 
     return report

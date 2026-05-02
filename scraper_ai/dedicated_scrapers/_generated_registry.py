@@ -9,3 +9,10 @@ try:
 except ImportError:
     pass
 
+try:
+    from .adrenalinesports import AdrenalinesportsScraper
+    GENERATED_SCRAPERS['adrenalinesports'] = AdrenalinesportsScraper
+    GENERATED_DOMAINS['adrenalinesports.ca'] = 'adrenalinesports'
+except ImportError:
+    pass
+

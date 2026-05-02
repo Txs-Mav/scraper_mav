@@ -15,13 +15,16 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from datetime import datetime, timezone
+
 from .models import (
     FieldCoverage, GeneratedScraper, PriceDisplayMode,
-    ScrapingStrategy, SiteAnalysis, ValidationReport,
+    ScrapingStrategy, SiteAnalysis, ValidationReport, _from_dict,
 )
 from .domain_profiles import DomainProfile, get_profile, AUTO_PROFILE
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache" / "reports"
+STRATEGIES_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache" / "strategies"
 
 # Limite par défaut d'exécution d'un scraper validé (en secondes).
 # Au-delà, le sous-processus est tué pour éviter de bloquer la pipeline.
@@ -379,14 +382,31 @@ class ScraperValidator:
         if report.execution_time_seconds > 120:
             report.warnings.append(f"Temps d'exécution élevé: {report.execution_time_seconds:.0f}s")
 
+    @staticmethod
+    def weak_fields(report: ValidationReport, threshold: float = 0.9) -> List[str]:
+        """Retourne les champs avec couverture < threshold (par défaut 90%)."""
+        skip = {"sourceUrl", "sourceSite"}
+        return [
+            fd.field_name for fd in report.field_details
+            if fd.coverage < threshold and fd.field_name not in skip
+        ]
+
     # ------------------------------------------------------------------
     # Auto-correction via Gemini
     # ------------------------------------------------------------------
 
     def auto_correct(self, report: ValidationReport, generated: GeneratedScraper,
-                     analysis: SiteAnalysis) -> Optional[str]:
-        """Tente une correction via Gemini si le score est < 80. Retourne le code corrigé ou None."""
-        if report.score >= 80:
+                     analysis: SiteAnalysis,
+                     *, target_fields: Optional[List[str]] = None) -> Optional[str]:
+        """Tente une correction via Gemini.
+
+        Modes:
+          - Score < 80          → auto-correct global (comportement initial).
+          - target_fields fourni → correction ciblée sur ces champs uniquement
+            (utilisable même si le score global est bon mais qu'un champ
+            critique est sous le seuil).
+        """
+        if not target_fields and report.score >= 80:
             return None
 
         try:
@@ -396,7 +416,12 @@ class ScraperValidator:
             self._log("GeminiClient non disponible pour l'auto-correction")
             return None
 
-        prompt = self._build_correction_prompt(report, generated, analysis)
+        if target_fields:
+            prompt = self._build_field_targeted_prompt(
+                report, generated, analysis, target_fields,
+            )
+        else:
+            prompt = self._build_correction_prompt(report, generated, analysis)
 
         try:
             result = client.call(prompt, show_prompt=False, response_mime_type="text/plain")
@@ -406,6 +431,40 @@ class ScraperValidator:
             self._log(f"Gemini auto-correction échouée: {e}")
 
         return None
+
+    def _build_field_targeted_prompt(self, report: ValidationReport,
+                                     generated: GeneratedScraper,
+                                     analysis: SiteAnalysis,
+                                     target_fields: List[str]) -> str:
+        """Prompt focalisé : on demande à Gemini de corriger UNIQUEMENT les
+        méthodes liées aux champs faibles, pas de tout réécrire."""
+        coverage_lines = []
+        for fd in report.field_details:
+            if fd.field_name in target_fields:
+                samples = ", ".join(fd.sample_values[:2]) if fd.sample_values else "(aucun)"
+                coverage_lines.append(
+                    f"- {fd.field_name}: {fd.coverage:.0%} couverture ({fd.present_count}/{fd.total_count}). "
+                    f"Échantillons: {samples}"
+                )
+
+        sample = json.dumps(report.sample_products[:2], indent=2,
+                            ensure_ascii=False, default=str)
+        code_block = self._summarize_large_code(generated.code, report)
+
+        return (
+            f"Tu es un expert en web scraping Python. Pour {analysis.site_url}, "
+            f"le scraper a un score global de {report.score}/100, MAIS certains "
+            f"champs sont sous-couverts:\n\n"
+            f"{chr(10).join(coverage_lines)}\n\n"
+            f"ÉCHANTILLON DE PRODUITS:\n{sample}\n\n"
+            f"CODE PERTINENT (méthodes liées aux champs faibles):\n"
+            f"```python\n{code_block}\n```\n\n"
+            f"OBJECTIF: ajouter UNIQUEMENT des fallbacks ciblés pour les champs listés. "
+            f"Ne touche pas aux autres méthodes. Conserve la signature de la classe "
+            f"et les attributs SITE_*.\n\n"
+            f"Retourne UNIQUEMENT le code Python complet du fichier corrigé, "
+            f"sans markdown, sans explication."
+        )
 
     def _build_correction_prompt(self, report: ValidationReport,
                                  generated: GeneratedScraper,
@@ -517,7 +576,11 @@ class ScraperValidator:
     # ------------------------------------------------------------------
 
     def health_check(self, slug: str) -> ValidationReport:
-        """Exécute une validation sur un scraper existant et compare au dernier rapport."""
+        """Exécute une validation sur un scraper existant et compare au dernier rapport.
+
+        Recharge ScrapingStrategy persistée pour préserver `price_absent_expected`,
+        `domain_profile_key`, etc. — sinon un site en 'prix sur demande' serait
+        pénalisé à chaque check."""
         self._log(f"Health check: {slug}")
 
         try:
@@ -539,13 +602,8 @@ class ScraperValidator:
             module_name=type(scraper).__module__.split(".")[-1],
         )
 
-        dummy_analysis = SiteAnalysis(
-            site_url=scraper.SITE_URL,
-            site_name=scraper.SITE_NAME,
-        )
-        dummy_strategy = ScrapingStrategy()
-
-        report = self.validate(gen, dummy_analysis, dummy_strategy)
+        analysis, strategy = self._load_persisted_context(slug, scraper)
+        report = self.validate(gen, analysis, strategy)
 
         last_report = self._load_last_report(slug)
         if last_report:
@@ -560,11 +618,81 @@ class ScraperValidator:
 
         return report
 
+    def _load_persisted_context(self, slug: str, scraper) -> tuple:
+        """Charge SiteAnalysis + ScrapingStrategy persistées par le générateur.
+        Tombe sur des dummies cohérents si aucun fichier n'est disponible."""
+        path = STRATEGIES_DIR / f"{slug}_strategy.json"
+        if not path.exists():
+            self._log(
+                f"Aucune stratégie persistée pour '{slug}' — scoring avec contexte par "
+                f"défaut (peut sur-pénaliser les sites 'prix sur demande')."
+            )
+            return self._dummy_context(scraper)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            self._log(f"Erreur lecture stratégie persistée: {e}")
+            return self._dummy_context(scraper)
+
+        analysis = SiteAnalysis(
+            site_url=payload.get("site_url", scraper.SITE_URL),
+            site_name=payload.get("site_name", scraper.SITE_NAME),
+            domain_profile_key=payload.get("domain_profile_key", "auto"),
+        )
+        try:
+            analysis.price_display_mode = PriceDisplayMode(
+                payload.get("price_display_mode", "visible")
+            )
+        except (ValueError, KeyError):
+            pass
+
+        strategy_data = payload.get("strategy", {}) or {}
+        try:
+            strategy = _from_dict(ScrapingStrategy, strategy_data)
+        except Exception as e:
+            self._log(f"Erreur reconstruction strategy: {e}")
+            strategy = ScrapingStrategy()
+        return analysis, strategy
+
+    @staticmethod
+    def _dummy_context(scraper) -> tuple:
+        analysis = SiteAnalysis(
+            site_url=getattr(scraper, "SITE_URL", ""),
+            site_name=getattr(scraper, "SITE_NAME", ""),
+        )
+        return analysis, ScrapingStrategy()
+
     def _load_last_report(self, slug: str) -> Optional[Dict]:
-        path = REPORTS_DIR / f"{slug}_report.json"
-        if path.exists():
+        """Retourne le rapport précédent (pour mesurer la régression).
+
+        Préfère le rapport daté le plus récent (avant aujourd'hui) au lieu de
+        l'alias 'latest' qui pointe sur le rapport courant — sinon on
+        comparerait toujours le rapport à lui-même."""
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        try:
+            dated = sorted(
+                REPORTS_DIR.glob(f"{slug}_report_*.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+        except Exception:
+            dated = []
+
+        for p in dated:
+            if p.name == f"{slug}_report.json":
+                continue
+            if today in p.name:
+                continue
             try:
-                return json.loads(path.read_text(encoding="utf-8"))
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+
+        # Fallback (rétrocompat): alias 'latest' s'il n'y a aucun snapshot daté.
+        latest = REPORTS_DIR / f"{slug}_report.json"
+        if latest.exists():
+            try:
+                return json.loads(latest.read_text(encoding="utf-8"))
             except Exception:
                 pass
         return None
@@ -574,11 +702,23 @@ class ScraperValidator:
     # ------------------------------------------------------------------
 
     def _save_report(self, report: ValidationReport, slug: str) -> None:
-        path = REPORTS_DIR / f"{slug}_report.json"
+        """Sauvegarde le rapport avec versionnement quotidien.
+
+        Produit deux fichiers:
+          - {slug}_report_{YYYY-MM-DD}.json (snapshot du jour)
+          - {slug}_report.json (alias 'latest' pour rétrocompat)
+
+        _load_last_report() ignorera le 'latest' au profit du 2e plus récent
+        (vraie comparaison de régression).
+        """
         try:
-            report.save(path)
-            report.analysis_file = str(path)
-            self._log(f"Rapport sauvegardé: {path}")
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            dated_path = REPORTS_DIR / f"{slug}_report_{today}.json"
+            latest_path = REPORTS_DIR / f"{slug}_report.json"
+            report.save(dated_path)
+            report.save(latest_path)
+            report.analysis_file = str(latest_path)
+            self._log(f"Rapport sauvegardé: {dated_path.name} (+ alias latest)")
         except Exception as e:
             self._log(f"Erreur sauvegarde rapport: {e}")
 
@@ -616,6 +756,11 @@ def _run_scraper_subprocess(module_name: str, class_name: str,
         if hasattr(scraper, "WORKERS"):
             scraper.WORKERS = 3
         scraper.HTTP_TIMEOUT = 25
+        # Certains scrapers (PowerGO/Motoplex et descendants) utilisent un
+        # DETAIL_TIMEOUT distinct pour les pages détail — on le réduit aussi
+        # pour rester cohérent avec HTTP_TIMEOUT en mode validation.
+        if hasattr(scraper, "DETAIL_TIMEOUT"):
+            scraper.DETAIL_TIMEOUT = 25
 
         result = scraper.scrape(categories=categories, inventory_only=False)
         payload["products"] = result.get("products", [])
