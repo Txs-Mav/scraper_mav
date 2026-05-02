@@ -7,6 +7,7 @@ import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { DashboardSkeleton } from "@/components/skeleton-loader"
+import { isDevAdminUserPublic } from "@/lib/auth/admin"
 
 function DashboardContent() {
   const router = useRouter()
@@ -156,6 +157,11 @@ function DashboardContent() {
     if (isLoading || checkingPendingPlan) return
     if (!user) return
     if (restricted) return
+    // Le compte dev admin va sur la console /admin, pas le dashboard client.
+    if (isDevAdminUserPublic(user)) {
+      router.replace("/admin")
+      return
+    }
     router.replace("/dashboard/comparaisons")
   }, [isLoading, checkingPendingPlan, user, restricted, router])
 

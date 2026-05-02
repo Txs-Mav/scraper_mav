@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import { isDevAdminUser } from '@/lib/auth/admin'
 
 /**
  * GET /api/news/[id] - récupérer une nouvelle par ID (ou slug).
@@ -34,7 +35,7 @@ export async function GET(
     if (!data) {
       return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
     }
-    if (!data.is_published && user.role !== 'main') {
+    if (!data.is_published && !isDevAdminUser(user)) {
       return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
     }
 
@@ -58,8 +59,8 @@ export async function PUT(
     if (!user) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
-    if (user.role !== 'main') {
-      return NextResponse.json({ error: 'Réservé aux comptes administrateurs' }, { status: 403 })
+    if (!isDevAdminUser(user)) {
+      return NextResponse.json({ error: 'Réservé au compte dev admin' }, { status: 403 })
     }
 
     const { id } = await params
@@ -144,8 +145,8 @@ export async function DELETE(
     if (!user) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
-    if (user.role !== 'main') {
-      return NextResponse.json({ error: 'Réservé aux comptes administrateurs' }, { status: 403 })
+    if (!isDevAdminUser(user)) {
+      return NextResponse.json({ error: 'Réservé au compte dev admin' }, { status: 403 })
     }
 
     const { id } = await params

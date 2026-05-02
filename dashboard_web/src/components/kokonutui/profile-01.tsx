@@ -1,11 +1,12 @@
 "use client"
 
 import { useMemo } from "react"
-import { LogOut, Settings, CreditCard, LogIn, MoveUpRight, User } from "lucide-react"
+import { LogOut, Settings, CreditCard, LogIn, MoveUpRight, User, Megaphone, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { useRouter } from "next/navigation"
+import { isDevAdminUserPublic } from "@/lib/auth/admin"
 
 interface MenuItem {
   label: string
@@ -56,6 +57,11 @@ export default function Profile01({
     return labels[user.subscription_plan] || user.subscription_plan
   }, [user?.subscription_plan, subscription, t])
 
+  // Politique : seul le compte dont l'email correspond à NEXT_PUBLIC_DEV_ADMIN_EMAIL
+  // voit les liens de la console développeur. Le contrôle réel se fait côté serveur,
+  // ce check sert juste à cacher le lien dans l'UI.
+  const isAdminRole = isDevAdminUserPublic(user)
+
   const menuItems: MenuItem[] = user
     ? [
         {
@@ -79,6 +85,20 @@ export default function Profile01({
           href: "/dashboard/settings",
           icon: <Settings className="w-4 h-4" />,
         },
+        ...(isAdminRole
+          ? [
+              {
+                label: "Console développeur",
+                href: "/admin",
+                icon: <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />,
+              },
+              {
+                label: "Admin · Nouvelles",
+                href: "/dashboard/admin/news",
+                icon: <Megaphone className="w-4 h-4 text-amber-600 dark:text-amber-400" />,
+              },
+            ]
+          : []),
       ]
     : []
 

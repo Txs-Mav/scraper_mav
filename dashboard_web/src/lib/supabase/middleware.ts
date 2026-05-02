@@ -59,7 +59,12 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute = authRoutes.some(route => pathname === route || pathname.startsWith(route))
 
   // Routes protégées nécessitant une authentification
-  const isProtectedRoute = pathname.startsWith('/dashboard')
+  // /dashboard/* = utilisateur authentifié quelconque
+  // /admin/*     = utilisateur authentifié + rôle main/developer (vérifié dans le
+  //                layout server component pour éviter une requête DB ici)
+  const isDashboardRoute = pathname.startsWith('/dashboard')
+  const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
+  const isProtectedRoute = isDashboardRoute || isAdminRoute
 
   // Routes publiques (callback auth, reset password, etc.)
   const publicRoutes = ['/auth/callback', '/reset-password', '/auth/email-confirmed']
@@ -73,6 +78,11 @@ export async function updateSession(request: NextRequest) {
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    // Préserver la destination pour redirection post-login (uniquement /admin
+    // côté UI ; pour /api/admin on retourne directement 401 plus bas).
+    if (isAdminRoute && !pathname.startsWith('/api/')) {
+      url.searchParams.set('next', pathname)
+    }
     return NextResponse.redirect(url)
   }
 

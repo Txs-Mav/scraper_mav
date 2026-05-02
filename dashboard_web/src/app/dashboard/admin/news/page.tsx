@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, Sparkles, RefreshCw, AlertTriangle, Lock,
 } from "lucide-react"
 import { renderMarkdown } from "@/lib/simple-markdown"
+import { isDevAdminUserPublic } from "@/lib/auth/admin"
 
 interface NewsItem {
   id: string
@@ -59,15 +60,13 @@ export default function AdminNewsPage() {
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState(false)
 
-  // Gate : compte principal uniquement
+  // Gate : la protection serveur (dashboard/admin/layout.tsx) garantit déjà
+  // que seul le dev admin (DEV_ADMIN_EMAIL) atteint cette page. Le check
+  // client-side reste comme filet de sécurité pour les rétrogradations live.
   useEffect(() => {
     if (authLoading) return
     if (!user) {
       router.push("/login")
-      return
-    }
-    if (user.role !== "main") {
-      router.push("/dashboard")
     }
   }, [authLoading, user, router])
 
@@ -92,7 +91,7 @@ export default function AdminNewsPage() {
   }, [])
 
   useEffect(() => {
-    if (user?.role === "main") void load()
+    if (isDevAdminUserPublic(user)) void load()
   }, [user, load])
 
   const startCreate = () => {
@@ -177,7 +176,7 @@ export default function AdminNewsPage() {
     }
   }
 
-  if (authLoading || (user?.role === "main" && loading && !items)) {
+  if (authLoading || (isDevAdminUserPublic(user) && loading && !items)) {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -187,7 +186,7 @@ export default function AdminNewsPage() {
     )
   }
 
-  if (user && user.role !== "main") {
+  if (user && !isDevAdminUserPublic(user)) {
     return (
       <Layout>
         <div className="max-w-xl mx-auto mt-20 text-center">

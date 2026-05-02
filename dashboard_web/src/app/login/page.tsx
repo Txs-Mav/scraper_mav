@@ -8,6 +8,7 @@ import { useLanguage, LanguageToggle } from "@/contexts/language-context"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2, Eye, EyeOff, Mail, ArrowRight, BarChart3, Shield, Zap } from "lucide-react"
 import Image from "next/image"
+import { isDevAdminUserPublic } from "@/lib/auth/admin"
 
 function LoginContent() {
   const [email, setEmail] = useState("")
@@ -37,8 +38,12 @@ function LoginContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  useEffect(() => { if (loginSuccess) router.push("/dashboard") }, [loginSuccess, router])
-  useEffect(() => { if (!isLoading && user) router.replace("/dashboard") }, [user, isLoading, router])
+  // Le compte dev admin (NEXT_PUBLIC_DEV_ADMIN_EMAIL) atterrit dans la console
+  // /admin, tous les autres comptes vont sur le dashboard client.
+  const destinationFor = (u: typeof user) =>
+    isDevAdminUserPublic(u) ? "/admin" : "/dashboard"
+  useEffect(() => { if (loginSuccess) router.push(destinationFor(user)) }, [loginSuccess, router, user])
+  useEffect(() => { if (!isLoading && user) router.replace(destinationFor(user)) }, [user, isLoading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

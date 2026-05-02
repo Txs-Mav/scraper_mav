@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import { isDevAdminUser } from '@/lib/auth/admin'
 
 const SCHEMA_MISSING_CODE = 'NEWS_SCHEMA_MISSING'
 
@@ -28,7 +29,8 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url)
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)))
-    const includeDrafts = url.searchParams.get('includeDrafts') === 'true' && user.role === 'main'
+    // Drafts visibles uniquement au compte dev admin (DEV_ADMIN_EMAIL).
+    const includeDrafts = url.searchParams.get('includeDrafts') === 'true' && isDevAdminUser(user)
 
     const supabase = await createClient()
 
@@ -93,8 +95,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
-    if (user.role !== 'main') {
-      return NextResponse.json({ error: 'Réservé aux comptes administrateurs' }, { status: 403 })
+    if (!isDevAdminUser(user)) {
+      return NextResponse.json({ error: 'Réservé au compte dev admin' }, { status: 403 })
     }
 
     const body = await request.json().catch(() => ({}))
