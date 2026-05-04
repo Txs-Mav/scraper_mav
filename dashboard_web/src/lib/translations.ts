@@ -46,6 +46,9 @@ const translations = {
     "profile.mainAccount": "Compte principal",
     "profile.employee": "Employé",
     "profile.visitor": "Visiteur",
+    "profile.theme": "Thème",
+    "profile.themeLight": "Clair",
+    "profile.themeDark": "Sombre",
 
     // ── Settings ──
     "settings.title": "Paramètres",
@@ -742,6 +745,9 @@ const translations = {
     "profile.mainAccount": "Main Account",
     "profile.employee": "Employee",
     "profile.visitor": "Visitor",
+    "profile.theme": "Theme",
+    "profile.themeLight": "Light",
+    "profile.themeDark": "Dark",
 
     // ── Settings ──
     "settings.title": "Settings",

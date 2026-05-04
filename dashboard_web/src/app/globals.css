@@ -54,48 +54,61 @@
 }
 
 :root {
+  /* === Palette claire alignée sur la console dev / Stripe ===
+     Page bg .......... #f7f8fa (gris très doux, identique à /admin)
+     Surface .......... #ffffff (cartes, sidebar, modales)
+     Surface 2 ........ #f3f4f6 (inputs, pills, sous-cartes)
+     Border subtle .... #eef0f3
+     Border standard .. #e5e7eb
+     Border strong .... #d1d5db
+     Texte primaire ... #111827
+     Texte secondaire . #6b7280
+     Texte tertiaire .. #9ca3af
+  */
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.13 0.028 155);
+  --background: #f7f8fa;
+  --foreground: #111827;
 
   --text-primary: #111827;
   --text-secondary: #6b7280;
   --text-tertiary: #9ca3af;
   --background-primary: #ffffff;
   --background-secondary: #f3f4f6;
-  --background-hover: #f9fafb;
-  --border-tertiary: #e5e7eb;
-  --border-secondary: #d1d5db;
+  --background-hover: #f5f6f8;
+  --border-tertiary: #eef0f3;
+  --border-secondary: #e5e7eb;
   --border-primary: #111827;
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.028 155);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.028 155);
-  --primary: oklch(0.21 0.034 155);
-  --primary-foreground: oklch(0.985 0.002 155);
-  --secondary: oklch(0.967 0.003 155);
-  --secondary-foreground: oklch(0.21 0.034 155);
-  --muted: oklch(0.967 0.003 155);
-  --muted-foreground: oklch(0.551 0.027 155);
-  --accent: oklch(0.967 0.003 155);
-  --accent-foreground: oklch(0.21 0.034 155);
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #111827;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #f3f4f6;
+  --accent-foreground: #111827;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.928 0.006 155);
-  --input: oklch(0.928 0.006 155);
+  --border: #e5e7eb;
+  --input: #e5e7eb;
   --ring: oklch(0.596 0.145 163.225);
   --chart-1: oklch(0.596 0.145 163.225);
   --chart-2: oklch(0.646 0.222 41.116);
   --chart-3: oklch(0.6 0.118 184.704);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.398 0.07 155);
-  --sidebar: oklch(0.985 0.002 155);
-  --sidebar-foreground: oklch(0.13 0.028 155);
-  --sidebar-primary: oklch(0.21 0.034 155);
-  --sidebar-primary-foreground: oklch(0.985 0.002 155);
-  --sidebar-accent: oklch(0.967 0.003 155);
-  --sidebar-accent-foreground: oklch(0.21 0.034 155);
-  --sidebar-border: oklch(0.928 0.006 155);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #111827;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f3f4f6;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #e5e7eb;
   --sidebar-ring: oklch(0.596 0.145 163.225);
+
+  color-scheme: light;
 }
 
 .dark {
@@ -107,6 +120,7 @@
      Border standard .. #343638
      Border strong .... #404244
   */
+  color-scheme: dark;
   --background: #111314;
   --foreground: oklch(0.985 0.002 155);
 
@@ -162,13 +176,11 @@
 
 @layer components {
   .background-template {
+    /* Mode clair : palette Stripe (presque blanc, gris très doux) */
     background:
-      radial-gradient(ellipse 80% 60% at 10% 0%, rgba(16, 185, 129, 0.04), transparent),
-      radial-gradient(ellipse 60% 50% at 90% 10%, rgba(20, 184, 166, 0.03), transparent),
-      radial-gradient(120% 120% at 20% 20%, rgba(180, 195, 185, 0.2), transparent 60%),
-      radial-gradient(120% 120% at 80% 0%, rgba(180, 200, 190, 0.18), transparent 55%),
-      radial-gradient(120% 120% at 50% 100%, rgba(150, 165, 155, 0.14), transparent 55%),
-      linear-gradient(180deg, #f7f9f8 0%, #f2f5f3 45%, #edf0ee 100%);
+      radial-gradient(ellipse 70% 50% at 0% 0%, rgba(99, 91, 255, 0.04), transparent),
+      radial-gradient(ellipse 60% 50% at 100% 0%, rgba(0, 122, 255, 0.03), transparent),
+      linear-gradient(180deg, #f7f8fa 0%, #f4f5f7 60%, #f1f3f5 100%);
   }
 
   .dark .background-template {

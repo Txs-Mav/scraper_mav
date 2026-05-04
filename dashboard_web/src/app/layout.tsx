@@ -129,7 +129,8 @@ export default function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          forcedTheme="dark"
+          defaultTheme="dark"
+          enableSystem={false}
           disableTransitionOnChange
         >
           <LanguageProvider>

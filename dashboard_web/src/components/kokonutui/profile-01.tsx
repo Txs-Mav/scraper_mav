@@ -1,8 +1,9 @@
 "use client"
 
-import { useMemo } from "react"
-import { LogOut, Settings, CreditCard, LogIn, MoveUpRight, User, Megaphone, ShieldCheck } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { LogOut, Settings, CreditCard, LogIn, MoveUpRight, User, Megaphone, ShieldCheck, Moon, Sun } from "lucide-react"
 import Link from "next/link"
+import { useTheme } from "next-themes"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { useRouter } from "next/navigation"
@@ -39,6 +40,15 @@ export default function Profile01({
   const { user, logout, isMainAccount } = useAuth()
   const { t } = useLanguage()
   const router = useRouter()
+  const { theme, resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const currentTheme = mounted ? (theme === "system" ? resolvedTheme : theme) : "dark"
+  const isDark = currentTheme === "dark"
 
   const displayName = user?.name || name
   const displayRole = useMemo(() => {
@@ -144,6 +154,31 @@ export default function Profile01({
                 </div>
               </Link>
             ))}
+
+            {user && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setTheme(isDark ? "light" : "dark")
+                }}
+                className="w-full flex items-center justify-between p-2 
+                                  hover:bg-zinc-50 dark:hover:bg-zinc-800/50 
+                                  rounded-lg transition-colors duration-200"
+                aria-label={t("profile.theme")}
+              >
+                <div className="flex items-center gap-2">
+                  {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    {t("profile.theme")}
+                  </span>
+                </div>
+                <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  {isDark ? t("profile.themeLight") : t("profile.themeDark")}
+                </span>
+              </button>
+            )}
 
             {user ? (
               <button
