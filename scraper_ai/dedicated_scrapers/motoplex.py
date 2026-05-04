@@ -34,11 +34,51 @@ class MotoplexScraper(DedicatedScraper):
     SITE_DOMAIN_ALT = "motoplexsteustache.ca"
 
     SITEMAP_URL = "https://www.motoplexsteustache.ca/sitemaps/inventory-detail.xml"
+    # Optionnel : sitemap catalogue/showroom (modèles non en stock).
+    # Quand défini, la catégorie 'catalogue' devient disponible dans scrape().
+    SHOWROOM_SITEMAP_URL: Optional[str] = None
 
     WORKERS = 12
     DETAIL_TIMEOUT = 12
 
     SEL_SPEC_VALUE = 'span.font-bold'
+
+    # Types JSON-LD acceptés. PowerGO utilise majoritairement 'Vehicle' pour
+    # l'inventaire mais 'Product' pour le catalogue (remorques, pièces…).
+    _ACCEPTED_LD_TYPES = ('Vehicle', 'Product')
+
+    # Mapping FR → champ canonique pour le fallback HTML 'Label:Value'
+    # (pages catalogue PowerGO sans span.font-bold).
+    _SPEC_LABEL_MAP = {
+        'manufacturier': 'marque',
+        'fabricant': 'marque',
+        'marque': 'marque',
+        'modèle': 'modele',
+        'modele': 'modele',
+        'année': 'annee',
+        'annee': 'annee',
+        'couleur': 'couleur',
+        'no de stock': 'inventaire',
+        'numéro de stock': 'inventaire',
+        'numero de stock': 'inventaire',
+        'stock': 'inventaire',
+        'vin': 'vin',
+        'nip': 'vin',
+        'type': 'vehicule_type',
+        'catégorie': 'vehicule_categorie',
+        'categorie': 'vehicule_categorie',
+        'utilisation': 'kilometrage',
+        'kilométrage': 'kilometrage',
+        'kilometrage': 'kilometrage',
+    }
+
+    # Annotations à retirer du texte avant parsing du prix.
+    # PowerGO concatène prix barré + 'Épargnez X $' + prix final.
+    _PRICE_NOISE_RE = re.compile(
+        r'(?:Save|Épargnez|Economisez|Économisez|Rabais|Discount)'
+        r'\s*\$?\s*[\d,.\s]+',
+        re.I,
+    )
 
     def __init__(self):
         super().__init__()
@@ -61,6 +101,18 @@ class MotoplexScraper(DedicatedScraper):
 
         # Phase 1 : découverte via sitemap
         url_map = self._discover_urls_from_sitemap(categories)
+
+        # Catalogue/showroom : seulement si SHOWROOM_SITEMAP_URL est défini
+        # ET que la catégorie est demandée (et inventory_only=False).
+        want_catalogue = (
+            not inventory_only
+            and self.SHOWROOM_SITEMAP_URL
+            and any(c in ('catalogue', 'showroom') for c in categories)
+        )
+        if want_catalogue:
+            showroom_urls = self._discover_showroom_urls()
+            if showroom_urls:
+                url_map.setdefault('catalogue', []).extend(showroom_urls)
 
         if not url_map:
             print("   ⚠️ Aucune URL trouvée dans le sitemap")
@@ -158,6 +210,35 @@ class MotoplexScraper(DedicatedScraper):
 
         return url_map
 
+    def _discover_showroom_urls(self) -> List[str]:
+        """Récupère les URLs du sitemap showroom (catalogue de modèles).
+
+        Format PowerGO : ``/fr/neuf/<type>/<marque>/<modele>/`` (4+ segments
+        après /fr/neuf/, sans ``/inventaire/``). Skip silencieusement si
+        ``SHOWROOM_SITEMAP_URL`` est absent ou inaccessible.
+        """
+        if not self.SHOWROOM_SITEMAP_URL:
+            return []
+        try:
+            resp = self.session.get(self.SHOWROOM_SITEMAP_URL, timeout=15)
+            if resp.status_code != 200:
+                return []
+        except Exception:
+            return []
+
+        raw_urls = self._parse_sitemap_locs(resp.text)
+        if not raw_urls:
+            return []
+
+        urls: List[str] = []
+        for raw_url in raw_urls:
+            if '/fr/neuf/' not in raw_url:
+                continue
+            if '/inventaire/' in raw_url:
+                continue
+            urls.append(raw_url)
+        return urls
+
     @staticmethod
     def _parse_sitemap_locs(xml_text: str) -> List[str]:
         """Extrait les URLs <loc> d'un sitemap XML avec fallback multi-parsers.
@@ -191,8 +272,12 @@ class MotoplexScraper(DedicatedScraper):
         """Fetch et parse toutes les pages détail en parallèle."""
         tasks: List[tuple] = []
         for cat_key, urls in url_map.items():
-            etat = 'neuf' if cat_key == 'inventaire' else 'occasion'
-            source_cat = 'inventaire' if cat_key == 'inventaire' else 'vehicules_occasion'
+            if cat_key == 'inventaire':
+                etat, source_cat = 'neuf', 'inventaire'
+            elif cat_key == 'occasion':
+                etat, source_cat = 'occasion', 'vehicules_occasion'
+            else:
+                etat, source_cat = 'neuf', 'catalogue'
             for url in urls:
                 tasks.append((url, etat, source_cat))
 
@@ -259,25 +344,26 @@ class MotoplexScraper(DedicatedScraper):
 
             self._extract_json_ld(soup, product)
             self._extract_html_specs(soup, product)
+            self._extract_html_specs_label_value(soup, product)
+
+            # Catalogue : pas d'inventaire/SKU réel — on retire le placeholder
+            # showroom pour éviter une fausse clé d'inventaire.
+            if source_cat == 'catalogue':
+                product.pop('inventaire', None)
 
             # Titre brut (h1) : détecter état/km AVANT nettoyage
             h1 = soup.select_one('h1')
             raw_title = h1.get_text(strip=True) if h1 else ''
             if raw_title:
                 meta = self._detect_name_metadata(raw_title)
-                if meta.get('etat'):
+                # Ne pas écraser l'état 'neuf' du catalogue.
+                if meta.get('etat') and source_cat != 'catalogue':
                     product['etat'] = meta['etat']
                 if meta.get('kilometrage') and not product.get('kilometrage'):
                     product['kilometrage'] = meta['kilometrage']
 
-            # Prix fallback : div.pg-vehicle-price (quand JSON-LD n'a pas de prix)
             if not product.get('prix'):
-                price_el = soup.select_one('div.pg-vehicle-price, div.pg-vehicle-mobile-price')
-                if price_el:
-                    price_text = price_el.get_text(strip=True)
-                    parsed = self.clean_price(price_text)
-                    if parsed:
-                        product['prix'] = parsed
+                self._extract_price_fallback(soup, product)
 
             # Nom : JSON-LD name > h1 > construction depuis marque+modele+annee
             if not product.get('name'):
@@ -295,18 +381,24 @@ class MotoplexScraper(DedicatedScraper):
             if not product.get('name'):
                 return None
 
-            # Image principale
             if not product.get('image'):
-                img = soup.select_one('img.pg-vehicle-image, .pg-vehicle-gallery img, '
-                                      'img[src*="cdn.powergo.ca"]')
+                img = soup.select_one(
+                    'img.pg-vehicle-image, .pg-vehicle-gallery img, '
+                    'img[src*="cdn.powergo.ca"], img[srcset*="cdn.powergo.ca"]')
                 if img:
                     src = img.get('src') or img.get('data-src', '')
+                    if not src:
+                        srcset = img.get('srcset', '')
+                        if srcset:
+                            src = srcset.split(',')[0].split()[0]
                     if src:
                         product['image'] = src if src.startswith('http') else urljoin(url, src)
 
-            # Description
             if not product.get('description'):
-                desc_el = soup.select_one('div.pg-vehicle-description .prose')
+                desc_el = soup.select_one(
+                    'div.pg-vehicle-description .prose, '
+                    'div.pg-vehicle-description, '
+                    '[class*="vehicle-description"] .prose')
                 if desc_el:
                     desc_text = desc_el.get_text(separator=' ', strip=True)
                     if desc_text and len(desc_text) > 10:
@@ -330,57 +422,127 @@ class MotoplexScraper(DedicatedScraper):
     # ================================================================
 
     def _extract_json_ld(self, soup: BeautifulSoup, out: Dict) -> None:
-        """Extrait les données structurées JSON-LD (schema.org Vehicle)."""
+        """Extrait les données structurées JSON-LD (schema.org Vehicle/Product).
+
+        Robustifié pour tolérer les variations PowerGO :
+          - ``@type`` : 'Vehicle' (inventaire) ET 'Product' (catalogue)
+          - ``manufacturer`` / ``brand`` : str ou dict {name: ...}
+          - ``offers`` : dict ou liste (showroom multi-couleurs → prix min)
+          - ``itemCondition`` : 'NewCondition'/'UsedCondition' OU
+                                'schema.org/new'/'schema.org/used'
+          - ``image`` : str, dict {url|contentUrl} ou liste
+        """
         for script in soup.find_all('script', type='application/ld+json'):
             try:
-                data = json.loads(script.string)
-                graph = data.get('@graph', [data] if '@type' in data else [])
-                for item in graph:
-                    if item.get('@type') != 'Vehicle':
-                        continue
-
-                    if item.get('name'):
-                        out.setdefault('name', self._clean_name(item['name']))
-                    if item.get('manufacturer'):
-                        out.setdefault('marque', item['manufacturer'])
-                    if item.get('model'):
-                        out.setdefault('modele', item['model'])
-                    if item.get('vehicleModelDate'):
-                        out.setdefault('annee', int(item['vehicleModelDate']))
-                    if item.get('color'):
-                        out.setdefault('couleur', item['color'])
-                    if item.get('sku'):
-                        out.setdefault('inventaire', item['sku'])
-
-                    condition = item.get('itemCondition', '')
-                    if 'NewCondition' in condition:
-                        out.setdefault('etat', 'neuf')
-                    elif 'UsedCondition' in condition:
-                        out.setdefault('etat', 'occasion')
-
-                    odometer = item.get('mileageFromOdometer')
-                    if isinstance(odometer, dict) and odometer.get('value'):
-                        try:
-                            out.setdefault('kilometrage', int(odometer['value']))
-                        except (ValueError, TypeError):
-                            pass
-
-                    offers = item.get('offers', {})
-                    if isinstance(offers, dict) and offers.get('price'):
-                        try:
-                            out.setdefault('prix', float(offers['price']))
-                        except (ValueError, TypeError):
-                            pass
-
-                    img = item.get('image')
-                    if isinstance(img, str) and img.startswith('http'):
-                        out.setdefault('image', img)
-                    elif isinstance(img, dict) and img.get('url', '').startswith('http'):
-                        out.setdefault('image', img['url'])
-
-                    break
-            except (json.JSONDecodeError, TypeError, KeyError, ValueError):
+                data = json.loads(script.string or '{}')
+            except (json.JSONDecodeError, TypeError):
                 continue
+
+            graph = data.get('@graph', [data] if data.get('@type') else [])
+            for item in graph:
+                if item.get('@type') not in self._ACCEPTED_LD_TYPES:
+                    continue
+
+                if item.get('name'):
+                    out.setdefault('name', self._clean_name(item['name']))
+
+                manuf = item.get('manufacturer')
+                if isinstance(manuf, dict):
+                    manuf = manuf.get('name', '')
+                if manuf:
+                    out.setdefault('marque', manuf)
+
+                if not out.get('marque'):
+                    brand = item.get('brand')
+                    if isinstance(brand, dict):
+                        brand = brand.get('name', '')
+                    if brand:
+                        out.setdefault('marque', brand)
+
+                if item.get('model'):
+                    out.setdefault('modele', item['model'])
+                if item.get('vehicleModelDate'):
+                    try:
+                        out.setdefault('annee', int(item['vehicleModelDate']))
+                    except (ValueError, TypeError):
+                        pass
+                if item.get('color'):
+                    out.setdefault('couleur', item['color'])
+                if item.get('sku'):
+                    out.setdefault('inventaire', str(item['sku']))
+
+                condition = (item.get('itemCondition') or '').lower()
+                if 'new' in condition:
+                    out.setdefault('etat', 'neuf')
+                elif 'used' in condition:
+                    out.setdefault('etat', 'occasion')
+
+                odometer = item.get('mileageFromOdometer')
+                if isinstance(odometer, dict) and odometer.get('value') is not None:
+                    try:
+                        km = int(float(odometer['value']))
+                        if km >= 0:
+                            out.setdefault('kilometrage', km)
+                    except (ValueError, TypeError):
+                        pass
+
+                price = self._extract_price_from_offers(item.get('offers'))
+                if price is not None:
+                    out.setdefault('prix', price)
+
+                img_url = self._first_image_url(item.get('image'))
+                if img_url:
+                    out.setdefault('image', img_url)
+
+                desc = item.get('description', '')
+                if isinstance(desc, str) and len(desc) > 10:
+                    out.setdefault('description', desc[:2000])
+
+                break
+
+    @staticmethod
+    def _extract_price_from_offers(offers: Any) -> Optional[float]:
+        """Retourne le prix le plus pertinent depuis offers (dict ou list).
+
+        Pour le showroom multi-couleurs (offers en liste), on prend le
+        prix le plus bas. Filtre les valeurs aberrantes (>1M, ≤0).
+        """
+        if not offers:
+            return None
+        items = offers if isinstance(offers, list) else [offers]
+        candidates: List[float] = []
+        for offer in items:
+            if not isinstance(offer, dict):
+                continue
+            raw = offer.get('price')
+            if raw is None:
+                continue
+            try:
+                val = float(raw)
+            except (ValueError, TypeError):
+                continue
+            if 0 < val <= 1_000_000:
+                candidates.append(val)
+        return min(candidates) if candidates else None
+
+    @staticmethod
+    def _first_image_url(img: Any) -> Optional[str]:
+        """Retourne la première URL d'image valide depuis un champ JSON-LD."""
+        if not img:
+            return None
+        if isinstance(img, list):
+            for entry in img:
+                url = MotoplexScraper._first_image_url(entry)
+                if url:
+                    return url
+            return None
+        if isinstance(img, str):
+            return img if img.startswith('http') else None
+        if isinstance(img, dict):
+            url = img.get('url') or img.get('contentUrl')
+            if isinstance(url, str) and url.startswith('http'):
+                return url
+        return None
 
     def _extract_html_specs(self, soup: BeautifulSoup, out: Dict) -> None:
         """Extrait les specs depuis les éléments li.spec-* de la page détail."""
@@ -429,6 +591,79 @@ class MotoplexScraper(DedicatedScraper):
                     out.setdefault('etat', 'neuf')
                 elif 'usag' in cond_text or 'used' in cond_text:
                     out.setdefault('etat', 'occasion')
+
+    def _extract_html_specs_label_value(self, soup: BeautifulSoup, out: Dict) -> None:
+        """Fallback pour les pages catalogue où ``span.font-bold`` est absent.
+
+        Sur ces pages PowerGO showroom, chaque ``li.spec-*`` contient
+        directement le texte ``Label:Value`` (ex: ``Manufacturier:Remeq``).
+        On split sur le premier ``:`` et on mappe le label vers un champ
+        canonique via ``_SPEC_LABEL_MAP``. Skip si le ``span.font-bold``
+        existe (auquel cas ``_extract_html_specs`` a déjà fait le travail).
+        """
+        for li in soup.select('li[class*="spec-"]'):
+            if li.select_one(self.SEL_SPEC_VALUE):
+                continue
+            text = li.get_text(strip=True)
+            if not text or ':' not in text:
+                continue
+            label, _, value = text.partition(':')
+            label_norm = label.strip().lower()
+            value = value.strip()
+            if not value or value in ('-', 'N/A', 'null'):
+                continue
+            field = self._SPEC_LABEL_MAP.get(label_norm)
+            if not field or out.get(field):
+                continue
+            if field == 'annee':
+                parsed = self.clean_year(value)
+                if parsed:
+                    out[field] = parsed
+            elif field == 'kilometrage':
+                parsed = self.clean_mileage(value)
+                if parsed is not None:
+                    out[field] = parsed
+            else:
+                out[field] = value
+
+    def _extract_price_fallback(self, soup: BeautifulSoup, out: Dict) -> None:
+        """Extraction du prix depuis le DOM si JSON-LD n'a rien donné.
+
+        PowerGO affiche couramment la concaténation :
+          ``21 944 $Épargnez 2 400 $19 544 $`` (prix barré + rabais + final)
+        On nettoie les annotations de rabais puis on prend le DERNIER
+        montant du texte (= prix final). Stocke aussi ``prix_original``
+        si un élément barré (``<s>``, ``<del>``, ``line-through``) est
+        détecté séparément.
+        """
+        price_el = soup.select_one(
+            'div.pg-vehicle-price, div.pg-vehicle-mobile-price, '
+            '[class*="vehicle-price"]')
+        if not price_el:
+            return
+
+        original_el = price_el.select_one(
+            's, del, .text-sale, .text-red, [class*="line-through"], '
+            '[class*="original"]')
+        if original_el:
+            original_price = self.clean_price(original_el.get_text(strip=True))
+            if original_price:
+                out.setdefault('prix_original', original_price)
+
+        raw_text = price_el.get_text(separator=' ', strip=True)
+        cleaned = self._PRICE_NOISE_RE.sub(' ', raw_text)
+
+        amounts = re.findall(
+            r'(\d[\d\s,.]{2,}\s*\$|\$\s*\d[\d\s,.]+)', cleaned)
+        for amount in reversed(amounts):
+            parsed = self.clean_price(amount)
+            if parsed:
+                out.setdefault('prix', parsed)
+                return
+
+        parsed = self.clean_price(cleaned)
+        if parsed:
+            out.setdefault('prix', parsed)
 
     # ================================================================
     # DÉTECTION ÉTAT / KM DEPUIS LE TITRE
@@ -487,16 +722,32 @@ class MotoplexScraper(DedicatedScraper):
         return None
 
     def discover_product_urls(self, categories: List[str] = None) -> List[str]:
-        """Interface requise par la classe de base."""
+        """Interface requise par la classe de base.
+
+        Inclut automatiquement le sitemap showroom si ``SHOWROOM_SITEMAP_URL``
+        est défini et la catégorie 'catalogue'/'showroom' est demandée.
+        """
         if categories is None:
             categories = ['inventaire', 'occasion']
         url_map = self._discover_urls_from_sitemap(categories)
-        all_urls = []
+
+        if self.SHOWROOM_SITEMAP_URL and any(
+                c in ('catalogue', 'showroom') for c in categories):
+            showroom = self._discover_showroom_urls()
+            if showroom:
+                url_map.setdefault('catalogue', []).extend(showroom)
+
+        all_urls: List[str] = []
         for urls in url_map.values():
             all_urls.extend(urls)
-        seen = set()
-        return [u for u in all_urls
-                if u.rstrip('/').lower() not in seen and not seen.add(u.rstrip('/').lower())]
+        seen: set = set()
+        unique: List[str] = []
+        for u in all_urls:
+            key = u.rstrip('/').lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(u)
+        return unique
 
     def extract_from_detail_page(self, url: str, html: str, soup: BeautifulSoup) -> Optional[Dict]:
         """Interface requise par la classe de base."""
@@ -574,11 +825,18 @@ class MotoplexScraper(DedicatedScraper):
             pass
         return text
 
-    @staticmethod
-    def _clean_name(name: str) -> str:
+    @classmethod
+    def _clean_name(cls, name: str) -> str:
+        """Nettoyage générique des noms produits PowerGO.
+
+        Classmethod (pas staticmethod) pour pouvoir lire ``cls.SITE_NAME``
+        et retirer dynamiquement le suffixe ``| {SITE_NAME}`` quel que
+        soit le concessionnaire. Compatible avec ``self._clean_name(...)``
+        et ``MotoplexScraper._clean_name(...)``.
+        """
         if not name:
             return name
-        name = MotoplexScraper._fix_mojibake(name)
+        name = cls._fix_mojibake(name)
         # Annotations entre astérisques: *LIQUIDATION*, *BAS KILOMÉTRAGE*, *744 KM*, etc.
         name = re.sub(r'\*[^*]+\*', '', name)
         # Annotations sans astérisques mais avec astérisque ouvrante orpheline: *744 KM
@@ -597,13 +855,29 @@ class MotoplexScraper(DedicatedScraper):
             r'|avec\s+chenilles?|avec\s+cabine'
             r'|chenilles?|cabine)\b',
             '', name, flags=re.I)
-        # Annotations km standalone: "744 KM", "1200 KM" (seulement si précédé de espace/début)
+        # Annotations km standalone: "744 KM", "1200 KM"
         name = re.sub(r'(?<=\s)\d+\s*km\b', '', name, flags=re.I)
         # Marque dupliquée: "BMW BMW R1200" → "BMW R1200"
         name = re.sub(r'^(\w+)\s+\1\b', r'\1', name, flags=re.I)
         name = re.sub(r"\s+(?:neuf|usag[ée]+)\s+[àa]\s+[\w\s.-]+$", '', name, flags=re.I)
         name = re.sub(r"\s+[àa]\s+vendre\s+.*$", '', name, flags=re.I)
-        name = re.sub(r'\s*\|\s*Motoplex.*$', '', name, flags=re.I)
+
+        # Suffixe site dynamique : "| Motoplex...", "| Morin Sports...",
+        # "| Picotte..." etc. Construit depuis cls.SITE_NAME (premier
+        # mot significatif), avec rétro-compat pour 'Motoplex'.
+        site_tokens = re.split(r'[\s|&\-]+', (cls.SITE_NAME or ''))
+        first_token = next((t for t in site_tokens if len(t) >= 3), '')
+        if first_token:
+            pattern = (r'\s*[|\-–]\s*' + re.escape(first_token) + r'.*$')
+            name = re.sub(pattern, '', name, flags=re.I)
+        else:
+            name = re.sub(r'\s*\|\s*Motoplex.*$', '', name, flags=re.I)
+
+        # Codes internes constructeur Kawasaki/Suzuki concaténés au nom
+        # (ex: 'KLE650JSNN', 'KLZ1000DPSNN'). Pattern strict (4+ lettres
+        # finales) pour préserver les modèles légitimes type 'KLX140R'.
+        name = re.sub(r'\s+[A-Z]{2,}\d{2,}[A-Z]{4,}(?=\s|$)', '', name)
+
         # Tirets orphelins après nettoyage
         name = re.sub(r'\s*-\s*$', '', name)
         name = re.sub(r'\s+', ' ', name)
