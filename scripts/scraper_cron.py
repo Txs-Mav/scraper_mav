@@ -67,6 +67,9 @@ KNOWN_LARGE_DOMAINS = {
     'gregoiresport.com',      # ~500 produits, ~5 min
     'mathiassports.com',      # ~400 produits, ~4 min
     'mvmmotosport.com',       # ~300 produits, ~3 min
+    'lavalmoto.com',          # 6 sitemaps Yoast + détails parallèles, dépasse 10 min
+    'picottemotosport.com',   # fallback listing 5 cat × 7 tris quand sitemap KO
+    'motovanier.ca',          # WORKERS=3 + retries lents (8s × 5), dépasse 10 min
 }
 
 MAX_CONCURRENT_SITES = 8
