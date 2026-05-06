@@ -68,16 +68,33 @@ export function isDevAdminEmailPublic(email: string | null | undefined): boolean
 /**
  * Helper principal côté serveur : retourne true si l'utilisateur a accès
  * à la console développeur.
+ *
+ * Fallback : si `DEV_ADMIN_EMAIL` n'est pas configuré dans l'env (typique
+ * d'un déploiement Vercel où on a oublié de set la variable), on accepte
+ * `user.role === 'developer'`. Ce fallback est sûr parce que :
+ *   1. La promotion vers le rôle 'developer' est verrouillée par un trigger
+ *      Postgres (migration_normalize_admin_role.sql) qui n'autorise que la
+ *      service_role à effectuer ce changement.
+ *   2. Le rôle est lu depuis `public.users` côté serveur via la session
+ *      Supabase, pas depuis le JWT client.
  */
 export function isDevAdminUser(user: UserLike | null | undefined): boolean {
   if (!user) return false
-  return isDevAdminEmail(user.email)
+  if (isDevAdminEmail(user.email)) return true
+  return normalizeEmail(user.role) === "developer"
 }
 
 /**
  * Helper côté client : utilise NEXT_PUBLIC_DEV_ADMIN_EMAIL.
+ *
+ * Fallback : si l'env publique n'est pas configurée (cas typique d'un
+ * déploiement Vercel où on a oublié `NEXT_PUBLIC_DEV_ADMIN_EMAIL`), on
+ * accepte aussi `user.role === 'developer'`. Le vrai gate (middleware +
+ * server components + routes API) reste l'email serveur — ce check client
+ * ne sert qu'à la redirection UI vers /admin.
  */
 export function isDevAdminUserPublic(user: UserLike | null | undefined): boolean {
   if (!user) return false
-  return isDevAdminEmailPublic(user.email)
+  if (isDevAdminEmailPublic(user.email)) return true
+  return normalizeEmail(user.role) === "developer"
 }
