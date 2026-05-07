@@ -34,7 +34,7 @@ interface Props {
  * Le client guard est en 3e ligne de défense (rétrogradation en session).
  */
 export default function AdminLayoutClient({ initialUser, children }: Props) {
-  const { user: clientUser, isLoading, logout } = useAuth()
+  const { user: clientUser, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -122,23 +122,13 @@ export default function AdminLayoutClient({ initialUser, children }: Props) {
               <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await logout()
-              } catch {
-                // ignore : on redirige quoi qu'il arrive
-              }
-              // Hard navigation pour s'assurer que le middleware Next.js
-              // ré-évalue la session avec les cookies fraîchement nettoyés.
-              window.location.replace("/login")
-            }}
+          <a
+            href="/api/auth/logout"
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
             <LogOut className="h-3 w-3" />
             <span>Déconnexion</span>
-          </button>
+          </a>
         </div>
       </aside>
 

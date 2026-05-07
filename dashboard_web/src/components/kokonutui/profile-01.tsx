@@ -37,7 +37,7 @@ export default function Profile01({
   avatar = defaultProfile.avatar,
   subscription = defaultProfile.subscription,
 }: Partial<Profile01Props> = defaultProfile) {
-  const { user, logout, isMainAccount } = useAuth()
+  const { user, isMainAccount } = useAuth()
   const { t } = useLanguage()
   const router = useRouter()
   const { theme, resolvedTheme, setTheme } = useTheme()
@@ -181,19 +181,8 @@ export default function Profile01({
             )}
 
             {user ? (
-              <button
-                type="button"
-                onClick={async () => {
-                  // On attend la fin du logout (client + serveur) AVANT de naviguer,
-                  // sinon les cookies de session restent et l'utilisateur est "reconnecté"
-                  // au prochain rendu (cas reproductible avec le compte dev).
-                  try {
-                    await logout()
-                  } catch {
-                    // ignore : on redirige quoi qu'il arrive
-                  }
-                  window.location.replace("/login")
-                }}
+              <a
+                href="/api/auth/logout"
                 className="w-full flex items-center justify-between p-2 
                                   hover:bg-zinc-50 dark:hover:bg-zinc-800/50 
                                   rounded-lg transition-colors duration-200"
@@ -202,7 +191,7 @@ export default function Profile01({
                   <LogOut className="w-4 h-4" />
                   <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{t("profile.logout")}</span>
                 </div>
-              </button>
+              </a>
             ) : (
               <Link
                 href="/login"

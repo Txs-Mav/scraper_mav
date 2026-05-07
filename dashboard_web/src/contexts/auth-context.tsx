@@ -218,19 +218,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
-    // Déconnexion en 2 temps pour garantir que tous les cookies (client ET serveur)
-    // soient effacés, sinon le middleware Next.js peut continuer à voir l'utilisateur
-    // (ex: compte dev avec cookies 30j, qui se "ré-attachait" automatiquement).
+    // Déconnexion en 2 temps : d'abord invalider la session locale (storage
+    // + cookies non-httpOnly), ensuite appeler la route serveur qui efface
+    // les cookies httpOnly utilisés par le middleware Next.js. Sans la 2e
+    // étape, le middleware voit encore la session et reconnecte l'user au
+    // prochain rendu (cas reproductible avec le compte dev, cookies 30j).
     try {
-      // 1) Côté client : invalide la session locale (localStorage + cookies non-httpOnly)
       await supabase.auth.signOut()
     } catch (error) {
       console.error("Error during client signOut:", error)
     }
 
     try {
-      // 2) Côté serveur : invalide les cookies httpOnly via la route serveur
-      // (qui passe par @supabase/ssr et donc nettoie les cookies du middleware).
       await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
