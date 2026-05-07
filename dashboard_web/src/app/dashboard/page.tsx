@@ -162,7 +162,7 @@ function DashboardContent() {
       router.replace("/admin")
       return
     }
-    router.replace("/dashboard/comparaisons")
+    router.replace("/dashboard/surveillance")
   }, [isLoading, checkingPendingPlan, user, restricted, router])
 
   if (isLoading || checkingPendingPlan || (user && !restricted)) {
