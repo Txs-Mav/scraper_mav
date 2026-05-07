@@ -8,7 +8,7 @@ Plateforme : PowerGO / Next.js (cdn.powergo.ca)
 Domaine    : morinsports.com
 
 Hérite de MotoplexScraper qui gère nativement :
-  - Sitemap inventory-detail.xml + showroom-detail.xml (via SHOWROOM_SITEMAP_URL)
+  - Sitemap inventory-detail.xml (uniquement, pas le showroom)
   - JSON-LD Vehicle ET Product (remorques Remeq)
   - Format HTML 'Label:Value' pour les pages catalogue
   - Prix avec annotations "Épargnez X $" / "Save X $" / etc.
@@ -16,9 +16,8 @@ Hérite de MotoplexScraper qui gère nativement :
   - Suffixe site dynamique '| Morin Sports & Marine' retiré du nom
 
 Ce fichier ne définit que les attributs spécifiques au site :
-  1. URLs sitemap inventory + showroom
-  2. Filtre _is_product_url étendu pour accepter les URLs catalogue
-     (/fr/neuf/<type>/<marque>/<modele>/)
+  1. URL sitemap inventory (showroom volontairement exclu)
+  2. Filtre _is_product_url restreint aux URLs d'inventaire
   3. Types de véhicules supplémentaires (vélo électrique)
 """
 from typing import Optional
@@ -36,13 +35,15 @@ class MorinSportsScraper(MotoplexScraper):
     SITE_DOMAIN_ALT = "morinsports.com"
 
     SITEMAP_URL = "https://www.morinsports.com/sitemaps/inventory-detail.xml"
-    SHOWROOM_SITEMAP_URL = "https://www.morinsports.com/sitemaps/showroom-detail.xml"
+    # Showroom/catalogue désactivé : on ne veut que les produits réellement
+    # présents dans les inventaires (URLs contenant 'a-vendre-').
+    SHOWROOM_SITEMAP_URL = None
 
     WORKERS = 12
     DETAIL_TIMEOUT = 12
 
     def _is_product_url(self, url: str) -> bool:
-        """Filtre custom incluant les URLs showroom (sans 'a-vendre-')."""
+        """N'accepte que les URLs d'inventaire (/inventaire/ + 'a-vendre-')."""
         url_lower = url.lower()
         if self.SITE_DOMAIN not in url_lower:
             return False
@@ -52,15 +53,10 @@ class MorinSportsScraper(MotoplexScraper):
             return False
         if '/fr/' not in url_lower:
             return False
-        if '/inventaire/' in url_lower and 'a-vendre-' in url_lower:
-            return True
-        if '/fr/neuf/' in url_lower and '/inventaire/' not in url_lower:
-            path = urlparse(url_lower).path.strip('/').split('/')
-            return len(path) >= 5
-        return False
+        return '/inventaire/' in url_lower and 'a-vendre-' in url_lower
 
     def _extract_type_from_url(self, url: str) -> Optional[str]:
-        """Étend la table de types pour couvrir le catalogue Morin Sports."""
+        """Étend la table de types pour couvrir l'inventaire Morin Sports."""
         type_map = {
             'motocyclette': 'Motocyclette',
             'vtt': 'VTT',
