@@ -1,29 +1,31 @@
 /**
  * Single source of truth pour l'autorisation "console développeur".
  *
- * Politique courante (mai 2026) :
- *   Seul le compte dont l'email correspond à DEV_ADMIN_EMAIL (variable
- *   d'environnement définie dans .env) peut accéder à /admin/* et
- *   /dashboard/admin/*. Le rôle Postgres (`users.role`) n'est PAS utilisé
- *   comme gate : c'est l'email qui fait foi, parce que la base contient
- *   actuellement plusieurs comptes en `role='main'` qui ne devraient pas
- *   avoir d'accès admin.
+ * Politique stricte (révision sécurité mai 2026) :
+ *   1. Le seul gate côté serveur est l'email de l'utilisateur authentifié
+ *      comparé à `DEV_ADMIN_EMAIL` (variable d'environnement).
+ *   2. Si `DEV_ADMIN_EMAIL` n'est PAS configuré, on bloque tout accès admin
+ *      (fail-closed). Pas de fallback sur `users.role` : ce champ est trop
+ *      facilement contournable (RLS mal configurée, héritage d'anciennes
+ *      conventions, etc.) et on a déjà eu un incident où plusieurs comptes
+ *      avaient `role='developer'` sans devoir l'être.
+ *   3. L'email comparé doit provenir de `auth.users` (Supabase Auth), pas
+ *      de `public.users`. Le helper `getCurrentUser()` est donc responsable
+ *      d'attacher `auth_email` à l'objet user retourné.
  *
  * Utilisation :
- *   - Server   : `import { isDevAdminUser } from '@/lib/auth/admin'`
- *                puis `isDevAdminUser(user)`. Lit `process.env.DEV_ADMIN_EMAIL`.
- *   - Client   : `import { isDevAdminEmail } from '@/lib/auth/admin'`
- *                avec `process.env.NEXT_PUBLIC_DEV_ADMIN_EMAIL` exposé.
- *
- * Note de sécurité : le client guard est superflu — la vraie protection
- * est dans le middleware + les server components + les API routes. Le client
- * guard sert uniquement à éviter le flash de l'UI admin pour un user qui
- * aurait été rétrogradé en cours de session.
+ *   - Server : `import { isDevAdminUser } from '@/lib/auth/admin'`
+ *              puis `isDevAdminUser(user)`. Lit `process.env.DEV_ADMIN_EMAIL`.
+ *   - Client : `import { isDevAdminUserPublic } from '@/lib/auth/admin'`.
+ *              Sert UNIQUEMENT à cacher des liens dans l'UI ; le vrai gate
+ *              est serveur.
  */
 
 interface UserLike {
+  /** Email canonique vérifié par Supabase Auth (auth.users.email). */
+  auth_email?: string | null
+  /** Email applicatif (public.users.email). À ne pas utiliser pour la gate. */
   email?: string | null
-  role?: string | null
 }
 
 function normalizeEmail(email: string | null | undefined): string {
@@ -69,32 +71,47 @@ export function isDevAdminEmailPublic(email: string | null | undefined): boolean
  * Helper principal côté serveur : retourne true si l'utilisateur a accès
  * à la console développeur.
  *
- * Fallback : si `DEV_ADMIN_EMAIL` n'est pas configuré dans l'env (typique
- * d'un déploiement Vercel où on a oublié de set la variable), on accepte
- * `user.role === 'developer'`. Ce fallback est sûr parce que :
- *   1. La promotion vers le rôle 'developer' est verrouillée par un trigger
- *      Postgres (migration_normalize_admin_role.sql) qui n'autorise que la
- *      service_role à effectuer ce changement.
- *   2. Le rôle est lu depuis `public.users` côté serveur via la session
- *      Supabase, pas depuis le JWT client.
+ * STRICT : on compare uniquement `user.auth_email` (email vérifié Supabase
+ * Auth) à `DEV_ADMIN_EMAIL`. Si `DEV_ADMIN_EMAIL` n'est pas configuré ou
+ * que `auth_email` est absent, on retourne false (fail-closed).
+ *
+ * Pas de fallback sur `users.role` : trop fragile en cas de mauvaise RLS,
+ * de migration ratée, ou d'héritage de comptes 'main'/'developer'.
  */
 export function isDevAdminUser(user: UserLike | null | undefined): boolean {
   if (!user) return false
-  if (isDevAdminEmail(user.email)) return true
-  return normalizeEmail(user.role) === "developer"
+  const target = getDevAdminEmail()
+  if (!target) {
+    if (typeof console !== "undefined") {
+      console.error(
+        "[admin/auth] DEV_ADMIN_EMAIL non configuré — accès admin refusé (fail-closed). " +
+          "Configure cette variable d'environnement sur Vercel/local pour activer la console.",
+      )
+    }
+    return false
+  }
+  // On exige explicitement l'email vérifié de auth.users, pas l'email
+  // applicatif (qui peut diverger via RLS ou triggers).
+  const authEmail = normalizeEmail(user.auth_email)
+  if (!authEmail) return false
+  return authEmail === target
 }
 
 /**
  * Helper côté client : utilise NEXT_PUBLIC_DEV_ADMIN_EMAIL.
  *
- * Fallback : si l'env publique n'est pas configurée (cas typique d'un
- * déploiement Vercel où on a oublié `NEXT_PUBLIC_DEV_ADMIN_EMAIL`), on
- * accepte aussi `user.role === 'developer'`. Le vrai gate (middleware +
- * server components + routes API) reste l'email serveur — ce check client
- * ne sert qu'à la redirection UI vers /admin.
+ * Sert uniquement à cacher des liens dans l'UI (menu profil, etc.). Le vrai
+ * contrôle d'accès est serveur (layouts + API routes). On compare l'email
+ * exposé côté client (qui vient de la session Supabase Auth) à la variable
+ * publique. Pas de fallback role.
  */
 export function isDevAdminUserPublic(user: UserLike | null | undefined): boolean {
   if (!user) return false
-  if (isDevAdminEmailPublic(user.email)) return true
-  return normalizeEmail(user.role) === "developer"
+  const target = getDevAdminEmailPublic()
+  if (!target) return false
+  // Côté client, on accepte aussi user.email parce que c'est l'email
+  // applicatif (les composants existants passent ça). Mais le vrai gate
+  // est serveur.
+  const candidate = normalizeEmail(user.auth_email || user.email)
+  return candidate === target
 }

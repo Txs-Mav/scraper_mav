@@ -4,26 +4,29 @@ Le rôle ``developer`` donne accès à la console développeur ``/admin`` qui
 permet de tester et valider les scrapers générés par scraper_usine, voir
 l'état du cron horaire, l'activité des clients, etc.
 
-Usage rapide (utilise les credentials par défaut du .env) :
+Usage rapide (lit les variables DEV_ADMIN_* du .env, JAMAIS de défaut codé en dur) :
     python scripts/create_developer.py --seed
 
     # ou avec une commande explicite :
-    python scripts/create_developer.py --email dev@go-data.ca --name "Dev Go-Data" --password 'GoData-Dev-2026!'
+    python scripts/create_developer.py --email dev@example.com --name "Dev" --password '...'
 
     # Promouvoir un utilisateur existant
-    python scripts/create_developer.py --email dev@go-data.ca --promote
+    python scripts/create_developer.py --email dev@example.com --promote
 
     # Rétrograder un développeur en utilisateur normal
-    python scripts/create_developer.py --email dev@go-data.ca --demote
+    python scripts/create_developer.py --email dev@example.com --demote
 
 Requiert les variables d'environnement :
     SUPABASE_URL
     SUPABASE_SERVICE_ROLE_KEY
 
-Optionnels (utilisés par --seed) :
-    DEV_ADMIN_EMAIL    (défaut : dev@go-data.ca)
-    DEV_ADMIN_PASSWORD (défaut : GoData-Dev-2026!)
-    DEV_ADMIN_NAME     (défaut : Dev Go-Data)
+Pour --seed (aucun défaut codé en dur, fail-closed) :
+    DEV_ADMIN_EMAIL
+    DEV_ADMIN_PASSWORD
+    DEV_ADMIN_NAME (optionnel, défaut "Dev")
+
+⚠️  SÉCURITÉ : ce script ne contient AUCUN mot de passe par défaut. Tout doit
+    venir de l'environnement ou des arguments. Ne commite jamais le .env.
 """
 from __future__ import annotations
 
@@ -165,9 +168,7 @@ def cmd_demote(supabase, *, email: str) -> int:
     return 0
 
 
-DEFAULT_DEV_EMAIL = "dev@go-data.ca"
-DEFAULT_DEV_PASSWORD = "GoData-Dev-2026!"
-DEFAULT_DEV_NAME = "Dev Go-Data"
+DEFAULT_DEV_NAME = "Dev"
 
 
 def main() -> int:
@@ -206,11 +207,18 @@ def main() -> int:
 
     supabase = create_client(supabase_url, service_key)
 
-    # Mode --seed : credentials par défaut prêts à l'emploi
+    # Mode --seed : lit les credentials depuis l'env (ZÉRO défaut hardcodé).
+    # Si DEV_ADMIN_EMAIL ou DEV_ADMIN_PASSWORD manquent, on s'arrête net :
+    # impossible d'avoir un mot de passe "par défaut" connu de tout le monde.
     if args.seed:
-        email = os.environ.get("DEV_ADMIN_EMAIL") or DEFAULT_DEV_EMAIL
-        password = os.environ.get("DEV_ADMIN_PASSWORD") or DEFAULT_DEV_PASSWORD
+        email = os.environ.get("DEV_ADMIN_EMAIL")
+        password = os.environ.get("DEV_ADMIN_PASSWORD")
         name = os.environ.get("DEV_ADMIN_NAME") or DEFAULT_DEV_NAME
+        if not email or not password:
+            print("❌ --seed exige DEV_ADMIN_EMAIL et DEV_ADMIN_PASSWORD dans .env.")
+            print("   Aucun mot de passe par défaut n'est fourni pour des raisons")
+            print("   de sécurité (le repo ne doit jamais contenir de credentials).")
+            return 1
         existing = _get_user_by_email(supabase, email)
         if existing:
             print(f"ℹ️  {email} existe déjà — promotion en developer.")

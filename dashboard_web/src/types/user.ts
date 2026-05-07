@@ -6,6 +6,13 @@ export interface User {
     id: string
     name: string
     email: string
+    /**
+     * Email vérifié de Supabase Auth (auth.users.email). Source canonique
+     * pour les contrôles d'accès admin — ne JAMAIS utiliser `email` (qui
+     * vient de public.users et peut diverger). Présent uniquement quand
+     * l'objet est construit côté serveur via `getCurrentUser()`.
+     */
+    auth_email?: string | null
     role: 'main' | 'developer' | 'employee' | 'user' | 'owner' | 'member'
     subscription_plan?: 'standard' | 'pro' | 'ultime'
     /** Source de l'abonnement : stripe = payé, promo = code promo. Si null, plan non confirmé. */

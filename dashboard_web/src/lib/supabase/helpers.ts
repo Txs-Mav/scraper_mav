@@ -5,16 +5,21 @@ import { createClient } from './server'
 import type { User, Scraping } from '@/types/user'
 
 /**
- * Récupère l'utilisateur actuel depuis Supabase Auth
+ * Récupère l'utilisateur actuel depuis Supabase Auth.
+ *
+ * IMPORTANT : on attache `auth_email` qui provient de `auth.users` (Supabase
+ * Auth) — c'est l'email vérifié, source de vérité pour les contrôles d'accès
+ * admin. L'email de `public.users` peut diverger (RLS mal configurée,
+ * triggers, etc.) et ne doit JAMAIS être utilisé pour gate /admin.
  */
 export async function getCurrentUser() {
   const supabase = await createClient()
   const {
-    data: { user },
+    data: { user: authUser },
     error,
   } = await supabase.auth.getUser()
 
-  if (error || !user) {
+  if (error || !authUser) {
     return null
   }
 
@@ -22,14 +27,15 @@ export async function getCurrentUser() {
   const { data: userData, error: userError } = await supabase
     .from('users')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', authUser.id)
     .single()
 
   if (userError || !userData) {
     return null
   }
 
-  return userData as User
+  // Email vérifié de auth.users — utilisé par isDevAdminUser pour gate /admin.
+  return { ...userData, auth_email: authUser.email ?? null } as User
 }
 
 /**
