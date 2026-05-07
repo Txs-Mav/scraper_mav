@@ -2,12 +2,20 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { User, Home, BarChart2, CreditCard, Activity, ChevronDown, LayoutGrid, Radar, Search, Lock } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { User, Home, BarChart2, CreditCard, Activity, ChevronDown, LayoutGrid, Radar, Search, Lock, KeyRound, Webhook, Boxes, Users, FileBarChart, HelpCircle, Map } from "lucide-react"
 
 import Profile01 from "./profile-01"
 import { useLanguage } from "@/contexts/language-context"
 import { useAuth } from "@/contexts/auth-context"
+import { getDashboardCapabilities } from "@/lib/account-navigation"
 import { cn } from "@/lib/utils"
 import { canAccessAnalytics, canAccessOrganisation } from "@/lib/plan-restrictions"
 import type { TranslationKey } from "@/lib/translations"
@@ -28,6 +36,7 @@ export default function TopNav() {
   const pathname = usePathname()
   const plan = user?.subscription_plan ?? "standard"
   const subscriptionSource = user?.subscription_source || (user?.promo_code_id ? 'promo' : null)
+  const capabilities = getDashboardCapabilities(user?.business_type)
 
   const allNavItems: NavItem[] = [
     { kind: "dashboard", labelKey: "nav.dashboard", icon: Home, requiresPaid: false },
@@ -47,6 +56,26 @@ export default function TopNav() {
   const isDashboardActive =
     pathname.startsWith("/dashboard/comparaisons") ||
     pathname.startsWith("/dashboard/surveillance")
+
+  const developerNavItems = capabilities.showDeveloperTools
+    ? [
+        { href: "/dashboard/api-keys", label: "API", icon: KeyRound },
+        { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook },
+        { href: "/dashboard/integrations", label: "Intégrations", icon: Boxes },
+      ]
+    : []
+
+  const availableMoreLinks = [
+    { href: "/dashboard/help", label: "Aide", icon: HelpCircle },
+  ]
+
+  const comingSoonMoreLinks = [
+    { label: "Équipe", icon: Users },
+    { label: "Rapports", icon: FileBarChart },
+    { label: "Marketplace", icon: Boxes },
+    { label: "Onboarding", icon: LayoutGrid },
+    { label: "Roadmap", icon: Map },
+  ]
 
   return (
     <nav className="px-3 sm:px-6 flex items-center justify-between bg-[var(--color-background-primary)] border-b border-[var(--color-border-secondary)] h-full">
@@ -174,6 +203,71 @@ export default function TopNav() {
               </Link>
             )
           })}
+          {developerNavItems.map((link) => {
+            const Icon = link.icon
+            const isExact = pathname.startsWith(link.href)
+
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  "group relative hidden xl:flex items-center gap-2 px-3 py-2.5 text-sm transition-colors",
+                  isExact
+                    ? "text-[var(--color-text-primary)] font-semibold"
+                    : "text-[var(--color-text-secondary)] font-medium hover:text-[var(--color-text-primary)]"
+                )}
+              >
+                <Icon className={cn("h-4 w-4", isExact ? "text-emerald-600 dark:text-emerald-400" : "")} />
+                <span>{link.label}</span>
+              </Link>
+            )
+          })}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Plus"
+              className="group relative hidden lg:flex items-center gap-2 px-3 py-2.5 text-sm transition-colors focus:outline-none text-[var(--color-text-secondary)] font-medium hover:text-[var(--color-text-primary)]"
+            >
+              <span>Plus</span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={8} className="w-[280px] bg-background border-border rounded-lg shadow-lg">
+              {availableMoreLinks.map((link) => {
+                const Icon = link.icon
+                return (
+                  <DropdownMenuItem asChild key={link.href}>
+                    <Link href={link.href} className="flex items-center gap-2 cursor-pointer">
+                      <Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>{link.label}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                )
+              })}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="px-2 py-1 text-[11px] font-semibold uppercase tracking-widest text-[var(--color-text-secondary)]">
+                À venir
+              </DropdownMenuLabel>
+              {comingSoonMoreLinks.map((link) => {
+                const Icon = link.icon
+                return (
+                  <DropdownMenuItem
+                    key={link.label}
+                    disabled
+                    className="flex items-center justify-between gap-3 cursor-not-allowed"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="truncate">{link.label}</span>
+                    </span>
+                    <span className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                      <Lock className="h-3 w-3" />
+                      À venir
+                    </span>
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

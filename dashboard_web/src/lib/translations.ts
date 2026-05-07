@@ -1,4 +1,12 @@
-export type Locale = "fr" | "en"
+export type Locale = "fr" | "en" | "es" | "de" | "pt"
+
+export const LOCALES: { code: Locale; label: string; flag: string }[] = [
+  { code: "fr", label: "Français", flag: "FR" },
+  { code: "en", label: "English", flag: "EN" },
+  { code: "es", label: "Español", flag: "ES" },
+  { code: "de", label: "Deutsch", flag: "DE" },
+  { code: "pt", label: "Português", flag: "PT" },
+]
 
 const translations = {
   fr: {
@@ -1402,8 +1410,14 @@ const translations = {
 
 export type TranslationKey = keyof typeof translations.fr
 
-export function t(locale: Locale, key: TranslationKey): string {
-  return translations[locale]?.[key] ?? translations.fr[key] ?? key
+const _t = translations as unknown as Record<Locale, Record<string, string>>
+
+export function t(locale: Locale, key: TranslationKey | string): string {
+  const dict = _t[locale]
+  if (dict && key in dict) return dict[key]
+  if (locale !== "en" && _t.en && key in _t.en) return _t.en[key as TranslationKey]
+  if (locale !== "fr" && key in _t.fr) return _t.fr[key as TranslationKey]
+  return key
 }
 
 export default translations

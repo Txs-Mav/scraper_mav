@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: Request) {
   try {
-    const { name, email, password, plan = 'free' } = await request.json()
+    const { name, email, password, plan = 'free', businessType = 'recreational_vehicles' } = await request.json()
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       email,
       role: 'main',
       subscription_plan: plan,
+      business_type: businessType,
     })
 
     if (userError) {

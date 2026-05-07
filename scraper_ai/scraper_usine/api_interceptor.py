@@ -1,9 +1,10 @@
 """
 Interception des API internes via Playwright.
 
-Navigue sur les pages listing, capture les requêtes réseau XHR/fetch,
-identifie celles qui retournent des données produit, et mappe les champs.
-Gère aussi les popups cookie, le scroll infini et les boutons Load More.
+Navigue sur les pages listing (via le BrowserAgent partagé), capture les
+réponses XHR/fetch, identifie celles qui retournent des données produit, et
+mappe les champs. Si l'analyzer a déjà rendu certaines de ces URLs (1.3bis),
+les captures sont rejouées ici sans relancer le navigateur.
 """
 from __future__ import annotations
 
@@ -14,10 +15,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from .browser_agent import BrowserAgent, CapturedResponse
 from .models import DetectedAPI
-from .stealth import (
-    apply_stealth_to_playwright_context, random_user_agent, stealth_headers,
-)
 from .url_utils import extract_path_field
 
 PRODUCT_FIELD_SIGNALS = {
@@ -36,186 +35,90 @@ PRODUCT_FIELD_SIGNALS = {
     "newused", "condition", "certified",
 }
 
-COOKIE_DISMISS_SELECTORS = [
-    # OneTrust
-    "button#onetrust-accept-btn-handler",
-    "#onetrust-accept-btn-handler",
-    # Didomi
-    "button#didomi-notice-agree-button",
-    ".didomi-continue-without-agreeing",
-    # Quantcast Choice
-    "button.qc-cmp2-summary-buttons button[mode='primary']",
-    "button.qc-cmp2-accept-all",
-    # TrustArc
-    "#truste-consent-button",
-    ".trustarc-agree-btn",
-    # Cookiebot
-    "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
-    "#CybotCookiebotDialogBodyButtonAccept",
-    # Usercentrics
-    "button[data-testid='uc-accept-all-button']",
-    # CookieYes
-    ".cky-btn-accept",
-    # Generic patterns
-    "button[id*='cookie']",
-    "button[id*='accept']",
-    "button[class*='accept']",
-    "button[aria-label*='accept' i]",
-    "button[aria-label*='accepter' i]",
-    ".cookie-consent button",
-    ".cookie-banner button",
-    "#cookie-notice button",
-    "button.cc-accept",
-    "[data-action='accept-cookies']",
-    "[data-cookie-accept]",
-    # Texte FR/EN
-    "button:has-text('Accepter')",
-    "button:has-text('Tout accepter')",
-    "button:has-text('Accept all')",
-    "button:has-text('Accept All')",
-    "button:has-text('I Accept')",
-    "button:has-text(\"J'accepte\")",
-    "button:has-text(\"J'ACCEPTE\")",
-    "button:has-text('OK')",
-    "button:has-text('Got it')",
-    "button:has-text('Allow all')",
-    "button:has-text('I agree')",
-]
-
-
 def intercept_apis(
     listing_urls: List[str],
     *,
     scroll: bool = False,
     load_more_selector: str = "",
     cookie_consent: bool = False,
-    timeout_ms: int = 20000,
+    timeout_ms: int = 15000,
+    agent: Optional[BrowserAgent] = None,
+    cached_captures: Optional[Dict[str, List[CapturedResponse]]] = None,
 ) -> List[DetectedAPI]:
     """
-    Navigue sur les pages listing avec Playwright et intercepte les API internes.
-    Retourne les DetectedAPI trouvées, triées par confiance décroissante.
+    Navigue sur les pages listing via le BrowserAgent partagé et intercepte
+    les API internes. Retourne les DetectedAPI triées par confiance.
+
+    Args:
+        agent : BrowserAgent injecté par l'analyzer. Si None, on en lance un
+                local (et on le ferme à la fin).
+        cached_captures : réponses déjà collectées par 1.3bis pour certaines
+                URLs — on les rejoue sans recharger la page.
     """
     import time as _time
 
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as e:
-        _log_api(f"[APIInterceptor] Playwright non installé ({e}), skip")
-        return []
-    except Exception as e:
-        _log_api(f"[APIInterceptor] Erreur import Playwright: {type(e).__name__}: {e}")
-        return []
+    cached_captures = cached_captures or {}
+    own_agent = False
 
-    captured: List[Dict[str, Any]] = []
-    _capture_count = {"json": 0, "skipped": 0}
-
-    def _on_response(response):
+    if agent is None:
         try:
-            ct = response.headers.get("content-type", "")
-            if "json" not in ct and "javascript" not in ct:
-                return
-            url = response.url
-            if any(skip in url for skip in [
-                "google", "facebook", "analytics", "hotjar", "sentry",
-                "cloudflare", "fonts.", "recaptcha", ".css", ".js",
-                "gtm.", "doubleclick", "adsense", "segment.io", "amplitude",
-                "mixpanel", "newrelic", "datadog",
-            ]):
-                _capture_count["skipped"] += 1
-                return
-            if response.status != 200:
-                return
-            body = response.text()
-            if not body or len(body) < 50:
-                return
-            data = json.loads(body)
-            _capture_count["json"] += 1
-            req = response.request
-            # Capture le body POST/GraphQL pour pouvoir rejouer
-            req_body = None
-            req_body_json = None
-            try:
-                req_body = req.post_data
-                if req_body:
-                    try:
-                        req_body_json = json.loads(req_body)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-            except Exception:
-                pass
-            captured.append({
-                "url": url,
-                "method": req.method,
-                "headers": dict(req.headers),
-                "request_body": req_body,
-                "request_body_json": req_body_json,
-                "data": data,
-            })
-        except Exception:
-            pass
+            agent = BrowserAgent(log_fn=_log_api).start()
+            own_agent = True
+        except Exception as e:
+            _log_api(f"[APIInterceptor] BrowserAgent indisponible ({type(e).__name__}: {e}), skip")
+            return []
 
     apis: List[DetectedAPI] = []
-
-    _log_api("[APIInterceptor] Lancement Playwright (headless)...")
     t_start = _time.time()
 
-    with sync_playwright() as p:
-        _log_api(f"[APIInterceptor] Playwright prêt ({_time.time()-t_start:.1f}s), lancement Chromium...")
-        t_browser = _time.time()
-        browser = p.chromium.launch(headless=True,
-                                    args=["--disable-blink-features=AutomationControlled"])
-        _log_api(f"[APIInterceptor] Chromium lancé ({_time.time()-t_browser:.1f}s)")
-        context = browser.new_context(
-            user_agent=random_user_agent(),
-            locale="fr-CA",
-            viewport={"width": 1366, "height": 800},
-        )
-        apply_stealth_to_playwright_context(context)
-        page = context.new_page()
-        page.on("response", _on_response)
-
+    try:
         for i, listing_url in enumerate(listing_urls[:3]):
-            captured.clear()
-            _capture_count["json"] = 0
-            _capture_count["skipped"] = 0
-            _log_api(f"[APIInterceptor] Navigation {i+1}/{min(3,len(listing_urls))}: {listing_url[:80]}...")
+            _log_api(f"[APIInterceptor] URL {i+1}/{min(3,len(listing_urls))}: {listing_url[:80]}...")
+
+            # Réutilisation du cache 1.3bis si disponible.
+            cached = cached_captures.get(listing_url)
+            if cached:
+                _log_api(f"[APIInterceptor]   {len(cached)} réponses réutilisées du cache (1.3bis), analyse...")
+                for cap in cached:
+                    api = _analyze_captured_response(_capture_to_dict(cap))
+                    if api:
+                        _log_api(f"[APIInterceptor]   -> API trouvée: {cap.url[:80]} "
+                                 f"(confiance={api.confidence:.0%}, {api.page_size} items)")
+                        apis.append(api)
+                continue
+
+            # Sinon, on rend l'URL avec le BrowserAgent et on capture en live.
             t_nav = _time.time()
             try:
-                page.goto(listing_url, timeout=timeout_ms, wait_until="networkidle")
-                _log_api(f"[APIInterceptor]   networkidle en {_time.time()-t_nav:.1f}s "
-                         f"({_capture_count['json']} JSON capturés, {_capture_count['skipped']} skippés)")
+                result = agent.render(
+                    listing_url,
+                    timeout_ms=timeout_ms,
+                    capture_responses=True,
+                    scroll=scroll,
+                    max_scrolls=5,
+                    load_more_selector=load_more_selector,
+                    max_load_more_clicks=3,
+                )
             except Exception as e:
-                _log_api(f"[APIInterceptor]   networkidle échoué ({type(e).__name__}), retry domcontentloaded...")
-                try:
-                    page.goto(listing_url, timeout=timeout_ms, wait_until="domcontentloaded")
-                    _log_api(f"[APIInterceptor]   domcontentloaded en {_time.time()-t_nav:.1f}s")
-                except Exception as e2:
-                    _log_api(f"[APIInterceptor]   Navigation échouée: {type(e2).__name__}: {e2}")
-                    continue
+                _log_api(f"[APIInterceptor]   Render échoué: {type(e).__name__}: {e}")
+                continue
 
-            _log_api("[APIInterceptor]   Dismiss cookies...")
-            _dismiss_cookies(page)
+            if not result.success:
+                _log_api(f"[APIInterceptor]   Render échoué en {_time.time()-t_nav:.1f}s "
+                         f"({result.error or 'unknown'})")
+                continue
 
-            if scroll:
-                _log_api("[APIInterceptor]   Scroll page...")
-                _scroll_page(page, max_scrolls=5)
-                if load_more_selector:
-                    _log_api(f"[APIInterceptor]   Click Load More: {load_more_selector}")
-                    _click_load_more(page, load_more_selector, max_clicks=3)
-
-            _log_api("[APIInterceptor]   Attente 2s pour requêtes tardives...")
-            page.wait_for_timeout(2000)
-
-            _log_api(f"[APIInterceptor]   {len(captured)} réponses JSON capturées, analyse...")
-            for cap in captured:
-                api = _analyze_captured_response(cap)
+            _log_api(f"[APIInterceptor]   Render OK en {result.elapsed_ms}ms — "
+                     f"{len(result.captured_responses)} réponses JSON capturées, analyse...")
+            for cap in result.captured_responses:
+                api = _analyze_captured_response(_capture_to_dict(cap))
                 if api:
-                    _log_api(f"[APIInterceptor]   -> API trouvée: {cap['url'][:80]} "
+                    _log_api(f"[APIInterceptor]   -> API trouvée: {cap.url[:80]} "
                              f"(confiance={api.confidence:.0%}, {api.page_size} items)")
                     apis.append(api)
-
-        _log_api("[APIInterceptor] Fermeture browser...")
-        browser.close()
+    finally:
+        if own_agent and agent is not None:
+            agent.close()
 
     _log_api(f"[APIInterceptor] Dédup {len(apis)} APIs...")
     merged = _deduplicate_apis(apis)
@@ -231,42 +134,21 @@ def intercept_apis(
     return merged
 
 
+def _capture_to_dict(cap: CapturedResponse) -> Dict[str, Any]:
+    """Pont entre le format dataclass utilisé par BrowserAgent et le dict
+    historique attendu par _analyze_captured_response()."""
+    return {
+        "url": cap.url,
+        "method": cap.method,
+        "headers": cap.headers,
+        "request_body": cap.request_body,
+        "request_body_json": cap.request_body_json,
+        "data": cap.data,
+    }
+
+
 def _log_api(msg: str) -> None:
     print(f"  {msg}")
-
-
-def _dismiss_cookies(page) -> None:
-    for sel in COOKIE_DISMISS_SELECTORS:
-        try:
-            el = page.query_selector(sel)
-            if el and el.is_visible():
-                el.click()
-                page.wait_for_timeout(500)
-                return
-        except Exception:
-            continue
-
-
-def _scroll_page(page, max_scrolls: int = 5) -> None:
-    for _ in range(max_scrolls):
-        try:
-            page.evaluate("window.scrollBy(0, window.innerHeight)")
-            page.wait_for_timeout(1500)
-        except Exception:
-            break
-
-
-def _click_load_more(page, selector: str, max_clicks: int = 3) -> None:
-    for _ in range(max_clicks):
-        try:
-            btn = page.query_selector(selector)
-            if btn and btn.is_visible():
-                btn.click()
-                page.wait_for_timeout(2000)
-            else:
-                break
-        except Exception:
-            break
 
 
 def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:

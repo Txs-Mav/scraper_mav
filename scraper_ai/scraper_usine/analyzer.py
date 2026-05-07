@@ -24,6 +24,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from .browser_agent import BrowserAgent, CapturedResponse
 from .models import (
     DetectedAPI, ListingPage, PriceDisplayMode,
     SelectorEntry, SelectorMap, SiteAnalysis,
@@ -117,6 +118,34 @@ class SiteAnalyzer:
         self.session = requests.Session()
         self.session.headers.update(stealth_headers())
 
+        # BrowserAgent partagé : lancé à la 1ère utilisation, réutilisé par
+        # 1.3bis et 1.5 pour éviter de relancer Chromium deux fois.
+        self._browser_agent: Optional[BrowserAgent] = None
+        # Cache du rendu de la home (HTML + réponses JSON capturées). Permet
+        # à 1.5 de récupérer directement les APIs vues lors du rendu 1.3bis.
+        self._home_render_cache: Dict[str, Dict[str, Any]] = {}
+
+    def _get_browser_agent(self) -> Optional[BrowserAgent]:
+        """Lance (lazy) le BrowserAgent partagé. Retourne None si Playwright
+        indisponible — les callers doivent gérer ce cas."""
+        if not self.use_playwright:
+            return None
+        if self._browser_agent is None:
+            try:
+                self._browser_agent = BrowserAgent(log_fn=self._log).start()
+            except Exception as e:
+                self._log(f"    BrowserAgent indisponible: {type(e).__name__}: {e}")
+                self._browser_agent = None
+        return self._browser_agent
+
+    def _close_browser_agent(self) -> None:
+        if self._browser_agent is not None:
+            try:
+                self._browser_agent.close()
+            except Exception:
+                pass
+            self._browser_agent = None
+
     # ------------------------------------------------------------------
     # Point d'entrée principal
     # ------------------------------------------------------------------
@@ -189,7 +218,14 @@ class SiteAnalyzer:
         # 1.3bis Si requests n'a rien trouvé (0 listing actif), tenter le rendu Playwright
         if self.use_playwright and not any(lp.estimated_products > 0 for lp in analysis.listing_pages):
             self._log("1.3bis Aucun listing exploitable en HTML brut → fallback Playwright...")
-            rendered_html = self._render_with_playwright(analysis.site_url)
+            t_render = time.time()
+            # On capture les réponses JSON dès ce rendu : si 1.5 visite la
+            # même URL, il n'aura pas à recharger la page.
+            rendered_html = self._render_with_playwright(
+                analysis.site_url, capture_for_intercept=True,
+            )
+            self._log(f"    Rendu Playwright terminé en {time.time()-t_render:.1f}s "
+                      f"({len(rendered_html or '')} chars)")
             if rendered_html:
                 analysis.playwright_used_in_phase1 = True
                 rendered_soup = BeautifulSoup(rendered_html, "lxml")
@@ -268,6 +304,10 @@ class SiteAnalyzer:
 
         # 1.9 Persistance
         self._save(analysis)
+
+        # Libère Chromium dès la fin de l'analyse — on n'en a plus besoin
+        # pour les phases suivantes (stratégie, génération).
+        self._close_browser_agent()
         return analysis
 
     # ------------------------------------------------------------------
@@ -647,6 +687,8 @@ class SiteAnalyzer:
                 scroll=analysis.has_infinite_scroll or analysis.has_load_more_button,
                 load_more_selector=analysis.load_more_selector,
                 cookie_consent=analysis.cookie_consent,
+                agent=self._get_browser_agent(),
+                cached_captures=self._captures_for_urls(listing_urls),
             )
             analysis.detected_apis = apis
             if apis:
@@ -660,6 +702,20 @@ class SiteAnalyzer:
             self._log("    Playwright non installé — interception API ignorée")
         except Exception as e:
             self._log(f"    Interception API échouée : {type(e).__name__}: {e}")
+
+    def _captures_for_urls(
+        self, urls: List[str],
+    ) -> Dict[str, List[CapturedResponse]]:
+        """Renvoie les réponses JSON déjà capturées pour des URLs données
+        (mises en cache par 1.3bis). Si une URL n'est pas dans le cache, elle
+        sera re-rendue par api_interceptor.
+        """
+        out: Dict[str, List[CapturedResponse]] = {}
+        for u in urls:
+            entry = self._home_render_cache.get(u)
+            if entry and entry.get("captured_responses"):
+                out[u] = entry["captured_responses"]
+        return out
 
     # ------------------------------------------------------------------
     # 1.5 Mapping sélecteurs CSS
@@ -1105,42 +1161,39 @@ class SiteAnalyzer:
     # Utilitaires
     # ------------------------------------------------------------------
 
-    def _render_with_playwright(self, url: str) -> Optional[str]:
-        """Rend une page avec Playwright (stealth) et retourne le HTML hydraté.
+    def _render_with_playwright(
+        self, url: str, *, capture_for_intercept: bool = False,
+    ) -> Optional[str]:
+        """Rend une page via le BrowserAgent partagé (stealth + DCL-first).
+        Si capture_for_intercept=True, mémorise les réponses JSON pour que
+        l'étape 1.5 puisse les rejouer sans recharger la page.
         Retourne None si Playwright indisponible ou erreur."""
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
-            self._log("    Playwright non installé, fallback impossible")
+        agent = self._get_browser_agent()
+        if agent is None:
             return None
 
-        from .stealth import apply_stealth_to_playwright_context, random_user_agent
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                ctx = browser.new_context(
-                    user_agent=random_user_agent(),
-                    locale="fr-CA",
-                    viewport={"width": 1366, "height": 800},
-                )
-                apply_stealth_to_playwright_context(ctx)
-                page = ctx.new_page()
-                try:
-                    page.goto(url, timeout=25000, wait_until="networkidle")
-                except Exception:
-                    try:
-                        page.goto(url, timeout=20000, wait_until="domcontentloaded")
-                        page.wait_for_timeout(3000)
-                    except Exception as e:
-                        self._log(f"    Erreur Playwright goto: {e}")
-                        browser.close()
-                        return None
-                html = page.content()
-                browser.close()
-                return html
+            result = agent.render(
+                url,
+                capture_responses=capture_for_intercept,
+            )
         except Exception as e:
-            self._log(f"    Erreur Playwright: {type(e).__name__}: {e}")
+            self._log(f"    Erreur BrowserAgent: {type(e).__name__}: {e}")
             return None
+
+        if not result.success:
+            if result.error:
+                self._log(f"    Erreur Playwright goto: {result.error}")
+            return None
+
+        if capture_for_intercept:
+            self._home_render_cache[url] = {
+                "html": result.html,
+                "captured_responses": result.captured_responses,
+                "final_url": result.final_url,
+            }
+
+        return result.html
 
     def _fetch_homepage(self, url: str) -> Tuple[Optional[str], dict, List[float]]:
         times: List[float] = []

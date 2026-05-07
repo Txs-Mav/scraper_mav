@@ -7,6 +7,7 @@ import OnboardingChecklist from "../onboarding-checklist"
 import HelpWidget from "../help-widget"
 import Breadcrumbs from "../breadcrumbs"
 import AnnouncementModal from "../announcement-modal"
+import ProductTour from "../product-tour"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 
@@ -41,6 +42,7 @@ export default function Layout({ children }: LayoutProps) {
       <OnboardingChecklist />
       <HelpWidget />
       <AnnouncementModal />
+      <ProductTour />
     </div>
   )
 }

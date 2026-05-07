@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('main', 'developer', 'employee', 'user', 'owner', 'member')),
   subscription_plan TEXT CHECK (subscription_plan IN ('free', 'standard', 'premium')),
+  business_type TEXT DEFAULT 'recreational_vehicles' CHECK (business_type IN ('recreational_vehicles', 'automotive', 'marine', 'sports_outdoor', 'fashion', 'electronics', 'other')),
   stripe_customer_id TEXT,
   avatar_url TEXT,
   main_account_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -125,6 +126,21 @@ CREATE TABLE IF NOT EXISTS org_invitations (
   accepted_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Table support_messages (questions, suggestions et demandes utilisateur)
+CREATE TABLE IF NOT EXISTS support_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL DEFAULT 'question' CHECK (type IN ('question', 'suggestion', 'bug', 'other')),
+  subject TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'answered', 'closed')),
+  admin_reply TEXT,
+  admin_replied_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  admin_replied_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Index pour améliorer les performances
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_main_account_id ON users(main_account_id);
@@ -144,6 +160,9 @@ CREATE INDEX IF NOT EXISTS idx_scraper_shares_scraper_cache_id ON scraper_shares
 CREATE INDEX IF NOT EXISTS idx_scraper_shares_target_user_id ON scraper_shares(target_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_messages_user_id ON support_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_messages_status ON support_messages(status);
+CREATE INDEX IF NOT EXISTS idx_support_messages_created_at ON support_messages(created_at DESC);
 
 -- Fonction pour mettre à jour updated_at automatiquement
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -191,22 +210,28 @@ CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON user_settings
 CREATE TRIGGER update_webhooks_updated_at BEFORE UPDATE ON webhooks
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_support_messages_updated_at BEFORE UPDATE ON support_messages
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Fonction pour créer automatiquement un utilisateur dans la table users après inscription
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   user_subscription_plan TEXT;
+  user_business_type TEXT;
 BEGIN
   user_subscription_plan := COALESCE(NEW.raw_user_meta_data->>'subscription_plan', 'free');
+  user_business_type := COALESCE(NEW.raw_user_meta_data->>'business_type', 'recreational_vehicles');
   
   -- Créer l'utilisateur dans la table users
-  INSERT INTO public.users (id, email, name, role, subscription_plan)
+  INSERT INTO public.users (id, email, name, role, subscription_plan, business_type)
   VALUES (
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'name', 'User'),
     'user',
-    user_subscription_plan
+    user_subscription_plan,
+    user_business_type
   )
   ON CONFLICT (id) DO NOTHING;
   
@@ -336,6 +361,7 @@ ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scraper_shares ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhooks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE support_messages ENABLE ROW LEVEL SECURITY;
 
 -- Policies pour users
 CREATE POLICY "Users can view their own profile"
@@ -604,5 +630,14 @@ CREATE POLICY "Users can update their own webhooks"
 CREATE POLICY "Users can delete their own webhooks"
   ON webhooks FOR DELETE
   USING (auth.uid() = user_id);
+
+-- Policies pour support_messages
+CREATE POLICY "Users can view their own support messages"
+  ON support_messages FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own support messages"
+  ON support_messages FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
 
 

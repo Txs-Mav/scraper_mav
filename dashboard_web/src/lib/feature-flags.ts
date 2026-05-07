@@ -42,3 +42,26 @@ export function isCacheScrapingEnabled(userId?: string | null): boolean {
   }
   return CACHE_SCRAPING_ENABLED_GLOBAL
 }
+
+// ━━━ Scale-up feature flags (UI-first, backend stubs) ━━━━━━━━━━━━━━━━━━━━━
+
+export const FEATURES = {
+  publicApi: true,
+  marketplace: true,
+  team: true,
+  webhooks: true,
+  integrations: true,
+  usageBilling: true,
+  statusPage: true,
+  productTour: true,
+  exitIntent: true,
+  cookieBanner: true,
+  multiCurrency: true,
+  multiLocale: true,
+} as const
+
+export type FeatureKey = keyof typeof FEATURES
+
+export function isFeatureEnabled(key: FeatureKey): boolean {
+  return FEATURES[key] === true
+}

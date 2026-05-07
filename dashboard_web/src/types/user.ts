@@ -2,6 +2,8 @@
  * Types TypeScript pour les utilisateurs et employés
  */
 
+import type { BusinessType } from "@/lib/account-navigation"
+
 export interface User {
     id: string
     name: string
@@ -17,6 +19,7 @@ export interface User {
     subscription_plan?: 'standard' | 'pro' | 'ultime'
     /** Source de l'abonnement : stripe = payé, promo = code promo. Si null, plan non confirmé. */
     subscription_source?: 'stripe' | 'promo' | null
+    business_type?: BusinessType | null
     stripe_customer_id?: string | null
     avatar_url?: string | null
     main_account_id?: string | null // Pour les employés

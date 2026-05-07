@@ -35,37 +35,25 @@
         return text_len < 2000 and len(html) > 50000
 
     def _extract_with_playwright(self, url: str) -> Optional[Dict]:
-        """Fallback: rend la page avec Playwright et extrait le contenu."""
+        """Fallback: rend la page via le BrowserRuntime partagé et extrait
+        le contenu."""
         try:
-            from playwright.sync_api import sync_playwright
+            from ._browser_runtime import BrowserRuntime
         except ImportError:
             return None
 
         out: Dict[str, Any] = {}
         try:
-            if not hasattr(self, '_pw_browser'):
-                self._pw = sync_playwright().start()
-                self._pw_browser = self._pw.chromium.launch(headless=True)
-                self._pw_context = self._pw_browser.new_context(
-                    user_agent=self.session.headers.get('User-Agent', ''),
-                    locale='fr-CA',
-                )
+            if not hasattr(self, '_pw_runtime'):
+                self._pw_runtime = BrowserRuntime(
+                    user_agent=self.session.headers.get('User-Agent') or None,
+                ).start()
 
-            page = self._pw_context.new_page()
-            try:
-                page.goto(url, timeout=20000, wait_until='networkidle')
-            except Exception:
-                try:
-                    page.goto(url, timeout=20000, wait_until='domcontentloaded')
-                    page.wait_for_timeout(3000)
-                except Exception:
-                    page.close()
-                    return None
+            result = self._pw_runtime.render(url)
+            if not result.success or not result.html:
+                return None
 
-            rendered_html = page.content()
-            page.close()
-
-            soup_pw = BeautifulSoup(rendered_html, 'lxml')
+            soup_pw = BeautifulSoup(result.html, 'lxml')
 
             self._extract_json_ld(soup_pw, out)
             self._extract_css(soup_pw, out)

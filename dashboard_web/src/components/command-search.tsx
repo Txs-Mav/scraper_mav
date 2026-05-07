@@ -15,8 +15,13 @@ import {
   ExternalLink,
   ArrowRight,
   Command,
+  KeyRound,
+  Webhook,
+  Boxes,
+  HelpCircle,
 } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
+import { getDashboardCapabilities } from "@/lib/account-navigation"
 import { canAccessAnalytics, canAccessOrganisation } from "@/lib/plan-restrictions"
 
 interface SearchItem {
@@ -40,6 +45,15 @@ export default function CommandSearch() {
 
   const plan = user?.subscription_plan ?? "standard"
   const subscriptionSource = user?.subscription_source || (user?.promo_code_id ? "promo" : null)
+  const capabilities = getDashboardCapabilities(user?.business_type)
+
+  const developerItems: SearchItem[] = capabilities.showDeveloperTools
+    ? [
+        { id: "api-keys", label: "Clés API", description: "Écran préparatoire API", icon: KeyRound, action: () => router.push("/dashboard/api-keys"), category: "page", keywords: ["api", "clé", "développeur"] },
+        { id: "webhooks", label: "Webhooks", description: "Écran préparatoire webhooks", icon: Webhook, action: () => router.push("/dashboard/webhooks"), category: "page", keywords: ["webhook", "notification", "http"] },
+        { id: "integrations", label: "Intégrations", description: "Catalogue à connecter", icon: Boxes, action: () => router.push("/dashboard/integrations"), category: "page", keywords: ["shopify", "slack", "sheets"] },
+      ]
+    : []
 
   const items: SearchItem[] = [
     { id: "dashboard", label: "Dashboard", description: "Surveillance du marché et produits", icon: Home, action: () => router.push("/dashboard"), category: "page", keywords: ["accueil", "home", "produits", "marché", "surveillance"] },
@@ -52,9 +66,11 @@ export default function CommandSearch() {
     { id: "payments", label: "Paiements", description: "Abonnement et facturation", icon: CreditCard, action: () => router.push("/dashboard/payments"), category: "page", keywords: ["abonnement", "plan", "facture", "stripe", "pro"] },
     { id: "profile", label: "Profil", description: "Votre profil", icon: User, action: () => router.push("/dashboard/profile"), category: "page", keywords: ["compte", "avatar", "photo"] },
     { id: "settings", label: "Paramètres", description: "Paramètres du compte", icon: Settings, action: () => router.push("/dashboard/settings"), category: "page", keywords: ["réglages", "mot de passe", "email"] },
+    ...developerItems,
+    { id: "help", label: "Aide", description: "Centre d'aide", icon: HelpCircle, action: () => router.push("/dashboard/help"), category: "page", keywords: ["support", "documentation"] },
     { id: "scrape", label: "Analyser maintenant", description: "Lancer une analyse immédiate du marché", icon: Zap, action: () => { router.push("/dashboard"); setTimeout(() => window.dispatchEvent(new CustomEvent("open-scraper-config")), 300) }, category: "action", keywords: ["analyser", "scraper", "extraction", "lancer", "démarrer", "marché"] },
     { id: "export", label: "Exporter les données", description: "Télécharger vos données", icon: Download, action: () => router.push("/dashboard/settings"), category: "action", keywords: ["export", "télécharger", "json", "csv"] },
-    { id: "stripe", label: "Portail Stripe", description: "Gérer facturation et abonnement", icon: ExternalLink, action: async () => { try { const r = await fetch("/api/stripe/portal", { method: "POST" }); const d = await r.json(); if (r.ok && d.url) window.location.href = d.url } catch {} }, category: "action", keywords: ["stripe", "facture", "paiement"] },
+    { id: "stripe", label: "Portail Stripe", description: "Gérer facturation et abonnement", icon: ExternalLink, action: async () => { try { const r = await fetch("/api/stripe/portal", { method: "POST" }); const d = await r.json(); if (r.ok && d.url) window.location.assign(d.url) } catch {} }, category: "action", keywords: ["stripe", "facture", "paiement"] },
   ]
 
   const filtered = query.trim()
@@ -71,10 +87,6 @@ export default function CommandSearch() {
   const pages = filtered.filter((i) => i.category === "page")
   const actions = filtered.filter((i) => i.category === "action")
   const allFiltered = [...pages, ...actions]
-
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [query])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -136,7 +148,10 @@ export default function CommandSearch() {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setSelectedIndex(0)
+            }}
             placeholder="Rechercher une page ou action..."
             className="flex-1 text-sm bg-transparent text-[var(--color-text-primary)] placeholder-gray-400 focus:outline-none"
           />

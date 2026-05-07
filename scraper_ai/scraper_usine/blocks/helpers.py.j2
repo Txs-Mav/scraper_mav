@@ -114,8 +114,9 @@
     USE_PLAYWRIGHT_FOR_DISCOVERY = {{ use_playwright_for_discovery|default(False)|tojson }}
 
     def _fetch_listing_html(self, url: str):
-        """Récupère le HTML d'une page listing. Utilise Playwright si la
-        stratégie l'exige (USE_PLAYWRIGHT_FOR_DISCOVERY=True), sinon requests."""
+        """Récupère le HTML d'une page listing. Utilise le BrowserRuntime
+        partagé si la stratégie l'exige (USE_PLAYWRIGHT_FOR_DISCOVERY=True),
+        sinon requests."""
         if not self.USE_PLAYWRIGHT_FOR_DISCOVERY:
             try:
                 resp = self.session.get(url, timeout=self.HTTP_TIMEOUT)
@@ -126,7 +127,7 @@
                 return None
 
         try:
-            from playwright.sync_api import sync_playwright
+            from ._browser_runtime import BrowserRuntime
         except ImportError:
             try:
                 resp = self.session.get(url, timeout=self.HTTP_TIMEOUT)
@@ -137,26 +138,12 @@
                 return None
 
         try:
-            if not hasattr(self, '_pw_listing'):
-                self._pw_listing = sync_playwright().start()
-                self._pw_listing_browser = self._pw_listing.chromium.launch(headless=True)
-                self._pw_listing_ctx = self._pw_listing_browser.new_context(
-                    user_agent=self.session.headers.get('User-Agent', ''),
-                    locale='fr-CA',
-                )
-            page = self._pw_listing_ctx.new_page()
-            try:
-                page.goto(url, timeout=20000, wait_until='networkidle')
-            except Exception:
-                try:
-                    page.goto(url, timeout=20000, wait_until='domcontentloaded')
-                    page.wait_for_timeout(3000)
-                except Exception:
-                    page.close()
-                    return None
-            html = page.content()
-            page.close()
-            return html
+            if not hasattr(self, '_pw_listing_runtime'):
+                self._pw_listing_runtime = BrowserRuntime(
+                    user_agent=self.session.headers.get('User-Agent') or None,
+                ).start()
+            result = self._pw_listing_runtime.render(url)
+            return result.html if result.success else None
         except Exception:
             return None
 

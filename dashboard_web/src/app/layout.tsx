@@ -20,11 +20,11 @@ const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.go-data.co"
 
 export const metadata: Metadata = {
   title: {
-    default: "Go-Data | Collecte et structuration de données automatisée",
+    default: "Go-Data | Données concurrentielles pour marchés ciblés",
     template: "%s | Go-Data",
   },
   description:
-    "Go-Data collecte, structure et livre vos données en quelques clics. Zéro code, zéro friction. Scraping intelligent propulsé par l'IA.",
+    "Go-Data aide les entreprises à collecter, comparer et suivre des données publiques de prix et d'inventaire, avec un focus actuel sur le marché moto et sports motorisés.",
   metadataBase: new URL(siteUrl),
   alternates: {
     canonical: "/",
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     siteName: "Go-Data",
     title: "Go-Data | Collecte et structuration de données automatisée",
     description:
-      "Go-Data collecte, structure et livre vos données en quelques clics. Zérocode, zéro friction.",
+      "Go-Data aide les entreprises à collecter, comparer et suivre des données publiques de prix et d'inventaire.",
     images: [
       {
         url: "/og-image.png",
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Go-Data | Collecte de données automatisée",
     description:
-      "Collectez, structurez et livrez vos données en quelques clics avec Go-Data.",
+      "Collectez et comparez des données publiques de prix et d'inventaire avec Go-Data.",
     images: ["/og-image.png"],
   },
   robots: {
@@ -85,7 +85,7 @@ export default function RootLayout({
     url: siteUrl,
     logo: `${siteUrl}/Go-Data.svg`,
     description:
-      "Go-Data collecte, structure et livre vos données en quelques clics. Scraping intelligent propulsé par l'IA.",
+      "Go-Data aide les entreprises à collecter, comparer et suivre des données publiques de prix et d'inventaire.",
     contactPoint: {
       "@type": "ContactPoint",
       email: "gestion@go-data.co",
