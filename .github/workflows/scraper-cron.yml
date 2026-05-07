@@ -1,9 +1,8 @@
-name: Scraping automatique (toutes les heures)
+name: Scraping automatique (toutes les 2 heures)
 
 on:
-  # Le cron horaire est déclenché par Vercel → /api/cron/scraper → backend Railway.
-  # Ce workflow reste disponible en fallback manuel pour éviter les doublons
-  # et les erreurs d'acquisition du runner GitHub hébergé.
+  schedule:
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
 concurrency:
