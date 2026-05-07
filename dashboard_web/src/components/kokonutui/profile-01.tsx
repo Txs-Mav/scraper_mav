@@ -184,9 +184,15 @@ export default function Profile01({
               <button
                 type="button"
                 onClick={async () => {
-                  window.location.href = "/login"
-                  logout().catch(() => {})
-                  fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+                  // On attend la fin du logout (client + serveur) AVANT de naviguer,
+                  // sinon les cookies de session restent et l'utilisateur est "reconnecté"
+                  // au prochain rendu (cas reproductible avec le compte dev).
+                  try {
+                    await logout()
+                  } catch {
+                    // ignore : on redirige quoi qu'il arrive
+                  }
+                  window.location.replace("/login")
                 }}
                 className="w-full flex items-center justify-between p-2 
                                   hover:bg-zinc-50 dark:hover:bg-zinc-800/50 

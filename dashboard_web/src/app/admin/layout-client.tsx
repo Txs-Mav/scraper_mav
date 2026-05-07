@@ -125,8 +125,14 @@ export default function AdminLayoutClient({ initialUser, children }: Props) {
           <button
             type="button"
             onClick={async () => {
-              await logout().catch(() => {})
-              router.push("/login")
+              try {
+                await logout()
+              } catch {
+                // ignore : on redirige quoi qu'il arrive
+              }
+              // Hard navigation pour s'assurer que le middleware Next.js
+              // ré-évalue la session avec les cookies fraîchement nettoyés.
+              window.location.replace("/login")
             }}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
