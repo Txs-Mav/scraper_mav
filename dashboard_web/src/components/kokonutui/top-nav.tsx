@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   User,
+  Home,
   BarChart2,
   CreditCard,
   Activity,
@@ -31,7 +32,6 @@ import {
   Sparkles,
   Bell,
   Tag,
-  Package,
   type LucideIcon,
 } from "lucide-react"
 
@@ -63,25 +63,25 @@ type NavCategory = {
 
 const NAV_CATEGORIES: NavCategory[] = [
   {
-    id: "prix",
-    label: "Prix",
-    description: "Stratégie et changements",
-    icon: Tag,
+    id: "dashboard",
+    label: "Dashboard",
+    description: "Vue d'ensemble",
+    icon: Home,
     items: [
-      { id: "strategie", label: "Stratégie de pricing", description: "La règle qui calcule vos prix", href: "/dashboard/strategie-pricing", icon: CircleDollarSign },
-      { id: "changements", label: "Changements à appliquer", description: "Vos fiches de changements", href: "/dashboard/changements", icon: ClipboardList, badgeKey: "pendingChanges" },
-      { id: "comparaisons-prix", label: "Comparaisons", description: "Tableau des prix concurrents", href: "/dashboard/comparaisons", icon: LayoutGrid },
-      { id: "surveillance-prix", label: "Surveillance", description: "Suivi quotidien", href: "/dashboard/surveillance", icon: Radar },
+      { id: "overview", label: "Vue d'ensemble", description: "Activité et KPIs principaux", href: "/dashboard", icon: Home },
     ],
   },
   {
-    id: "produits",
-    label: "Produits",
-    description: "Catalogue et recherche",
-    icon: Package,
+    id: "prix",
+    label: "Prix",
+    description: "Surveillance, fiches et stratégie",
+    icon: Tag,
     items: [
-      { id: "recherche", label: "Recherche", description: "Trouver un produit précis", icon: Search, locked: true },
-      { id: "catalogue", label: "Catalogue", description: "Inventaire et stock", icon: Boxes, locked: true },
+      { id: "surveillance", label: "Surveillance de produit", description: "Suivi quotidien des prix concurrents", href: "/dashboard/surveillance", icon: Radar },
+      { id: "recherche", label: "Recherche par produit", description: "Trouver un produit précis", icon: Search, locked: true },
+      { id: "changements", label: "Changements à appliquer", description: "Fiches de prix à mettre à jour", href: "/dashboard/changements", icon: ClipboardList, badgeKey: "pendingChanges" },
+      { id: "strategie", label: "Stratégie de pricing", description: "La règle qui calcule vos prix", href: "/dashboard/strategie-pricing", icon: CircleDollarSign },
+      { id: "alertes", label: "Alertes prix", description: "Notifications de variations", href: "/dashboard/alerte", icon: Bell, requiresPaid: true },
     ],
   },
   {
@@ -90,9 +90,9 @@ const NAV_CATEGORIES: NavCategory[] = [
     description: "Performance et rapports",
     icon: BarChart2,
     items: [
-      { id: "analytics", label: "Vue d'ensemble", description: "Indicateurs de marché", href: "/dashboard/analytics", icon: BarChart2, requiresPaid: true },
-      { id: "alertes", label: "Alertes prix", description: "Configurer les alertes", href: "/dashboard/alerte", icon: Bell, requiresPaid: true },
+      { id: "analytics", label: "Analyse", description: "Indicateurs de marché", href: "/dashboard/analytics", icon: BarChart2, requiresPaid: true },
       { id: "rapports", label: "Rapports", description: "Exports et synthèses", icon: FileBarChart, locked: true },
+      { id: "par-detaillant", label: "Par détaillant", description: "Comparer vos concurrents", href: "/dashboard/comparaisons", icon: LayoutGrid },
     ],
   },
   {
@@ -102,9 +102,9 @@ const NAV_CATEGORIES: NavCategory[] = [
     icon: User,
     items: [
       { id: "paiements", label: "Paiements", description: "Abonnement et factures", href: "/dashboard/payments", icon: CreditCard },
+      { id: "aide", label: "Aide", description: "Centre d'aide & support", href: "/dashboard/help", icon: HelpCircle },
       { id: "equipe", label: "Équipe", description: "Membres et rôles", icon: Users, locked: true },
       { id: "marketplace", label: "Marketplace", description: "Intégrations partenaires", icon: Boxes, locked: true },
-      { id: "aide", label: "Aide", description: "Centre d'aide & support", href: "/dashboard/help", icon: HelpCircle },
       { id: "roadmap", label: "Roadmap", description: "Ce que nous préparons", icon: Map, locked: true },
     ],
   },
@@ -112,12 +112,13 @@ const NAV_CATEGORIES: NavCategory[] = [
 
 function categoryForPath(pathname: string | null): string | null {
   if (!pathname) return null
+  if (pathname === "/dashboard") return "dashboard"
+  if (pathname.startsWith("/dashboard/surveillance")) return "prix"
   if (pathname.startsWith("/dashboard/strategie-pricing")) return "prix"
   if (pathname.startsWith("/dashboard/changements")) return "prix"
-  if (pathname.startsWith("/dashboard/comparaisons")) return "prix"
-  if (pathname.startsWith("/dashboard/surveillance")) return "prix"
+  if (pathname.startsWith("/dashboard/alerte")) return "prix"
   if (pathname.startsWith("/dashboard/analytics")) return "analyse"
-  if (pathname.startsWith("/dashboard/alerte")) return "analyse"
+  if (pathname.startsWith("/dashboard/comparaisons")) return "analyse"
   if (pathname.startsWith("/dashboard/payments")) return "compte"
   if (pathname.startsWith("/dashboard/help")) return "compte"
   return null

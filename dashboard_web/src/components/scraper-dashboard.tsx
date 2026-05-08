@@ -962,14 +962,21 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
             {/* Body */}
             <div className="px-5 py-5">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {[
+                {([
                   { label: t("dash.site"), value: selectedSite, onChange: setSelectedSite, options: uniqueSites, all: t("dash.allSites") },
                   { label: t("dash.brand"), value: selectedMarque, onChange: setSelectedMarque, options: uniqueMarques, all: t("dash.allBrands") },
                   { label: t("dash.state"), value: selectedEtat, onChange: setSelectedEtat, options: uniqueEtats, all: t("dash.allStates"), labelMap: { ...etatLabelsTr, ...sourceCategorieLabelsTr } as Record<string, string> },
-                  { label: t("dash.category"), value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: t("dash.allCategories"), labelMap: vehicleTypeLabelsTr },
+                  { label: t("dash.category"), value: selectedCategory, onChange: setSelectedCategory, options: uniqueCategories, all: t("dash.allCategories"), labelMap: vehicleTypeLabelsTr as Record<string, string> },
                   { label: t("dash.product"), value: selectedProduct, onChange: setSelectedProduct, options: uniqueProductsNames, all: t("dash.allProducts") },
-                  { label: t("dash.competitiveness"), value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: t("dash.all"), labelMap: competitiviteLabelsTr },
-                ].map(f => (
+                  { label: t("dash.competitiveness"), value: selectedCompetitivite, onChange: setSelectedCompetitivite, options: uniqueCompetitivites, all: t("dash.all"), labelMap: competitiviteLabelsTr as Record<string, string> },
+                ] as Array<{
+                  label: string
+                  value: string
+                  onChange: (v: string) => void
+                  options: string[]
+                  all: string
+                  labelMap?: Record<string, string>
+                }>).map(f => (
                   <div key={f.label}>
                     <p className="text-[11px] font-medium text-[var(--color-text-secondary)] mb-1.5 uppercase tracking-wider">{f.label}</p>
                     <select
@@ -982,7 +989,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                       </option>
                       {f.options.map(o => (
                         <option key={o} value={o} style={{ backgroundColor: "#ffffff", color: "#111827" }}>
-                          {("labelMap" in f ? f.labelMap?.[o as string] : undefined) || o}
+                          {f.labelMap?.[o] || o}
                         </option>
                       ))}
                     </select>
