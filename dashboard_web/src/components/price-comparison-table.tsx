@@ -2,12 +2,22 @@
 
 import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react"
 import Image from "next/image"
-import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette, SlidersHorizontal } from "lucide-react"
+import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette, CircleDollarSign, ClipboardList } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
-import { deepNormalize, normalizeProductGroupKey, normalizeProductGroupKeyWithMode, getProductFamilyKey, type MatchMode } from "@/lib/analytics-calculations"
+import { normalizeProductGroupKeyWithMode, getProductFamilyKey, type MatchMode, type Product as AnalyticsProduct } from "@/lib/analytics-calculations"
 import { getEffectiveStatus } from "@/lib/product-status"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
+import type { TranslationKey } from "@/lib/translations"
+import {
+  buildPricingProductKey,
+  calculatePricingRecommendation,
+  inferVehicleType,
+  type AppliedPricingUpdate,
+  type PricingRecommendation,
+  type PricingStrategySettings,
+  type VehicleType,
+} from "@/lib/pricing-strategy"
 
 type Product = {
   name: string
@@ -43,6 +53,16 @@ type PriceComparisonTableProps = {
   searchPlaceholder?: string
   hideColorsLabel?: string
   showColorsLabel?: string
+  pricingSettings?: PricingStrategySettings | null
+  pricingEnabled?: boolean
+  pricingUpdates?: AppliedPricingUpdate[]
+  onPricingEnabledChange?: (enabled: boolean) => void
+  selectedPricingKeys?: Set<string>
+  onTogglePricingSelection?: (productKey: string) => void
+  onSetPricingSelection?: (productKeys: string[], selected: boolean) => void
+  onPricingKeysAvailable?: (keys: string[]) => void
+  creatingChangeSheet?: boolean
+  onCreateChangeSheet?: (productKeys: string[]) => Promise<void> | void
 }
 
 function hostnameFromUrl(url: string) {
@@ -143,7 +163,7 @@ function getProductDisplayName(product: Product): string {
   return displayName
 }
 
-const etatConfig: Record<string, { labelKey: string; className: string }> = {
+const etatConfig: Record<string, { labelKey: TranslationKey; className: string }> = {
   neuf: { labelKey: "etat.new", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
   occasion: { labelKey: "etat.used", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
   demonstrateur: { labelKey: "etat.demo", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
@@ -159,7 +179,7 @@ function EtatBadge({ etat, sourceCategorie }: { etat?: string; sourceCategorie?:
   if (!config) return null
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ${config.className}`}>
-      {t(config.labelKey as any)}
+      {t(config.labelKey)}
     </span>
   )
 }
@@ -234,7 +254,24 @@ export type PriceComparisonTableHandle = {
   tableDataLength: number
 }
 
-const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceComparisonTableProps>(function PriceComparisonTable({ products, competitorsUrls = [], ignoreColors = false, stripColorsFromDisplay = false, matchMode = 'exact', onMatchModeChange, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel }, ref) {
+function toAnalyticsProduct(product: Product): AnalyticsProduct {
+  return {
+    name: product.name || "",
+    prix: product.prix || 0,
+    prixReference: product.prixReference,
+    sourceSite: product.sourceSite,
+    sourceUrl: product.sourceUrl,
+    marque: product.marque,
+    modele: product.modele,
+    annee: product.annee ?? null,
+    etat: product.etat,
+    quantity: product.quantity,
+    inventaire: product.inventaire,
+    groupedUrls: product.groupedUrls,
+  }
+}
+
+const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceComparisonTableProps>(function PriceComparisonTable({ products, competitorsUrls = [], stripColorsFromDisplay = false, matchMode = 'exact', onMatchModeChange, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel, pricingSettings, pricingEnabled = false, pricingUpdates = [], onPricingEnabledChange, selectedPricingKeys, onTogglePricingSelection, onSetPricingSelection, onPricingKeysAvailable, creatingChangeSheet = false, onCreateChangeSheet }, ref) {
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
@@ -245,7 +282,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
   const [shareResult, setShareResult] = useState<{ success: boolean; message: string } | null>(null)
 
   useEffect(() => {
-    setMounted(true)
+    const frame = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(frame)
   }, [])
 
   const competitors = useMemo(() => {
@@ -256,23 +294,13 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     }))
   }, [competitorsUrls])
 
-  const competitorProductCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const p of products) {
-      if (p.sourceSite) {
-        const label = hostnameFromUrl(p.sourceSite)
-        counts[label] = (counts[label] || 0) + 1
-      }
-    }
-    return counts
-  }, [products])
-
   const tableData = useMemo(() => {
     // ── Regrouper les produits comparés par clé normalisée ──
     // Aligné avec la page Analyse : mêmes véhicules, mêmes lignes.
     // 1) Produits avec prixReference (concurrents matchés) → groupes par baseKey
     // 2) Produits référence seuls → ajoutés seulement si baseKey pas déjà présent
     const groups = new Map<string, {
+      productKey: string
       displayName: string
       image?: string
       modele?: string
@@ -285,6 +313,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       competitorEtats: Record<string, string>
       competitorUrls: Record<string, string>
       reference: number | null
+      vehicleType: VehicleType
       competitorPrices: Record<string, number>
       quantity: number
       groupedUrls: string[]
@@ -293,7 +322,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     const productsWithComparison = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
     const productsRefOnly = products.filter(p => p.prixReference == null || p.prixReference === undefined)
 
-    const getKey = (p: Product) => normalizeProductGroupKeyWithMode(p as any, matchMode)
+    const getKey = (p: Product) => normalizeProductGroupKeyWithMode(toAnalyticsProduct(p), matchMode)
 
     // Index des quantités/URLs du site référent (pour ne pas accumuler les quantités des concurrents)
     const refInfoByKey = new Map<string, { quantity: number; groupedUrls: string[] }>()
@@ -313,19 +342,22 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           ? { ...p, name: refName }
           : p
         const refInfo = refInfoByKey.get(key)
+        const referenceUrl = p.produitReference?.sourceUrl
         groups.set(key, {
+          productKey: key,
           displayName: getProductDisplayName(displayProduct),
           image: p.produitReference?.image || p.image,
           modele: p.modele,
           marque: p.marque,
           etat: p.produitReference?.etat ?? p.etat,
           sourceCategorie: p.produitReference?.sourceCategorie ?? p.sourceCategorie,
-          referenceUrl: p.produitReference?.sourceUrl,
+          referenceUrl,
           inventaire: p.produitReference?.inventaire || p.inventaire,
           kilometrage: p.produitReference?.kilometrage ?? p.kilometrage,
           competitorEtats: {},
           competitorUrls: {},
           reference: p.prixReference ?? null,
+          vehicleType: inferVehicleType({ sourceUrl: referenceUrl || p.sourceUrl, name: displayProduct.name }),
           competitorPrices: {},
           quantity: refInfo?.quantity || 1,
           groupedUrls: refInfo?.groupedUrls || [],
@@ -362,6 +394,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       if (groups.has(baseKey)) continue
       const key = `${baseKey}__ref_${refOnlyIndex++}`
       groups.set(key, {
+        productKey: key,
         displayName: getProductDisplayName(p),
         image: p.image,
         modele: p.modele,
@@ -377,6 +410,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         competitorPrices: {},
         quantity: p.quantity || 1,
         groupedUrls: p.groupedUrls || (p.sourceUrl ? [p.sourceUrl] : []),
+        vehicleType: inferVehicleType(p),
       })
     }
 
@@ -390,6 +424,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       })
 
       return {
+        productKey: g.productKey,
         name: g.displayName,
         displayName: g.displayName,
         image: g.image,
@@ -404,6 +439,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         prices,
         quantity: g.quantity,
         groupedUrls: g.groupedUrls,
+        vehicleType: g.vehicleType,
       }
     })
   }, [products, competitors, matchMode])
@@ -412,7 +448,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
 
   const handlePrint = useCallback(() => {
     printSection("price-comparison-table", t("table.priceComparison"))
-  }, [])
+  }, [t])
 
   const handleExportExcel = useCallback(() => {
     const competitorLabels = competitors.map(c => c.label)
@@ -456,7 +492,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     } else {
       setShareResult({ success: false, message: result.error || t("table.emailError") })
     }
-  }, [shareEmails, shareSubject, shareMessage, tableData, competitors])
+  }, [shareEmails, shareSubject, shareMessage, tableData, competitors, t])
 
   useImperativeHandle(ref, () => ({
     handlePrint,
@@ -483,6 +519,55 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     })
   }, [tableData, compFilter])
 
+  const pricingRecommendations = useMemo(() => {
+    const map = new Map<string, PricingRecommendation>()
+    if (!pricingSettings) return map
+
+    for (const row of filteredTableData) {
+      const productKey = buildPricingProductKey({
+        name: row.name,
+        referenceUrl: row.referenceUrl,
+        productKey: row.productKey,
+      })
+      const recommendation = calculatePricingRecommendation(
+        {
+          name: row.name,
+          productKey,
+          reference: row.reference,
+          referenceUrl: row.referenceUrl,
+          vehicleType: row.vehicleType,
+          prices: row.prices,
+        },
+        pricingSettings
+      )
+      if (recommendation) {
+        map.set(productKey, recommendation)
+      }
+    }
+
+    return map
+  }, [filteredTableData, pricingSettings])
+
+  const pricingUpdatesByKey = useMemo(() => {
+    return new Map(pricingUpdates.map(update => [update.product_key, update]))
+  }, [pricingUpdates])
+
+  const visiblePricingKeys = useMemo(() => {
+    return filteredTableData
+      .map(row => pricingRecommendations.get(row.productKey)?.productKey)
+      .filter((key): key is string => Boolean(key))
+  }, [filteredTableData, pricingRecommendations])
+
+  const lastNotifiedKeysRef = useRef<string>("")
+  useEffect(() => {
+    if (!onPricingKeysAvailable) return
+    if (!pricingEnabled) return
+    const signature = visiblePricingKeys.slice().sort().join("|")
+    if (signature === lastNotifiedKeysRef.current) return
+    lastNotifiedKeysRef.current = signature
+    onPricingKeysAvailable(visiblePricingKeys)
+  }, [visiblePricingKeys, pricingEnabled, onPricingKeysAvailable])
+
   const flatRows = useMemo(() => {
     const result: Array<{ type: 'family'; label: string; count: number } | { type: 'row'; row: TableRow; globalIdx: number }> = []
 
@@ -494,8 +579,11 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     const families = new Map<string, { label: string; rows: TableRow[] }>()
     for (const row of filteredTableData) {
       const fk = getProductFamilyKey({
-        name: row.name, marque: row.marque, modele: row.modele, prix: row.reference || 0,
-      } as any)
+        name: row.name,
+        prix: row.reference || 0,
+        marque: row.marque,
+        modele: row.modele,
+      })
       if (!families.has(fk)) {
         const [marque, baseModel] = fk.split('|')
         const label = marque && baseModel
@@ -524,14 +612,20 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
   const [currentPage, setCurrentPage] = useState(0)
   const totalRows = flatRows.filter(r => r.type === 'row').length
   const totalPages = Math.max(1, Math.ceil(totalRows / ROWS_PER_PAGE))
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
+  const [detailRows, setDetailRows] = useState<Set<number>>(new Set())
 
   useEffect(() => {
-    setCurrentPage(0)
+    const frame = requestAnimationFrame(() => setCurrentPage(0))
+    return () => cancelAnimationFrame(frame)
   }, [products, searchQuery])
 
   useEffect(() => {
-    setExpandedRows(new Set())
-    setDetailRows(new Set())
+    const frame = requestAnimationFrame(() => {
+      setExpandedRows(new Set())
+      setDetailRows(new Set())
+    })
+    return () => cancelAnimationFrame(frame)
   }, [currentPage])
 
   const tableScrollRef = useRef<HTMLDivElement>(null)
@@ -553,7 +647,6 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     return () => { el.removeEventListener("scroll", checkTableScroll); ro.disconnect() }
   }, [checkTableScroll, tableData, competitors])
 
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
   const toggleRowExpand = (idx: number) => {
     setExpandedRows(prev => {
       const next = new Set(prev)
@@ -563,7 +656,6 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     })
   }
 
-  const [detailRows, setDetailRows] = useState<Set<number>>(new Set())
   const toggleDetailRow = (idx: number) => {
     setDetailRows(prev => {
       const next = new Set(prev)
@@ -576,6 +668,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
   const renderTable = (
     data: Array<{
       name: string
+      productKey: string
       displayName?: string
       image?: string
       modele?: string
@@ -586,6 +679,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       inventaire?: string
       kilometrage?: number
       reference: number | null
+      vehicleType: VehicleType
       prices: { dealer: string; price: number | null; delta: number | null; etat?: string; url?: string }[]
       quantity?: number
       groupedUrls?: string[]
@@ -593,8 +687,10 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     emptyMessage?: string,
     overrideCompetitors?: { id: string; label: string }[]
   ) => {
-    const cols = overrideCompetitors || competitors
-    const dynamicMinWidth = 460 + (cols.length * 140)
+    const showPricingRecommendations = pricingEnabled && !!pricingSettings
+    const cols = showPricingRecommendations ? [] : (overrideCompetitors || competitors)
+    const dynamicMinWidth = 460 + (showPricingRecommendations ? 180 : cols.length * 140)
+    const dynamicColumnCount = showPricingRecommendations ? 1 : cols.length
     return (
       <div className="relative">
         <div ref={tableScrollRef} className="overflow-x-auto">
@@ -611,17 +707,46 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                   <th className="sticky left-[260px] z-30 bg-[var(--color-background-primary)] px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] whitespace-nowrap">
                     {t("table.refPrice")}
                   </th>
-                  {cols.map(c => (
-                    <th key={c.id} className="px-3 py-2.5 text-right border-b border-[var(--color-border-tertiary)] min-w-[130px]" title={c.label}>
-                      <span className="truncate block max-w-[130px] text-[11px] font-semibold text-[var(--color-text-primary)]">{c.label}</span>
+                  {showPricingRecommendations ? (
+                    <th className="px-3 py-2.5 text-right border-b border-[var(--color-border-tertiary)] min-w-[180px]">
+                      <div className="flex items-center justify-end gap-2">
+                        {onSetPricingSelection && visiblePricingKeys.length > 0 && (() => {
+                          const selectedCount = visiblePricingKeys.filter(k => selectedPricingKeys?.has(k)).length
+                          const allSelected = selectedCount === visiblePricingKeys.length
+                          const someSelected = selectedCount > 0 && !allSelected
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => onSetPricingSelection(visiblePricingKeys, !allSelected)}
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                allSelected || someSelected
+                                  ? "border-emerald-500 bg-emerald-500 text-white"
+                                  : "border-[var(--color-border-secondary)] hover:border-[var(--color-text-secondary)]"
+                              }`}
+                              title={allSelected ? "Tout décocher" : "Tout cocher"}
+                              aria-label={allSelected ? "Tout décocher" : "Tout cocher"}
+                            >
+                              {allSelected && <Check className="h-3 w-3" strokeWidth={3} />}
+                              {someSelected && <span className="h-0.5 w-2 bg-white rounded-full" />}
+                            </button>
+                          )
+                        })()}
+                        <span className="truncate block text-[11px] font-semibold text-[var(--color-text-primary)]">Prix recommandé</span>
+                      </div>
                     </th>
-                  ))}
+                  ) : (
+                    cols.map(c => (
+                      <th key={c.id} className="px-3 py-2.5 text-right border-b border-[var(--color-border-tertiary)] min-w-[130px]" title={c.label}>
+                        <span className="truncate block max-w-[130px] text-[11px] font-semibold text-[var(--color-text-primary)]">{c.label}</span>
+                      </th>
+                    ))
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {data.length === 0 && (
                   <tr>
-                    <td colSpan={3 + cols.length} className="px-3 py-4 text-center text-sm text-[var(--color-text-secondary)]">
+                    <td colSpan={3 + dynamicColumnCount} className="px-3 py-4 text-center text-sm text-[var(--color-text-secondary)]">
                       {emptyMessage || t("table.noProducts")}
                     </td>
                   </tr>
@@ -633,7 +758,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                   if (entry.type === 'family') {
                     return (
                       <tr key={`fam-${flatIdx}`} className="bg-[var(--color-background-secondary)]/60">
-                        <td colSpan={3 + cols.length} className="px-4 py-1.5 border-b border-[var(--color-border-tertiary)]">
+                        <td colSpan={3 + dynamicColumnCount} className="px-4 py-1.5 border-b border-[var(--color-border-tertiary)]">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-secondary)]">
                             {entry.label}
                           </span>
@@ -646,6 +771,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                   const idx = entry.globalIdx
                   const isUsed = p.etat === 'occasion' || p.etat === 'vehicules_occasion' || p.sourceCategorie === 'occasion' || p.sourceCategorie === 'vehicules_occasion'
                   const hasDetails = (isUsed && p.kilometrage != null) || !!p.inventaire
+                  const recommendation = pricingRecommendations.get(p.productKey)
                   return (
                     <React.Fragment key={idx}>
                       <tr
@@ -732,26 +858,59 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                             </span>
                           </div>
                         </td>
-                        {p.prices.map(priceEntry => (
-                          <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[130px]">
-                            <div className="flex flex-col items-end gap-0.5">
-                              {priceEntry.url && priceEntry.price !== null ? (
-                                <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-                                  <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
-                                </a>
-                              ) : (
-                                <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
-                              )}
-                              {priceEntry.etat && priceEntry.price !== null && (
-                                <EtatBadge etat={priceEntry.etat} />
-                              )}
-                            </div>
+                        {showPricingRecommendations ? (
+                          <td className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[180px]">
+                            {recommendation ? (
+                              <div className="flex items-start justify-end gap-2">
+                                {onTogglePricingSelection && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onTogglePricingSelection(recommendation.productKey)}
+                                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                      selectedPricingKeys?.has(recommendation.productKey)
+                                        ? "border-emerald-500 bg-emerald-500 text-white"
+                                        : "border-[var(--color-border-secondary)] hover:border-[var(--color-text-secondary)]"
+                                    }`}
+                                    title={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
+                                    aria-label={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
+                                  >
+                                    {selectedPricingKeys?.has(recommendation.productKey) && <Check className="h-3 w-3" strokeWidth={3} />}
+                                  </button>
+                                )}
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className="font-semibold">{recommendation.recommendedPrice.toFixed(0)} $</span>
+                                  <span className={`text-xs font-semibold ${recommendation.difference < 0 ? "text-red-600 dark:text-red-400" : recommendation.difference > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-secondary)]"}`}>
+                                    {recommendation.difference > 0 ? "+" : ""}{recommendation.difference.toFixed(0)} $
+                                  </span>
+                                  <span className="text-[10px] text-[var(--color-text-secondary)]">{recommendation.strategyLabel}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[var(--color-text-secondary)]">—</span>
+                            )}
                           </td>
-                        ))}
+                        ) : (
+                          p.prices.map(priceEntry => (
+                            <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[130px]">
+                              <div className="flex flex-col items-end gap-0.5">
+                                {priceEntry.url && priceEntry.price !== null ? (
+                                  <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                                    <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
+                                  </a>
+                                ) : (
+                                  <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
+                                )}
+                                {priceEntry.etat && priceEntry.price !== null && (
+                                  <EtatBadge etat={priceEntry.etat} />
+                                )}
+                              </div>
+                            </td>
+                          ))
+                        )}
                       </tr>
                       {detailRows.has(idx) && hasDetails && (
                         <tr className="bg-[var(--color-background-secondary)]/40 border-b border-[var(--color-border-tertiary)]">
-                          <td colSpan={3 + cols.length} className="px-4 py-2.5">
+                          <td colSpan={3 + dynamicColumnCount} className="px-4 py-2.5">
                             <div className="flex flex-wrap gap-x-6 gap-y-1.5 items-center pl-6">
                               {isUsed && p.kilometrage != null && (
                                 <div className="flex items-center gap-1.5">
@@ -771,7 +930,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                       )}
                       {expandedRows.has(idx) && p.groupedUrls && p.groupedUrls.length > 0 && (
                         <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-[var(--color-border-tertiary)]">
-                          <td colSpan={3 + cols.length} className="px-4 py-2">
+                          <td colSpan={3 + dynamicColumnCount} className="px-4 py-2">
                             <div className="flex flex-wrap gap-2 items-center">
                               <span className="text-xs font-medium text-[var(--color-text-secondary)]">URLs regroupées :</span>
                               {p.groupedUrls.map((url: string, urlIdx: number) => (
@@ -896,6 +1055,38 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
             Non compétitif
           </button>
         </div>
+
+        {pricingSettings && onPricingEnabledChange && (
+          <button
+            type="button"
+            onClick={() => onPricingEnabledChange(!pricingEnabled)}
+            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition shrink-0 ${
+              pricingEnabled
+                ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10"
+                : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
+            }`}
+          >
+            <CircleDollarSign className="h-3.5 w-3.5" />
+            Appliquer la stratégie de pricing
+          </button>
+        )}
+
+        {pricingEnabled && onCreateChangeSheet && (() => {
+          const selectedVisible = visiblePricingKeys.filter(k => selectedPricingKeys?.has(k))
+          return (
+            <button
+              type="button"
+              disabled={creatingChangeSheet || selectedVisible.length === 0}
+              onClick={() => onCreateChangeSheet(selectedVisible)}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-semibold text-[var(--color-background-primary)] bg-[var(--color-text-primary)] hover:opacity-90 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={selectedVisible.length === 0 ? "Cochez au moins un véhicule à inclure dans la fiche" : "Créer une fiche de changements de prix"}
+            >
+              {creatingChangeSheet ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5" />}
+              Créer une fiche
+              <span className="opacity-70 tabular-nums">· {selectedVisible.length}</span>
+            </button>
+          )
+        })()}
 
         <div className="ml-auto flex items-center gap-1 shrink-0">
           <button

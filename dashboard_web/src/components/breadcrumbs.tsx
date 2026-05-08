@@ -13,6 +13,8 @@ const ROUTE_LABELS: Record<string, string> = {
   settings: "Paramètres",
   subscription: "Abonnement",
   "pending-payment": "Paiement en attente",
+  "strategie-pricing": "Stratégie de pricing",
+  changements: "Changements à appliquer",
 }
 
 export default function Breadcrumbs() {

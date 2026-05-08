@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Settings2, Radar, Eye, Loader2 } from "lucide-react"
 import ScraperConfig, { ScraperConfigHandle } from "./scraper-config"
@@ -9,8 +10,15 @@ import { getLocalScrapingsCount, migrateLocalScrapingsToSupabase } from "@/lib/l
 import LimitWarning from "./limit-warning"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useLanguage } from "@/contexts/language-context"
-import { KNOWN_BRANDS, normalizeProductGroupKey, type MatchMode } from "@/lib/analytics-calculations"
+import { KNOWN_BRANDS, normalizeProductGroupKey, type MatchMode, type Product as AnalyticsProduct } from "@/lib/analytics-calculations"
 import { getEffectiveStatus } from "@/lib/product-status"
+import {
+  DEFAULT_PRICING_SETTINGS,
+  inferVehicleType,
+  normalizePricingSettings,
+  type AppliedPricingUpdate,
+  type PricingStrategySettings,
+} from "@/lib/pricing-strategy"
 import PriceComparisonTable from "./price-comparison-table"
 import Celebration from "./celebration"
 import CompetitorCards from "./competitor-cards"
@@ -34,7 +42,7 @@ interface Product {
   sourceSite?: string
   sourceCategorie?: string
   etat?: string
-  attributes?: Record<string, any>
+  attributes?: Record<string, unknown>
   prixReference?: number | null
   differencePrix?: number | null
   siteReference?: string
@@ -48,22 +56,6 @@ export type DashboardView = "comparaisons" | "surveillance"
 interface ScraperDashboardProps {
   initialData?: { products: Product[] }
   view?: DashboardView
-}
-
-const vehicleTypeLabels: Record<string, string> = {
-  moto: "Moto",
-  vtt: "VTT / Quad",
-  "cote-a-cote": "Côte-à-côte",
-  motoneige: "Motoneige",
-  motomarine: "Motomarine",
-  "3-roues": "3 roues",
-  ponton: "Ponton",
-  bateau: "Bateau",
-  "moteur-hors-bord": "Moteur hors-bord",
-  equipement: "Équipement",
-  remorque: "Remorque",
-  "velo-electrique": "Vélo électrique",
-  autre: "Autre",
 }
 
 const competitiviteLabels: Record<string, string> = {
@@ -126,30 +118,25 @@ function normalizeMarque(raw: string): string {
   return BRAND_DISPLAY[key] || raw
 }
 
-function inferVehicleType(product: Product): string {
-  const url = (product.sourceUrl || "").toLowerCase()
-  const name = (product.name || "").toLowerCase()
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
 
-  if (/\/velos?-electriques?/.test(url)) return "velo-electrique"
-  if (/\/moto-trois-roues|\/three-wheel/.test(url)) return "3-roues"
-  if (/\/motocyclette|\/motorcycle|\/motocyclettes-/.test(url)) return "moto"
-  if (/\/vtt[/-]|\/atv[/-]/.test(url)) return "vtt"
-  if (/\/cote-a-cote|\/side-by-side/.test(url)) return "cote-a-cote"
-  if (/\/motoneige|\/snowmobile/.test(url)) return "motoneige"
-  if (/\/motomarine|\/watercraft/.test(url)) return "motomarine"
-  if (/\/ponton|\/pontoon/.test(url)) return "ponton"
-  if (/\/bateau|\/boat/.test(url)) return "bateau"
-  if (/\/moteur-hors-bord|\/outboard/.test(url)) return "moteur-hors-bord"
-  if (/\/equipement-mecanique|\/power-equipment/.test(url)) return "equipement"
-  if (/\/remorque|\/trailer/.test(url)) return "remorque"
-  if (/\/argo\//.test(url) || /\bargo\b/.test(name)) return "vtt"
-
-  if (/\b(?:ninja|z900|versys|klx|klr|vulcan|kx\d|scrambler|duke|ibex|street|bonneville)\b/.test(name)) return "moto"
-  if (/\b(?:brute force|cforce|kfx|outlander|kingquad)\b/.test(name)) return "vtt"
-  if (/\b(?:teryx|mule|uforce|zforce|maverick|ranger|rzr|defender)\b/.test(name)) return "cote-a-cote"
-  if (/\b(?:jet ski|ultra 310)\b/.test(name)) return "motomarine"
-
-  return "autre"
+function toAnalyticsProduct(product: Product): AnalyticsProduct {
+  return {
+    name: product.name || "",
+    prix: product.prix || 0,
+    prixReference: product.prixReference,
+    sourceSite: product.sourceSite,
+    sourceUrl: product.sourceUrl,
+    marque: product.marque,
+    modele: product.modele,
+    annee: product.annee ?? null,
+    etat: product.etat,
+    quantity: product.quantity,
+    inventaire: product.inventaire,
+    groupedUrls: product.groupedUrls,
+  }
 }
 
 function getCompetitivite(product: Product): string | null {
@@ -229,7 +216,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   const [configuredReferenceSite, setConfiguredReferenceSite] = useState<string | null>(null)
   const [cacheItems, setCacheItems] = useState<Product[]>([])
   const [cacheDisplay, setCacheDisplay] = useState<Product[]>([])
-  const [scraperCache, setScraperCache] = useState<any[]>([])
+  const [scraperCache, setScraperCache] = useState<unknown[]>([])
   const [showScraperConfig, setShowScraperConfig] = useState(false)
   const [showCacheModal, setShowCacheModal] = useState(false)
   const [pendingRemovedCacheUrls, setPendingRemovedCacheUrls] = useState<string[]>([])
@@ -244,6 +231,13 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   const [lastScrapingTime, setLastScrapingTime] = useState<Date | null>(null)
   const [alertLastRunAt, setAlertLastRunAt] = useState<Date | null>(null)
   const [alertIntervalMinutes, setAlertIntervalMinutes] = useState(60)
+  const [pricingSettings, setPricingSettings] = useState<PricingStrategySettings>(normalizePricingSettings(DEFAULT_PRICING_SETTINGS))
+  const [pricingEnabled, setPricingEnabled] = useState(false)
+  const [pricingUpdates, setPricingUpdates] = useState<AppliedPricingUpdate[]>([])
+  const [creatingChangeSheet, setCreatingChangeSheet] = useState(false)
+  const [selectedPricingKeys, setSelectedPricingKeys] = useState<Set<string>>(new Set())
+  const pricingSelectionInitializedRef = useRef(false)
+  const router = useRouter()
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
   const inlineScraperRef = useRef<ScraperConfigHandle | null>(null)
   const tabScrollRef = useRef<HTMLDivElement>(null)
@@ -381,8 +375,27 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
             if (configData.alertIntervalMinutes) setAlertIntervalMinutes(configData.alertIntervalMinutes)
           }
         } catch { /* non critique */ }
-      } catch (err: any) {
-        if (!cancelled) { setError(err.message || 'Erreur lors du chargement'); console.error(err) }
+        try {
+          const pricingRes = await fetch('/api/pricing/strategy', { cache: 'no-store' })
+          if (pricingRes.ok) {
+            const pricingData = await pricingRes.json()
+            const normalized = normalizePricingSettings(pricingData?.settings)
+            setPricingSettings(normalized)
+            setPricingEnabled(normalized.apply_enabled)
+          }
+        } catch { /* non critique */ }
+        try {
+          const updatesUrl = data.scrapingId
+            ? `/api/pricing/updates?scrapingId=${encodeURIComponent(data.scrapingId)}`
+            : '/api/pricing/updates'
+          const updatesRes = await fetch(updatesUrl, { cache: 'no-store' })
+          if (updatesRes.ok) {
+            const updatesData = await updatesRes.json()
+            setPricingUpdates(Array.isArray(updatesData?.updates) ? updatesData.updates : [])
+          }
+        } catch { /* non critique */ }
+      } catch (err: unknown) {
+        if (!cancelled) { setError(getErrorMessage(err, 'Erreur lors du chargement')); console.error(err) }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -397,7 +410,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
       const result = await migrateLocalScrapingsToSupabase()
       if (result.success) { setShowMigrationPrompt(false); alert(`${result.migrated} scrapings migrés`); setRefreshKey(prev => prev + 1) }
       else alert(`Migration partielle: ${result.migrated} migrés, ${result.errors.length} erreurs`)
-    } catch (error: any) { alert(`Erreur: ${error.message}`) }
+    } catch (error: unknown) { alert(`Erreur: ${getErrorMessage(error, "Erreur inconnue")}`) }
     finally { setMigrating(false) }
   }
 
@@ -497,7 +510,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   // Nombre de « comparés » = groupes uniques (une ligne = un véhicule référent), pas le nombre de lignes produit
   const comparedUniqueCount = useMemo(() => {
     const withRef = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
-    const keys = new Set(withRef.map(p => normalizeProductGroupKey(p as any)))
+    const keys = new Set(withRef.map(p => normalizeProductGroupKey(toAnalyticsProduct(p))))
     return keys.size
   }, [products])
 
@@ -564,7 +577,8 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
     if (activeTab === "compared") filtered = filtered.filter(p => p.prixReference != null)
 
     filtered.sort((a, b) => {
-      let aVal: any, bVal: any
+      let aVal: string | number
+      let bVal: string | number
       if (sortBy === "prix") { aVal = a.prix || 0; bVal = b.prix || 0 }
       else if (sortBy === "annee") { aVal = a.annee || 0; bVal = b.annee || 0 }
       else if (sortBy === "marque") { aVal = getEffectiveMarque(a).toLowerCase(); bVal = getEffectiveMarque(b).toLowerCase() }
@@ -582,7 +596,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   // En onglet Comparés, une ligne = un groupe (véhicule); on affiche le nombre de lignes, pas de produits bruts
   const displayResultCount = useMemo(() => {
     if (activeTab !== "compared") return filteredProducts.length
-    const keys = new Set(filteredProducts.map(p => normalizeProductGroupKey(p as any)))
+    const keys = new Set(filteredProducts.map(p => normalizeProductGroupKey(toAnalyticsProduct(p))))
     return keys.size
   }, [activeTab, filteredProducts])
 
@@ -593,6 +607,76 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
     setSelectedProduct("all"); setSelectedCompetitivite("all"); setSelectedEtat("all"); setPriceDifferenceFilter(null)
     setSortBy("prix"); setSortOrder("asc")
   }
+
+  const handleCreateChangeSheet = async (productKeys: string[]) => {
+    if (productKeys.length === 0) return
+    setCreatingChangeSheet(true)
+    try {
+      const res = await fetch('/api/pricing/change-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productKeys, matchMode }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || "Impossible de créer la fiche de changements.")
+      }
+      const sheet = data?.sheet
+      const itemsCount = Array.isArray(data?.items) ? data.items.length : 0
+      toast.success("Fiche de changements créée", {
+        description: `${itemsCount} véhicule${itemsCount === 1 ? "" : "s"} dans la fiche.`,
+        duration: 5000,
+        action: sheet?.id
+          ? {
+              label: "Voir",
+              onClick: () => router.push(`/dashboard/changements/${sheet.id}`),
+            }
+          : undefined,
+      })
+      setSelectedPricingKeys(new Set())
+      pricingSelectionInitializedRef.current = false
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur réseau.", { duration: 5000 })
+    } finally {
+      setCreatingChangeSheet(false)
+    }
+  }
+
+  const togglePricingSelection = useCallback((productKey: string) => {
+    pricingSelectionInitializedRef.current = true
+    setSelectedPricingKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(productKey)) next.delete(productKey)
+      else next.add(productKey)
+      return next
+    })
+  }, [])
+
+  const setPricingSelectionBulk = useCallback((productKeys: string[], selected: boolean) => {
+    pricingSelectionInitializedRef.current = true
+    setSelectedPricingKeys(prev => {
+      const next = new Set(prev)
+      for (const key of productKeys) {
+        if (selected) next.add(key)
+        else next.delete(key)
+      }
+      return next
+    })
+  }, [])
+
+  const handlePricingKeysAvailable = useCallback((keys: string[]) => {
+    if (pricingSelectionInitializedRef.current) {
+      setSelectedPricingKeys(prev => {
+        const allowed = new Set(keys)
+        const next = new Set(Array.from(prev).filter(key => allowed.has(key)))
+        return next.size === prev.size ? prev : next
+      })
+      return
+    }
+    if (keys.length === 0) return
+    pricingSelectionInitializedRef.current = true
+    setSelectedPricingKeys(new Set(keys))
+  }, [])
 
   const handleRemoveCacheItem = (index: number) => { setCacheItems(prev => prev.filter((_, i) => i !== index)) }
   const handleClearCache = () => { setCacheItems([]) }
@@ -898,7 +982,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                       </option>
                       {f.options.map(o => (
                         <option key={o} value={o} style={{ backgroundColor: "#ffffff", color: "#111827" }}>
-                          {((f as any).labelMap as Record<string, string> | undefined)?.[o as string] || o}
+                          {("labelMap" in f ? f.labelMap?.[o as string] : undefined) || o}
                         </option>
                       ))}
                     </select>
@@ -1060,6 +1144,16 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
           searchPlaceholder={t("dash.searchPlaceholder")}
           hideColorsLabel={t("dash.hideColors")}
           showColorsLabel={t("dash.showColors")}
+          pricingSettings={pricingSettings}
+          pricingEnabled={pricingEnabled}
+          pricingUpdates={pricingUpdates}
+          onPricingEnabledChange={setPricingEnabled}
+          selectedPricingKeys={selectedPricingKeys}
+          onTogglePricingSelection={togglePricingSelection}
+          onSetPricingSelection={setPricingSelectionBulk}
+          onPricingKeysAvailable={handlePricingKeysAvailable}
+          creatingChangeSheet={creatingChangeSheet}
+          onCreateChangeSheet={handleCreateChangeSheet}
         />
       </div>
       </>)}

@@ -141,6 +141,37 @@ CREATE TABLE IF NOT EXISTS support_messages (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Table pricing_strategy_settings (configuration de stratégie de pricing par utilisateur)
+CREATE TABLE IF NOT EXISTS pricing_strategy_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  apply_enabled BOOLEAN NOT NULL DEFAULT false,
+  default_strategy JSONB NOT NULL DEFAULT '{"key": "lowest_minus_amount", "amount": 1}',
+  vehicle_type_strategies JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Table pricing_price_updates (recommandations de prix appliquées)
+CREATE TABLE IF NOT EXISTS pricing_price_updates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  scraping_id UUID REFERENCES scrapings(id) ON DELETE SET NULL,
+  product_key TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  reference_url TEXT,
+  vehicle_type TEXT NOT NULL DEFAULT 'autre',
+  old_price NUMERIC(12, 2),
+  recommended_price NUMERIC(12, 2) NOT NULL,
+  strategy_key TEXT NOT NULL,
+  basis JSONB NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'applied' CHECK (status IN ('pending', 'applied', 'rejected')),
+  applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, scraping_id, product_key)
+);
+
 -- Index pour améliorer les performances
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_main_account_id ON users(main_account_id);
@@ -163,6 +194,10 @@ CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id);
 CREATE INDEX IF NOT EXISTS idx_support_messages_user_id ON support_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_support_messages_status ON support_messages(status);
 CREATE INDEX IF NOT EXISTS idx_support_messages_created_at ON support_messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pricing_strategy_settings_user_id ON pricing_strategy_settings(user_id);
+CREATE INDEX IF NOT EXISTS idx_pricing_price_updates_user_id ON pricing_price_updates(user_id);
+CREATE INDEX IF NOT EXISTS idx_pricing_price_updates_scraping_id ON pricing_price_updates(scraping_id);
+CREATE INDEX IF NOT EXISTS idx_pricing_price_updates_status ON pricing_price_updates(status);
 
 -- Fonction pour mettre à jour updated_at automatiquement
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -211,6 +246,12 @@ CREATE TRIGGER update_webhooks_updated_at BEFORE UPDATE ON webhooks
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_support_messages_updated_at BEFORE UPDATE ON support_messages
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_pricing_strategy_settings_updated_at BEFORE UPDATE ON pricing_strategy_settings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_pricing_price_updates_updated_at BEFORE UPDATE ON pricing_price_updates
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Fonction pour créer automatiquement un utilisateur dans la table users après inscription
@@ -362,6 +403,8 @@ ALTER TABLE scraper_shares ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhooks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE support_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_strategy_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_price_updates ENABLE ROW LEVEL SECURITY;
 
 -- Policies pour users
 CREATE POLICY "Users can view their own profile"
@@ -639,5 +682,39 @@ CREATE POLICY "Users can view their own support messages"
 CREATE POLICY "Users can insert their own support messages"
   ON support_messages FOR INSERT
   WITH CHECK (auth.uid() = user_id);
+
+-- Policies pour pricing_strategy_settings
+CREATE POLICY "Users can view their own pricing strategy"
+  ON pricing_strategy_settings FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own pricing strategy"
+  ON pricing_strategy_settings FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own pricing strategy"
+  ON pricing_strategy_settings FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own pricing strategy"
+  ON pricing_strategy_settings FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Policies pour pricing_price_updates
+CREATE POLICY "Users can view their own pricing updates"
+  ON pricing_price_updates FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own pricing updates"
+  ON pricing_price_updates FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own pricing updates"
+  ON pricing_price_updates FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own pricing updates"
+  ON pricing_price_updates FOR DELETE
+  USING (auth.uid() = user_id);
 
 

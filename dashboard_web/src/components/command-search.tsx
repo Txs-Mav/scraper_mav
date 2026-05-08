@@ -19,6 +19,8 @@ import {
   Webhook,
   Boxes,
   HelpCircle,
+  CircleDollarSign,
+  ClipboardList,
 } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { getDashboardCapabilities } from "@/lib/account-navigation"
@@ -67,6 +69,8 @@ export default function CommandSearch() {
     { id: "profile", label: "Profil", description: "Votre profil", icon: User, action: () => router.push("/dashboard/profile"), category: "page", keywords: ["compte", "avatar", "photo"] },
     { id: "settings", label: "Paramètres", description: "Paramètres du compte", icon: Settings, action: () => router.push("/dashboard/settings"), category: "page", keywords: ["réglages", "mot de passe", "email"] },
     ...developerItems,
+    { id: "strategie-pricing", label: "Stratégie de pricing", description: "Règles de recommandations de prix", icon: CircleDollarSign, action: () => router.push("/dashboard/strategie-pricing"), category: "page", keywords: ["pricing", "prix", "tarif", "strategie", "recommandation", "marge"] },
+    { id: "changements", label: "Changements à appliquer", description: "Vos fiches de changements de prix", icon: ClipboardList, action: () => router.push("/dashboard/changements"), category: "page", keywords: ["fiche", "changement", "appliquer", "prix", "mise à jour"] },
     { id: "help", label: "Aide", description: "Centre d'aide", icon: HelpCircle, action: () => router.push("/dashboard/help"), category: "page", keywords: ["support", "documentation"] },
     { id: "scrape", label: "Analyser maintenant", description: "Lancer une analyse immédiate du marché", icon: Zap, action: () => { router.push("/dashboard"); setTimeout(() => window.dispatchEvent(new CustomEvent("open-scraper-config")), 300) }, category: "action", keywords: ["analyser", "scraper", "extraction", "lancer", "démarrer", "marché"] },
     { id: "export", label: "Exporter les données", description: "Télécharger vos données", icon: Download, action: () => router.push("/dashboard/settings"), category: "action", keywords: ["export", "télécharger", "json", "csv"] },
