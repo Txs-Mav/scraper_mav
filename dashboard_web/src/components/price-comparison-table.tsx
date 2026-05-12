@@ -317,20 +317,31 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       competitorPrices: Record<string, number>
       quantity: number
       groupedUrls: string[]
+      isMatchedGroup: boolean
     }>()
 
     const productsWithComparison = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
     const productsRefOnly = products.filter(p => p.prixReference == null || p.prixReference === undefined)
 
-    const getKey = (p: Product) => normalizeProductGroupKeyWithMode(toAnalyticsProduct(p), matchMode)
+    // Pour les produits matchés : on regroupe par produit de référence (sourceUrl) quand disponible.
+    // Cela évite que deux concurrents matchant le même véhicule de référence (avec des noms légèrement différents)
+    // créent deux lignes distinctes — c'est ce qui faisait apparaître des lignes sans match visible.
+    const getKey = (p: Product) => {
+      const refUrl = p.produitReference?.sourceUrl
+      if (refUrl) return `ref:${refUrl}`
+      return normalizeProductGroupKeyWithMode(toAnalyticsProduct(p), matchMode)
+    }
 
-    // Index des quantités/URLs du site référent (pour ne pas accumuler les quantités des concurrents)
+    // Index des quantités/URLs du site référent (pour ne pas accumuler les quantités des concurrents).
+    // Deux index parallèles : par clé normalisée ET par URL du produit de référence,
+    // pour pouvoir retrouver l'info depuis un produit matché (qui pointe vers la référence via produitReference).
     const refInfoByKey = new Map<string, { quantity: number; groupedUrls: string[] }>()
+    const refInfoBySourceUrl = new Map<string, { quantity: number; groupedUrls: string[] }>()
     for (const p of productsRefOnly) {
-      const key = getKey(p)
-      if (!refInfoByKey.has(key)) {
-        refInfoByKey.set(key, { quantity: p.quantity || 1, groupedUrls: p.groupedUrls || (p.sourceUrl ? [p.sourceUrl] : []) })
-      }
+      const info = { quantity: p.quantity || 1, groupedUrls: p.groupedUrls || (p.sourceUrl ? [p.sourceUrl] : []) }
+      const normKey = normalizeProductGroupKeyWithMode(toAnalyticsProduct(p), matchMode)
+      if (!refInfoByKey.has(normKey)) refInfoByKey.set(normKey, info)
+      if (p.sourceUrl && !refInfoBySourceUrl.has(p.sourceUrl)) refInfoBySourceUrl.set(p.sourceUrl, info)
     }
 
     // 1) Traiter d'abord les produits matchés (concurrents avec prix de référence)
@@ -341,8 +352,9 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         const displayProduct: Product = refName
           ? { ...p, name: refName }
           : p
-        const refInfo = refInfoByKey.get(key)
         const referenceUrl = p.produitReference?.sourceUrl
+        const refInfo = (referenceUrl && refInfoBySourceUrl.get(referenceUrl))
+          || refInfoByKey.get(normalizeProductGroupKeyWithMode(toAnalyticsProduct(p), matchMode))
         groups.set(key, {
           productKey: key,
           displayName: getProductDisplayName(displayProduct),
@@ -361,6 +373,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           competitorPrices: {},
           quantity: refInfo?.quantity || 1,
           groupedUrls: refInfo?.groupedUrls || [],
+          isMatchedGroup: true,
         })
       }
       const group = groups.get(key)!
@@ -386,12 +399,15 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     }
 
     // 2) Produits de référence seuls : ajouter uniquement si pas déjà dans un groupe (évite doublons)
+    // On vérifie à la fois la clé normalisée (legacy) ET la clé `ref:URL` correspondant à l'URL du produit,
+    // pour éviter de dupliquer un véhicule de référence déjà affiché via un groupe matché.
     let refOnlyIndex = 0
     for (const p of productsRefOnly) {
       const refPrice = p.prix != null && p.prix > 0 ? p.prix : null
       if (refPrice === null) continue
       const baseKey = getKey(p)
       if (groups.has(baseKey)) continue
+      if (p.sourceUrl && groups.has(`ref:${p.sourceUrl}`)) continue
       const key = `${baseKey}__ref_${refOnlyIndex++}`
       groups.set(key, {
         productKey: key,
@@ -411,10 +427,20 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         quantity: p.quantity || 1,
         groupedUrls: p.groupedUrls || (p.sourceUrl ? [p.sourceUrl] : []),
         vehicleType: inferVehicleType(p),
+        isMatchedGroup: false,
       })
     }
 
-    return Array.from(groups.values()).map(g => {
+    return Array.from(groups.values()).filter(g => {
+      // Pour un groupe issu d'un match (provenant d'un produit avec prixReference),
+      // on exige au moins un prix concurrent réel. Sinon la ligne afficherait « — » partout
+      // et fausserait le compte affiché en haut de l'onglet Comparés.
+      // Les groupes « référence seule » sont conservés tels quels (onglet Référence).
+      if (g.isMatchedGroup) {
+        return Object.keys(g.competitorPrices).length > 0
+      }
+      return true
+    }).map(g => {
       const prices = competitors.map(c => {
         const price = g.competitorPrices[c.label] ?? null
         const delta = g.reference !== null && price !== null ? price - g.reference : null

@@ -49,6 +49,16 @@ interface Product {
   quantity?: number
   inventaire?: string
   groupedUrls?: string[]
+  produitReference?: {
+    sourceUrl?: string
+    name?: string
+    prix?: number
+    image?: string
+    inventaire?: string
+    kilometrage?: number
+    etat?: string
+    sourceCategorie?: string
+  }
 }
 
 export type DashboardView = "comparaisons" | "surveillance"
@@ -493,7 +503,14 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
       const siteDomainNormalized = siteDomain?.toLowerCase().trim()
       const isReferenceProduct = refDomainNormalized && siteDomainNormalized === refDomainNormalized
 
-      if (product.prixReference !== null && product.prixReference !== undefined) compared.push(product)
+      // « Comparé » = produit concurrent (hors site de référence) avec un prix valide ET un prix de référence appairé.
+      // Cela évite que des produits du site de référence (qui peuvent porter un prixReference résiduel)
+      // ou des fiches sans prix viennent gonfler la liste avec des lignes vides.
+      const hasValidPrice = typeof product.prix === 'number' && product.prix > 0
+      const hasReferencePrice = product.prixReference !== null && product.prixReference !== undefined && product.prixReference > 0
+      if (hasReferencePrice && hasValidPrice && !isReferenceProduct) {
+        compared.push(product)
+      }
       if (isReferenceProduct) reference.push(product)
       else if (site !== 'unknown') {
         if (!otherSites[site]) otherSites[site] = []
@@ -508,11 +525,19 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   }, [products, referenceSite])
 
   // Nombre de « comparés » = groupes uniques (une ligne = un véhicule référent), pas le nombre de lignes produit
+  // On reflète strictement les lignes qui apparaîtront dans le tableau pour que le badge corresponde au contenu.
   const comparedUniqueCount = useMemo(() => {
-    const withRef = products.filter(p => p.prixReference != null && p.prixReference !== undefined)
-    const keys = new Set(withRef.map(p => normalizeProductGroupKey(toAnalyticsProduct(p))))
+    const keys = new Set<string>()
+    for (const p of productsBySite.compared) {
+      const refUrl = p.produitReference?.sourceUrl
+      if (refUrl) {
+        keys.add(`ref:${refUrl}`)
+      } else {
+        keys.add(normalizeProductGroupKey(toAnalyticsProduct(p)))
+      }
+    }
     return keys.size
-  }, [products])
+  }, [productsBySite.compared])
 
   useEffect(() => { setCacheItems(productsBySite.reference) }, [productsBySite.reference])
   useEffect(() => { setCacheDisplay(cacheItems.slice(0, 2)) }, [cacheItems])
