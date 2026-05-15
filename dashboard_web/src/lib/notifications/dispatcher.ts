@@ -292,6 +292,169 @@ function buildAlertEmailHtml(payload: AlertNotificationPayload, dashboardUrl: st
 </body></html>`.trim()
 }
 
+// ─── Daily digest (récap quotidien agrégé) ──────────────────────────
+
+export interface DigestAlertGroup {
+  alertId: string
+  siteUrl: string
+  changes: AlertChange[]
+}
+
+export interface DailyDigestPayload {
+  userId: string
+  userName: string
+  userEmail: string | null
+  periodHours: number
+  groups: DigestAlertGroup[]
+}
+
+function buildDailyDigestHtml(payload: DailyDigestPayload, dashboardUrl: string): string {
+  const allChanges = payload.groups.flatMap(g => g.changes)
+  const totalChanges = allChanges.length
+  const totalAlerts = payload.groups.length
+  const totalMatched = allChanges.filter(c => {
+    const d = c.details as Record<string, any>
+    return d?.is_matched_with_reference === true
+  }).length
+
+  const sum = summarize(allChanges)
+  const badges = sum.filter(s => s.count > 0).map(s => {
+    const color = s.type === 'price_increase' ? '#dc2626'
+      : s.type === 'price_decrease' ? '#16a34a'
+      : s.type === 'new_product' ? '#2563eb'
+      : s.type === 'removed_product' ? '#ea580c' : '#7c3aed'
+    return `<span style="color:${color};">${s.emoji} ${s.count} ${s.label}</span>`
+  }).join(' &middot; ')
+
+  const matchBadge = totalMatched > 0
+    ? `<span style="display:inline-block;background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;margin-left:8px;">★ ${totalMatched} match${totalMatched > 1 ? 's' : ''} réf.</span>`
+    : ''
+
+  const groupsHtml = payload.groups
+    .sort((a, b) => b.changes.length - a.changes.length)
+    .map(g => {
+      const host = hostnameOf(g.siteUrl)
+      const gSum = summarize(g.changes).filter(s => s.count > 0)
+      const gBadges = gSum.map(s => `<span style="margin-right:10px;">${s.emoji} ${s.count} ${s.label}</span>`).join('')
+
+      const rows = g.changes.slice(0, 10).map(c => {
+        const pctBadge = typeof c.percentage_change === 'number'
+          ? ` <span style="color:${c.percentage_change > 0 ? '#dc2626' : '#16a34a'};font-weight:700;">(${c.percentage_change > 0 ? '+' : ''}${c.percentage_change}%)</span>`
+          : ''
+        const siteBadge = c.source_site
+          ? `<span style="display:inline-block;background:#eff6ff;color:#2563eb;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-left:4px;">${c.source_site}</span>`
+          : ''
+        const color = c.change_type === 'price_decrease' ? '#16a34a'
+          : c.change_type === 'price_increase' ? '#dc2626' : '#2563eb'
+        return `<tr>
+          <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;font-size:12px;">${groupEmoji(c.change_type)} ${groupLabel(c.change_type)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;font-size:13px;">${c.product_name || 'N/A'}${siteBadge}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#6b7280;font-size:12px;">${c.old_value || '—'}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-weight:600;color:${color};font-size:12px;">${c.new_value || '—'}${pctBadge}</td>
+        </tr>`
+      }).join('')
+
+      const moreLine = g.changes.length > 10
+        ? `<p style="color:#6b7280;font-size:12px;margin:6px 0 0;">Et ${g.changes.length - 10} autres changements sur cette alerte…</p>`
+        : ''
+
+      return `
+        <div style="margin-top:24px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+          <div style="background:#f8fafc;padding:14px 16px;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div style="font-weight:700;color:#0f172a;font-size:14px;">🔔 ${host}</div>
+              <div style="font-size:12px;color:#475569;">${g.changes.length} changement${g.changes.length > 1 ? 's' : ''}</div>
+            </div>
+            <div style="margin-top:6px;font-size:12px;color:#475569;">${gBadges}</div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;background:white;">
+            <tbody>${rows}</tbody>
+          </table>
+          ${moreLine}
+        </div>
+      `
+    }).join('')
+
+  const periodLabel = payload.periodHours === 24
+    ? 'dernières 24 heures'
+    : `${payload.periodHours} dernières heures`
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#1f2937;max-width:760px;margin:0 auto;padding:24px;background:#f9fafb;">
+  <div style="background:white;border-radius:12px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.1);">
+    <div style="margin-bottom:24px;">
+      <h1 style="color:#2563eb;margin:0 0 4px;font-size:22px;">Go-Data — Récap quotidien</h1>
+      <p style="color:#6b7280;margin:0;font-size:14px;">Bonjour ${payload.userName}, voici les variations détectées sur vos correspondances (${periodLabel}).</p>
+    </div>
+
+    <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;padding:20px;border-radius:10px;margin-bottom:8px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:18px;color:#1e40af;">
+        ${totalChanges} variation${totalChanges > 1 ? 's' : ''} sur ${totalAlerts} alerte${totalAlerts > 1 ? 's' : ''}${matchBadge}
+      </p>
+      <div style="font-size:13px;">${badges}</div>
+    </div>
+
+    ${groupsHtml}
+
+    <div style="margin-top:28px;text-align:center;">
+      <a href="${dashboardUrl}/dashboard/alerte" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;font-size:14px;">
+        Voir toutes mes alertes
+      </a>
+    </div>
+  </div>
+
+  <p style="color:#9ca3af;font-size:11px;margin-top:24px;text-align:center;">
+    Cet email est envoyé automatiquement par Go-Data une fois par jour.
+    <a href="${dashboardUrl}/dashboard/settings" style="color:#9ca3af;">Gérer mes canaux de notification</a>
+  </p>
+</body></html>`.trim()
+}
+
+export interface DailyDigestDispatchResult {
+  email: { attempted: boolean; ok: boolean; error?: string }
+}
+
+/**
+ * Envoie le récap quotidien par email à un utilisateur.
+ * Ne fait rien si payload.groups est vide ou si totalChanges = 0.
+ */
+export async function dispatchDailyDigest(
+  payload: DailyDigestPayload,
+  userChannels: UserChannelsConfig | null
+): Promise<DailyDigestDispatchResult> {
+  const result: DailyDigestDispatchResult = {
+    email: { attempted: false, ok: false },
+  }
+
+  const totalChanges = payload.groups.reduce((sum, g) => sum + g.changes.length, 0)
+  if (totalChanges === 0 || payload.groups.length === 0) {
+    return result
+  }
+
+  const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://go-data-dashboard.vercel.app'
+  const emailEnabled = userChannels?.email_enabled ?? true
+  const emailTarget = userChannels?.email_address || payload.userEmail
+  if (!emailEnabled || !emailTarget) {
+    return result
+  }
+
+  result.email.attempted = true
+  try {
+    await sendEmail({
+      to: emailTarget,
+      subject: `Go-Data — Récap quotidien : ${totalChanges} variation${totalChanges > 1 ? 's' : ''}`,
+      html: buildDailyDigestHtml(payload, dashboardUrl),
+    })
+    result.email.ok = true
+  } catch (err: any) {
+    result.email.error = err?.message || String(err)
+    console.error('[Daily Digest] Échec email:', result.email.error)
+  }
+
+  return result
+}
+
 // ─── Dispatcher principal ────────────────────────────────────────────
 
 /**

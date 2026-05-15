@@ -9,6 +9,10 @@
       "schedule": "0 8 * * *"
     },
     {
+      "path": "/api/alerts/daily-digest",
+      "schedule": "0 13 * * *"
+    },
+    {
       "path": "/api/cron/keep-alive",
       "schedule": "0 4 * * *"
     }
