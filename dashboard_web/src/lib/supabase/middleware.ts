@@ -18,7 +18,46 @@ const COOKIE_OPTIONS = {
   secure: process.env.NODE_ENV === 'production',
 }
 
+/**
+ * Détermine si le middleware doit faire un round-trip Supabase pour cette
+ * route. Le `auth.getUser()` ajoute 100-300ms de latence ; on ne le paie que
+ * sur les routes qui en dépendent réellement.
+ *
+ * Bénéfice critique : si Supabase Auth est en panne, seules ces routes
+ * échouent — la landing, les webhooks, les crons et les API publiques
+ * continuent de tourner.
+ */
+function needsAuthCheck(pathname: string): boolean {
+  // Routes protégées : on doit gate.
+  if (pathname.startsWith('/dashboard')) return true
+  if (pathname.startsWith('/admin')) return true
+  if (pathname.startsWith('/api/admin')) return true
+
+  // Routes d'auth : on rafraîchit les cookies/token pour que le client
+  // côté browser ait toujours une session valide en mémoire.
+  if (pathname === '/login' || pathname.startsWith('/login/')) return true
+  if (pathname === '/create-account' || pathname.startsWith('/create-account/')) return true
+  if (pathname === '/forgot-password' || pathname.startsWith('/forgot-password/')) return true
+  if (pathname === '/reset-password' || pathname.startsWith('/reset-password/')) return true
+  if (pathname.startsWith('/auth/')) return true
+
+  // Tout le reste (landing, marketing, /api/cron, /api/webhook, /api/health,
+  // /api/product-search, sitemap, robots, etc.) n'a pas besoin de session
+  // côté middleware. Les routes API qui veulent l'user appellent
+  // `getCurrentUser()` elles-mêmes.
+  return false
+}
+
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Fast path : routes publiques. On évite la création du client Supabase et
+  // le round-trip réseau associé à `getUser()`. Gain typique : 100-300ms par
+  // requête sur la landing, les crons, les webhooks, etc.
+  if (!needsAuthCheck(pathname)) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -47,16 +86,22 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Appeler getUser() pour rafraîchir la session et les cookies
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const pathname = request.nextUrl.pathname
-
-  // Routes d'authentification (login, création de compte, etc.)
-  const authRoutes = ['/login', '/create-account', '/forgot-password']
-  const isAuthRoute = authRoutes.some(route => pathname === route || pathname.startsWith(route))
+  // IMPORTANT: Appeler getUser() pour rafraîchir la session et les cookies.
+  // On enveloppe dans un try/catch : si Supabase est lent ou en panne, on
+  // veut quand même laisser passer la requête plutôt que renvoyer 500.
+  // L'authentification effective sera (re)vérifiée par le layout/page server
+  // component qui appelle `getCurrentUser()` avec ses propres garanties.
+  let user = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch (error) {
+    console.warn(
+      '[middleware] supabase.auth.getUser() a échoué — on laisse passer:',
+      error instanceof Error ? error.message : String(error),
+    )
+    return supabaseResponse
+  }
 
   // Routes protégées nécessitant une authentification
   // /dashboard/* = utilisateur authentifié quelconque
@@ -65,10 +110,6 @@ export async function updateSession(request: NextRequest) {
   const isDashboardRoute = pathname.startsWith('/dashboard')
   const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
   const isProtectedRoute = isDashboardRoute || isAdminRoute
-
-  // Routes publiques (callback auth, reset password, etc.)
-  const publicRoutes = ['/auth/callback', '/reset-password', '/auth/email-confirmed']
-  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
   // Note: On ne redirige PAS les utilisateurs connectés depuis les routes auth
   // Le client-side gère ce cas et déconnecte si l'user n'existe pas dans notre table users

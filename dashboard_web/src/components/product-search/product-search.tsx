@@ -581,21 +581,32 @@ export default function ProductSearch() {
         </div>
       </div>
 
-      {/* Formulaire principal — barre de recherche */}
+      {/* Formulaire principal — organisé en étapes implicites :
+          1. Catégorie  →  2. Requête  →  (3. Évaluation véhicule)  →  N. Sources  →  CTA. */}
       <form
         onSubmit={onSubmit}
-        className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl p-4 shadow-sm"
+        className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl shadow-sm overflow-hidden"
       >
-        <div className="flex flex-col md:flex-row gap-2">
+        <StepBlock
+          number={1}
+          title="Catégorie"
+          hint="Cible le contexte (auto, électronique, véhicule…) pour activer les bonnes sources."
+        >
           <CategoryPicker
             value={state.category}
             onChange={(path) => setState((s) => ({ ...s, category: path }))}
             allowedPaths={allowedCategoryPaths}
           />
+        </StepBlock>
 
+        <StepBlock
+          number={2}
+          title="Ce que tu cherches"
+          hint="Marque, modèle, année, mots-clés. Les fautes de frappe mineures sont tolérées."
+        >
           <div
             className={cn(
-              "relative flex-1 min-w-0 rounded-xl border",
+              "relative w-full rounded-xl border",
               "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
               "focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-transparent",
             )}
@@ -646,7 +657,84 @@ export default function ProductSearch() {
               </button>
             )}
           </div>
+        </StepBlock>
 
+        {isVehicleCat && (
+          <StepBlock
+            number={3}
+            title="Évaluer un véhicule"
+            optional
+            hint={
+              state.evaluatorEnabled
+                ? "Renseigne les specs pour obtenir une fourchette de valeur ajustée."
+                : "Active pour estimer la valeur à partir des comparables trouvés."
+            }
+            action={
+              <ToggleSwitch
+                checked={state.evaluatorEnabled}
+                disabled={loading}
+                onChange={(enabled) =>
+                  setState((s) => ({ ...s, evaluatorEnabled: enabled }))
+                }
+                ariaLabel="Activer l'évaluation de véhicule"
+              />
+            }
+          >
+            {state.evaluatorEnabled && (
+              <VehicleSpecsBox
+                specs={state.vehicleSpecs}
+                disabled={loading}
+                categoryPath={state.category}
+                queryText={state.query}
+                onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
+              />
+            )}
+          </StepBlock>
+        )}
+
+        <StepBlock
+          number={isVehicleCat ? 4 : 3}
+          title="Sources de recherche"
+          optional
+          hint={`${activeCount} active${activeCount > 1 ? "s" : ""} — Amazon, eBay, Kijiji, concessionnaires…`}
+          action={
+            <button
+              type="button"
+              onClick={() => setShowSources((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors",
+                "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
+                "hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]"
+              )}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              <span>{showSources ? "Masquer" : "Configurer"}</span>
+              <ChevronDown className={cn("h-3 w-3 transition-transform", showSources && "rotate-180")} />
+            </button>
+          }
+        >
+          {showSources && (
+            <SourcesPanel
+              adapters={state.adapters}
+              shopifyInput={shopifyInput}
+              onShopifyChange={setShopifyInput}
+              dealersInput={dealersInput}
+              onDealersChange={setDealersInput}
+              onToggle={updateAdapter}
+              onToggleAll={toggleAll}
+            />
+          )}
+        </StepBlock>
+
+        {/* Bandeau CTA final — clôt naturellement le flow des étapes. */}
+        <div className="px-5 py-4 bg-[var(--color-background-secondary)]/40 border-t border-[var(--color-border-secondary)] flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-[var(--color-text-secondary)] min-w-0">
+            {state.query.trim()
+              ? activeCount === 0
+                ? "Active au moins une source pour lancer la recherche."
+                : `Prêt à interroger ${activeCount} source${activeCount > 1 ? "s" : ""} en parallèle.`
+              : "Renseigne ta requête à l'étape 2 pour lancer la recherche."}
+          </p>
           <button
             type="submit"
             disabled={loading || !state.query.trim()}
@@ -660,50 +748,7 @@ export default function ProductSearch() {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             <span>{loading ? "Recherche..." : "Rechercher"}</span>
           </button>
-
-          <button
-            type="button"
-            onClick={() => setShowSources((v) => !v)}
-            className={cn(
-              "inline-flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-colors",
-              "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-              "hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]"
-            )}
-          >
-            <Settings2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Sources</span>
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold tabular-nums">
-              {activeCount}
-            </span>
-            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showSources && "rotate-180")} />
-          </button>
         </div>
-
-        {isVehicleCat && (
-          <VehicleSpecsBox
-            enabled={state.evaluatorEnabled}
-            onToggleEnabled={(enabled) =>
-              setState((s) => ({ ...s, evaluatorEnabled: enabled }))
-            }
-            specs={state.vehicleSpecs}
-            disabled={loading}
-            categoryPath={state.category}
-            queryText={state.query}
-            onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
-          />
-        )}
-
-        {showSources && (
-          <SourcesPanel
-            adapters={state.adapters}
-            shopifyInput={shopifyInput}
-            onShopifyChange={setShopifyInput}
-            dealersInput={dealersInput}
-            onDealersChange={setDealersInput}
-            onToggle={updateAdapter}
-            onToggleAll={toggleAll}
-          />
-        )}
       </form>
 
       {/* Erreur globale */}
@@ -1039,17 +1084,109 @@ function SourceChip({
   )
 }
 
+/**
+ * Bloc « étape » du formulaire de recherche.
+ *
+ * Donne une hiérarchie visuelle implicite (numéro + titre + indice) sans
+ * imposer un wizard rigide : toutes les étapes restent simultanément
+ * éditables, mais l'œil suit naturellement l'ordre 1 → 2 → 3 → CTA.
+ */
+function StepBlock({
+  number,
+  title,
+  hint,
+  optional,
+  action,
+  children,
+}: {
+  number: number
+  title: string
+  hint?: string
+  optional?: boolean
+  action?: React.ReactNode
+  children?: React.ReactNode
+}) {
+  return (
+    <section className="px-5 py-4 border-b border-[var(--color-border-secondary)] last:border-b-0">
+      <header className="flex items-start justify-between gap-3 mb-2.5">
+        <div className="min-w-0 flex items-start gap-2.5 flex-1">
+          <span
+            aria-hidden="true"
+            className="inline-flex items-center justify-center h-5 w-5 mt-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold tabular-nums shrink-0"
+          >
+            {number}
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                {title}
+              </h3>
+              {optional && (
+                <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-semibold">
+                  optionnel
+                </span>
+              )}
+            </div>
+            {hint && (
+              <p className="mt-0.5 text-[11px] text-[var(--color-text-secondary)] leading-snug">
+                {hint}
+              </p>
+            )}
+          </div>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </header>
+      {children && <div>{children}</div>}
+    </section>
+  )
+}
+
+/**
+ * Petit switch on/off réutilisable (utilisé dans l'action d'un StepBlock).
+ */
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled,
+  ariaLabel,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+  ariaLabel?: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+        checked ? "bg-emerald-600" : "bg-[var(--color-border-secondary)]",
+        disabled && "opacity-50 cursor-not-allowed",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
+          checked ? "translate-x-5" : "translate-x-1",
+        )}
+      />
+    </button>
+  )
+}
+
 function VehicleSpecsBox({
-  enabled,
-  onToggleEnabled,
   specs,
   disabled,
   categoryPath,
   queryText,
   onChange,
 }: {
-  enabled: boolean
-  onToggleEnabled: (enabled: boolean) => void
   specs: VehicleSpecs
   disabled: boolean
   categoryPath: string | null
@@ -1085,7 +1222,7 @@ function VehicleSpecsBox({
   // qui ne sont plus disponibles dans la nouvelle liste — sinon on garde des
   // packages 502A "fantômes" qui ne s'appliquent pas à la nouvelle requête.
   useEffect(() => {
-    if (!enabled || specs.options.length === 0) return
+    if (specs.options.length === 0) return
     const validKeys = new Set(availableOptions.map((o) => o.key))
     const filtered = specs.options.filter((k) => validKeys.has(k))
     if (filtered.length !== specs.options.length) {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
-import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Settings2, Radar, Eye, Loader2 } from "lucide-react"
+import { Search, X, RotateCcw, Settings2, Radar, Eye, Loader2, ChevronDown, SlidersHorizontal, Globe } from "lucide-react"
 import ScraperConfig, { ScraperConfigHandle } from "./scraper-config"
 import { useAuth } from "@/contexts/auth-context"
 import { getLocalScrapingsCount, migrateLocalScrapingsToSupabase } from "@/lib/local-storage"
@@ -58,6 +58,8 @@ interface Product {
     kilometrage?: number
     etat?: string
     sourceCategorie?: string
+    quantity?: number
+    groupedUrls?: string[]
   }
 }
 
@@ -250,9 +252,20 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   const router = useRouter()
   const scraperRef = useRef<ScraperConfigHandle | null>(null)
   const inlineScraperRef = useRef<ScraperConfigHandle | null>(null)
-  const tabScrollRef = useRef<HTMLDivElement>(null)
-  const [canScrollTabLeft, setCanScrollTabLeft] = useState(false)
-  const [canScrollTabRight, setCanScrollTabRight] = useState(false)
+  const [showSitesMenu, setShowSitesMenu] = useState(false)
+  const sitesMenuRef = useRef<HTMLDivElement | null>(null)
+
+  // Ferme le menu dropdown des sites au clic extérieur — pattern UX standard.
+  useEffect(() => {
+    if (!showSitesMenu) return
+    const handler = (e: MouseEvent) => {
+      if (sitesMenuRef.current && !sitesMenuRef.current.contains(e.target as Node)) {
+        setShowSitesMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [showSitesMenu])
 
   useEffect(() => {
     setMounted(true)
@@ -268,27 +281,6 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
       }
     } catch {}
     setIsScrapingActive(false)
-  }, [])
-
-  const checkTabScroll = useCallback(() => {
-    const el = tabScrollRef.current
-    if (!el) return
-    setCanScrollTabLeft(el.scrollLeft > 2)
-    setCanScrollTabRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
-  }, [])
-
-  useEffect(() => {
-    const el = tabScrollRef.current
-    if (!el) return
-    checkTabScroll()
-    el.addEventListener("scroll", checkTabScroll, { passive: true })
-    const ro = new ResizeObserver(checkTabScroll)
-    ro.observe(el)
-    return () => { el.removeEventListener("scroll", checkTabScroll); ro.disconnect() }
-  }, [checkTabScroll, products])
-
-  const scrollTabs = useCallback((dir: "left" | "right") => {
-    tabScrollRef.current?.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" })
   }, [])
 
   useEffect(() => {
@@ -771,8 +763,12 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   const competitorEntries = Object.entries(productsBySite.otherSites)
   const scraperCacheCount = scraperCache.length
 
+  // ── Calculs pour le header unifié de la vue surveillance ──
+  const refSiteDisplay = configuredReferenceSite || referenceSite || ""
+  const competitorsCount = Object.keys(productsBySite.otherSites).length
+
   return (
-    <div className="space-y-5">
+    <div className="relative z-10 space-y-6">
       {showCelebration && <Celebration onComplete={() => setShowCelebration(false)} />}
 
       {/* Migration */}
@@ -789,55 +785,182 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
 
       <LimitWarning type="scrapings" current={scrapingLimit.current} limit={scrapingLimit.limit} plan={user?.subscription_plan || null} isAuthenticated={!!user} />
 
-      {/* ── KPI row — Stripe-style: monochrome, sober, uniform ── */}
-      <div data-onboarding="scrape" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
-        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[var(--color-border-tertiary)]">
-          {/* Produits */}
-          <div className="px-6 py-5">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
-              {t("dash.products")}
-            </p>
-            <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
-              {displayResultCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
-            </p>
-          </div>
+      {showSurveillance ? (
+        // ── Header unifié (vue Surveillance) ──
+        // Une seule surface. Hiérarchie : status > titre (site de réf) >
+        // metadata inline > actions. Pas de card, pas de fond gris, pas
+        // d'ombres. Le background ambient gère la séparation visuelle avec
+        // le reste de la page.
+        <header
+          data-onboarding="scrape"
+          className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md"
+        >
+          <div className="flex items-center justify-between gap-5 flex-wrap">
+            <div className="min-w-0 flex-1">
+              {/* Status pill (point pulsant + dernière analyse) */}
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+                <span className="font-medium uppercase tracking-wider">
+                  {t("dash.marketMonitoring")}
+                </span>
+                {monitoringStatus.lastAnalysisText && monitoringStatus.lastAnalysisText !== "—" && (
+                  <span className="tabular-nums opacity-70">· {monitoringStatus.lastAnalysisText}</span>
+                )}
+              </div>
 
-          {/* Référence */}
-          <div className="px-6 py-5 min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
-              {t("dash.reference")}
-            </p>
-            <p
-              className={`font-semibold text-[var(--color-text-primary)] leading-none tracking-tight truncate ${
-                (configuredReferenceSite || referenceSite || "").length > 18 ? 'text-base' : 'text-lg'
-              }`}
-              title={configuredReferenceSite || referenceSite || "—"}
-            >
-              {configuredReferenceSite || referenceSite || "—"}
-            </p>
-          </div>
+              {/* H1 = site de référence (l'ancre contextuelle) */}
+              <h1
+                className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight truncate"
+                title={refSiteDisplay || "—"}
+              >
+                {refSiteDisplay || <span className="text-[var(--color-text-secondary)]">Aucun site de référence</span>}
+              </h1>
 
-          {/* Concurrents */}
-          <div className="px-6 py-5">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
-              {t("dash.competitors")}
-            </p>
-            <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
-              {Object.keys(productsBySite.otherSites).length}
-            </p>
-          </div>
+              {/* Metadata inline — descripteurs de l'ancre, pas KPIs à poids égal */}
+              <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] flex items-center gap-2 flex-wrap">
+                <span>
+                  <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">
+                    {displayResultCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+                  </span>{" "}
+                  {t("dash.products").toLowerCase()}
+                </span>
+                <span className="opacity-40">·</span>
+                <span>
+                  <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">
+                    {competitorsCount}
+                  </span>{" "}
+                  {t("dash.competitors").toLowerCase()}
+                </span>
+                <span className="opacity-40">·</span>
+                <span>
+                  <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">
+                    {comparedUniqueCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+                  </span>{" "}
+                  {t("dash.compared").toLowerCase()}
+                </span>
+              </p>
+            </div>
 
-          {/* Comparés */}
-          <div className="px-6 py-5">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
-              {t("dash.compared")}
-            </p>
-            <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
-              {comparedUniqueCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
-            </p>
+            {/* Actions header — Filtres + Sites concurrents groupés dans
+                un SEGMENTED CONTROL unifié pour éviter qu'ils paraissent
+                flotter dans le vide isolément. Le bouton primaire reste
+                à part (sa propre identité visuelle). */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Segmented control : 2 boutons ghost dans une coque
+                  unifiée (1 border, 1 fond opaque, 1 séparateur interne).
+                  Icônes h-5 (au lieu de h-4) bien centrées verticalement
+                  via `justify-center` pour éviter qu'elles paraissent
+                  flotter en haut. */}
+              <div className="inline-flex items-stretch h-10 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 shadow-sm overflow-hidden divide-x divide-[var(--color-border-tertiary)] backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors ${
+                    showFilters || hasActiveFilters
+                      ? 'text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]'
+                      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
+                  }`}
+                >
+                  <SlidersHorizontal className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                  <span className="hidden sm:inline">{t("dash.filters")}</span>
+                  {hasActiveFilters && (
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  data-onboarding="config"
+                  type="button"
+                  onClick={() => setShowScraperConfig(true)}
+                  className="inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
+                >
+                  <Globe className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                  <span className="hidden sm:inline">{t("dash.configuration")}</span>
+                </button>
+              </div>
+
+              {/* Action primaire isolée : "Analyser maintenant".
+                  Gradient + ombre + lift au hover. Icône h-5 cohérente
+                  avec les boutons secondaires. */}
+              <button
+                type="button"
+                disabled={refreshingFromCron}
+                onClick={async () => {
+                  setRefreshingFromCron(true)
+                  try {
+                    const res = await fetch('/api/products/analyze', { method: 'POST' })
+                    const data = await res.json()
+                    if (data.success) {
+                      toast.success(t("dash.dataRefreshed"), { duration: 3000 })
+                      setTimeout(() => setRefreshKey(prev => prev + 1), 1000)
+                    } else {
+                      toast.warning(t("dash.noCachedData"), { duration: 5000 })
+                      setRefreshKey(prev => prev + 1)
+                    }
+                  } catch {
+                    setRefreshKey(prev => prev + 1)
+                  } finally {
+                    setTimeout(() => setRefreshingFromCron(false), 2000)
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold bg-gradient-to-b from-[var(--color-text-primary)] to-[var(--color-text-primary)]/90 text-[var(--color-background-primary)] hover:from-[var(--color-text-primary)]/95 hover:to-[var(--color-text-primary)]/85 transition-all disabled:opacity-50 shadow-md shadow-black/10 dark:shadow-black/40 hover:shadow-lg hover:shadow-black/15 hover:-translate-y-0.5"
+              >
+                {refreshingFromCron ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" strokeWidth={1.75} /> : <Eye className="h-5 w-5 shrink-0" strokeWidth={1.75} />}
+                {t("dash.analyzeNow")}
+              </button>
+            </div>
+          </div>
+        </header>
+      ) : (
+        // ── KPI row (vue Comparaisons) — Stripe-style, conservée à l'identique ──
+        <div data-onboarding="scrape" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[var(--color-border-tertiary)]">
+            <div className="px-6 py-5">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+                {t("dash.products")}
+              </p>
+              <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
+                {displayResultCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+              </p>
+            </div>
+            <div className="px-6 py-5 min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+                {t("dash.reference")}
+              </p>
+              <p
+                className={`font-semibold text-[var(--color-text-primary)] leading-none tracking-tight truncate ${
+                  refSiteDisplay.length > 18 ? 'text-base' : 'text-lg'
+                }`}
+                title={refSiteDisplay || "—"}
+              >
+                {refSiteDisplay || "—"}
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+                {t("dash.competitors")}
+              </p>
+              <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
+                {competitorsCount}
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
+                {t("dash.compared")}
+              </p>
+              <p className="text-[28px] font-semibold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
+                {comparedUniqueCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Cartes concurrents comparés ── */}
       {showComparisons && Object.keys(productsBySite.otherSites).length > 0 && (
@@ -883,83 +1006,6 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
       )}
 
       {showSurveillance && (<>
-      {/* ── Surveillance + Actions — Stripe-style toolbar ── */}
-      <div data-onboarding="scrape" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-4 py-3">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          {/* Gauche : status compact */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <span className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-              {t("dash.marketMonitoring")}
-            </span>
-            {monitoringStatus.lastAnalysisText && monitoringStatus.lastAnalysisText !== "—" && (
-              <span className="text-xs text-[var(--color-text-secondary)] hidden sm:inline tabular-nums">
-                · {monitoringStatus.lastAnalysisText}
-              </span>
-            )}
-          </div>
-
-          {/* Droite : actions */}
-          <div className="flex items-center gap-1">
-            <button
-              data-onboarding="config"
-              type="button"
-              onClick={() => setShowScraperConfig(true)}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition-colors"
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("dash.configuration")}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium transition-colors ${
-                showFilters || hasActiveFilters
-                  ? 'text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]'
-                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
-              }`}
-            >
-              <Search className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("dash.filters")}</span>
-              {hasActiveFilters && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-            </button>
-
-            <div className="w-px h-5 bg-[var(--color-border-tertiary)] mx-1" />
-
-            <button
-              type="button"
-              disabled={refreshingFromCron}
-              onClick={async () => {
-                setRefreshingFromCron(true)
-                try {
-                  const res = await fetch('/api/products/analyze', { method: 'POST' })
-                  const data = await res.json()
-                  if (data.success) {
-                    toast.success(t("dash.dataRefreshed"), { duration: 3000 })
-                    setTimeout(() => setRefreshKey(prev => prev + 1), 1000)
-                  } else {
-                    toast.warning(t("dash.noCachedData"), { duration: 5000 })
-                    setRefreshKey(prev => prev + 1)
-                  }
-                } catch {
-                  setRefreshKey(prev => prev + 1)
-                } finally {
-                  setTimeout(() => setRefreshingFromCron(false), 2000)
-                }
-              }}
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-medium bg-[var(--color-text-primary)] text-[var(--color-background-primary)] hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              {refreshingFromCron ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
-              {t("dash.analyzeNow")}
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* ── Filtres — Popup, Stripe-style ── */}
       {showFilters && mounted && createPortal(
         <div
@@ -1062,107 +1108,140 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
         </div>
       )}
 
-      {/* ── Produits — section principale ── */}
-      <div data-onboarding="analyze" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
-
-        {/* Tab bar — Stripe minimal underline */}
-        <div className="px-0">
-          <div className="relative border-b border-[var(--color-border-tertiary)]">
-            {canScrollTabLeft && (
-              <button type="button" onClick={() => scrollTabs("left")} className="absolute left-0 top-0 bottom-0 z-10 flex items-center pl-1.5 pr-3 bg-gradient-to-r from-[var(--color-background-primary)] via-[var(--color-background-primary)]/90 to-transparent">
-                <ChevronLeft className="h-4 w-4 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors" />
+      {/* ── Vues — pill list compacte.
+           Hiérarchie : 3 vues primaires (Référence / Concurrents / Comparés)
+           toujours visibles, puis un SEUL bouton « Filtrer par site » qui
+           ouvre un dropdown avec la liste des concessionnaires. Évite l'effet
+           « tous les concessionnaires en vrac » qu'on avait avec 12 pills
+           empilées à la suite des 3 principales. ── */}
+      <div data-onboarding="analyze" className="space-y-3">
+        <div className="flex items-center gap-1.5 flex-wrap pb-2">
+          {[
+            { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length },
+            { key: "allCompetitors", label: t("dash.competitors"), count: productsBySite.allCompetitors.length },
+            { key: "compared", label: t("dash.compared"), count: comparedUniqueCount },
+          ].map(pill => {
+            const isActive = activeTab === pill.key
+            return (
+              <button
+                key={pill.key}
+                type="button"
+                onClick={() => setActiveTab(pill.key)}
+                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'bg-[var(--color-text-primary)] text-[var(--color-background-primary)]'
+                    : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] border border-[var(--color-border-tertiary)]'
+                }`}
+              >
+                <span>{pill.label}</span>
+                <span className={`tabular-nums ${isActive ? 'opacity-70' : 'opacity-50'}`}>
+                  {pill.count.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+                </span>
               </button>
-            )}
-            {canScrollTabRight && (
-              <button type="button" onClick={() => scrollTabs("right")} className="absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1.5 pl-3 bg-gradient-to-l from-[var(--color-background-primary)] via-[var(--color-background-primary)]/90 to-transparent">
-                <ChevronRight className="h-4 w-4 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors" />
-              </button>
-            )}
-            <div ref={tabScrollRef} className="flex items-end gap-0 px-4 overflow-x-auto scrollbar-hide">
-              {[
-                { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length },
-                { key: "allCompetitors", label: t("dash.competitors"), count: productsBySite.allCompetitors.length },
-                { key: "compared", label: t("dash.compared"), count: comparedUniqueCount },
-              ].map(tab => {
-                const isActive = activeTab === tab.key
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setActiveTab(tab.key)}
-                    className="relative flex items-center gap-2 px-3.5 py-3.5 group transition-colors whitespace-nowrap"
-                  >
-                    <span
-                      className={`text-sm transition-colors ${
-                        isActive
-                          ? 'font-semibold text-[var(--color-text-primary)]'
-                          : 'font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'
-                      }`}
-                    >
-                      {tab.label}
-                    </span>
-                    <span
-                      className={`text-[11px] font-medium tabular-nums transition-colors ${
-                        isActive ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-tertiary)]'
-                      }`}
-                    >
-                      {tab.count.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
-                    </span>
-                    <span
-                      className={`absolute -bottom-px left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${
-                        isActive
-                          ? 'bg-[var(--color-text-primary)] opacity-100'
-                          : 'bg-transparent opacity-0 group-hover:opacity-30 group-hover:bg-[var(--color-text-secondary)]'
-                      }`}
-                    />
-                  </button>
-                )
-              })}
+            )
+          })}
 
-              {Object.keys(productsBySite.otherSites).length > 0 && (
-                <div className="w-px h-4 bg-[var(--color-border-tertiary)] self-center mx-2" />
-              )}
+          {Object.keys(productsBySite.otherSites).length > 0 && (
+            <>
+              <div className="w-px h-4 bg-[var(--color-border-tertiary)] mx-1" />
+              <div ref={sitesMenuRef} className="relative">
+                {(() => {
+                  const sites = Object.entries(productsBySite.otherSites)
+                  const activeSiteUrl = activeTab.startsWith("site-") ? activeTab.replace("site-", "") : null
+                  const activeSite = activeSiteUrl ? sites.find(([url]) => url === activeSiteUrl) : null
 
-              {Object.entries(productsBySite.otherSites).map(([siteUrl, siteProducts]) => {
-                const isActive = activeTab === `site-${siteUrl}`
-                return (
-                  <button
-                    key={siteUrl}
-                    type="button"
-                    onClick={() => setActiveTab(`site-${siteUrl}`)}
-                    className="relative flex items-center gap-2 px-3.5 py-3.5 group transition-colors whitespace-nowrap"
-                  >
-                    <span
-                      className={`text-sm transition-colors ${
-                        isActive
-                          ? 'font-semibold text-[var(--color-text-primary)]'
-                          : 'font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'
+                  // 2 états du bouton :
+                  //   - aucun site filtré → bouton ghost « + N concessionnaires »
+                  //   - 1 site filtré    → pill active avec nom du site et ✕
+                  //                        pour revenir aux concurrents
+                  if (activeSite) {
+                    const [siteUrl, siteProducts] = activeSite
+                    return (
+                      <div className="inline-flex items-stretch h-7 rounded-full overflow-hidden bg-[var(--color-text-primary)] text-[var(--color-background-primary)]">
+                        <button
+                          type="button"
+                          onClick={() => setShowSitesMenu(v => !v)}
+                          className="inline-flex items-center gap-1.5 px-2.5 text-xs font-medium hover:opacity-90 transition-opacity"
+                        >
+                          <span>{extractDomain(siteUrl)}</span>
+                          <span className="tabular-nums opacity-70">
+                            {siteProducts.length.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+                          </span>
+                          <ChevronDown className="h-3 w-3 opacity-70" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("allCompetitors")}
+                          className="inline-flex items-center pr-2 pl-1 hover:bg-white/15 transition-colors"
+                          title="Retirer le filtre par site"
+                          aria-label="Retirer le filtre par site"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setShowSitesMenu(v => !v)}
+                      className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium transition-colors border ${
+                        showSitesMenu
+                          ? 'border-[var(--color-text-primary)] text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]'
+                          : 'border-[var(--color-border-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
                       }`}
                     >
-                      {extractDomain(siteUrl)}
-                    </span>
-                    <span
-                      className={`text-[11px] font-medium tabular-nums transition-colors ${
-                        isActive ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-tertiary)]'
-                      }`}
-                    >
-                      {siteProducts.length.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
-                    </span>
-                    <span
-                      className={`absolute -bottom-px left-2 right-2 h-[2px] rounded-full transition-all duration-200 ${
-                        isActive
-                          ? 'bg-[var(--color-text-primary)] opacity-100'
-                          : 'bg-transparent opacity-0 group-hover:opacity-30 group-hover:bg-[var(--color-text-secondary)]'
-                      }`}
-                    />
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+                      <span>Filtrer par site</span>
+                      <span className="tabular-nums opacity-50">{sites.length}</span>
+                      <ChevronDown className={`h-3 w-3 transition-transform ${showSitesMenu ? 'rotate-180' : ''}`} />
+                    </button>
+                  )
+                })()}
+
+                {/* Popover dropdown — liste verticale des concessionnaires.
+                    Triés par nombre de produits décroissant pour mettre les
+                    plus pertinents en haut. */}
+                {showSitesMenu && (
+                  <div className="absolute left-0 top-full mt-1.5 z-30 min-w-[260px] max-h-[420px] overflow-y-auto rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] shadow-lg shadow-black/5 dark:shadow-black/30 py-1">
+                    <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)] border-b border-[var(--color-border-tertiary)] mb-1">
+                      Concessionnaires · {Object.keys(productsBySite.otherSites).length}
+                    </div>
+                    {Object.entries(productsBySite.otherSites)
+                      .sort(([, a], [, b]) => b.length - a.length)
+                      .map(([siteUrl, siteProducts]) => {
+                        const isActive = activeTab === `site-${siteUrl}`
+                        return (
+                          <button
+                            key={siteUrl}
+                            type="button"
+                            onClick={() => {
+                              setActiveTab(`site-${siteUrl}`)
+                              setShowSitesMenu(false)
+                            }}
+                            className={`w-full flex items-center justify-between gap-3 px-3 py-1.5 text-xs transition-colors ${
+                              isActive
+                                ? 'bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] font-medium'
+                                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
+                            }`}
+                          >
+                            <span className="truncate">{extractDomain(siteUrl)}</span>
+                            <span className="tabular-nums opacity-60 shrink-0">
+                              {siteProducts.length.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+                            </span>
+                          </button>
+                        )
+                      })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Toolbar + Table */}
+        <div className="border-t border-[var(--color-border-tertiary)]" />
+
+        {/* Table */}
         <PriceComparisonTable
           products={filteredProducts}
           competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))}

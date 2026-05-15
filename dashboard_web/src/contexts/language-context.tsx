@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, useSyncExternalStore, type ReactNode } from "react"
 import { t as translate, LOCALES, type Locale, type TranslationKey } from "@/lib/translations"
 import { tm } from "@/lib/i18n-marketing"
 
@@ -16,20 +16,62 @@ const LanguageContext = createContext<LanguageContextValue>({
   t: (key) => key,
 })
 
-function detectInitialLocale(): Locale {
-  if (typeof window === "undefined") return "fr"
-  const stored = localStorage.getItem("go-data-locale") as Locale | null
-  if (stored && LOCALES.some((l) => l.code === stored)) return stored
-  return "fr"
+const DEFAULT_LOCALE: Locale = "fr"
+const LOCALE_STORAGE_KEY = "go-data-locale"
+const LOCALE_CHANGE_EVENT = "go-data-locale-change"
+
+function isSupportedLocale(locale: string | null): locale is Locale {
+  return LOCALES.some((l) => l.code === locale)
+}
+
+function getStoredLocale(): Locale | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    const stored = localStorage.getItem(LOCALE_STORAGE_KEY)
+    return isSupportedLocale(stored) ? stored : null
+  } catch {
+    return null
+  }
+}
+
+function getLocaleSnapshot(): Locale {
+  return getStoredLocale() ?? DEFAULT_LOCALE
+}
+
+function getServerLocaleSnapshot(): Locale {
+  return DEFAULT_LOCALE
+}
+
+function subscribeToLocaleChanges(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {}
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === LOCALE_STORAGE_KEY) onStoreChange()
+  }
+
+  window.addEventListener("storage", handleStorage)
+  window.addEventListener(LOCALE_CHANGE_EVENT, onStoreChange)
+
+  return () => {
+    window.removeEventListener("storage", handleStorage)
+    window.removeEventListener(LOCALE_CHANGE_EVENT, onStoreChange)
+  }
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => detectInitialLocale())
+  const locale = useSyncExternalStore(
+    subscribeToLocaleChanges,
+    getLocaleSnapshot,
+    getServerLocaleSnapshot
+  )
 
   const setLocale = useCallback((newLocale: Locale) => {
-    setLocaleState(newLocale)
-    localStorage.setItem("go-data-locale", newLocale)
+    try {
+      localStorage.setItem(LOCALE_STORAGE_KEY, newLocale)
+    } catch {}
     document.documentElement.lang = newLocale
+    window.dispatchEvent(new Event(LOCALE_CHANGE_EVENT))
     fetch("/api/users/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

@@ -44,8 +44,8 @@ import { canAccessAnalytics, canAccessOrganisation } from "@/lib/plan-restrictio
 
 type NavLink = {
   id: string
-  label: string
-  description?: string
+  labelKey: string
+  descriptionKey?: string
   href?: string
   icon: LucideIcon
   locked?: boolean
@@ -55,8 +55,8 @@ type NavLink = {
 
 type NavCategory = {
   id: string
-  label: string
-  description: string
+  labelKey: string
+  descriptionKey: string
   icon: LucideIcon
   items: NavLink[]
 }
@@ -64,48 +64,48 @@ type NavCategory = {
 const NAV_CATEGORIES: NavCategory[] = [
   {
     id: "dashboard",
-    label: "Dashboard",
-    description: "Vue d'ensemble",
+    labelKey: "topnav.cat.dashboard",
+    descriptionKey: "topnav.cat.dashboardDesc",
     icon: Home,
     items: [
-      { id: "overview", label: "Vue d'ensemble", description: "Activité et KPIs principaux", href: "/dashboard", icon: Home },
+      { id: "overview", labelKey: "topnav.item.overview", descriptionKey: "topnav.item.overviewDesc", href: "/dashboard", icon: Home },
     ],
   },
   {
     id: "prix",
-    label: "Prix",
-    description: "Surveillance, fiches et stratégie",
+    labelKey: "topnav.cat.prix",
+    descriptionKey: "topnav.cat.prixDesc",
     icon: Tag,
     items: [
-      { id: "surveillance", label: "Surveillance de produit", description: "Suivi quotidien des prix concurrents", href: "/dashboard/surveillance", icon: Radar },
-      { id: "recherche", label: "Recherche par produit", description: "Trouver un produit précis", icon: Search, locked: true },
-      { id: "changements", label: "Changements à appliquer", description: "Fiches de prix à mettre à jour", href: "/dashboard/changements", icon: ClipboardList, badgeKey: "pendingChanges" },
-      { id: "strategie", label: "Stratégie de pricing", description: "La règle qui calcule vos prix", href: "/dashboard/strategie-pricing", icon: CircleDollarSign },
-      { id: "alertes", label: "Alertes prix", description: "Notifications de variations", href: "/dashboard/alerte", icon: Bell, requiresPaid: true },
+      { id: "surveillance", labelKey: "topnav.item.surveillance", descriptionKey: "topnav.item.surveillanceDesc", href: "/dashboard/surveillance", icon: Radar },
+      { id: "recherche", labelKey: "topnav.item.recherche", descriptionKey: "topnav.item.rechercheDesc", href: "/dashboard/recherche", icon: Search },
+      { id: "changements", labelKey: "topnav.item.changements", descriptionKey: "topnav.item.changementsDesc", href: "/dashboard/changements", icon: ClipboardList, badgeKey: "pendingChanges" },
+      { id: "strategie", labelKey: "topnav.item.strategie", descriptionKey: "topnav.item.strategieDesc", href: "/dashboard/strategie-pricing", icon: CircleDollarSign },
+      { id: "alertes", labelKey: "topnav.item.alertes", descriptionKey: "topnav.item.alertesDesc", href: "/dashboard/alerte", icon: Bell, requiresPaid: true },
     ],
   },
   {
     id: "analyse",
-    label: "Analyse",
-    description: "Performance et rapports",
+    labelKey: "topnav.cat.analyse",
+    descriptionKey: "topnav.cat.analyseDesc",
     icon: BarChart2,
     items: [
-      { id: "analytics", label: "Analyse", description: "Indicateurs de marché", href: "/dashboard/analytics", icon: BarChart2, requiresPaid: true },
-      { id: "rapports", label: "Rapports", description: "Exports et synthèses", icon: FileBarChart, locked: true },
-      { id: "par-detaillant", label: "Par détaillant", description: "Comparer vos concurrents", href: "/dashboard/comparaisons", icon: LayoutGrid },
+      { id: "analytics", labelKey: "topnav.item.analytics", descriptionKey: "topnav.item.analyticsDesc", href: "/dashboard/analytics", icon: BarChart2, requiresPaid: true },
+      { id: "rapports", labelKey: "topnav.item.rapports", descriptionKey: "topnav.item.rapportsDesc", icon: FileBarChart, locked: true },
+      { id: "par-detaillant", labelKey: "topnav.item.parDetaillant", descriptionKey: "topnav.item.parDetaillantDesc", href: "/dashboard/comparaisons", icon: LayoutGrid },
     ],
   },
   {
     id: "compte",
-    label: "Compte",
-    description: "Paiements, équipe, support",
+    labelKey: "topnav.cat.compte",
+    descriptionKey: "topnav.cat.compteDesc",
     icon: User,
     items: [
-      { id: "paiements", label: "Paiements", description: "Abonnement et factures", href: "/dashboard/payments", icon: CreditCard },
-      { id: "aide", label: "Aide", description: "Centre d'aide & support", href: "/dashboard/help", icon: HelpCircle },
-      { id: "equipe", label: "Équipe", description: "Membres et rôles", icon: Users, locked: true },
-      { id: "marketplace", label: "Marketplace", description: "Intégrations partenaires", icon: Boxes, locked: true },
-      { id: "roadmap", label: "Roadmap", description: "Ce que nous préparons", icon: Map, locked: true },
+      { id: "paiements", labelKey: "topnav.item.paiements", descriptionKey: "topnav.item.paiementsDesc", href: "/dashboard/payments", icon: CreditCard },
+      { id: "aide", labelKey: "topnav.item.aide", descriptionKey: "topnav.item.aideDesc", href: "/dashboard/help", icon: HelpCircle },
+      { id: "equipe", labelKey: "topnav.item.equipe", descriptionKey: "topnav.item.equipeDesc", icon: Users, locked: true },
+      { id: "marketplace", labelKey: "topnav.item.marketplace", descriptionKey: "topnav.item.marketplaceDesc", icon: Boxes, locked: true },
+      { id: "roadmap", labelKey: "topnav.item.roadmap", descriptionKey: "topnav.item.roadmapDesc", icon: Map, locked: true },
     ],
   },
 ]
@@ -114,6 +114,7 @@ function categoryForPath(pathname: string | null): string | null {
   if (!pathname) return null
   if (pathname === "/dashboard") return "dashboard"
   if (pathname.startsWith("/dashboard/surveillance")) return "prix"
+  if (pathname.startsWith("/dashboard/recherche")) return "prix"
   if (pathname.startsWith("/dashboard/strategie-pricing")) return "prix"
   if (pathname.startsWith("/dashboard/changements")) return "prix"
   if (pathname.startsWith("/dashboard/alerte")) return "prix"
@@ -210,9 +211,9 @@ export default function TopNav() {
   const developerLinks =
     capabilities.showDeveloperTools
       ? [
-          { href: "/dashboard/api-keys", label: "API", icon: KeyRound },
-          { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook },
-          { href: "/dashboard/integrations", label: "Intégrations", icon: Boxes },
+          { href: "/dashboard/api-keys", label: t("topnav.dev.api"), icon: KeyRound },
+          { href: "/dashboard/webhooks", label: t("topnav.dev.webhooks"), icon: Webhook },
+          { href: "/dashboard/integrations", label: t("topnav.dev.integrations"), icon: Boxes },
         ]
       : []
 
@@ -254,7 +255,7 @@ export default function TopNav() {
                         : "text-[var(--color-text-secondary)] font-medium hover:text-[var(--color-text-primary)]"
                   )}
                 >
-                  <span>{category.label}</span>
+                  <span>{t(category.labelKey)}</span>
                   {categoryPendingBadge !== null && (
                     <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold tabular-nums">
                       {categoryPendingBadge > 99 ? "99+" : categoryPendingBadge}
@@ -309,8 +310,8 @@ export default function TopNav() {
             <Link
               href="/dashboard/changements"
               className="hidden md:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full border border-emerald-200 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold transition hover:bg-emerald-100 dark:hover:bg-emerald-500/20"
-              aria-label="Changements à appliquer"
-              title="Changements à appliquer"
+              aria-label={t("topnav.badge.changes")}
+              title={t("topnav.badge.changes")}
             >
               <ClipboardList className="h-3.5 w-3.5" />
               <span className="tabular-nums">{pendingChangesCount > 99 ? "99+" : pendingChangesCount}</span>
@@ -366,7 +367,7 @@ export default function TopNav() {
           >
             <button
               type="button"
-              aria-label="Fermer le menu"
+              aria-label={t("nav.closeMenu")}
               onClick={() => setOpenCategory(null)}
               className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-md cursor-default"
             />
@@ -397,7 +398,7 @@ export default function TopNav() {
                             <category.icon className="h-3.5 w-3.5" />
                           </div>
                           <h3 className="text-sm font-bold text-[var(--color-text-primary)]">
-                            {category.label}
+                            {t(category.labelKey)}
                           </h3>
                         </div>
                         <ul className="flex flex-col gap-0.5">
@@ -434,7 +435,7 @@ export default function TopNav() {
                                         href ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-secondary)]"
                                       )}
                                     >
-                                      {item.label}
+                                      {t(item.labelKey)}
                                     </span>
                                     {badge !== null && (
                                       <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold tabular-nums">
@@ -444,19 +445,19 @@ export default function TopNav() {
                                     {item.locked && (
                                       <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
                                         <Lock className="h-2.5 w-2.5" />
-                                        Bientôt
+                                        {t("topnav.badge.comingSoon")}
                                       </span>
                                     )}
                                     {restricted && (
                                       <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
                                         <Sparkles className="h-2.5 w-2.5" />
-                                        Pro
+                                        {t("topnav.badge.pro")}
                                       </span>
                                     )}
                                   </span>
-                                  {item.description && (
+                                  {item.descriptionKey && (
                                     <span className="mt-0.5 block text-[11px] text-[var(--color-text-secondary)] leading-snug">
-                                      {item.description}
+                                      {t(item.descriptionKey)}
                                     </span>
                                   )}
                                 </span>

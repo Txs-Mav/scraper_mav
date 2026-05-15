@@ -126,6 +126,20 @@ CREATE TABLE IF NOT EXISTS org_invitations (
   accepted_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Table system_config (cookies / proxies des adapters de recherche fédérée)
+-- Géré exclusivement via /admin/search-sources. Voir migration_system_config.sql.
+CREATE TABLE IF NOT EXISTS system_config (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  is_secret BOOLEAN NOT NULL DEFAULT TRUE,
+  last_test_at TIMESTAMP WITH TIME ZONE,
+  last_test_status TEXT CHECK (last_test_status IN ('success', 'error', 'never')),
+  last_test_error TEXT,
+  last_test_duration_seconds FLOAT,
+  updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Table support_messages (questions, suggestions et demandes utilisateur)
 CREATE TABLE IF NOT EXISTS support_messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

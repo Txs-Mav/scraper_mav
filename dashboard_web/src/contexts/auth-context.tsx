@@ -23,54 +23,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createClient()
   const isInitialized = useRef(false)
 
-  const loadUserFromTable = useCallback(async (userId: string, accessToken?: string): Promise<User | null> => {
+  /**
+   * Trois résultats possibles, à NE PAS confondre :
+   *   - `found`            : user existe dans la table → on l'utilise.
+   *   - `not_found`        : Supabase a répondu 200 + tableau vide. C'est le
+   *                          seul cas où on déconnecte (compte supprimé de la
+   *                          table `users` mais session encore valide).
+   *   - `transient_error`  : timeout réseau, 5xx Supabase, env vars manquantes.
+   *                          Ne JAMAIS déconnecter — l'utilisateur ne doit
+   *                          pas perdre sa session parce que la DB rame.
+   */
+  type LoadUserResult =
+    | { status: 'found'; user: User }
+    | { status: 'not_found' }
+    | { status: 'transient_error'; reason: string }
+
+  const loadUserFromTable = useCallback(async (userId: string, accessToken?: string): Promise<LoadUserResult> => {
     console.log('[Auth] Loading user from table for id:', userId)
-    try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      if (!supabaseUrl || !anonKey) {
-        console.error('[Auth] Missing Supabase env vars')
-        return null
-      }
-
-      const url = `${supabaseUrl}/rest/v1/users?id=eq.${userId}&select=*`
-      const headers: HeadersInit = {
-        'apikey': anonKey,
-        'Content-Type': 'application/json',
-      }
-
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`
-      }
-
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000)
-
-      const response = await fetch(url, { headers, signal: controller.signal })
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        console.error('[Auth] Fetch error:', response.status, response.statusText)
-        return null
-      }
-
-      const data = await response.json()
-
-      if (!data || data.length === 0) {
-        console.warn('[Auth] User not found in users table for id:', userId)
-        return null
-      }
-
-      console.log('[Auth] User loaded successfully:', data[0].name)
-      return data[0] as User
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.warn('[Auth] Request timed out in loadUserFromTable')
-      } else {
-        console.error('[Auth] Error in loadUserFromTable:', error)
-      }
-      return null
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !anonKey) {
+      console.error('[Auth] Missing Supabase env vars')
+      return { status: 'transient_error', reason: 'missing_env' }
     }
+
+    const url = `${supabaseUrl}/rest/v1/users?id=eq.${userId}&select=*`
+    const headers: HeadersInit = {
+      'apikey': anonKey,
+      'Content-Type': 'application/json',
+    }
+
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+    let response: Response
+    try {
+      response = await fetch(url, { headers, signal: controller.signal })
+    } catch (error: unknown) {
+      clearTimeout(timeoutId)
+      const isAbort = error instanceof Error && error.name === 'AbortError'
+      console.warn('[Auth] loadUserFromTable network failure:', isAbort ? 'timeout' : error)
+      return { status: 'transient_error', reason: isAbort ? 'timeout' : 'network' }
+    }
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      // 4xx (sauf 404 sur cette query, qui retournerait juste []) = erreur
+      // sérieuse — on log mais on traite comme transitoire pour ne pas kicker.
+      // 5xx = Supabase rame, transitoire.
+      console.error('[Auth] Fetch error:', response.status, response.statusText)
+      return { status: 'transient_error', reason: `http_${response.status}` }
+    }
+
+    let data: unknown
+    try {
+      data = await response.json()
+    } catch (error: unknown) {
+      console.error('[Auth] Failed to parse user response:', error)
+      return { status: 'transient_error', reason: 'parse_error' }
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      // Réponse HTTP OK + tableau vide = vrai cas "user pas dans la table".
+      // C'est ICI (et seulement ici) qu'on peut légitimement déconnecter.
+      console.warn('[Auth] User not found in users table for id:', userId)
+      return { status: 'not_found' }
+    }
+
+    const userRecord = data[0] as User
+    console.log('[Auth] User loaded successfully:', userRecord.name)
+    return { status: 'found', user: userRecord }
   }, [])
 
   // Gérer le changement de session
@@ -79,22 +105,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       if (session?.user) {
-        const userData = await loadUserFromTable(session.user.id, session.access_token)
-        
-        // Si session existe mais utilisateur pas dans notre table => déconnecter
-        if (!userData) {
+        const result = await loadUserFromTable(session.user.id, session.access_token)
+
+        if (result.status === 'found') {
+          setUser(result.user)
+        } else if (result.status === 'not_found') {
+          // Cas légitime : compte supprimé de la table `users` mais session
+          // auth encore valide. On force la déconnexion.
           console.log('[Auth] Session exists but user not in table, signing out')
           await supabase.auth.signOut()
           setUser(null)
         } else {
-          setUser(userData)
+          // Erreur transitoire (timeout, 5xx, network). On garde la session
+          // côté Supabase Auth, on ne touche pas à setUser pour éviter un
+          // re-render qui afficherait "non connecté" alors que tout est OK.
+          // L'utilisateur sera rechargé au prochain TOKEN_REFRESHED.
+          console.warn(
+            '[Auth] Transient error loading user, keeping session:',
+            result.reason,
+          )
         }
       } else {
         setUser(null)
       }
     } catch (error) {
       console.error('[Auth] Error in handleSessionChange:', error)
-      setUser(null)
+      // Ne PAS faire setUser(null) ici — on ne sait pas si c'est un vrai
+      // problème ou un hiccup réseau. Garder l'état actuel.
     } finally {
       // TOUJOURS arrêter le chargement, même si erreur
       setIsLoading(false)
@@ -109,14 +146,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession()
 
       if (session?.user) {
-        const userData = await loadUserFromTable(session.user.id, session.access_token)
-        setUser(userData)
+        const result = await loadUserFromTable(session.user.id, session.access_token)
+        if (result.status === 'found') {
+          setUser(result.user)
+        } else if (result.status === 'not_found') {
+          setUser(null)
+        }
+        // transient_error: on garde l'état précédent (cf. handleSessionChange)
       } else {
         setUser(null)
       }
     } catch (error) {
       console.error('[Auth] Error in refreshUser:', error)
-      setUser(null)
+      // Cf. handleSessionChange : on ne kick pas sur erreur transitoire.
     } finally {
       setIsLoading(false)
     }
@@ -198,8 +240,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Vérifier que l'utilisateur existe dans notre table (compte supprimé = absent)
-      const userData = await loadUserFromTable(data.user.id, data.session.access_token)
-      if (!userData) {
+      const result = await loadUserFromTable(data.user.id, data.session.access_token)
+      if (result.status === 'not_found') {
         await supabase.auth.signOut()
         return {
           error: {
@@ -208,8 +250,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         }
       }
+      if (result.status === 'transient_error') {
+        // Auth réussie côté Supabase mais on ne peut pas charger le profil.
+        // On surface l'erreur à l'utilisateur SANS le déconnecter — il pourra
+        // rafraîchir la page une fois la DB redevenue disponible.
+        return {
+          error: {
+            message:
+              "Connexion réussie mais le chargement de ton profil a échoué " +
+              "(réseau ou base de données lente). Rafraîchis la page dans un instant.",
+            code: 'PROFILE_LOAD_FAILED',
+          },
+        }
+      }
 
-      setUser(userData)
+      setUser(result.user)
       return { error: null }
     } catch (error: any) {
       console.error('Error in login:', error)

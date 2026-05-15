@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react"
 import Image from "next/image"
-import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette, CircleDollarSign, ClipboardList } from "lucide-react"
+import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette, CircleDollarSign, ClipboardList, MoreHorizontal, LayoutGrid } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { normalizeProductGroupKeyWithMode, getProductFamilyKey, type MatchMode, type Product as AnalyticsProduct } from "@/lib/analytics-calculations"
@@ -33,7 +33,7 @@ type Product = {
   sourceCategorie?: string
   etat?: string
   competitors?: Record<string, number | null>
-  produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string; kilometrage?: number; etat?: string; sourceCategorie?: string }
+  produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string; kilometrage?: number; etat?: string; sourceCategorie?: string; quantity?: number; groupedUrls?: string[] }
   quantity?: number
   inventaire?: string
   groupedUrls?: string[]
@@ -163,13 +163,17 @@ function getProductDisplayName(product: Product): string {
   return displayName
 }
 
-const etatConfig: Record<string, { labelKey: TranslationKey; className: string }> = {
-  neuf: { labelKey: "etat.new", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  occasion: { labelKey: "etat.used", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  demonstrateur: { labelKey: "etat.demo", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  inventaire: { labelKey: "etat.inventory", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  catalogue: { labelKey: "etat.catalog", className: "bg-gray-100 text-gray-700 dark:bg-gray-800/30 dark:text-gray-400" },
-  vehicules_occasion: { labelKey: "etat.used", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+// Palette des états : on ne peint plus le fond du badge avec une couleur
+// saturée (qui dominait visuellement le PRIX dans la même cellule), on
+// utilise un point coloré minimaliste + un libellé fin gris. La couleur
+// reste lisible mais elle ne crie plus plus fort que la donnée principale.
+const etatConfig: Record<string, { labelKey: TranslationKey; dotClass: string }> = {
+  neuf:               { labelKey: "etat.new",          dotClass: "bg-emerald-500" },
+  occasion:           { labelKey: "etat.used",         dotClass: "bg-amber-500" },
+  demonstrateur:      { labelKey: "etat.demo",         dotClass: "bg-emerald-500" },
+  inventaire:         { labelKey: "etat.inventory",    dotClass: "bg-emerald-500" },
+  catalogue:          { labelKey: "etat.catalog",      dotClass: "bg-gray-400" },
+  vehicules_occasion: { labelKey: "etat.used",         dotClass: "bg-amber-500" },
 }
 
 function EtatBadge({ etat, sourceCategorie }: { etat?: string; sourceCategorie?: string }) {
@@ -178,7 +182,8 @@ function EtatBadge({ etat, sourceCategorie }: { etat?: string; sourceCategorie?:
   const config = etatConfig[key]
   if (!config) return null
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ${config.className}`}>
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium leading-none text-[var(--color-text-secondary)] uppercase tracking-wide">
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${config.dotClass}`} aria-hidden />
       {t(config.labelKey)}
     </span>
   )
@@ -194,10 +199,12 @@ function PriceCell({ price, delta }: { price: number | null; delta: number | nul
           ? "text-[#A32D2D] dark:text-red-400"
           : "text-[var(--color-text-secondary)]"
 
+  // whitespace-nowrap empêche le wrap "59 995 $" → "59 995\n$" sur les
+  // colonnes étroites (problème historique sur l'outil de pricing).
   return (
-    <div className="flex items-center justify-end gap-2">
-      <span className="text-sm text-[var(--color-text-primary)]">{price !== null ? `${price.toFixed(0)} $` : "—"}</span>
-      <span className={`text-xs font-semibold ${deltaTone}`}>
+    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+      <span className="text-sm text-[var(--color-text-primary)] tabular-nums">{price !== null ? `${price.toFixed(0)} $` : "—"}</span>
+      <span className={`text-xs font-semibold tabular-nums ${deltaTone}`}>
         {delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(0)} $`}
       </span>
     </div>
@@ -353,8 +360,20 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           ? { ...p, name: refName }
           : p
         const referenceUrl = p.produitReference?.sourceUrl
+        // Préférence pour les infos venant des produits référent présents
+        // dans la liste (passe complète). Fallback sur ce qui a été reporté
+        // dans `produitReference` côté backend — indispensable dans l'onglet
+        // « Comparés » où productsRefOnly est vide et où l'index local ne
+        // peut pas être rempli, sinon le badge x{quantity} disparaît.
         const refInfo = (referenceUrl && refInfoBySourceUrl.get(referenceUrl))
           || refInfoByKey.get(normalizeProductGroupKeyWithMode(toAnalyticsProduct(p), matchMode))
+          || (p.produitReference && (p.produitReference.quantity || p.produitReference.groupedUrls)
+            ? {
+              quantity: p.produitReference.quantity || 1,
+              groupedUrls: p.produitReference.groupedUrls
+                || (p.produitReference.sourceUrl ? [p.produitReference.sourceUrl] : []),
+            }
+            : undefined)
         groups.set(key, {
           productKey: key,
           displayName: getProductDisplayName(displayProduct),
@@ -531,6 +550,21 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
 
   const [groupByFamily, setGroupByFamily] = useState(false)
   const [compFilter, setCompFilter] = useState<'all' | 'competitive' | 'non-competitive'>('all')
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const overflowMenuRef = useRef<HTMLDivElement | null>(null)
+
+  // Ferme le dropdown overflow ("…") au clic extérieur. Pattern UX standard
+  // pour ne pas bloquer les autres actions de la toolbar.
+  useEffect(() => {
+    if (!showOverflowMenu) return
+    const handler = (e: MouseEvent) => {
+      if (overflowMenuRef.current && !overflowMenuRef.current.contains(e.target as Node)) {
+        setShowOverflowMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [showOverflowMenu])
 
   const filteredTableData = useMemo(() => {
     if (compFilter === 'all') return tableData
@@ -656,10 +690,12 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
 
   const tableScrollRef = useRef<HTMLDivElement>(null)
   const [canScrollTableRight, setCanScrollTableRight] = useState(false)
+  const [hasScrolledTableLeft, setHasScrolledTableLeft] = useState(false)
 
   const checkTableScroll = useCallback(() => {
     const el = tableScrollRef.current
     if (!el) return
+    setHasScrolledTableLeft(el.scrollLeft > 4)
     setCanScrollTableRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
   }, [])
 
@@ -715,22 +751,41 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
   ) => {
     const showPricingRecommendations = pricingEnabled && !!pricingSettings
     const cols = showPricingRecommendations ? [] : (overrideCompetitors || competitors)
-    const dynamicMinWidth = 460 + (showPricingRecommendations ? 180 : cols.length * 140)
+    // Colonnes sticky gauche : Image 80px + Produit 280px + Prix réf 120px.
+    // Base 500px pour garder un peu d'air et éviter que les colonnes
+    // concurrentes commencent sous la colonne prix référence.
+    const dynamicMinWidth = 500 + (showPricingRecommendations ? 180 : cols.length * 140)
     const dynamicColumnCount = showPricingRecommendations ? 1 : cols.length
     return (
       <div className="relative">
+        {/* Wrapper du tableau — totalement transparent (pas de fond, pas
+            de bordure). Le tableau "vit" sur le background beams sans
+            créer de container visible. Les cellules sticky gauche
+            conservent un bg-primary semi-transparent + backdrop-blur
+            (voir plus bas) pour rester lisibles au scroll horizontal. */}
         <div ref={tableScrollRef} className="overflow-x-auto">
           <div style={{ minWidth: Math.max(900, dynamicMinWidth) }}>
             <table className="w-full border-collapse">
               <thead>
                 <tr className="sticky top-0">
-                  <th className="sticky left-0 z-30 bg-[var(--color-background-primary)] px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)]">
+                  {/* Colonnes sticky : aucune couleur de fond. Au scroll
+                      horizontal, on applique un `backdrop-blur` pour flouter
+                      ce qui passe en dessous (les prix concurrents) → ils
+                      deviennent illisibles, donc visuellement "disparus",
+                      sans qu'aucun bloc opaque ne soit ajouté. */}
+                  <th className={`sticky left-0 z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] bg-transparent transition-all duration-150 ${
+                    hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                  }`}>
                     {t("table.image")}
                   </th>
-                  <th className="sticky left-[80px] z-30 bg-[var(--color-background-primary)] px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] min-w-[280px]">
+                  <th className={`sticky left-[80px] z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] min-w-[280px] bg-transparent transition-all duration-150 ${
+                    hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                  }`}>
                     {t("table.product")}
                   </th>
-                  <th className="sticky left-[260px] z-30 bg-[var(--color-background-primary)] px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] whitespace-nowrap">
+                  <th className={`sticky left-[360px] z-30 px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] whitespace-nowrap min-w-[120px] bg-transparent transition-all duration-150 ${
+                    hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                  }`}>
                     {t("table.refPrice")}
                   </th>
                   {showPricingRecommendations ? (
@@ -801,9 +856,14 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                   return (
                     <React.Fragment key={idx}>
                       <tr
-                        className="group border-b border-[var(--color-border-tertiary)] hover:bg-[var(--color-background-hover)] transition-colors"
+                        // Hover défini, mais neutre : le vert donnait une
+                        // impression de statut/validation sur toute la ligne.
+                        // Ici on garde seulement une légère lecture active.
+                        className="group border-b border-[var(--color-border-tertiary)] hover:bg-slate-900/[0.035] dark:hover:bg-white/[0.04] hover:shadow-[inset_3px_0_0_0_rgb(15_23_42/0.22)] transition-all duration-150"
                       >
-                        <td className="sticky left-0 z-20 bg-[var(--color-background-primary)] group-hover:bg-[var(--color-background-hover)] transition-colors px-3 py-2 align-middle">
+                        <td className={`sticky left-0 z-20 bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-all duration-150 px-3 py-2 align-middle ${
+                          hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                        }`}>
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => hasDetails && toggleDetailRow(idx)}
@@ -834,11 +894,11 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                             </div>
                           </div>
                         </td>
-                        <td className="sticky left-[80px] z-20 bg-[var(--color-background-primary)] group-hover:bg-[var(--color-background-hover)] transition-colors px-3 py-2 min-w-[280px]">
+                        <td className={`sticky left-[80px] z-20 bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-all duration-150 px-3 py-2 min-w-[280px] ${
+                          hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                        }`}>
                           <div className="flex flex-col gap-0.5">
-                            {p.marque && extractMarque(p.marque) && (
-                              <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">{extractMarque(p.marque)}</span>
-                            )}
+                            {/* Nom du produit = info principale (font-semibold) */}
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {(() => {
                                 const rawName = p.displayName || p.name
@@ -863,26 +923,69 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                                 </button>
                               )}
                             </div>
-                            {p.inventaire && (
-                              <span className="text-[10px] text-[var(--color-text-secondary)]">#{p.inventaire}</span>
-                            )}
+
+                            {/* Métadonnées caption — état + marque + ref. Toutes au
+                                même poids visuel discret pour ne plus voler la
+                                vedette au nom (haut) ni au prix (cellule voisine).
+                                Le badge état n'a plus de fond saturé : seul un
+                                point coloré garde le signal couleur. */}
+                            {(() => {
+                              const marque = extractMarque(p.marque || "")
+                              const rawName = (p.displayName || p.name || "").toLowerCase()
+                              // On n'affiche la marque en caption que si elle
+                              // n'est pas déjà visible dans le nom — sinon c'est
+                              // pure redondance ("APRILIA" + "Aprilia TUONO 660").
+                              const showMarque = marque && !rawName.startsWith(marque.toLowerCase())
+                              const items: React.ReactNode[] = []
+                              items.push(
+                                <EtatBadge key="etat" etat={p.etat} sourceCategorie={p.sourceCategorie} />,
+                              )
+                              if (showMarque) {
+                                items.push(
+                                  <span key="marque" className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                                    {marque}
+                                  </span>,
+                                )
+                              }
+                              if (p.inventaire) {
+                                items.push(
+                                  <span key="inv" className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums">
+                                    #{p.inventaire}
+                                  </span>,
+                                )
+                              }
+                              if (items.length === 0) return null
+                              return (
+                                <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                  {items.map((node, i) => (
+                                    <React.Fragment key={i}>
+                                      {i > 0 && <span className="text-[var(--color-border-secondary)] text-[10px]">·</span>}
+                                      {node}
+                                    </React.Fragment>
+                                  ))}
+                                </div>
+                              )
+                            })()}
                           </div>
                         </td>
-                        <td className="sticky left-[260px] z-20 bg-[var(--color-background-primary)] group-hover:bg-[var(--color-background-hover)] transition-colors px-3 py-2">
-                          <div className="flex items-center justify-end gap-2">
-                            <EtatBadge etat={p.etat} sourceCategorie={p.sourceCategorie} />
-                            <span className="text-sm font-semibold text-[var(--color-text-primary)]">
-                              {p.reference !== null ? (
-                                p.referenceUrl ? (
-                                  <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-                                    {p.reference.toFixed(0)} $
-                                  </a>
-                                ) : (
-                                  `${p.reference.toFixed(0)} $`
-                                )
-                              ) : "—"}
-                            </span>
-                          </div>
+                        <td className={`sticky left-[360px] z-20 bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-all duration-150 px-3 py-2 min-w-[120px] ${
+                          hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                        }`}>
+                          {/* Le prix est seul dans sa cellule. Plus de badge
+                              état accolé qui écrasait l'œil. tabular-nums pour
+                              aligner verticalement, whitespace-nowrap pour
+                              empêcher le wrap sur les prix à 5+ chiffres. */}
+                          <span className="block text-right text-sm font-semibold text-[var(--color-text-primary)] tabular-nums whitespace-nowrap">
+                            {p.reference !== null ? (
+                              p.referenceUrl ? (
+                                <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                                  {p.reference.toFixed(0)} $
+                                </a>
+                              ) : (
+                                `${p.reference.toFixed(0)} $`
+                              )
+                            ) : <span className="text-[var(--color-text-tertiary)] font-normal">—</span>}
+                          </span>
                         </td>
                         {showPricingRecommendations ? (
                           <td className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[180px]">
@@ -994,154 +1097,236 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
 
   return (
     <div className="pb-5">
-      {/* Toolbar: search + toggles + export — Stripe-style uniform */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] flex-wrap">
+      {/* ── Toolbar v3 ──
+           Layout horizontal en 1 ligne :
+              [🔍 Recherche large flex-1]  [● Compétitif] [● Non compétitif]
+                   [▦ Regrouper par modèle]  [$ Stratégie pricing]  [Créer fiche]  [⋯]
+
+           Changements vs v2 :
+             - Recherche `flex-1` (s'étire jusqu'à la zone des actions à
+               droite, qui correspond visuellement à la fin de la colonne
+               PRIX RÉFÉRENCE)
+             - Compétitif/Non-compétitif passent en pills colorées PLEINES
+               (border + fond pâle) au lieu du texte simple — beaucoup
+               plus visibles
+             - Regrouper par modèle SORT du menu overflow et passe à côté
+               de Stratégie pricing (les deux configurent le mode de
+               présentation des données)
+             - Le menu ⋯ s'élargit (min-w-[280px]), section Affichage allégée
+               (juste Couleurs + MatchMode), section Export complète,
+               animation fade-in slide-in-from-top-2 à l'ouverture */}
+      <div className="flex items-center gap-2 py-2.5">
+        {/* Recherche — bornée à ~460px pour s'arrêter visuellement à la
+            fin de la colonne PRIX RÉFÉRENCE du tableau (Image 80 + Produit
+            280 + Prix 120 ≈ 480px, on enlève un peu pour les paddings).
+            `flex-1` lui permet quand même de rétrécir si l'écran est petit. */}
         {onSearchChange && (
-          <div className="relative w-56">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+          <div className="relative flex-1 max-w-[480px] min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-text-tertiary)]" />
             <input
               type="text"
               value={searchQuery || ""}
               onChange={e => onSearchChange(e.target.value)}
-              placeholder={searchPlaceholder || "Ex: Kawasaki 2025, Ninja 650..."}
-              className="w-full h-8 pl-8 pr-7 rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition"
+              placeholder={searchPlaceholder || t("dash.searchPlaceholder")}
+              className="w-full h-9 pl-9 pr-8 rounded-lg border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition shadow-sm"
             />
             {searchQuery && (
-              <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition">
-                <X className="h-3 w-3" />
+              <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition">
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
         )}
-        {onToggleColors && (
-          <button
-            type="button"
-            onClick={onToggleColors}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0"
-          >
-            <Palette className="h-3.5 w-3.5" />
-            {stripColorsFromDisplay ? (showColorsLabel || "Afficher couleurs") : (hideColorsLabel || "Masquer couleurs")}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            setGroupByFamily(prev => {
-              const next = !prev
-              if (!next && onMatchModeChange) onMatchModeChange('exact')
-              return next
-            })
-          }}
-          className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition shrink-0 ${
-            groupByFamily
-              ? 'text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]'
-              : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
-          }`}
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="4" rx="1" /><rect x="1" y="7" width="14" height="4" rx="1" /><line x1="4" y1="13" x2="12" y2="13" /></svg>
-          {groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}
-        </button>
-        {groupByFamily && onMatchModeChange && (
-          <select
-            value={matchMode}
-            onChange={(e) => onMatchModeChange(e.target.value)}
-            className="h-8 text-xs pl-2 pr-6 rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] focus:outline-none focus:ring-1 focus:ring-emerald-500/20 shrink-0"
-          >
-            <option value="exact">{t("config.matchMode.exact")}</option>
-            <option value="base">{t("config.matchMode.base")}</option>
-            <option value="no_year">{t("config.matchMode.no_year")}</option>
-            <option value="flexible">{t("config.matchMode.flexible")}</option>
-          </select>
-        )}
 
-        {/* Filtres compétitivité */}
-        <div className="flex items-center shrink-0">
+        {/* Spacer flexible — comble l'espace entre la recherche bornée et
+            les filtres compétitivité, pour que ces derniers ne collent pas
+            à la recherche. */}
+        <div className="flex-1" />
+
+        {/* Filtres compétitivité — pills colorées PLEINES (avec border et
+            fond pâle) pour ressortir clairement. C'est l'action de tri la
+            plus utilisée dans un outil de pricing. */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => setCompFilter(prev => prev === 'competitive' ? 'all' : 'competitive')}
-            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition ${
+            className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium transition border ${
               compFilter === 'competitive'
-                ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
-                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
+                ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15 border-emerald-200 dark:border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                : 'text-emerald-700/80 dark:text-emerald-400/80 bg-emerald-50/40 dark:bg-emerald-500/[0.06] border-emerald-200/60 dark:border-emerald-500/20 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:border-emerald-200 dark:hover:border-emerald-500/30'
             }`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${compFilter === 'competitive' ? 'bg-emerald-500' : 'bg-emerald-500/60'}`} />
-            Compétitif
+            <span className={`h-2 w-2 rounded-full ${compFilter === 'competitive' ? 'bg-emerald-500 ring-2 ring-emerald-500/20' : 'bg-emerald-500'}`} />
+            {t("table.filterCompetitive")}
           </button>
           <button
             type="button"
             onClick={() => setCompFilter(prev => prev === 'non-competitive' ? 'all' : 'non-competitive')}
-            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition ${
+            className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium transition border ${
               compFilter === 'non-competitive'
-                ? 'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10'
-                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
+                ? 'text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/15 border-red-200 dark:border-red-500/40 shadow-sm shadow-red-500/10'
+                : 'text-red-700/80 dark:text-red-400/80 bg-red-50/40 dark:bg-red-500/[0.06] border-red-200/60 dark:border-red-500/20 hover:bg-red-50 dark:hover:bg-red-500/10 hover:border-red-200 dark:hover:border-red-500/30'
             }`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${compFilter === 'non-competitive' ? 'bg-red-500' : 'bg-red-500/60'}`} />
-            Non compétitif
+            <span className={`h-2 w-2 rounded-full ${compFilter === 'non-competitive' ? 'bg-red-500 ring-2 ring-red-500/20' : 'bg-red-500'}`} />
+            {t("table.filterNotCompetitive")}
           </button>
         </div>
 
-        {pricingSettings && onPricingEnabledChange && (
+        {/* Séparateur visuel entre filtres et actions de mode */}
+        <div className="w-px h-6 bg-[var(--color-border-tertiary)] shrink-0" />
+
+        {/* Actions à droite : Regrouper, Stratégie, Créer fiche, ⋯ */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Regrouper par modèle — sorti du menu overflow car
+              fonctionnellement proche de "Stratégie pricing" (les deux
+              changent la présentation des données). */}
           <button
             type="button"
-            onClick={() => onPricingEnabledChange(!pricingEnabled)}
-            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition shrink-0 ${
-              pricingEnabled
-                ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10"
-                : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
+            onClick={() => {
+              setGroupByFamily(prev => {
+                const next = !prev
+                if (!next && onMatchModeChange) onMatchModeChange('exact')
+                return next
+              })
+            }}
+            className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium transition ${
+              groupByFamily
+                ? 'text-[var(--color-text-primary)] bg-[var(--color-background-secondary)] border border-[var(--color-border-secondary)]'
+                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] border border-transparent'
             }`}
           >
-            <CircleDollarSign className="h-3.5 w-3.5" />
-            Appliquer la stratégie de pricing
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">{groupByFamily ? t("table.ungroupModels") : t("table.groupModels")}</span>
           </button>
-        )}
 
-        {pricingEnabled && onCreateChangeSheet && (() => {
-          const selectedVisible = visiblePricingKeys.filter(k => selectedPricingKeys?.has(k))
-          return (
+          {/* Stratégie pricing */}
+          {pricingSettings && onPricingEnabledChange && (
             <button
               type="button"
-              disabled={creatingChangeSheet || selectedVisible.length === 0}
-              onClick={() => onCreateChangeSheet(selectedVisible)}
-              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-semibold text-[var(--color-background-primary)] bg-[var(--color-text-primary)] hover:opacity-90 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={selectedVisible.length === 0 ? "Cochez au moins un véhicule à inclure dans la fiche" : "Créer une fiche de changements de prix"}
+              onClick={() => onPricingEnabledChange(!pricingEnabled)}
+              className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium transition ${
+                pricingEnabled
+                  ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/40"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] border border-transparent"
+              }`}
             >
-              {creatingChangeSheet ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5" />}
-              Créer une fiche
-              <span className="opacity-70 tabular-nums">· {selectedVisible.length}</span>
+              <CircleDollarSign className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">{t("table.applyPricingStrategy")}</span>
             </button>
-          )
-        })()}
+          )}
 
-        <div className="ml-auto flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            Excel
-          </button>
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Printer className="h-3.5 w-3.5" />
-            {t("table.print")}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setShareResult(null); setShowShareModal(true) }}
-            disabled={tableData.length === 0}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Mail className="h-3.5 w-3.5" />
-            {t("table.share")}
-          </button>
+          {pricingEnabled && onCreateChangeSheet && (() => {
+            const selectedVisible = visiblePricingKeys.filter(k => selectedPricingKeys?.has(k))
+            return (
+              <button
+                type="button"
+                disabled={creatingChangeSheet || selectedVisible.length === 0}
+                onClick={() => onCreateChangeSheet(selectedVisible)}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold text-[var(--color-background-primary)] bg-[var(--color-text-primary)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                title={selectedVisible.length === 0 ? t("table.selectVehicleTooltip") : t("table.createSheetTooltip")}
+              >
+                {creatingChangeSheet ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5" />}
+                {t("table.createSheet")}
+                <span className="opacity-70 tabular-nums">· {selectedVisible.length}</span>
+              </button>
+            )
+          })()}
+
+          {/* Menu overflow ⋯ : Affichage (couleurs + match mode) + Export */}
+          <div ref={overflowMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowOverflowMenu(v => !v)}
+              className={`inline-flex items-center justify-center h-9 w-9 rounded-lg transition border ${
+                showOverflowMenu
+                  ? 'text-[var(--color-text-primary)] bg-[var(--color-background-secondary)] border-[var(--color-border-secondary)]'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] border-transparent'
+              }`}
+              title={t("dash.actions") || "Plus d'actions"}
+              aria-label={t("dash.actions") || "Plus d'actions"}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+
+            {showOverflowMenu && (
+              <div
+                className="absolute right-0 top-full mt-2 z-30 min-w-[300px] rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] shadow-xl shadow-black/10 dark:shadow-black/40 py-1.5 origin-top-right animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-150"
+              >
+                {/* Section Affichage */}
+                <div className="px-3.5 py-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                  {t("dash.display") || "Affichage"}
+                </div>
+                {onToggleColors && (
+                  <button
+                    type="button"
+                    onClick={() => { onToggleColors(); }}
+                    className="w-full flex items-center justify-between gap-3 px-3.5 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Palette className="h-4 w-4" />
+                      {stripColorsFromDisplay ? (showColorsLabel || t("table.showColorsShort")) : (hideColorsLabel || t("table.hideColorsShort"))}
+                    </span>
+                    {stripColorsFromDisplay && <Check className="h-3.5 w-3.5 text-emerald-500" />}
+                  </button>
+                )}
+                {groupByFamily && onMatchModeChange && (
+                  <div className="px-3.5 py-2">
+                    <label className="flex items-center justify-between gap-2 text-sm text-[var(--color-text-secondary)]">
+                      <span className="flex items-center gap-2.5">
+                        <LayoutGrid className="h-4 w-4" />
+                        {t("config.matchMode.label") || "Mode regroupement"}
+                      </span>
+                      <select
+                        value={matchMode}
+                        onChange={(e) => onMatchModeChange(e.target.value)}
+                        className="h-7 text-xs pl-2 pr-7 rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40"
+                      >
+                        <option value="exact">{t("config.matchMode.exact")}</option>
+                        <option value="base">{t("config.matchMode.base")}</option>
+                        <option value="no_year">{t("config.matchMode.no_year")}</option>
+                        <option value="flexible">{t("config.matchMode.flexible")}</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+
+                <div className="my-1.5 border-t border-[var(--color-border-tertiary)]" />
+
+                {/* Section Export */}
+                <div className="px-3.5 py-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                  {t("dash.export") || "Export"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { handleExportExcel(); setShowOverflowMenu(false) }}
+                  disabled={tableData.length === 0}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { handlePrint(); setShowOverflowMenu(false) }}
+                  disabled={tableData.length === 0}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <Printer className="h-4 w-4" />
+                  {t("table.print")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShareResult(null); setShowShareModal(true); setShowOverflowMenu(false) }}
+                  disabled={tableData.length === 0}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <Mail className="h-4 w-4" />
+                  {t("table.share")}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

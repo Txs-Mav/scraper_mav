@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import {
+  BUSINESS_TYPES,
+  parseBusinessTypes,
+  serializeBusinessTypes,
+  type BusinessType,
+} from '@/lib/account-navigation'
 
 export async function PUT(request: Request) {
   try {
@@ -9,7 +15,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    const { name, email, avatar_url } = await request.json()
+    const body = await request.json()
+    const { name, email, avatar_url, business_type, business_types } = body
 
     const supabase = await createClient()
 
@@ -29,6 +36,31 @@ export async function PUT(request: Request) {
     if (name) updates.name = name
     if (email) updates.email = email
     if (avatar_url !== undefined) updates.avatar_url = avatar_url
+
+    // business_type (mono) ou business_types (array) — on accepte les deux.
+    // Stocké en DB sous forme de string comma-separated dans `business_type`.
+    const btInput =
+      business_types !== undefined
+        ? business_types
+        : business_type !== undefined
+          ? business_type
+          : undefined
+
+    if (btInput !== undefined) {
+      const parsed = parseBusinessTypes(btInput)
+      // Une demande explicite avec des valeurs entièrement invalides est une
+      // erreur — sinon (array vide intentionnellement) on accepte le reset.
+      if (
+        parsed.length === 0 &&
+        (Array.isArray(btInput) ? btInput.length > 0 : String(btInput).trim() !== '')
+      ) {
+        return NextResponse.json(
+          { error: `business_type invalide. Valeurs acceptées : ${BUSINESS_TYPES.join(', ')}` },
+          { status: 400 }
+        )
+      }
+      updates.business_type = serializeBusinessTypes(parsed as BusinessType[])
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error: userError } = await supabase

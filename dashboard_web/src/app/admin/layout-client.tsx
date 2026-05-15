@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/auth-context"
 import {
   LayoutDashboard, ListChecks, Activity, Users, Hammer,
   LogOut, ExternalLink, Github, ChevronRight, Mail, Cloud,
-  Database, Train, MessageCircle,
+  Database, Train, MessageCircle, Globe,
 } from "lucide-react"
 import type { User } from "@/types/user"
 import { isDevAdminUserPublic } from "@/lib/auth/admin"
@@ -20,6 +20,7 @@ const NAV: Array<{ href: string; label: string; icon: any }> = [
   { href: "/admin/users", label: "Clients", icon: Users },
   { href: "/admin/support", label: "Support", icon: MessageCircle },
   { href: "/admin/usine", label: "Scraper Usine", icon: Hammer },
+  { href: "/admin/search-sources", label: "Sources de recherche", icon: Globe },
 ]
 
 interface Props {

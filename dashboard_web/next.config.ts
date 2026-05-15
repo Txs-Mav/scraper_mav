@@ -5,9 +5,13 @@ import type { NextConfig } from "next";
 const appDir = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  // Verrouille la racine Turbopack et le file tracing sur `dashboard_web/`
+  // pour éviter toute mauvaise détection si un lockfile orphelin réapparaît
+  // un jour dans un dossier parent.
   turbopack: {
     root: appDir,
   },
+  outputFileTracingRoot: appDir,
   images: {
     remotePatterns: [
       {
