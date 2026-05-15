@@ -582,10 +582,12 @@ export default function ProductSearch() {
       </div>
 
       {/* Formulaire principal — organisé en étapes implicites :
-          1. Catégorie  →  2. Requête  →  (3. Évaluation véhicule)  →  N. Sources  →  CTA. */}
+          1. Catégorie  →  2. Requête  →  (3. Évaluation véhicule)  →  N. Sources  →  CTA.
+          NB: pas de `overflow-hidden` ici sinon les popovers absolus des enfants
+          (sélecteur de catégorie, etc.) sont clippés par le radius du form. */}
       <form
         onSubmit={onSubmit}
-        className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl shadow-sm overflow-hidden"
+        className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl shadow-sm"
       >
         <StepBlock
           number={1}
@@ -726,8 +728,10 @@ export default function ProductSearch() {
           )}
         </StepBlock>
 
-        {/* Bandeau CTA final — clôt naturellement le flow des étapes. */}
-        <div className="px-5 py-4 bg-[var(--color-background-secondary)]/40 border-t border-[var(--color-border-secondary)] flex items-center justify-between gap-3 flex-wrap">
+        {/* Bandeau CTA final — clôt naturellement le flow des étapes.
+            `rounded-b-2xl` préserve le radius bas du form (qui n'a plus
+            `overflow-hidden`) malgré le background coloré du bandeau. */}
+        <div className="px-5 py-4 bg-[var(--color-background-secondary)]/40 border-t border-[var(--color-border-secondary)] rounded-b-2xl flex items-center justify-between gap-3 flex-wrap">
           <p className="text-xs text-[var(--color-text-secondary)] min-w-0">
             {state.query.trim()
               ? activeCount === 0
@@ -1270,63 +1274,8 @@ function VehicleSpecsBox({
   }, [specs.options, availableOptions])
 
   return (
-    <div
-      className={cn(
-        "mt-3 rounded-xl border p-3 transition-colors",
-        enabled
-          ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-500/[0.06]"
-          : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-      )}
-    >
-      {/* En-tête avec toggle on/off — toujours visible */}
-      <button
-        type="button"
-        onClick={() => onToggleEnabled(!enabled)}
-        disabled={disabled}
-        aria-pressed={enabled}
-        className={cn(
-          "w-full flex items-center justify-between gap-3 text-left",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-md",
-          enabled ? "" : "hover:bg-[var(--color-background-hover)] -mx-1 px-1 py-0.5",
-        )}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold text-[var(--color-text-primary)] flex items-center gap-1.5">
-            Évaluer un véhicule
-            {enabled && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold uppercase tracking-wide">
-                Actif
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-[11px] text-[var(--color-text-secondary)]">
-            {enabled
-              ? "Renseigne les specs pour obtenir une fourchette de valeur ajustée."
-              : "Active pour estimer la valeur d'un véhicule à partir des comparables trouvés."}
-          </p>
-        </div>
-
-        {/* Switch visuel */}
-        <span
-          role="switch"
-          aria-checked={enabled}
-          className={cn(
-            "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
-            enabled ? "bg-emerald-600" : "bg-[var(--color-border-secondary)]",
-            disabled && "opacity-50 cursor-not-allowed",
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
-              enabled ? "translate-x-5" : "translate-x-1",
-            )}
-          />
-        </span>
-      </button>
-
-      {enabled && (
-      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+    <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-500/[0.06] p-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
             État
@@ -1386,11 +1335,9 @@ function VehicleSpecsBox({
             )}
           />
         </label>
-
       </div>
-      )}
 
-      {enabled && availableOptions.length > 0 && (
+      {availableOptions.length > 0 && (
         <div className="mt-4 pt-3 border-t border-emerald-200/60 dark:border-emerald-500/20">
           <div className="flex items-baseline justify-between gap-2 mb-2.5">
             <div className="min-w-0 flex items-baseline gap-2 flex-wrap">
