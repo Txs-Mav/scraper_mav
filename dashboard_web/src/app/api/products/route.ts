@@ -36,9 +36,11 @@ export async function GET() {
       }
     }
 
+    const SCRAPING_COLUMNS = 'id, reference_url, competitor_urls, products, metadata, created_at, updated_at'
+
     let scrapingsQuery = supabase
       .from('scrapings')
-      .select('*')
+      .select(SCRAPING_COLUMNS)
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -53,7 +55,7 @@ export async function GET() {
     if ((!scrapings || scrapings.length === 0) && config?.reference_url) {
       const { data: recentScrapings, error: recentError } = await supabase
         .from('scrapings')
-        .select('*')
+        .select(SCRAPING_COLUMNS)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(5)

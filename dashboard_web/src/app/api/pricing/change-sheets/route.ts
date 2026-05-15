@@ -7,6 +7,7 @@ import {
   calculatePricingRecommendation,
   getStrategyLabel,
   normalizePricingSettings,
+  type PricingRecommendation,
   type PricingProduct,
 } from "@/lib/pricing-strategy"
 import type { MatchMode } from "@/lib/analytics-calculations"
@@ -50,6 +51,16 @@ function normalizeRefUrl(url: string) {
   }
 }
 
+function normalizePricingKey(key: string) {
+  if (key.startsWith("ref:")) {
+    return `ref:${normalizeRefUrl(key.slice(4))}`
+  }
+  if (/^https?:\/\//i.test(key)) {
+    return normalizeRefUrl(key)
+  }
+  return key.toLowerCase().replace(/\/+$/, "")
+}
+
 function defaultSheetName(now: Date) {
   const formatter = new Intl.DateTimeFormat("fr-CA", {
     day: "2-digit",
@@ -57,6 +68,65 @@ function defaultSheetName(now: Date) {
     year: "numeric",
   })
   return `Fiche du ${formatter.format(now)}`
+}
+
+function normalizePriceOverrides(raw: unknown) {
+  const overrides = new Map<string, number>()
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return overrides
+
+  for (const [productKey, value] of Object.entries(raw)) {
+    const price = typeof value === "number" ? value : Number(value)
+    if (productKey && Number.isFinite(price) && price >= 0) {
+      overrides.set(normalizePricingKey(productKey), Math.round(price))
+    }
+  }
+
+  return overrides
+}
+
+function recommendationKeys(item: PricingRecommendation) {
+  const keys = new Set<string>([normalizePricingKey(item.productKey)])
+  if (item.referenceUrl) {
+    const normalizedUrl = normalizeRefUrl(item.referenceUrl)
+    keys.add(normalizedUrl)
+    keys.add(`ref:${normalizedUrl}`)
+  }
+  return keys
+}
+
+function recommendationMatchesRequestedKeys(
+  item: PricingRecommendation,
+  requestedKeys: Set<string>,
+) {
+  for (const key of recommendationKeys(item)) {
+    if (requestedKeys.has(key)) return true
+  }
+  return false
+}
+
+function applyPriceOverrides(
+  recommendations: PricingRecommendation[],
+  overrides: Map<string, number>,
+) {
+  if (overrides.size === 0) return recommendations
+
+  return recommendations.map(item => {
+    const overriddenPrice = Array.from(recommendationKeys(item))
+      .map(key => overrides.get(key))
+      .find((price): price is number => typeof price === "number")
+    if (overriddenPrice == null) return item
+
+    return {
+      ...item,
+      recommendedPrice: overriddenPrice,
+      difference: overriddenPrice - item.oldPrice,
+      basis: {
+        ...item.basis,
+        originalRecommendedPrice: item.recommendedPrice,
+        manualPriceOverride: true,
+      },
+    }
+  })
 }
 
 export async function GET(request: Request) {
@@ -72,7 +142,9 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     let query = supabase
       .from("pricing_change_sheets")
-      .select("*")
+      .select(
+        "id, name, status, items_count, applied_count, created_at, completed_at, updated_at, scraping_id"
+      )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(200)
@@ -120,11 +192,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const productKeys = Array.isArray(body?.productKeys)
+    const productKeys: string[] = Array.isArray(body?.productKeys)
       ? body.productKeys.filter((key: unknown): key is string => typeof key === "string")
       : []
     const matchMode: MatchMode = body?.matchMode || "exact"
     const sheetName = typeof body?.name === "string" && body.name.trim() ? body.name.trim() : null
+    const priceOverrides = normalizePriceOverrides(body?.priceOverrides)
 
     if (productKeys.length === 0) {
       return NextResponse.json(
@@ -196,16 +269,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Aucun scraping disponible." }, { status: 404 })
     }
 
-    const requestedKeys = new Set(productKeys)
+    const requestedKeys = new Set<string>(productKeys.map(normalizePricingKey))
     const rows = buildPricingRowsFromProducts(
       latestScraping.products || [],
       latestScraping.competitor_urls || [],
       matchMode
     )
-    const recommendations = rows
-      .map(row => calculatePricingRecommendation(row, settings))
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .filter(item => requestedKeys.has(item.productKey))
+    const recommendations = applyPriceOverrides(
+      rows
+        .map(row => calculatePricingRecommendation(row, settings))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .filter(item => recommendationMatchesRequestedKeys(item, requestedKeys)),
+      priceOverrides,
+    )
 
     if (recommendations.length === 0) {
       return NextResponse.json(
