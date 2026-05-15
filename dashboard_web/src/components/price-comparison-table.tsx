@@ -32,6 +32,7 @@ type Product = {
   siteReference?: string
   sourceCategorie?: string
   etat?: string
+  price_on_request?: boolean
   competitors?: Record<string, number | null>
   produitReference?: { sourceUrl?: string; name?: string; prix?: number; image?: string; inventaire?: string; kilometrage?: number; etat?: string; sourceCategorie?: string; quantity?: number; groupedUrls?: string[] }
   quantity?: number
@@ -254,6 +255,10 @@ function stripColorWords(text: string): string {
   return cleaned || text
 }
 
+function hasListedPrice(product: Product): product is Product & { prix: number } {
+  return !product.price_on_request && typeof product.prix === "number" && product.prix > 0
+}
+
 export type PriceComparisonTableHandle = {
   handlePrint: () => void
   handleExportExcel: () => void
@@ -398,7 +403,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       const group = groups.get(key)!
       if (p.produitReference?.image && !group.image) group.image = p.produitReference.image
       const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
-      if (siteLabel && p.prix != null) {
+      if (siteLabel && hasListedPrice(p)) {
         if (!group.competitorPrices[siteLabel]) {
           group.competitorPrices[siteLabel] = p.prix
         }
@@ -422,7 +427,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     // pour éviter de dupliquer un véhicule de référence déjà affiché via un groupe matché.
     let refOnlyIndex = 0
     for (const p of productsRefOnly) {
-      const refPrice = p.prix != null && p.prix > 0 ? p.prix : null
+      const refPrice = hasListedPrice(p) ? p.prix : null
       if (refPrice === null) continue
       const baseKey = getKey(p)
       if (groups.has(baseKey)) continue

@@ -42,6 +42,7 @@ interface Product {
   sourceSite?: string
   sourceCategorie?: string
   etat?: string
+  price_on_request?: boolean
   attributes?: Record<string, unknown>
   prixReference?: number | null
   differencePrix?: number | null
@@ -152,7 +153,7 @@ function toAnalyticsProduct(product: Product): AnalyticsProduct {
 }
 
 function getCompetitivite(product: Product): string | null {
-  if (product.prixReference == null || !product.prix || product.prix <= 0) return null
+  if (product.price_on_request || product.prixReference == null || !product.prix || product.prix <= 0) return null
   return product.prix <= product.prixReference ? "competitif" : "non_competitif"
 }
 
@@ -498,7 +499,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
       // « Comparé » = produit concurrent (hors site de référence) avec un prix valide ET un prix de référence appairé.
       // Cela évite que des produits du site de référence (qui peuvent porter un prixReference résiduel)
       // ou des fiches sans prix viennent gonfler la liste avec des lignes vides.
-      const hasValidPrice = typeof product.prix === 'number' && product.prix > 0
+      const hasValidPrice = !product.price_on_request && typeof product.prix === 'number' && product.prix > 0
       const hasReferencePrice = product.prixReference !== null && product.prixReference !== undefined && product.prixReference > 0
       if (hasReferencePrice && hasValidPrice && !isReferenceProduct) {
         compared.push(product)

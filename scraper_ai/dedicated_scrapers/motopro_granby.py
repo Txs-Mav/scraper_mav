@@ -49,6 +49,14 @@ class MotoProGranbyScraper(DedicatedScraper):
     DETAIL_TIMEOUT = 12
 
     SEL_SPEC_VALUE = 'span.font-bold'
+    CALL_FOR_PRICE_RE = re.compile(
+        r'\b(?:prix\s+sur\s+demande|price\s+on\s+request|call\s+for\s+price)\b',
+        re.I,
+    )
+    QUOTE_REQUEST_RE = re.compile(
+        r'\b(?:demande\s+de\s+prix|get\s+the\s+best\s+price|request\s+a\s+quote)\b',
+        re.I,
+    )
 
     _TYPE_MAP_FR = {
         'motocyclette': 'Motocyclette',
@@ -332,6 +340,8 @@ class MotoProGranbyScraper(DedicatedScraper):
                 'quantity': 1,
             }
 
+            is_call_for_price = self._is_call_for_price_page(soup)
+
             self._extract_json_ld(soup, product)
             self._extract_html_specs(soup, product)
             self._fix_model_brand_prefix(product)
@@ -345,8 +355,10 @@ class MotoProGranbyScraper(DedicatedScraper):
                 if meta.get('kilometrage') and not product.get('kilometrage'):
                     product['kilometrage'] = meta['kilometrage']
 
-            if not product.get('prix'):
+            if not is_call_for_price and not product.get('prix'):
                 self._extract_price_fallback(soup, product)
+            if is_call_for_price:
+                self._mark_price_on_request(product)
 
             if not product.get('name'):
                 if raw_title:
@@ -524,6 +536,42 @@ class MotoProGranbyScraper(DedicatedScraper):
         if parsed:
             out.setdefault('prix', parsed)
 
+    def _is_call_for_price_page(self, soup: BeautifulSoup) -> bool:
+        for el in soup.select(
+            'div.pg-vehicle-price, div.pg-vehicle-mobile-price, '
+            'div.pg-vehicle-desktop-price, [class*="price"]'
+        ):
+            text = el.get_text(" ", strip=True)
+            if self.CALL_FOR_PRICE_RE.search(text):
+                return True
+
+        body_text = soup.get_text(" ", strip=True)
+        if self.CALL_FOR_PRICE_RE.search(body_text):
+            return True
+
+        return bool(
+            self.QUOTE_REQUEST_RE.search(body_text)
+            and not self._has_visible_price(soup)
+        )
+
+    def _has_visible_price(self, soup: BeautifulSoup) -> bool:
+        for el in soup.select(
+            'div.pg-vehicle-price, div.pg-vehicle-mobile-price, '
+            'div.pg-vehicle-desktop-price, [class*="price"]'
+        ):
+            text = el.get_text(" ", strip=True)
+            if self.CALL_FOR_PRICE_RE.search(text):
+                continue
+            if self.clean_price(text):
+                return True
+        return False
+
+    @staticmethod
+    def _mark_price_on_request(out: Dict) -> None:
+        out.pop('prix', None)
+        out.pop('prix_original', None)
+        out['price_on_request'] = True
+
     def _extract_image_fallback(self, soup: BeautifulSoup, url: str, out: Dict) -> None:
         img = soup.select_one(
             'img.pg-vehicle-image, .pg-vehicle-gallery img, '
@@ -619,9 +667,12 @@ class MotoProGranbyScraper(DedicatedScraper):
 
     def extract_from_detail_page(self, url: str, html: str, soup: BeautifulSoup) -> Optional[Dict]:
         out: Dict[str, Any] = {}
+        is_call_for_price = self._is_call_for_price_page(soup)
         self._extract_json_ld(soup, out)
         self._extract_html_specs(soup, out)
         self._fix_model_brand_prefix(out)
+        if is_call_for_price:
+            self._mark_price_on_request(out)
         h1 = soup.select_one('h1')
         if h1:
             out.setdefault('name', self._clean_name(h1.get_text(strip=True)))

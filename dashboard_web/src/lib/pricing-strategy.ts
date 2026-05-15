@@ -42,6 +42,7 @@ export type PricingProduct = {
   modele?: string
   marque?: string
   prix?: number | null
+  price_on_request?: boolean
   prixReference?: number | null
   sourceSite?: string
   sourceUrl?: string
@@ -217,7 +218,7 @@ export function buildPricingRowsFromProducts(
 
   const toAnalyticsProduct = (product: PricingProduct): AnalyticsProduct => ({
     name: product.name || "",
-    prix: typeof product.prix === "number" ? product.prix : 0,
+    prix: !product.price_on_request && typeof product.prix === "number" ? product.prix : 0,
     prixReference: product.prixReference,
     sourceSite: product.sourceSite,
     sourceUrl: product.sourceUrl,
@@ -235,7 +236,7 @@ export function buildPricingRowsFromProducts(
       refInfoByKey.set(key, {
         sourceUrl: product.sourceUrl,
         name: product.name,
-        price: typeof product.prix === "number" && product.prix > 0 ? product.prix : null,
+        price: !product.price_on_request && typeof product.prix === "number" && product.prix > 0 ? product.prix : null,
       })
     }
   }
@@ -258,7 +259,7 @@ export function buildPricingRowsFromProducts(
     }
 
     const siteLabel = product.sourceSite ? hostnameFromPricingUrl(product.sourceSite) : ""
-    if (siteLabel && typeof product.prix === "number" && product.prix > 0) {
+    if (siteLabel && !product.price_on_request && typeof product.prix === "number" && product.prix > 0) {
       const group = groups.get(key)!
       if (!group.competitorPrices[siteLabel]) {
         group.competitorPrices[siteLabel] = {
