@@ -52,36 +52,48 @@ class FederatedSearch:
             result.elapsed_seconds = time.time() - start
             return result
 
-        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(relevant))) as ex:
-            future_to_adapter = {
-                ex.submit(self._run_one, adapter, query, timeout): adapter
-                for adapter in relevant
-            }
+        # IMPORTANT : on n'utilise PAS `with ThreadPoolExecutor(...)` ici parce
+        # que `__exit__` appelle `shutdown(wait=True)` qui bloque jusqu'à ce que
+        # TOUS les threads finissent — même ceux qui dépassent le timeout total.
+        # Du coup la recherche restait coincée bien après `as_completed(timeout=)`
+        # et le serveur Node tuait le process Python avant qu'il ait pu sérialiser
+        # ses résultats partiels.
+        ex = ThreadPoolExecutor(max_workers=min(self.max_workers, len(relevant)))
+        future_to_adapter = {
+            ex.submit(self._run_one, adapter, query, timeout): adapter
+            for adapter in relevant
+        }
+        try:
+            for fut in as_completed(future_to_adapter, timeout=total):
+                adapter = future_to_adapter[fut]
+                try:
+                    stats, hits = fut.result(timeout=5)
+                    result.adapters_run.append(stats)
+                    all_hits.extend(hits)
+                except Exception as e:
+                    result.adapters_run.append(AdapterRunStats(
+                        name=adapter.name or type(adapter).__name__,
+                        site=adapter.site_url,
+                        error=f"{type(e).__name__}: {str(e)[:200]}",
+                    ))
+        except FutTimeout:
+            for fut, adapter in future_to_adapter.items():
+                if not fut.done():
+                    result.adapters_run.append(AdapterRunStats(
+                        name=adapter.name or type(adapter).__name__,
+                        site=adapter.site_url,
+                        error=f"Total timeout dépassé ({total}s)",
+                    ))
+                    fut.cancel()
+        finally:
+            # On NE bloque PAS sur les threads encore en cours : ils finiront
+            # leur HTTP request en arrière-plan puis mourront avec le process.
+            # `cancel_futures=True` annule ceux pas encore démarrés.
             try:
-                for fut in as_completed(future_to_adapter, timeout=total):
-                    adapter = future_to_adapter[fut]
-                    try:
-                        stats, hits = fut.result(timeout=5)
-                        result.adapters_run.append(stats)
-                        all_hits.extend(hits)
-                    except Exception as e:
-                        result.adapters_run.append(AdapterRunStats(
-                            name=adapter.name or type(adapter).__name__,
-                            site=adapter.site_url,
-                            error=f"{type(e).__name__}: {str(e)[:200]}",
-                        ))
-            except FutTimeout:
-                # Adapters non terminés → marqués en erreur
-                done_adapters = {fa for fa in future_to_adapter
-                                 if future_to_adapter[fa] in [s.name for s in result.adapters_run]}
-                for fut, adapter in future_to_adapter.items():
-                    if not fut.done():
-                        result.adapters_run.append(AdapterRunStats(
-                            name=adapter.name or type(adapter).__name__,
-                            site=adapter.site_url,
-                            error=f"Total timeout dépassé ({total}s)",
-                        ))
-                        fut.cancel()
+                ex.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                # Python < 3.9 — fallback sans cancel_futures.
+                ex.shutdown(wait=False)
 
         # Dédup + tri global
         deduped = _dedup_hits(all_hits)

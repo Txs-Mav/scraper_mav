@@ -103,6 +103,28 @@ class PlatformRecipe:
 
 
 @dataclass
+class AuthContext:
+    """Contexte d'authentification capturé pour rejouer une API en HTTP direct.
+
+    Quand le scraper généré veut rejouer une API interne sans repasser par
+    Playwright (cas le plus rapide et le plus stable), il doit reproduire la
+    session : cookies, headers custom (CSRF/Authorization/Trace-Id), et
+    éventuellement un warm-up GET sur l'URL listing parente pour récolter
+    les cookies que le site attend.
+    """
+    cookies: Dict[str, str] = field(default_factory=dict)
+    # Headers "custom" capturés (whitelist : x-*, authorization, etc.).
+    # On exclut systématiquement Cookie / Host / Accept-Encoding qui sont gérés
+    # par requests / le navigateur.
+    custom_headers: Dict[str, str] = field(default_factory=dict)
+    # URL listing visitée juste avant que l'API ne parte (donne le bon Referer
+    # et permet de répliquer le warm-up si la session expire).
+    warm_up_url: str = ""
+    # Payload optionnel envoyé pendant le warm-up (rare, ex: form de session).
+    warm_up_payload: Optional[Dict] = None
+
+
+@dataclass
 class DetectedAPI:
     """Endpoint API interne découvert par interception."""
     url: str = ""
@@ -127,6 +149,16 @@ class DetectedAPI:
     graphql_variables: Dict = field(default_factory=dict)
     graphql_pagination_var: str = ""                # variable GraphQL pour pagination (ex: 'after')
     confidence: float = 0.0
+
+    # --- P3.1 : Contexte d'authentification capturé ---
+    auth_context: Optional[AuthContext] = None
+
+    # --- P3.2 : Persisted GraphQL query non rejouable ---
+    persisted_query_hash: str = ""
+    is_replayable: bool = True
+
+    # --- P3.3 : Curseur opaque signé non rejouable au-delà de la 1re page ---
+    cursor_is_signed: bool = False
 
 
 @dataclass
@@ -196,6 +228,25 @@ class SelectorMap:
 
 
 @dataclass
+class DetailTemplateCluster:
+    """Un cluster de fiches détail partageant la même structure DOM (P2.2).
+
+    Permet à la Phase 3 de générer un dispatcher quand un site sert plusieurs
+    templates de fiche (ex: véhicules récents vs anciens, formats partenaires…).
+    Si une analyse ne produit qu'un seul cluster, le générateur reste sur son
+    chemin classique (rétrocompat).
+    """
+    template_id: str = ""              # ex: 'tpl_a', 'tpl_b'
+    sample_urls: List[str] = field(default_factory=list)
+    # Signature DOM agrégée (clés data-*, classes du <main>/<article>, noms de section)
+    # utilisée par le dispatcher pour classifier une nouvelle page à l'exécution.
+    signature_keys: List[str] = field(default_factory=list)
+    item_count: int = 0
+    # Sélecteurs spécifiques à ce cluster (extraits par le générateur si besoin).
+    selectors: Optional["SelectorMap"] = None
+
+
+@dataclass
 class SiteAnalysis:
     """Résultat complet de la Phase 1 (analyse du site)."""
     site_url: str = ""
@@ -244,6 +295,19 @@ class SiteAnalysis:
     statistical_listing_count: int = 0
     # Indique si l'analyse a dû passer en mode Playwright pour cartographier
     playwright_used_in_phase1: bool = False
+
+    # --- Telemetry SPA (P1.1) ---
+    # Signatures textuelles détectées (Next.js, React, Vue, Angular, D2C…) — usage purement
+    # informatif/diagnostique. La décision needs_playwright est désormais comportementale
+    # (comparaison static_count vs rendered_count), pas basée sur ces signaux.
+    spa_signals_detected: List[str] = field(default_factory=list)
+    spa_static_item_count: int = 0
+    spa_rendered_item_count: int = 0
+
+    # --- Variantes de templates de fiche détail (P2.2) ---
+    # Vide si une seule structure DOM détectée (cas le plus fréquent). Si > 1 cluster,
+    # le générateur peut produire un dispatcher (P2.2-bis).
+    detail_template_clusters: List[DetailTemplateCluster] = field(default_factory=list)
 
     analysis_timestamp: str = ""
 
@@ -378,6 +442,20 @@ _ENUM_FIELDS = {
 }
 
 
+def _build_detected_api(data: Dict) -> DetectedAPI:
+    """Reconstruit un DetectedAPI depuis un dict, y compris l'AuthContext
+    imbriqué (rétrocompat : les anciens *_strategy.json sans auth_context
+    chargent normalement)."""
+    payload = dict(data)
+    auth = payload.pop("auth_context", None)
+    api = DetectedAPI(**{k: v for k, v in payload.items()
+                         if k in DetectedAPI.__dataclass_fields__})
+    if isinstance(auth, dict):
+        api.auth_context = AuthContext(**{k: v for k, v in auth.items()
+                                          if k in AuthContext.__dataclass_fields__})
+    return api
+
+
 def _from_dict(cls, data: dict) -> Any:
     """Reconstruction depuis un dict JSON avec support complet des enums et dataclasses."""
     if not isinstance(data, dict):
@@ -415,18 +493,35 @@ def _from_dict(cls, data: dict) -> Any:
         elif ft == 'ThrottleConfig' and isinstance(val, dict):
             kwargs[key] = ThrottleConfig(**val)
         elif 'List[DetectedAPI]' in str(ft) and isinstance(val, list):
-            kwargs[key] = [DetectedAPI(**v) if isinstance(v, dict) else v for v in val]
+            kwargs[key] = [_build_detected_api(v) if isinstance(v, dict) else v for v in val]
         elif 'List[ListingPage]' in str(ft) and isinstance(val, list):
             kwargs[key] = [ListingPage(**v) if isinstance(v, dict) else v for v in val]
         elif 'List[FieldCoverage]' in str(ft) and isinstance(val, list):
             kwargs[key] = [FieldCoverage(**v) if isinstance(v, dict) else v for v in val]
+        elif 'List[DetailTemplateCluster]' in str(ft) and isinstance(val, list):
+            clusters = []
+            for v in val:
+                if isinstance(v, dict):
+                    sels = v.get("selectors")
+                    if isinstance(sels, dict):
+                        try:
+                            v = {**v, "selectors": SelectorMap(**{
+                                sk: SelectorEntry(**sv) if isinstance(sv, dict) and "selector" in sv else sv
+                                for sk, sv in sels.items()
+                            })}
+                        except Exception:
+                            v = {**v, "selectors": None}
+                    clusters.append(DetailTemplateCluster(**v))
+                else:
+                    clusters.append(v)
+            kwargs[key] = clusters
         elif isinstance(val, str) and ft in _ENUM_FIELDS:
             try:
                 kwargs[key] = _ENUM_FIELDS[ft](val)
             except ValueError:
                 kwargs[key] = val
         elif ft == 'Optional[DetectedAPI]' and isinstance(val, dict):
-            kwargs[key] = DetectedAPI(**val)
+            kwargs[key] = _build_detected_api(val)
         else:
             kwargs[key] = val
 

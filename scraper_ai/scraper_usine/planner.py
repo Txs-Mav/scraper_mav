@@ -23,6 +23,25 @@ class StrategyPlanner:
     def plan(self, analysis: SiteAnalysis) -> ScrapingStrategy:
         strategy = ScrapingStrategy()
 
+        # --- Filtrage des APIs non rejouables (P3.2 + P3.3) ---
+        # On retire les APIs marquées is_replayable=False (persisted GraphQL,
+        # curseurs signés) AVANT de raisonner sur la stratégie. Le scraper
+        # doit alors retomber sur le HTML/listing/sitemap.
+        replayable_apis = [a for a in analysis.detected_apis if getattr(a, "is_replayable", True)]
+        non_replayable = [a for a in analysis.detected_apis if not getattr(a, "is_replayable", True)]
+        if non_replayable:
+            reasons = [
+                ("persistedQuery" if a.persisted_query_hash else None,
+                 "cursor_signé" if a.cursor_is_signed else None)
+                for a in non_replayable
+            ]
+            self._log(f"  {len(non_replayable)} API(s) non rejouable(s) ignorée(s) "
+                      f"(raisons: {reasons}) → fallback HTML")
+        # On utilise la liste filtrée pour les décisions stratégiques mais on
+        # n'écrase pas analysis.detected_apis (utile pour le diagnostic et les
+        # health checks futurs).
+        analysis_view_replayable = replayable_apis
+
         # --- Classe de base (héritage plateforme) ---
         strategy.base_class, strategy.base_class_import = self._pick_base_class(analysis)
 
@@ -48,8 +67,8 @@ class StrategyPlanner:
             self._log("Iframe inventaire tiers détecté → IFRAME + HYBRID via PLAYWRIGHT")
 
         # --- Scroll infini / Load More avec API interceptée ---
-        elif (analysis.has_infinite_scroll or analysis.has_load_more_button) and analysis.detected_apis:
-            best_api = analysis.detected_apis[0]
+        elif (analysis.has_infinite_scroll or analysis.has_load_more_button) and analysis_view_replayable:
+            best_api = analysis_view_replayable[0]
             strategy.api_config = best_api
             strategy.discovery_method = DiscoveryMethod.SCROLL_INTERCEPT
             strategy.pagination_method = PaginationMethod.SCROLL_CAPTURE
@@ -60,8 +79,8 @@ class StrategyPlanner:
             self._log("Scroll/LoadMore + API interceptée → SCROLL_INTERCEPT")
 
         # --- API interne ---
-        elif analysis.detected_apis:
-            best_api = analysis.detected_apis[0]
+        elif analysis_view_replayable:
+            best_api = analysis_view_replayable[0]
             strategy.api_config = best_api
             strategy.discovery_method = DiscoveryMethod.API
             strategy.extraction_method = ExtractionMethod.API_JSON

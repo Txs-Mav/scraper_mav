@@ -78,6 +78,39 @@ TRACKER_PATTERNS: tuple = (
 )
 
 
+# Walker JS récursif pour extraire tous les <a href> y compris ceux nichés
+# dans des Shadow DOM (Web Components). Marque les liens shadow=true pour
+# permettre du diagnostic côté Python.
+_SHADOW_LINK_WALKER_JS = """
+() => {
+  const out = [];
+  function walk(root, inShadow) {
+    if (!root) return;
+    let anchors;
+    try { anchors = root.querySelectorAll('a[href]'); } catch (e) { anchors = []; }
+    for (const a of anchors) {
+      try {
+        out.push({
+          text: (a.textContent || '').trim().slice(0, 200),
+          href: a.href || a.getAttribute('href') || '',
+          shadow: !!inShadow,
+        });
+      } catch (e) {}
+    }
+    let descendants;
+    try { descendants = root.querySelectorAll('*'); } catch (e) { descendants = []; }
+    for (const el of descendants) {
+      if (el && el.shadowRoot) {
+        walk(el.shadowRoot, true);
+      }
+    }
+  }
+  walk(document, false);
+  return out;
+}
+"""
+
+
 @dataclass
 class CapturedResponse:
     """Une réponse JSON capturée pendant un rendu (équivalent à ce que
@@ -321,6 +354,63 @@ class BrowserAgent:
                 ]
 
             return result
+        finally:
+            try:
+                page.close()
+            except Exception:
+                pass
+
+    def extract_all_links_with_shadow(
+        self,
+        url: str,
+        *,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        dismiss_cookies: bool = True,
+    ) -> List[Dict[str, str]]:
+        """Récupère tous les <a href> de la page, y compris ceux nichés dans
+        les Shadow DOMs (Web Components fermés ou ouverts).
+
+        Retourne une liste de dicts ``{"text": ..., "href": ..., "shadow": bool}``
+        triée dans l'ordre du DOM. Les hrefs sont absolus (Playwright résout déjà
+        ``a.href``).
+
+        Renvoie une liste vide si BrowserAgent n'est pas disponible ou si le
+        rendu échoue.
+        """
+        if not self._started:
+            self.start()
+
+        page = self._context.new_page()
+        try:
+            if self.block_assets:
+                self._install_blocking_route(page)
+            response = self._smart_goto(
+                page, url, timeout_ms=timeout_ms,
+                networkidle_ms=self.DEFAULT_NETWORKIDLE_MS,
+            )
+            if response is None:
+                return []
+            if dismiss_cookies:
+                _dismiss_cookies(page)
+            page.wait_for_timeout(self.POST_LOAD_WAIT_MS)
+
+            try:
+                links = page.evaluate(_SHADOW_LINK_WALKER_JS)
+            except Exception as e:
+                self._log(f"[BrowserAgent] shadow walker eval échoué: {type(e).__name__}: {e}")
+                return []
+
+            if not isinstance(links, list):
+                return []
+            return [
+                {
+                    "text": str(item.get("text", "")).strip(),
+                    "href": str(item.get("href", "")),
+                    "shadow": bool(item.get("shadow", False)),
+                }
+                for item in links
+                if isinstance(item, dict) and item.get("href")
+            ]
         finally:
             try:
                 page.close()

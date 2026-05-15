@@ -21,13 +21,15 @@ from pathlib import Path
 from typing import List, Optional
 
 from .analyzer import SiteAnalyzer, ANALYSIS_DIR
-from .models import SiteAnalysis, ValidationReport
+from .models import GeneratedScraper, SiteAnalysis, ValidationReport
 from .planner import StrategyPlanner
 from .generator import ScraperCodeGenerator
 from .publisher import publish_pending_scraper
 from .git_push import commit_and_push_scraper, GitPushResult
 from .validator import ScraperValidator
 from .workflow_generator import write_workflow_for_scraper
+from .claude_supervisor import ClaudeSupervisor, SUPERVISION_DIR
+from .claude_agent import ClaudeAgent
 
 
 def main(argv: Optional[List[str]] = None) -> None:
@@ -41,14 +43,20 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="Analyse + stratégie sans générer le scraper")
     parser.add_argument("--resume", action="store_true",
                         help="Reprendre depuis Phase 2 (utilise l'analyse sauvegardée)")
-    parser.add_argument("--no-llm-fix", action="store_true",
-                        help="Désactiver l'auto-correction Gemini")
+    parser.add_argument("--no-claude", "--no-llm-fix", action="store_true",
+                        dest="no_claude",
+                        help="Désactiver toute la supervision Claude (juge + correcteur + agent)")
+    parser.add_argument("--no-agent-fallback", action="store_true",
+                        help="Désactiver UNIQUEMENT la Phase 4.5 (agent autonome). "
+                             "La supervision Claude reste active.")
     parser.add_argument("--force-playwright", action="store_true",
                         help="Forcer l'utilisation de Playwright")
     parser.add_argument("--check", metavar="SLUG",
                         help="Health check sur un scraper existant")
     parser.add_argument("--check-all", action="store_true",
                         help="Health check sur tous les scrapers")
+    parser.add_argument("--audit", metavar="SLUG",
+                        help="Affiche l'audit Claude (verdicts + trace agent) pour un slug")
     parser.add_argument("--profile", metavar="DOMAIN",
                         choices=["auto", "ecommerce", "real_estate", "jobs", "generic"],
                         help="Force le profil de domaine (sinon: auto-détection)")
@@ -64,6 +72,10 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     args = parser.parse_args(argv)
     verbose = not args.quiet
+
+    if args.audit:
+        _print_audit(args.audit)
+        return
 
     if args.check_all:
         _run_check_all(verbose)
@@ -102,7 +114,8 @@ def main(argv: Optional[List[str]] = None) -> None:
             url,
             dry_run=args.dry_run,
             resume=args.resume,
-            no_llm_fix=args.no_llm_fix,
+            no_claude=args.no_claude,
+            no_agent_fallback=args.no_agent_fallback,
             force_playwright=args.force_playwright,
             verbose=verbose,
             profile=args.profile,
@@ -120,7 +133,8 @@ def _process_url(
     *,
     dry_run: bool = False,
     resume: bool = False,
-    no_llm_fix: bool = False,
+    no_claude: bool = False,
+    no_agent_fallback: bool = False,
     force_playwright: bool = False,
     verbose: bool = True,
     profile: Optional[str] = None,
@@ -133,6 +147,13 @@ def _process_url(
     print(f"  SCRAPER USINE : {url}")
     print(f"{'='*70}")
     print(f"  [{_ts()}] Démarrage pipeline\n")
+
+    # Superviseur Claude unique pour tout le run (compteur de réécritures partagé).
+    # On l'instancie tôt pour bénéficier du logging d'init mais on ne lui donne
+    # le slug qu'après la Phase 3 (le slug est calculé par le générateur).
+    supervisor = ClaudeSupervisor(enabled=not no_claude, verbose=verbose)
+    if not supervisor.enabled and not no_claude:
+        print(f"  [{_ts()}] (Supervision Claude indisponible — pipeline en mode dégradé)")
 
     # --- Phase 1 : Analyse ---
     analysis: Optional[SiteAnalysis] = None
@@ -173,6 +194,14 @@ def _process_url(
                 print(f"  Puis relancez la commande.\n")
                 return None
 
+    # Hook supervision Phase 1 (lecture seule).
+    # Note : un verdict `fail` signale une analyse incohérente, mais on ne
+    # coupe pas le pipeline — la Phase 4.5 (agent autonome) est précisément
+    # conçue pour récupérer ces cas en explorant le site directement.
+    if supervisor.enabled:
+        v1 = supervisor.review_analysis(analysis)
+        print(f"  [{_ts()}] Claude review Phase 1 : {v1.status} — {v1.reasoning[:120]}")
+
     # --- Phase 2 : Stratégie ---
     print(f"\n  [{_ts()}] Phase 2 : Planification de la stratégie...")
     phase2_start = time.time()
@@ -188,6 +217,12 @@ def _process_url(
         _print_dry_run(analysis, strategy)
         return None
 
+    # Idem Phase 2 : un fail Claude est un signal fort pour la Phase 4.5
+    # (l'agent autonome reconstruira from scratch). On loggue mais on continue.
+    if supervisor.enabled:
+        v2 = supervisor.review_strategy(analysis, strategy)
+        print(f"  [{_ts()}] Claude review Phase 2 : {v2.status} — {v2.reasoning[:120]}")
+
     # --- Phase 3 : Génération ---
     print(f"\n  [{_ts()}] Phase 3 : Génération du scraper...")
     phase3_start = time.time()
@@ -197,24 +232,32 @@ def _process_url(
     print(f"    Fichier: {generated.file_path}")
     print(f"    Classe: {generated.class_name}")
 
+    # Bind le supervisor au slug pour que les audits aient une destination.
+    if supervisor.enabled:
+        supervisor.set_slug(generated.slug)
+
+        # Hook Phase 3 : review + rewrite éventuel du code généré
+        v3, rewritten = supervisor.review_and_fix_code(generated, analysis)
+        print(f"  [{_ts()}] Claude review Phase 3 : {v3.status} — {v3.reasoning[:120]}")
+        if rewritten:
+            print(f"  [{_ts()}] Code Phase 3 réécrit par Claude ({len(rewritten)} chars)")
+
     # --- Phase 4 : Validation ---
     print(f"\n  [{_ts()}] Phase 4 : Validation...")
     phase4_start = time.time()
-    validator = ScraperValidator(verbose=verbose)
+    # On passe le supervisor au validator pour partager le compteur de réécritures.
+    validator = ScraperValidator(verbose=verbose, supervisor=supervisor if supervisor.enabled else None)
     report = validator.validate(generated, analysis, strategy)
     print(f"  [{_ts()}] Phase 4 terminée en {time.time()-phase4_start:.1f}s")
 
-    # --- Auto-correction ---
-    if report.score < 80 and not no_llm_fix:
-        print(f"\n  [{_ts()}] Score {report.score}/100 < 80 — tentative d'auto-correction...")
+    # --- Auto-correction Claude (Phase 4) ---
+    if report.score < 80 and not no_claude:
+        print(f"\n  [{_ts()}] Score {report.score}/100 < 80 — auto-correction Claude...")
         for attempt in range(1, 3):
             print(f"  [{_ts()}] Auto-correction #{attempt}...")
             corrected_code = validator.auto_correct(report, generated, analysis)
             if corrected_code:
                 print(f"  [{_ts()}] Correction reçue, re-validation...")
-                generated_path = Path(generated.file_path)
-                generated_path.write_text(corrected_code, encoding="utf-8")
-                generated.code = corrected_code
                 report = validator.validate(generated, analysis, strategy)
                 if report.score >= 80:
                     print(f"  [{_ts()}] Score amélioré: {report.score}/100")
@@ -224,7 +267,7 @@ def _process_url(
                 break
 
     # --- Correction ciblée des champs faibles (même si score global >= 80) ---
-    if not no_llm_fix and report.score >= 80:
+    if not no_claude and report.score >= 80:
         weak = validator.weak_fields(report, threshold=0.9)
         if weak:
             print(f"\n  [{_ts()}] Score global OK ({report.score}) mais champs faibles: {weak}")
@@ -233,11 +276,43 @@ def _process_url(
             )
             if corrected_code:
                 print(f"  [{_ts()}] Correction ciblée reçue, re-validation...")
-                generated_path = Path(generated.file_path)
-                generated_path.write_text(corrected_code, encoding="utf-8")
-                generated.code = corrected_code
                 report = validator.validate(generated, analysis, strategy)
                 print(f"  [{_ts()}] Score après correction ciblée: {report.score}/100")
+
+    # --- Phase 4.5 : AI Agent Claude (fallback from-scratch) ---
+    # Déclenché quand le code templates + corrections n'a pas atteint le seuil.
+    # L'agent reconstruit le scraper avec tool use Anthropic (fetch HTML,
+    # inspect DOM, write code, run scraper) — il sort du cadre Jinja2.
+    if (report.score < 80 and not no_claude and not no_agent_fallback
+            and supervisor.enabled):
+        print(f"\n  [{_ts()}] Phase 4.5 : Score {report.score}/100 < 80 — bascule sur AI Agent Claude...")
+        agent = ClaudeAgent(verbose=verbose)
+        if not agent.enabled:
+            print(f"  [{_ts()}] Agent Claude indisponible (clé manquante ou anthropic non installé)")
+        else:
+            agent_start = time.time()
+            new_generated = agent.build_scraper_from_scratch(
+                analysis, strategy, prior_attempt=generated,
+            )
+            print(f"  [{_ts()}] Agent terminé en {time.time()-agent_start:.1f}s")
+            if new_generated:
+                generated = new_generated
+                print(f"  [{_ts()}] Re-validation du scraper reconstruit par l'agent...")
+                report = validator.validate(generated, analysis, strategy)
+                print(f"  [{_ts()}] Score après agent : {report.score}/100")
+            else:
+                print(f"  [{_ts()}] Agent n'a pas produit de scraper validé — on garde l'ancien code")
+
+    # --- Verdict final go/no-go (avant publication) ---
+    final_verdict_status = "ok"
+    if supervisor.enabled and publish:
+        v_final = supervisor.final_go_no_go(generated, analysis, strategy, report)
+        final_verdict_status = v_final.status
+        print(f"\n  [{_ts()}] Claude verdict final : {v_final.status} — {v_final.reasoning[:160]}")
+        if v_final.status == "fail":
+            print(f"  [{_ts()}] Phases 5-7 SKIP : Claude rejette la publication "
+                  f"(audit dans scraper_cache/supervision/{generated.slug}_audit.json)")
+            publish = False  # n'empêche pas le résumé final, juste pas de push
 
     # --- Phase 5 : Publication en pending dans shared_scrapers ---
     published = False
@@ -309,10 +384,14 @@ def _process_url(
         print(f"  Warnings   :")
         for w in report.warnings:
             print(f"    - {w}")
-    if publish and report.score >= publish_threshold:
+    if final_verdict_status == "fail":
+        print(f"  Statut     : REJETÉ par Claude (verdict final fail) — review manuelle requise")
+    elif publish and report.score >= publish_threshold:
         print(f"  Statut     : PENDING (à valider sur /admin/scrapers)")
     elif publish:
         print(f"  Statut     : score < seuil ({publish_threshold}) — non publié")
+    if supervisor.enabled:
+        print(f"  Audit      : scraper_cache/supervision/{generated.slug}_audit.json")
     if workflow_relpath:
         print(f"  Workflow   : {workflow_relpath}")
     if push_result and push_result.pushed:
@@ -372,6 +451,75 @@ def _run_check_all(verbose: bool) -> None:
             if "Dégradation" in w:
                 degradation = f" {w}"
         print(f"  [{status:4s}] {slug:25s} {report.score:3d}/100{degradation}")
+
+
+# ---------------------------------------------------------------------------
+# Audit Claude (CLI: --audit <slug>)
+# ---------------------------------------------------------------------------
+
+def _print_audit(slug: str) -> None:
+    """Affiche l'audit Claude (verdicts par phase + extrait trace agent).
+
+    Cible : ``scraper_cache/supervision/{slug}_audit.json`` et
+    ``{slug}_agent_trace.jsonl`` (s'ils existent).
+    """
+    audit_path = SUPERVISION_DIR / f"{slug}_audit.json"
+    trace_path = SUPERVISION_DIR / f"{slug}_agent_trace.jsonl"
+
+    if not audit_path.exists() and not trace_path.exists():
+        print(f"  Aucun audit trouvé pour '{slug}' dans {SUPERVISION_DIR}")
+        return
+
+    print(f"\n{'='*70}")
+    print(f"  AUDIT CLAUDE : {slug}")
+    print(f"{'='*70}")
+
+    if audit_path.exists():
+        try:
+            payload = json.loads(audit_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"  Erreur lecture audit: {e}")
+            payload = {"events": []}
+
+        events = payload.get("events", [])
+        print(f"\n  --- VERDICTS PAR PHASE ({len(events)} évènement(s)) ---")
+        for ev in events:
+            phase = ev.get("phase", "?")
+            status = ev.get("status", "?")
+            ts = ev.get("timestamp", "")[:19]
+            rewrite = "↻" if ev.get("rewrite_applied") else " "
+            reasoning = (ev.get("reasoning", "") or "")[:200]
+            print(f"  [{ts}] {rewrite} {phase:25s} {status:8s} {reasoning}")
+            for sug in (ev.get("suggestions") or [])[:3]:
+                print(f"        suggestion: {sug[:160]}")
+
+    if trace_path.exists():
+        print(f"\n  --- TRACE AGENT (dernières lignes de {trace_path.name}) ---")
+        try:
+            lines = trace_path.read_text(encoding="utf-8").strip().splitlines()
+            for line in lines[-30:]:
+                try:
+                    ev = json.loads(line)
+                    ts = (ev.get("ts", "") or "")[:19]
+                    typ = ev.get("type", "?")
+                    if typ == "tool_result":
+                        preview = ev.get("preview", "")[:160]
+                        print(f"  [{ts}] tool_result {ev.get('tool_name', '?'):20s} {preview}")
+                    elif typ == "assistant_message":
+                        blocks = ev.get("blocks", [])
+                        previews = ", ".join(
+                            f"{b.get('type', '?')}:{(b.get('preview') or '')[:60]}"
+                            for b in blocks[:3]
+                        )
+                        print(f"  [{ts}] assistant   {previews}")
+                    else:
+                        print(f"  [{ts}] {typ:18s} {json.dumps({k: v for k, v in ev.items() if k not in ('ts','type')}, default=str)[:160]}")
+                except Exception:
+                    print(f"  (ligne illisible: {line[:120]})")
+        except Exception as e:
+            print(f"  Erreur lecture trace: {e}")
+
+    print(f"\n{'='*70}\n")
 
 
 # ---------------------------------------------------------------------------

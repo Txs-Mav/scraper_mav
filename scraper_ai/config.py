@@ -23,6 +23,42 @@ GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"
 # Configuration Google AI API (Dev - Optionnel, fallback)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# =============================================================================
+# CONFIGURATION ANTHROPIC / CLAUDE (supervision scraper_usine)
+# =============================================================================
+# Clé API Claude (Anthropic). Si absente, le superviseur + l'agent
+# s'auto-désactivent et le pipeline scraper_usine continue sans LLM
+# (comportement pré-intégration préservé).
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+
+# Modèle par défaut (modifiable sans redéploiement via .env)
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-4-7")
+
+# Plafond max_tokens pour une seule génération Claude (rewrite ou tour d'agent).
+# Doit rester en-dessous de la limite output du modèle.
+CLAUDE_MAX_OUTPUT_TOKENS = int(os.environ.get("CLAUDE_MAX_OUTPUT_TOKENS", "16000"))
+
+# Active/désactive globalement la supervision (review + auto-correct).
+# Mettre "0" pour désactiver via .env. Le flag CLI --no-claude prend le pas.
+CLAUDE_SUPERVISOR_ENABLED = os.environ.get("CLAUDE_SUPERVISOR_ENABLED", "1") not in ("0", "false", "False")
+
+# Garde-fou anti-boucle : nombre max de réécritures (Phase 3 + Phase 4 cumulées)
+# par run de scraper_usine. Au-delà, on accepte le dernier code et on log un warning.
+CLAUDE_MAX_REWRITES = int(os.environ.get("CLAUDE_MAX_REWRITES", "3"))
+
+# Phase 4.5 — fallback agent autonome (tool use). Désactivable indépendamment
+# du superviseur via CLAUDE_AGENT_ENABLED=0 (utile pour CI rapide).
+CLAUDE_AGENT_ENABLED = os.environ.get("CLAUDE_AGENT_ENABLED", "1") not in ("0", "false", "False")
+
+# Plafond de tours (échanges assistant <-> tool_result) dans la boucle agent.
+# 15 tours = ~7-8 actions concrètes (fetch, inspect, write, run...) ce qui
+# couvre la plupart des sites en une exploration.
+CLAUDE_AGENT_MAX_TURNS = int(os.environ.get("CLAUDE_AGENT_MAX_TURNS", "15"))
+
+# Plafond cumulé de tokens (in+out) sur l'ensemble d'un run d'agent. Au-delà,
+# on coupe net pour éviter les coûts runaway.
+CLAUDE_AGENT_MAX_TOKENS_PER_RUN = int(os.environ.get("CLAUDE_AGENT_MAX_TOKENS_PER_RUN", "500000"))
+
 # Validation de la configuration
 if AI_PROVIDER == "vertex":
     if not GCP_PROJECT_ID:

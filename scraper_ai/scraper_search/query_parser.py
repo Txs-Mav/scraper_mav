@@ -15,6 +15,7 @@ les requêtes vehicules/produits sont assez stéréotypées pour s'en passer.
 from __future__ import annotations
 
 import re
+from difflib import SequenceMatcher
 from typing import List, Optional, Tuple
 
 from .models import SearchQuery
@@ -30,8 +31,9 @@ KNOWN_BRANDS = {
     # Motos / powersport
     "honda", "yamaha", "kawasaki", "suzuki", "ktm", "husqvarna", "gas gas",
     "gasgas", "beta", "bmw", "ducati", "aprilia", "triumph", "harley", "harley-davidson",
-    "indian", "polaris", "ski-doo", "skidoo", "can-am", "canam", "arctic cat",
-    "arcticcat", "sea-doo", "seadoo", "victory", "royal enfield", "moto guzzi",
+    "indian", "polaris", "ski-doo", "skidoo", "ski doo", "can-am", "canam",
+    "can am", "arctic cat", "arcticcat", "arctic-cat", "sea-doo", "seadoo",
+    "sea doo", "victory", "royal enfield", "moto guzzi",
     "vespa", "piaggio", "kymco", "cfmoto", "cf moto", "sym", "gas-gas", "sherco",
     # Auto
     "toyota", "ford", "chevrolet", "chevy", "gmc", "dodge", "ram", "jeep",
@@ -74,11 +76,15 @@ _PRICE_RANGE = re.compile(
     re.IGNORECASE,
 )
 _PRICE_MAX = re.compile(
-    r"(?:<|moins de|sous|under|below|max(?:\.|imum)?\s*:?)\s*(\d[\d,.]{1,12})\s*\$?",
+    # < ou "moins de" / "under" : déclencheur fort, $ optionnel.
+    # "max:" / "maximum:" / "max." : exige le séparateur (sinon "Air Max 90" matcherait).
+    r"(?:<|\bmoins de\b|\bunder\b|\bbelow\b|\bmax(?:\.|imum)?\b\s*[:.])"
+    r"\s*(\d[\d,.]{1,12})\s*\$?",
     re.IGNORECASE,
 )
 _PRICE_MIN = re.compile(
-    r"(?:>|plus de|over|above|min(?:\.|imum)?\s*:?)\s*(\d[\d,.]{1,12})\s*\$?",
+    r"(?:>|\bplus de\b|\bover\b|\babove\b|\bmin(?:\.|imum)?\b\s*[:.])"
+    r"\s*(\d[\d,.]{1,12})\s*\$?",
     re.IGNORECASE,
 )
 _PRICE_AT = re.compile(r"(\d[\d,.]{2,12})\s*\$")
@@ -91,6 +97,45 @@ _YEAR_SINGLE = re.compile(r"\b(19[5-9]\d|20[0-4]\d)\b")
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
+
+# Mots-clés e-commerce typiques : leur présence force le mode générique même si
+# un type véhicule a été détecté (ex: "casque moto bluetooth" → générique, pas
+# une recherche de moto).
+ECOMMERCE_HINT_WORDS = {
+    # Accessoires / pièces
+    "casque", "helmet", "gants", "gloves", "bottes", "boots", "lunettes",
+    "goggles", "veste", "jacket", "pantalon", "pants", "bluetooth", "intercom",
+    "gps", "écran", "screen", "support", "mount", "chargeur", "charger",
+    "batterie", "battery", "câble", "cable", "adaptateur", "adapter",
+    "filtre", "filter", "huile", "oil", "lubrifiant", "lube", "bougie",
+    "spark", "pneu", "tire", "chambre", "tube", "pièce", "pieces", "part",
+    "parts", "accessoire", "accessory", "accessories", "kit",
+    # Électronique grand public
+    "iphone", "ipad", "macbook", "airpods", "watch", "galaxy", "pixel",
+    "ps5", "ps4", "xbox", "switch", "nintendo", "tablet", "tablette",
+    "laptop", "ordinateur", "monitor", "écouteurs", "headphones", "speaker",
+    "haut-parleur", "tv", "télévision", "console",
+    # Maison / mode / sport
+    "chaussures", "shoes", "sac", "bag", "montre", "watch", "robe", "dress",
+    "chemise", "shirt", "tshirt", "t-shirt", "vélo", "bike", "bicyclette",
+    "ski", "snowboard", "raquette", "tennis",
+}
+
+# Préfixes/marqueurs explicites qui indiquent une marque e-commerce connue
+# (pas véhicule). Liste non exhaustive — sert juste à éviter le fallback raté.
+KNOWN_ECOMMERCE_BRANDS = {
+    "apple", "samsung", "google", "microsoft", "sony", "bose", "lg",
+    "panasonic", "philips", "dell", "hp", "lenovo", "asus", "acer",
+    "logitech", "razer", "corsair", "nvidia", "amd", "intel",
+    "nike", "adidas", "puma", "reebok", "under armour", "north face",
+    "patagonia", "columbia", "lululemon", "uniqlo", "zara", "h&m",
+    "ikea", "dyson", "shark", "kitchenaid", "instant pot", "ninja",
+    "sennheiser", "shure", "audio-technica", "beats", "jbl",
+    "shoei", "arai", "agv", "hjc", "bell", "scorpion", "icon",  # casques moto
+    "alpinestars", "dainese", "rev'it", "klim", "fox", "fly",   # gear moto
+    "garmin", "fitbit", "polar", "suunto",
+}
+
 
 def parse_query(text: str) -> SearchQuery:
     """Convertit un texte libre en SearchQuery structurée.
@@ -108,24 +153,90 @@ def parse_query(text: str) -> SearchQuery:
     # 2) Prix (range > max > min > brut $)
     remaining, q.prix_min, q.prix_max = _extract_prices(remaining)
 
-    # 3) Type véhicule
+    # 3) Détection précoce du mode générique
+    #    On regarde le texte initial (avant extraction véhicule) pour voir si on
+    #    a des marqueurs e-commerce explicites (casque, iPhone, …).
+    is_generic_early = _detect_generic_early(remaining, q)
+
+    # 4) Type véhicule
     remaining, q.type_vehicule = _extract_first_match(remaining, VEHICLE_TYPES)
 
-    # 4) Condition (neuf / occasion)
+    # 5) Si le type véhicule a été détecté MAIS qu'on a aussi un marqueur
+    #    e-commerce, on garde le type comme contexte (= "moto" devient une
+    #    catégorie) mais on bascule en générique.
+    if q.type_vehicule and is_generic_early:
+        q.categorie = q.type_vehicule
+        q.type_vehicule = None
+
+    # 6) Condition (neuf / occasion)
     remaining, q.etat = _extract_condition(remaining)
 
-    # 5) Couleur
+    # 7) Couleur
     remaining, q.couleur = _extract_first_match(
         remaining, {c: c for c in COLORS}, word_boundary=True,
     )
 
-    # 6) Marque (1er token reconnu OU 1er token capitalisé)
-    remaining, q.marque = _extract_brand(remaining)
+    # 8) Marque — en mode générique, on autorise les marques e-commerce connues
+    #    et on désactive le fallback "1er token capitalisé" qui produit n'importe
+    #    quoi sur des requêtes type "iPhone 15 Pro".
+    remaining, q.marque = _extract_brand(
+        remaining, allow_capitalized_fallback=not is_generic_early,
+        extra_brands=KNOWN_ECOMMERCE_BRANDS if is_generic_early else None,
+    )
 
-    # 7) Modèle = ce qui reste (heuristique : alphanum, capitalisé, court)
+    # 9) Modèle = ce qui reste (heuristique : alphanum, capitalisé, court)
     q.modele, q.keywords = _extract_model_and_keywords(remaining)
 
+    # 10) Décision finale du mode générique (peut différer si on a fini par
+    #     détecter une vraie marque véhicule).
+    q.is_generic_product = is_generic_early or _looks_like_generic_product(q)
+
     return q
+
+
+def _detect_generic_early(text: str, q: SearchQuery) -> bool:
+    """Détecte AVANT extraction si la requête est un produit e-commerce.
+
+    Critères positifs (force générique) :
+      - Présence d'un mot ECOMMERCE_HINT_WORDS (casque, iphone, bluetooth…).
+      - Présence d'une marque e-commerce connue (Apple, Sony, Nike…).
+      - SKU explicite (chiffres/lettres long, mais sans année).
+    Critères négatifs (force véhicule) :
+      - Année 19xx/20xx déjà extraite (un produit ecommerce n'a pas d'année).
+      - Marque véhicule connue déjà visible dans le texte.
+    """
+    if q.annee or q.annee_min or q.annee_max:
+        return False
+    text_lower = text.lower()
+
+    # Marque véhicule explicite → certainement véhicule
+    for brand in KNOWN_BRANDS:
+        if re.search(rf"\b{re.escape(brand)}\b", text_lower):
+            return False
+
+    if any(re.search(rf"\b{re.escape(w)}\b", text_lower) for w in ECOMMERCE_HINT_WORDS):
+        return True
+    if any(re.search(rf"\b{re.escape(b)}\b", text_lower) for b in KNOWN_ECOMMERCE_BRANDS):
+        return True
+    return False
+
+
+def _looks_like_generic_product(q: SearchQuery) -> bool:
+    """Heuristique fallback : la requête est-elle un produit e-commerce générique ?
+
+    Appelée APRÈS extraction. Critères :
+      - Type véhicule confirmé → véhicule (sauf si déjà downgradé en categorie).
+      - Marque dans KNOWN_BRANDS véhicule → véhicule.
+      - Année présente → véhicule.
+      - Sinon → générique.
+    """
+    if q.type_vehicule:
+        return False
+    if q.marque and q.marque.lower() in KNOWN_BRANDS:
+        return False
+    if q.annee or q.annee_min or q.annee_max:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -246,12 +357,24 @@ def _extract_condition(text: str) -> Tuple[str, Optional[str]]:
     return text, None
 
 
-def _extract_brand(text: str) -> Tuple[str, Optional[str]]:
-    """Extrait la marque : 1er match dans KNOWN_BRANDS, sinon 1er token capitalisé."""
+def _extract_brand(text: str, *,
+                    allow_capitalized_fallback: bool = True,
+                    extra_brands: Optional[set] = None) -> Tuple[str, Optional[str]]:
+    """Extrait la marque : 1er match dans KNOWN_BRANDS (+ extra_brands), sinon
+    fuzzy match (typo léger), sinon optionnellement le 1er token capitalisé.
+
+    Args:
+        allow_capitalized_fallback: si False, ne fait pas le fallback sur le 1er
+            token capitalisé. Utile en mode générique pour éviter "PRO" comme marque
+            sur "iPhone 15 Pro 256GB".
+        extra_brands: jeu de marques additionnelles à matcher (e-commerce).
+    """
     text_lower = text.lower()
-    # Trier par longueur décroissante (matcher 'harley-davidson' avant 'harley')
-    for brand in sorted(KNOWN_BRANDS, key=len, reverse=True):
-        pattern = rf"\b{re.escape(brand)}\b"
+    brands_to_check = set(KNOWN_BRANDS)
+    if extra_brands:
+        brands_to_check |= set(extra_brands)
+    for brand in sorted(brands_to_check, key=len, reverse=True):
+        pattern = rf"(?<![a-z0-9]){re.escape(brand)}(?![a-z0-9])"
         m = re.search(pattern, text_lower)
         if m:
             actual = text[m.start():m.end()]
@@ -259,14 +382,68 @@ def _extract_brand(text: str) -> Tuple[str, Optional[str]]:
             text = re.sub(r"\s+", " ", text)
             return text, _normalize_brand(actual)
 
-    # Fallback : 1er mot capitalisé
+    fuzzy_match = _fuzzy_brand_match(text, brands_to_check)
+    if fuzzy_match is not None:
+        start, end, matched_brand = fuzzy_match
+        text = (text[:start] + " " + text[end:]).strip()
+        text = re.sub(r"\s+", " ", text)
+        return text, _normalize_brand(matched_brand)
+
+    if not allow_capitalized_fallback:
+        return text, None
+
     tokens = text.split()
     for i, tok in enumerate(tokens):
-        if len(tok) > 1 and tok[0].isupper() and tok.isalpha():
+        if (len(tok) > 1 and tok[0].isupper() and tok.isalpha()
+                and not tok.isupper()):
             tokens.pop(i)
             return " ".join(tokens).strip(), _normalize_brand(tok)
 
     return text, None
+
+
+def _fuzzy_brand_match(text: str,
+                        brands: set,
+                        threshold: float = 0.86) -> Optional[Tuple[int, int, str]]:
+    """Cherche un token (ou paire de tokens) du texte qui matche fuzzy une marque
+    connue. Tolère typos type 'hodna' → 'honda', 'kawazaki' → 'kawasaki',
+    et marques composées 'ski doo' → 'ski-doo'.
+
+    Retourne (start, end, brand_matched) ou None.
+    Seuil élevé (0.86) pour éviter les faux positifs ('honda' ↔ 'hyundai' = 0.55).
+    """
+    if not text.strip():
+        return None
+    text_lower = text.lower()
+
+    spans: List[Tuple[int, int, str]] = []
+    for m in re.finditer(r"[a-zà-ÿ][a-zà-ÿ0-9]+", text_lower):
+        spans.append((m.start(), m.end(), m.group(0)))
+        if spans and len(spans) >= 2:
+            prev = spans[-2]
+            between = text_lower[prev[1]:m.start()]
+            if between.strip() in ("", "-", "_") or re.fullmatch(r"\s+", between):
+                spans.append((prev[0], m.end(), f"{prev[2]} {m.group(0)}"))
+
+    candidates: List[Tuple[int, int, str, float]] = []
+    for start, end, token in spans:
+        if len(token) < 4:
+            continue
+        best_brand = None
+        best_ratio = 0.0
+        for brand in brands:
+            if abs(len(brand) - len(token)) > 3:
+                continue
+            ratio = SequenceMatcher(None, token, brand).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_brand = brand
+        if best_brand and best_ratio >= threshold:
+            candidates.append((start, end, best_brand, best_ratio))
+    if not candidates:
+        return None
+    best = max(candidates, key=lambda c: (c[3], c[1] - c[0], -c[0]))
+    return (best[0], best[1], best[2])
 
 
 def _normalize_brand(name: str) -> str:
@@ -276,14 +453,19 @@ def _normalize_brand(name: str) -> str:
         "harley": "Harley-Davidson",
         "skidoo": "Ski-Doo",
         "ski-doo": "Ski-Doo",
+        "ski doo": "Ski-Doo",
         "canam": "Can-Am",
         "can-am": "Can-Am",
+        "can am": "Can-Am",
         "seadoo": "Sea-Doo",
         "sea-doo": "Sea-Doo",
+        "sea doo": "Sea-Doo",
         "arcticcat": "Arctic Cat",
+        "arctic-cat": "Arctic Cat",
         "arctic cat": "Arctic Cat",
         "gasgas": "GasGas",
         "gas gas": "GasGas",
+        "gas-gas": "GasGas",
         "vw": "Volkswagen",
         "chevy": "Chevrolet",
     }

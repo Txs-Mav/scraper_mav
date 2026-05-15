@@ -21,22 +21,46 @@ from .base import AdapterError, SearchAdapter
 
 
 class DedicatedScraperAdapter(SearchAdapter):
-    """Adapter pour un DedicatedScraper donné (par slug)."""
+    """Adapter pour un DedicatedScraper donné (par slug).
+
+    Conçu pour les concessionnaires véhicules. Ces concessionnaires vendent :
+      - Des véhicules (motos, vtt, motoneiges, autos, sxs).
+      - Des accessoires (casques, gants, vestes, bottes, intercoms).
+      - Des pièces détachées (filtres, bougies, chaînes, pignons).
+
+    Donc on les déclare comme servant les 3 grandes branches : véhicule,
+    accessoire, pièce. Le sous-type (moto/vtt/auto) est résolu par le scraper
+    individuel via `serves_categories` que tu peux override par scraper.
+
+    Si l'utilisateur cherche une catégorie spécifique (ex: 'electronique.cellulaire'),
+    cet adapter sera skipé via la taxonomie. Si l'utilisateur ne précise pas de
+    catégorie, on l'interroge — c'est le scoring qui filtrera."""
+
+    # Par défaut, un concessionnaire couvre véhicule + accessoire + pièce.
+    # Override possible via le constructeur (`serves_categories=...`) pour
+    # restreindre à 'vehicule.moto' par exemple.
+    serves_categories: List[str] = ["vehicule", "accessoire", "piece"]
 
     def __init__(self, slug: str, *, cache: Optional[SearchCache] = None,
                  cache_ttl: int = DEFAULT_TTL_SECONDS,
-                 supported_types: Optional[List[str]] = None):
+                 cache_only: bool = False,
+                 supported_types: Optional[List[str]] = None,
+                 serves_categories: Optional[List[str]] = None):
         self.slug = slug
         self.name = slug  # remplacé par SITE_NAME après _resolve()
         self.cache = cache or SearchCache(ttl_seconds=cache_ttl)
         self.cache_ttl = cache_ttl
+        self.cache_only = cache_only
         if supported_types is not None:
             self.supported_types = supported_types
+        if serves_categories is not None:
+            self.serves_categories = serves_categories
 
         # Résolution paresseuse de la classe / instance pour ne pas tout charger
         self._scraper = None
         self._site_name = ""
         self._site_url = ""
+        self._site_domain = ""
 
         # Pré-charger les métadonnées (sans instancier le scraper) pour avoir
         # un nom propre dans les logs même si on hit le cache.
@@ -46,6 +70,7 @@ class DedicatedScraperAdapter(SearchAdapter):
             if cls:
                 self.name = getattr(cls, "SITE_NAME", slug) or slug
                 self.site_url = getattr(cls, "SITE_URL", "")
+                self._site_domain = getattr(cls, "SITE_DOMAIN", "") or ""
         except Exception:
             pass
 
@@ -66,6 +91,7 @@ class DedicatedScraperAdapter(SearchAdapter):
         self._scraper = instance
         self._site_name = getattr(instance, "SITE_NAME", self.slug)
         self._site_url = getattr(instance, "SITE_URL", "")
+        self._site_domain = getattr(instance, "SITE_DOMAIN", "") or self._site_domain
         self.name = self._site_name
         self.site_url = self._site_url
 
@@ -75,9 +101,15 @@ class DedicatedScraperAdapter(SearchAdapter):
 
     def search(self, query: SearchQuery, *, max_results: int = 50) -> List[SearchHit]:
         # Optimisation : si cache valide, on évite d'instancier le scraper
-        cached = self.cache.get(self.slug, max_age_seconds=self.cache_ttl)
+        cached = self.cache.get(
+            self.slug,
+            max_age_seconds=self.cache_ttl,
+            aliases=self._cache_aliases(),
+        )
         if cached is not None:
             products = cached
+        elif self.cache_only:
+            raise AdapterError("Inventaire non disponible en cache")
         else:
             self._resolve()
             products = self._get_inventory()
@@ -106,7 +138,11 @@ class DedicatedScraperAdapter(SearchAdapter):
 
     def _get_inventory(self) -> List[Dict[str, Any]]:
         """Retourne la liste de produits scrapés (avec cache TTL)."""
-        cached = self.cache.get(self.slug, max_age_seconds=self.cache_ttl)
+        cached = self.cache.get(
+            self.slug,
+            max_age_seconds=self.cache_ttl,
+            aliases=self._cache_aliases(),
+        )
         if cached is not None:
             return cached
 
@@ -127,15 +163,33 @@ class DedicatedScraperAdapter(SearchAdapter):
     # ------------------------------------------------------------------
 
     def cached_age_seconds(self) -> Optional[float]:
-        return self.cache.age_seconds(self.slug)
+        age = self.cache.age_seconds(self.slug, aliases=self._cache_aliases())
+        if age is None or age > self.cache_ttl:
+            return None
+        return age
 
     def force_refresh(self) -> None:
         """Invalide le cache pour ce slug (le prochain search() refera un scrape)."""
         self.cache.invalidate(self.slug)
 
+    def _cache_aliases(self) -> List[str]:
+        aliases = []
+        if self._site_domain:
+            aliases.append(self._site_domain)
+        if self.site_url:
+            try:
+                from urllib.parse import urlparse
+                domain = urlparse(self.site_url).netloc.replace("www.", "")
+                if domain:
+                    aliases.append(domain)
+            except Exception:
+                pass
+        return aliases
+
 
 def build_all_dedicated_adapters(
     *, cache_ttl: int = DEFAULT_TTL_SECONDS,
+    cache_only: bool = False,
     supported_types: Optional[List[str]] = None,
     only_slugs: Optional[List[str]] = None,
     exclude_slugs: Optional[List[str]] = None,
@@ -161,6 +215,7 @@ def build_all_dedicated_adapters(
             continue
         adapters.append(DedicatedScraperAdapter(
             slug=slug, cache=cache, cache_ttl=cache_ttl,
+            cache_only=cache_only,
             supported_types=supported_types,
         ))
     return adapters

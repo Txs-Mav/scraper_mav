@@ -38,8 +38,13 @@ MAX_CODE_INLINE_BYTES = 30_000
 class ScraperValidator:
     """Valide un scraper généré par exécution réelle et scoring contextuel."""
 
-    def __init__(self, verbose: bool = True):
+    def __init__(self, verbose: bool = True,
+                 supervisor: Optional["ClaudeSupervisor"] = None):
         self.verbose = verbose
+        # Si non fourni, ``auto_correct`` essaiera de l'instancier à la
+        # demande. Permet à main._process_url de partager un seul supervisor
+        # (et donc un seul compteur de réécritures) pour tout le run.
+        self.supervisor = supervisor
 
     def validate(
         self,
@@ -112,7 +117,12 @@ class ScraperValidator:
                      categories: Optional[List[str]] = None,
                      timeout: int = DEFAULT_RUN_TIMEOUT_SECONDS) -> tuple:
         """Exécute le scraper généré dans un sous-processus avec timeout dur.
-        Évite qu'un scraper qui boucle bloque la pipeline."""
+
+        Utilise ``multiprocessing.Queue`` (et non Pipe) pour éviter le deadlock
+        classique : si le payload dépasse la capacité du Pipe (~64 KB sur
+        macOS), ``conn.send()`` bloque et ``proc.join()`` attendrait
+        indéfiniment. Queue gère le buffering en interne sans cette limite.
+        """
         import multiprocessing as mp
 
         products: List[Dict] = []
@@ -120,19 +130,28 @@ class ScraperValidator:
         start = time.time()
         cats = categories or ["inventaire"]
 
-        # Multiprocessing avec timeout dur (signal.SIGTERM si dépassement)
         ctx = mp.get_context("spawn")  # spawn = pas de fork, plus sûr
-        parent_conn, child_conn = ctx.Pipe(duplex=False)
+        result_queue: "mp.Queue" = ctx.Queue()
         proc = ctx.Process(
             target=_run_scraper_subprocess,
-            args=(generated.module_name, generated.class_name, cats, child_conn),
+            args=(generated.module_name, generated.class_name, cats, result_queue),
             daemon=True,
         )
         try:
             self._log(f"Lancement sous-processus (timeout {timeout}s, categories={cats})...")
             proc.start()
-            proc.join(timeout=timeout)
 
+            # On lit la Queue avec timeout au lieu de proc.join() : ça évite
+            # le deadlock si le child meurt sans envoyer (on aurait attendu
+            # le timeout complet pour rien).
+            payload: Optional[Dict] = None
+            try:
+                payload = result_queue.get(timeout=timeout)
+            except Exception:
+                pass
+
+            # Le child doit avoir fini si payload reçu, sinon on tue.
+            proc.join(timeout=5)
             if proc.is_alive():
                 self._log(f"TIMEOUT après {timeout}s → kill sous-processus")
                 proc.terminate()
@@ -140,23 +159,22 @@ class ScraperValidator:
                 if proc.is_alive():
                     proc.kill()
                     proc.join(timeout=3)
-                errors.append(f"Timeout: scraper > {timeout}s")
-            else:
-                if parent_conn.poll(timeout=2):
-                    payload = parent_conn.recv()
-                    if isinstance(payload, dict):
-                        products = payload.get("products", [])
-                        if payload.get("error"):
-                            errors.append(payload["error"])
-                else:
-                    errors.append("Sous-processus terminé sans résultat (probable crash)")
+                if payload is None:
+                    errors.append(f"Timeout: scraper > {timeout}s")
+
+            if isinstance(payload, dict):
+                products = payload.get("products", [])
+                if payload.get("error"):
+                    errors.append(payload["error"])
+            elif payload is None and not errors:
+                errors.append("Sous-processus terminé sans résultat (probable crash)")
 
         except Exception as e:
             errors.append(f"{type(e).__name__}: {str(e)[:500]}")
             self._log(f"ERREUR runner: {type(e).__name__}: {e}")
         finally:
             try:
-                parent_conn.close()
+                result_queue.close()
             except Exception:
                 pass
 
@@ -176,6 +194,13 @@ class ScraperValidator:
           - 50 pts : couverture des champs (pondérée par FieldSpec.weight)
           - 10 pts : cohérence des valeurs (prix dans range, années valides…)
           - 10 pts : santé technique (mojibake, images accessibles)
+
+        Les ``FieldSpec.conditional_on`` sont respectés : si un champ ne
+        s'applique qu'à certains produits (ex: kilometrage sur les occasions),
+        sa couverture est calculée sur le sous-ensemble pertinent. Si aucun
+        produit ne matche la condition, le champ est jugé non-applicable et
+        crédite ses points pleins (n'aurait aucun sens de pénaliser un
+        concessionnaire 100% neuf pour l'absence de kilométrage).
         """
         if not products:
             return 0, []
@@ -193,12 +218,25 @@ class ScraperValidator:
         coverage_pts = 50.0
 
         for field_spec in profile.fields:
-            cov = self._coverage(field_spec.name, products)
-            details.append(cov)
             field_max = coverage_pts * (field_spec.weight / total_weight)
+
+            # Sélectionne le sous-ensemble de produits sur lesquels le champ
+            # est censé être présent. Pour un champ universel, c'est la totalité.
+            applicable = [p for p in products
+                          if DomainProfile.field_applies_to(field_spec, p)]
+
+            cov = self._coverage(field_spec.name, applicable or products)
+            cov.expected = bool(applicable) or field_spec.conditional_on is None
+            details.append(cov)
 
             if field_spec.name == "prix" and price_absent_expected:
                 score += field_max  # bonus si absence attendue
+                continue
+
+            # Cas conditionnel sans aucun produit applicable → non testable,
+            # on accorde les points pleins (ex: site neuf-only vs kilometrage).
+            if field_spec.conditional_on and not applicable:
+                score += field_max
                 continue
 
             if cov.coverage > 0:
@@ -376,6 +414,10 @@ class ScraperValidator:
     def _add_warnings(self, report: ValidationReport, details: List[FieldCoverage],
                       strategy: ScrapingStrategy) -> None:
         for fd in details:
+            # Skip les warnings sur les champs non-applicables (ex: kilometrage
+            # sur un site 100% neuf) — ils ont déjà reçu leurs points pleins.
+            if not fd.expected:
+                continue
             if fd.coverage < 0.5 and fd.field_name not in ("sourceUrl", "sourceSite"):
                 report.warnings.append(f"{fd.field_name}: couverture {fd.coverage:.0%} (faible)")
 
@@ -384,53 +426,72 @@ class ScraperValidator:
 
     @staticmethod
     def weak_fields(report: ValidationReport, threshold: float = 0.9) -> List[str]:
-        """Retourne les champs avec couverture < threshold (par défaut 90%)."""
+        """Retourne les champs avec couverture < threshold (par défaut 90%).
+
+        Ignore les champs marqués non-applicables (``expected=False``) : ces
+        champs ont eu les points pleins au scoring, inutile de demander à
+        Claude de les corriger.
+        """
         skip = {"sourceUrl", "sourceSite"}
         return [
             fd.field_name for fd in report.field_details
-            if fd.coverage < threshold and fd.field_name not in skip
+            if fd.coverage < threshold
+            and fd.field_name not in skip
+            and fd.expected
         ]
 
     # ------------------------------------------------------------------
-    # Auto-correction via Gemini
+    # Auto-correction via Claude (remplace l'ancien Gemini)
     # ------------------------------------------------------------------
 
     def auto_correct(self, report: ValidationReport, generated: GeneratedScraper,
                      analysis: SiteAnalysis,
                      *, target_fields: Optional[List[str]] = None) -> Optional[str]:
-        """Tente une correction via Gemini.
+        """Tente une correction via Claude (anciennement Gemini).
 
         Modes:
           - Score < 80          → auto-correct global (comportement initial).
           - target_fields fourni → correction ciblée sur ces champs uniquement
             (utilisable même si le score global est bon mais qu'un champ
             critique est sous le seuil).
+
+        Délègue à :class:`ClaudeSupervisor.correct_scraper` qui s'occupe de :
+          - construire le prompt avec HTML live d'une page produit,
+          - valider la syntaxe ``ast.parse``,
+          - écrire le code sur disque + maj ``generated.code``,
+          - tracer dans ``scraper_cache/supervision/{slug}_audit.json``.
+
+        Retourne le nouveau code (déjà persisté) ou ``None``.
         """
         if not target_fields and report.score >= 80:
             return None
 
-        try:
-            from scraper_ai.gemini_client import GeminiClient
-            client = GeminiClient()
-        except Exception:
-            self._log("GeminiClient non disponible pour l'auto-correction")
+        supervisor = self._ensure_supervisor(generated)
+        if supervisor is None or not supervisor.enabled:
+            self._log("Aucun superviseur Claude disponible pour l'auto-correction")
             return None
 
-        if target_fields:
-            prompt = self._build_field_targeted_prompt(
-                report, generated, analysis, target_fields,
-            )
-        else:
-            prompt = self._build_correction_prompt(report, generated, analysis)
+        return supervisor.correct_scraper(
+            generated, analysis, report, target_fields=target_fields,
+        )
 
+    def _ensure_supervisor(self, generated: GeneratedScraper):
+        """Lazy-instancie un :class:`ClaudeSupervisor` si aucun n'a été injecté.
+
+        Permet d'utiliser ``ScraperValidator`` en standalone (ex: depuis
+        ``--check`` / ``--check-all``) sans casser l'API publique.
+        """
+        if self.supervisor is not None:
+            return self.supervisor
         try:
-            result = client.call(prompt, show_prompt=False, response_mime_type="text/plain")
-            if isinstance(result, str) and "class " in result:
-                return result
+            from .claude_supervisor import ClaudeSupervisor
+            self.supervisor = ClaudeSupervisor(slug=generated.slug, verbose=self.verbose)
+            if generated.slug:
+                self.supervisor.set_slug(generated.slug)
         except Exception as e:
-            self._log(f"Gemini auto-correction échouée: {e}")
-
-        return None
+            self._log(f"Init ClaudeSupervisor échoué: {type(e).__name__}: {e}")
+            return None
+        return self.supervisor
 
     def _build_field_targeted_prompt(self, report: ValidationReport,
                                      generated: GeneratedScraper,
@@ -740,10 +801,22 @@ def _sanitize(product: Dict) -> Dict:
     return out
 
 
+# Plafond strict d'URLs scrapées en validation. Sans ça, valider un site
+# avec 1733 produits prend 180s+ et fait timeout systématiquement. La
+# validation cherche juste à confirmer que le scraper extrait correctement
+# les champs cibles — un échantillon de 30 URLs suffit largement.
+VALIDATION_MAX_URLS = 30
+
+
 def _run_scraper_subprocess(module_name: str, class_name: str,
-                             categories: List[str], conn) -> None:
+                             categories: List[str], queue,
+                             max_urls: int = VALIDATION_MAX_URLS) -> None:
     """Exécuté dans un sous-processus séparé pour isoler le scraper.
-    Communique avec le parent via une Connection Pipe."""
+
+    Patche ``discover_product_urls`` pour limiter strictement l'échantillon
+    testé à ``max_urls`` (défaut 30). Tronque les valeurs longues du payload
+    avant de l'envoyer via Queue (évite la sérialisation de gros HTML/base64).
+    """
     import importlib as _imp
     payload: Dict[str, object] = {"products": [], "error": ""}
     try:
@@ -756,19 +829,50 @@ def _run_scraper_subprocess(module_name: str, class_name: str,
         if hasattr(scraper, "WORKERS"):
             scraper.WORKERS = 3
         scraper.HTTP_TIMEOUT = 25
-        # Certains scrapers (PowerGO/Motoplex et descendants) utilisent un
-        # DETAIL_TIMEOUT distinct pour les pages détail — on le réduit aussi
-        # pour rester cohérent avec HTTP_TIMEOUT en mode validation.
         if hasattr(scraper, "DETAIL_TIMEOUT"):
             scraper.DETAIL_TIMEOUT = 25
 
+        # Patch discover_product_urls pour ne valider qu'un échantillon.
+        # Crucial pour les sites de >100 produits (sinon 180s timeout).
+        original_discover = scraper.discover_product_urls
+
+        def limited_discover(categories=None):
+            urls = original_discover(categories=categories)
+            if isinstance(urls, list) and len(urls) > max_urls:
+                return urls[:max_urls]
+            return urls
+
+        scraper.discover_product_urls = limited_discover
+
         result = scraper.scrape(categories=categories, inventory_only=False)
-        payload["products"] = result.get("products", [])
+        payload["products"] = _truncate_products_for_queue(
+            result.get("products", []),
+        )
     except Exception as e:
         import traceback
         payload["error"] = f"{type(e).__name__}: {str(e)[:500]}\n{traceback.format_exc()[-1500:]}"
     try:
-        conn.send(payload)
-        conn.close()
+        queue.put(payload, timeout=10)
     except Exception:
         pass
+
+
+def _truncate_products_for_queue(products: List[Dict]) -> List[Dict]:
+    """Tronque les valeurs longues pour que la sérialisation Queue reste rapide.
+
+    Le scoring du validator n'a besoin que de savoir quels champs sont
+    présents et leur format approximatif — pas du contenu intégral des
+    descriptions de 5KB ni des listes de 30 images en base64.
+    """
+    out: List[Dict] = []
+    for p in products:
+        clean: Dict = {}
+        for k, v in p.items():
+            if isinstance(v, str) and len(v) > 500:
+                clean[k] = v[:500]
+            elif isinstance(v, list) and len(v) > 5:
+                clean[k] = v[:5]
+            else:
+                clean[k] = v
+        out.append(clean)
+    return out

@@ -9,10 +9,16 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class SearchQuery:
-    """Requête utilisateur normalisée."""
+    """Requête utilisateur normalisée.
+
+    Supporte deux modes de produits :
+      - Véhicule : marque + modèle + année (pour concessionnaires moto/auto/powersport).
+      - Générique : marque libre + categorie + keywords (pour Amazon, eBay, Shopify, …).
+    Les deux modes peuvent coexister sur la même requête.
+    """
     raw_text: str = ""
 
-    # --- Critères structurés ---
+    # --- Critères structurés véhicules ---
     marque: Optional[str] = None
     modele: Optional[str] = None
     annee: Optional[int] = None             # année exacte si donnée
@@ -25,6 +31,18 @@ class SearchQuery:
     couleur: Optional[str] = None
     keywords: List[str] = field(default_factory=list)  # mots restants (modèle composé, options…)
 
+    # --- Critères produits génériques (e-commerce) ---
+    categorie: Optional[str] = None         # libellé libre ('électronique', 'mode'…)
+    sku: Optional[str] = None               # numéro de pièce / EAN si fourni
+    is_generic_product: bool = False        # True si la requête ne ressemble pas à un véhicule
+                                            # → autorise les marques inconnues + désactive les vetos
+
+    # --- Pré-tri par catégorie (taxonomie) ---
+    # Path complet dans l'arbre de catégories (cf. categories.py), ex:
+    # 'vehicule.moto', 'electronique.cellulaire', 'accessoire.accessoire-moto'.
+    # Quand défini, route les adapters via SearchAdapter.applies_to().
+    category_path: Optional[str] = None
+
     # --- Limites de recherche ---
     max_results: int = 50
     min_score: float = 0.3                  # rejeter les hits sous ce score
@@ -35,6 +53,39 @@ class SearchQuery:
                  f"y={self.annee or self.annee_min or '?'}",
                  f"px={self.prix_min or 0}-{self.prix_max or '∞'}"]
         return " | ".join(parts)
+
+    def search_text(self) -> str:
+        """Retourne la meilleure forme textuelle de la requête à envoyer à
+        une API marketplace (eBay, Shopify, …).
+
+        En mode générique : on retourne le raw_text débarrassé des marqueurs
+        prix/année (qui pollueraient la recherche full-text). L'utilisateur a
+        écrit sa requête dans un ordre qui a du sens — on le préserve.
+
+        En mode véhicule : on reconstruit "marque modele" qui est le format
+        attendu par les marketplaces véhicule (AutoTrader, etc.).
+        """
+        if self.is_generic_product and self.raw_text:
+            text = self.raw_text
+            # Retire les marqueurs prix : "<", "max:", "$1234"...
+            import re as _re
+            text = _re.sub(r"<\s*\d[\d,.\s]*\$?", " ", text)
+            text = _re.sub(r"\b(max|maximum|min|minimum|moins de|under|over|plus de|above|below)\s*[:.]\s*\d[\d,.\s]*\$?",
+                           " ", text, flags=_re.IGNORECASE)
+            text = _re.sub(r"\d[\d,.\s]*\$", " ", text)
+            text = _re.sub(r"\s+", " ", text).strip()
+            return text or self.raw_text.strip()
+
+        bits: List[str] = []
+        if self.marque:
+            bits.append(self.marque)
+        if self.modele:
+            bits.append(self.modele)
+        for kw in self.keywords:
+            if kw and kw not in bits:
+                bits.append(kw)
+        text = " ".join(bits).strip()
+        return text or self.raw_text.strip()
 
 
 @dataclass

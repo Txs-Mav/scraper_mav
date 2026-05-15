@@ -15,4 +15,10 @@ try:
     GENERATED_DOMAINS['adrenalinesports.ca'] = 'adrenalinesports'
 except ImportError:
     pass
+try:
+    from .smsport import SmsportScraper
+    GENERATED_SCRAPERS['smsport'] = SmsportScraper
+    GENERATED_DOMAINS['smsport.ca'] = 'smsport'
+except ImportError:
+    pass
 

@@ -41,6 +41,16 @@ class FieldSpec:
     api_keys: List[str] = field(default_factory=list)      # clés API typiques (lowercase)
     parser: str = "text"                        # 'text' | 'price' | 'int' | 'year' | 'url' | 'image_list'
 
+    # Champ conditionnel : la couverture n'est évaluée QUE sur le sous-ensemble
+    # de produits dont les champs matchent ce dict. Exemple :
+    #   conditional_on={"etat": "occasion"}
+    # → kilometrage n'est évalué que sur les produits etat='occasion'.
+    # Si aucun produit ne matche, le champ est considéré non-applicable et
+    # crédite les points pleins (cas d'un site 100% véhicules neufs).
+    # La comparaison est insensible à la casse et accepte une str, une liste
+    # de str, ou un dict {champ: valeur}. Vide = champ toujours applicable.
+    conditional_on: Optional[Dict[str, object]] = None
+
 
 @dataclass
 class ValidationRanges:
@@ -59,6 +69,11 @@ class DomainProfile:
 
     # --- Découverte ---
     nav_keywords: List[str] = field(default_factory=list)
+    # Regex (chaînes) appliquées sur le texte ET le path des liens. Compilées
+    # à la volée en mode insensible à la casse. Permet d'attraper les nav
+    # custom non couvertes par les substring `nav_keywords` (ex: '/v[ée]hicules?(/|$)').
+    # Rétrocompat : vide par défaut → seuls nav_keywords sont utilisés.
+    nav_patterns: List[str] = field(default_factory=list)
     excluded_paths: List[str] = field(default_factory=list)
 
     # --- Détection produit ---
@@ -82,6 +97,33 @@ class DomainProfile:
             if f.name == name:
                 return f
         return None
+
+    @staticmethod
+    def field_applies_to(field_spec: "FieldSpec", product: Dict) -> bool:
+        """Indique si un FieldSpec.conditional_on est satisfait par un produit.
+
+        Sans condition (``conditional_on`` vide ou None), retourne True
+        (champ universellement applicable). Sinon, chaque clé du dict doit
+        matcher la valeur correspondante du produit. Les valeurs attendues
+        peuvent être une str unique ou une liste (OR logique). Comparaison
+        insensible à la casse, espaces ignorés.
+        """
+        cond = field_spec.conditional_on or {}
+        if not cond:
+            return True
+        for key, expected in cond.items():
+            actual = product.get(key)
+            if actual is None:
+                return False
+            actual_norm = str(actual).strip().lower()
+            if isinstance(expected, (list, tuple, set)):
+                expected_set = {str(e).strip().lower() for e in expected}
+                if actual_norm not in expected_set:
+                    return False
+            else:
+                if actual_norm != str(expected).strip().lower():
+                    return False
+        return True
 
     def required_fields(self) -> List[FieldSpec]:
         return [f for f in self.fields if f.required]
@@ -118,6 +160,17 @@ AUTO_PROFILE = DomainProfile(
         "hybrid", "hybride", "electric", "électrique", "phev", "ev",
         "luxury", "sport",
         "search", "recherche", "browse", "parcourir", "showroom",
+    ],
+    nav_patterns=[
+        # Couvre les variantes accentuées et pluriels que les keywords substring
+        # ratent souvent (ex: '/Vehicules-neufs/', '/véhicule/', '/inventory.html').
+        # Le délimiteur après le mot autorise -, _, /, fin de chaîne ou .html.
+        r"/v[eé]hicules?(?:[\-_/]|$|\.html)",
+        r"/(?:neuf|usag[eé]|occasion|pre[\-_]?owned|certified)s?(?:[\-_/]|$|\.html)",
+        r"/inventaire(?:[\-_/]|$)",
+        r"/inventory(?:[\-_/]|$|\.html)",
+        r"/(?:motos?|motoneiges?|vtt|atv|side[\-_]by[\-_]side|sxs)(?:[\-_/]|$)",
+        r"/(?:showroom|catalog(?:ue)?)(?:[\-_/]|$)",
     ],
     excluded_paths=[
         "/contact", "/nous-contacter", "/about", "/a-propos",
@@ -166,14 +219,23 @@ AUTO_PROFILE = DomainProfile(
                   jsonld_keys=["modelDate", "vehicleModelDate", "productionDate"],
                   css_hints=[".year", ".annee", "[itemprop='vehicleModelDate']"],
                   api_keys=["year", "annee", "modelyear", "model_year"]),
+        # Kilométrage et VIN ne s'appliquent qu'aux véhicules d'occasion.
+        # Sur un concessionnaire 100% neuf, leur absence est normale et ne
+        # doit pas pénaliser le score. La condition accepte plusieurs valeurs
+        # car certains sites utilisent 'occasion', 'used', 'pre-owned',
+        # 'preowned', 'usage' ou 'usagé' — on les couvre tous.
         FieldSpec("kilometrage", weight=4, coverage_threshold=0.5, parser="int",
                   jsonld_keys=["mileageFromOdometer.value", "mileage"],
                   css_hints=[".mileage", ".kilometrage", ".km"],
-                  api_keys=["mileage", "kilometrage", "km", "odometer"]),
+                  api_keys=["mileage", "kilometrage", "km", "odometer"],
+                  conditional_on={"etat": ["occasion", "used", "pre-owned",
+                                            "preowned", "usage", "usagé"]}),
         FieldSpec("vin", weight=3, coverage_threshold=0.5,
                   jsonld_keys=["vehicleIdentificationNumber", "vin"],
                   css_hints=["[itemprop='vehicleIdentificationNumber']", ".vin"],
-                  api_keys=["vin", "vinnumber", "vin_number"]),
+                  api_keys=["vin", "vinnumber", "vin_number"],
+                  conditional_on={"etat": ["occasion", "used", "pre-owned",
+                                            "preowned", "usage", "usagé"]}),
         FieldSpec("couleur", weight=3, coverage_threshold=0.5,
                   jsonld_keys=["color"],
                   css_hints=[".color", ".couleur"],
@@ -212,6 +274,12 @@ ECOMMERCE_PROFILE = DomainProfile(
         "kids", "enfants", "junior",
         "shop-all", "shop-by",
         "search", "recherche", "browse", "parcourir",
+    ],
+    nav_patterns=[
+        r"/(products?|produits?)(?:[\-_/]|$)",
+        r"/(collections?|categor(?:y|ies|ie|ies))(?:[\-_/]|$)",
+        r"/(shop|boutique|store)(?:[\-_/]|$)",
+        r"/(sale|soldes|promo|outlet|deals?)(?:[\-_/]|$)",
     ],
     excluded_paths=[
         "/contact", "/about", "/a-propos",

@@ -538,6 +538,13 @@ def find_matching_products(reference_products: List[dict], comparison_products: 
             'annee': best_match.get('annee'),
             'etat': best_match.get('etat'),
             'sourceCategorie': best_match.get('sourceCategorie'),
+            # Reporter le compte de doublons du référent pour que le badge x2
+            # reste visible dans l'onglet « Comparés » (où productsRefOnly est
+            # vide côté front et l'index `refInfoBy*` ne peut pas être rempli).
+            'quantity': best_match.get('quantity', 1),
+            'groupedUrls': best_match.get('groupedUrls') or (
+                [best_match.get('sourceUrl')] if best_match.get('sourceUrl') else []
+            ),
         }
 
         if not product.get('sourceSite'):

@@ -399,7 +399,7 @@ function SourceCard({
   const firstKey = source.fields[0]?.key
   const item = firstKey ? itemsByKey[firstKey] : undefined
   const lastTestStatus = item?.last_test_status ?? "never"
-  const lastTestAt = item?.last_test_at
+  const lastTestAt = item?.last_test_at ?? null
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">

@@ -16,8 +16,30 @@ from urllib.parse import urlparse
 import requests
 
 from .browser_agent import BrowserAgent, CapturedResponse
-from .models import DetectedAPI
+from .models import AuthContext, DetectedAPI
 from .url_utils import extract_path_field
+
+# Headers à capturer dans l'AuthContext quand ils sont envoyés par le navigateur.
+# Cette liste couvre les schémas d'auth les plus fréquents (Bearer, CSRF, Algolia,
+# Shopify, Trace-Id, etc.). Les noms sont normalisés en lowercase à la comparaison.
+AUTH_HEADER_WHITELIST: tuple = (
+    "authorization",
+    "x-csrf-token", "x-xsrf-token", "x-csrf",
+    "x-trace-id", "x-request-id", "x-correlation-id",
+    "x-api-key", "x-api-token",
+    "x-shopify-storefront-access-token", "x-shopify-checkout-version",
+    "x-algolia-application-id", "x-algolia-api-key",
+    "x-amz-user-agent", "x-amz-date",
+    "x-client-id", "x-client-version",
+    "x-tenant-id",
+)
+# Tout header commençant par ces préfixes est aussi pris (catch-all custom)
+AUTH_HEADER_PREFIXES: tuple = ("x-",)
+# Headers à NE JAMAIS exposer (gérés par requests/le navigateur)
+AUTH_HEADER_BLACKLIST: tuple = (
+    "host", "connection", "accept-encoding",
+    "cookie", "content-length", "origin",
+)
 
 PRODUCT_FIELD_SIGNALS = {
     "name", "nom", "title", "titre", "vehiclename", "vehicle_name",
@@ -69,7 +91,20 @@ def intercept_apis(
             return []
 
     apis: List[DetectedAPI] = []
+    # Mémorise la première réponse complète par URL canonique pour permettre
+    # le test "curseur signé" (P3.3) après dédup. Clé = URL canonique de l'API,
+    # valeur = (data brute, headers req, body req).
+    api_first_response: Dict[str, Dict[str, Any]] = {}
     t_start = _time.time()
+
+    def _capture_first_response(api: DetectedAPI, cap: Dict[str, Any]) -> None:
+        if api.url in api_first_response:
+            return
+        api_first_response[api.url] = {
+            "data": cap.get("data"),
+            "headers": dict(cap.get("headers") or {}),
+            "request_body_json": cap.get("request_body_json"),
+        }
 
     try:
         for i, listing_url in enumerate(listing_urls[:3]):
@@ -80,11 +115,15 @@ def intercept_apis(
             if cached:
                 _log_api(f"[APIInterceptor]   {len(cached)} réponses réutilisées du cache (1.3bis), analyse...")
                 for cap in cached:
-                    api = _analyze_captured_response(_capture_to_dict(cap))
+                    cap_dict = _capture_to_dict(cap)
+                    api = _analyze_captured_response(
+                        cap_dict, warm_up_url=listing_url,
+                    )
                     if api:
                         _log_api(f"[APIInterceptor]   -> API trouvée: {cap.url[:80]} "
                                  f"(confiance={api.confidence:.0%}, {api.page_size} items)")
                         apis.append(api)
+                        _capture_first_response(api, cap_dict)
                 continue
 
             # Sinon, on rend l'URL avec le BrowserAgent et on capture en live.
@@ -111,11 +150,15 @@ def intercept_apis(
             _log_api(f"[APIInterceptor]   Render OK en {result.elapsed_ms}ms — "
                      f"{len(result.captured_responses)} réponses JSON capturées, analyse...")
             for cap in result.captured_responses:
-                api = _analyze_captured_response(_capture_to_dict(cap))
+                cap_dict = _capture_to_dict(cap)
+                api = _analyze_captured_response(
+                    cap_dict, warm_up_url=listing_url,
+                )
                 if api:
                     _log_api(f"[APIInterceptor]   -> API trouvée: {cap.url[:80]} "
                              f"(confiance={api.confidence:.0%}, {api.page_size} items)")
                     apis.append(api)
+                    _capture_first_response(api, cap_dict)
     finally:
         if own_agent and agent is not None:
             agent.close()
@@ -128,10 +171,115 @@ def intercept_apis(
         api.accessible_sans_browser = _test_direct_access(api)
         _log_api(f"[APIInterceptor]   -> direct={api.accessible_sans_browser}")
 
+    # P3.3 : test "curseur signé" sur les APIs cursor-paginées qui sont à la fois
+    # accessibles sans browser ET déjà rejouables (les non-rejouables sont déjà
+    # marquées par persistedQuery). Coût borné à 1 requête par API gagnante.
+    for api in merged:
+        if not api.is_replayable or not api.accessible_sans_browser:
+            continue
+        if api.pagination_type != "cursor":
+            continue
+        first = api_first_response.get(api.url)
+        if not first:
+            continue
+        try:
+            signed = _test_cursor_signed(api, first)
+        except Exception as e:
+            _log_api(f"[APIInterceptor]   Test curseur échoué pour {api.url[:60]}: "
+                     f"{type(e).__name__}: {e}")
+            signed = False
+        if signed:
+            api.cursor_is_signed = True
+            api.is_replayable = False
+            _log_api(f"[APIInterceptor]   -> curseur signé détecté pour {api.url[:60]} "
+                     f"→ is_replayable=False (fallback HTML)")
+
     merged.sort(key=lambda a: a.confidence, reverse=True)
     total_elapsed = _time.time() - t_start
     _log_api(f"[APIInterceptor] Terminé en {total_elapsed:.1f}s — {len(merged)} API(s)")
     return merged
+
+
+def _test_cursor_signed(api: DetectedAPI, first: Dict[str, Any]) -> bool:
+    """Teste si le curseur de pagination est signé/opaque côté serveur (P3.3).
+
+    Stratégie : on extrait le curseur "next" de la première réponse, on le mute
+    d'un caractère (substitution Base64-safe), puis on rejoue la requête. Si le
+    serveur renvoie 401/403 ou un message du type "invalid signature/cursor",
+    le curseur est signé → l'API n'est pas rejouable au-delà des pages capturées.
+
+    Renvoie True si signé, False sinon (ou en cas d'échec du test, on est
+    conservateur).
+    """
+    if not api.next_cursor_field:
+        return False
+    cursor = extract_path_field(first.get("data"), api.next_cursor_field)
+    if not isinstance(cursor, str) or len(cursor) < 4:
+        return False
+
+    # Mutation : on flippe le dernier caractère sur un alphabet Base64-safe.
+    last = cursor[-1]
+    replacement = "A" if last != "A" else "B"
+    mutated_cursor = cursor[:-1] + replacement
+
+    headers = dict(api.headers or {})
+    method = (api.method or "GET").upper()
+
+    try:
+        if api.is_graphql or method == "POST":
+            body = dict(first.get("request_body_json") or api.request_body_json or {})
+            variables = dict(body.get("variables") or {})
+            # On essaye 'after' / 'cursor' / la pagination_var connue
+            cursor_var = api.graphql_pagination_var or "after"
+            if cursor_var in variables:
+                variables[cursor_var] = mutated_cursor
+            else:
+                variables["after"] = mutated_cursor
+            body["variables"] = variables
+            resp = requests.post(api.url, json=body, headers=headers, timeout=10)
+        else:
+            # GET : on injecte le curseur muté dans la query string
+            from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+            parsed = urlparse(api.url)
+            qs = parse_qs(parsed.query, keep_blank_values=True)
+            cursor_param = api.pagination_param or "cursor"
+            qs[cursor_param] = [mutated_cursor]
+            mutated_url = urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
+            resp = requests.get(mutated_url, headers=headers, timeout=10)
+    except Exception:
+        return False
+
+    if resp.status_code in (401, 403):
+        return True
+    if resp.status_code == 400:
+        # Beaucoup d'APIs renvoient 400 avec un message explicite quand le
+        # curseur est invalide/altéré.
+        try:
+            body_text = resp.text.lower()[:2000]
+        except Exception:
+            body_text = ""
+        if any(needle in body_text for needle in (
+            "invalid signature", "invalid cursor", "bad cursor",
+            "tampered", "cursor verification", "cursor mismatch",
+        )):
+            return True
+    # Cas spécial : la réponse renvoie 200 avec un payload d'erreur GraphQL
+    if "json" in resp.headers.get("content-type", "").lower():
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            errs = payload.get("errors")
+            if isinstance(errs, list) and any(
+                isinstance(e, dict) and any(
+                    needle in str(e).lower()
+                    for needle in ("signature", "invalid cursor", "tampered")
+                )
+                for e in errs
+            ):
+                return True
+    return False
 
 
 def _capture_to_dict(cap: CapturedResponse) -> Dict[str, Any]:
@@ -151,9 +299,19 @@ def _log_api(msg: str) -> None:
     print(f"  {msg}")
 
 
-def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:
+def _analyze_captured_response(
+    cap: Dict[str, Any],
+    *,
+    warm_up_url: str = "",
+) -> Optional[DetectedAPI]:
     """Analyse une réponse capturée pour déterminer si elle contient des données produit.
-    Supporte GET, POST et GraphQL."""
+    Supporte GET, POST et GraphQL.
+
+    Args:
+        warm_up_url : URL listing parente d'où l'API est partie. Stockée
+            dans l'AuthContext pour permettre au scraper généré de répliquer
+            la session (warm-up GET) avant de rejouer l'API directement.
+    """
     data = cap["data"]
     items = _find_product_array(data)
     if not items:
@@ -247,6 +405,44 @@ def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:
     if next_cursor_field and pagination_type != "cursor":
         pagination_type = "cursor"
 
+    # --- P3.1 : Capture de l'AuthContext ---
+    raw_headers = cap.get("headers") or {}
+    custom_headers: Dict[str, str] = {}
+    cookie_str = ""
+    for k, v in raw_headers.items():
+        kl = str(k).lower()
+        if kl == "cookie":
+            cookie_str = str(v)
+            continue
+        if kl in AUTH_HEADER_BLACKLIST:
+            continue
+        if kl in AUTH_HEADER_WHITELIST or any(kl.startswith(p) for p in AUTH_HEADER_PREFIXES):
+            custom_headers[str(k)] = str(v)
+
+    cookies_dict = _parse_cookie_header(cookie_str) if cookie_str else {}
+
+    auth_context = AuthContext(
+        cookies=cookies_dict,
+        custom_headers=custom_headers,
+        warm_up_url=warm_up_url,
+        warm_up_payload=None,
+    )
+
+    # --- P3.2 : Détection de persisted GraphQL queries ---
+    # Quand un client envoie `extensions.persistedQuery.sha256Hash` au lieu de
+    # la requête complète, le serveur exige souvent que ce hash soit pré-enregistré
+    # (APQ). Pour notre scraper, l'API n'est PAS rejouable telle quelle — il faut
+    # un fallback HTML.
+    persisted_hash = ""
+    is_replayable = True
+    if isinstance(req_body_json, dict):
+        ext = req_body_json.get("extensions") or {}
+        if isinstance(ext, dict):
+            pq = ext.get("persistedQuery") or {}
+            if isinstance(pq, dict) and pq.get("sha256Hash"):
+                persisted_hash = str(pq["sha256Hash"])
+                is_replayable = False
+
     return DetectedAPI(
         url=canonical_url,
         method=method,
@@ -268,7 +464,28 @@ def _analyze_captured_response(cap: Dict[str, Any]) -> Optional[DetectedAPI]:
         graphql_variables=graphql_vars,
         graphql_pagination_var=graphql_pagination_var,
         confidence=confidence,
+        auth_context=auth_context,
+        persisted_query_hash=persisted_hash,
+        is_replayable=is_replayable,
     )
+
+
+def _parse_cookie_header(cookie_str: str) -> Dict[str, str]:
+    """Parse un header 'Cookie: a=1; b=2; c=3' en dict {a:1, b:2, c:3}.
+    Robuste aux espaces et aux cookies sans valeur."""
+    out: Dict[str, str] = {}
+    if not cookie_str:
+        return out
+    for part in cookie_str.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" in part:
+            k, v = part.split("=", 1)
+            out[k.strip()] = v.strip()
+        else:
+            out[part] = ""
+    return out
 
 
 def _detect_cursor_fields(data: Any) -> tuple:

@@ -38,6 +38,7 @@ from .domain_profiles import (
 )
 from .listing_detector import best_listing, measure_completeness
 from .stealth import stealth_headers, random_user_agent
+from .template_clusters import cluster_detail_templates
 from .url_filters import (
     classify_listing as _classify_listing_helper,
     classify_state, fix_mojibake, is_product_url_for_site, normalize_url,
@@ -289,6 +290,16 @@ class SiteAnalyzer:
         self._detect_warm_up(analysis, url)
         self._log(f"    -> warm_up={analysis.warm_up_required} ({time.time()-t0:.1f}s)")
 
+        # 1.8bis Détection de variantes de templates de fiche détail (P2.2)
+        self._log("1.8bis Clustering des templates de fiche détail...")
+        t0 = time.time()
+        try:
+            self._detect_detail_template_clusters(analysis)
+        except Exception as e:
+            self._log(f"    Clustering templates échoué: {type(e).__name__}: {e}")
+        self._log(f"    -> {len(analysis.detail_template_clusters)} cluster(s) "
+                  f"({time.time()-t0:.1f}s)")
+
         # Slug + nom du site
         analysis.slug = self._generate_slug(analysis)
         if not analysis.site_name:
@@ -326,6 +337,13 @@ class SiteAnalyzer:
         # Utilise le DomainProfile actif (auto, ecommerce, immo, jobs…)
         nav_keywords = [kw.lower() for kw in self.profile.nav_keywords]
         excluded = [p.lower() for p in self.profile.excluded_paths]
+        # Compile les nav_patterns (regex) du profil — None si vide.
+        nav_patterns_compiled: List[re.Pattern] = []
+        for pat in getattr(self.profile, "nav_patterns", []) or []:
+            try:
+                nav_patterns_compiled.append(re.compile(pat, re.IGNORECASE))
+            except re.error as e:
+                self._log(f"    nav_pattern invalide ignoré '{pat}': {e}")
 
         domain = analysis.domain
         listing_candidates = []
@@ -345,7 +363,9 @@ class SiteAnalyzer:
             ):
                 continue
 
-            matched = self._matches_nav_keyword(text_lower, path_lower, nav_keywords)
+            matched = self._matches_nav_keyword(
+                text_lower, path_lower, nav_keywords, nav_patterns_compiled,
+            )
             if matched:
                 listing_candidates.append((link_url, link_text))
 
@@ -423,25 +443,46 @@ class SiteAnalyzer:
         return False
 
     @staticmethod
-    def _matches_nav_keyword(text: str, path: str, keywords: List[str]) -> bool:
+    def _matches_nav_keyword(
+        text: str,
+        path: str,
+        keywords: List[str],
+        patterns: Optional[List[re.Pattern]] = None,
+    ) -> bool:
         """Match un mot-clé sur le texte du lien (libre) ou comme segment du path
-        (entre / et /). Évite les faux positifs type 'neuf' ⊂ 'inventaire-neufs-2024'."""
-        if not keywords:
+        (entre / et /). Évite les faux positifs type 'neuf' ⊂ 'inventaire-neufs-2024'.
+
+        Si ``patterns`` est fourni (DomainProfile.nav_patterns compilées), chaque
+        regex est aussi testée sur le texte ET le path — pour rattraper les
+        variantes accentuées et pluriels que le substring matching rate.
+        """
+        if not keywords and not patterns:
             return False
         # Texte du lien : substring suffit (le lien dit ce qu'il est).
-        for kw in keywords:
+        for kw in keywords or []:
             if kw and kw in text:
                 return True
         # Path : on exige un segment complet pour éviter 'neuf' ⊂ '/...-neuf-2024-id123'.
         segments = [s for s in path.split("/") if s]
         for seg in segments:
-            if seg in keywords:
+            if seg in (keywords or []):
+                return True
+        # Regex (DomainProfile.nav_patterns) — testées sur path en priorité, puis texte.
+        for rx in patterns or []:
+            if rx.search(path) or rx.search(text):
                 return True
         return False
 
     def _discover_nav_links(self, soup: BeautifulSoup, base_url: str) -> List[Tuple[str, str]]:
         """Découvre les liens de navigation en élargissant aux patterns modernes
-        (ARIA, mega-menu, footer-sitemap, drawer mobile)."""
+        (ARIA, mega-menu, footer-sitemap, drawer mobile).
+
+        Stratégie en 2 passes :
+          1. Passe BS4 sur le HTML statique (rapide, couvre la majorité des sites).
+          2. Si la page est SPA (analysis.needs_playwright) ou que la passe 1 a
+             ramené trop peu de liens (<5), passe Playwright avec traversée
+             Shadow DOM pour récupérer les Web Components fermés.
+        """
         domain = urlparse(base_url).netloc
         links: List[Tuple[str, str]] = []
         seen = set()
@@ -470,7 +511,56 @@ class SiteAnalyzer:
                 seen.add(full)
                 links.append((full, a.get_text(strip=True)))
 
+        # Passe Playwright + Shadow DOM si la passe statique est pauvre ou si
+        # le site est marqué SPA. Coût borné à un seul rendu.
+        shadow_links = self._discover_shadow_dom_links(base_url, domain, seen)
+        if shadow_links:
+            self._log(f"    +{len(shadow_links)} liens via Shadow DOM walker")
+            for full, text in shadow_links:
+                if full not in seen:
+                    seen.add(full)
+                    links.append((full, text))
+
         return links
+
+    def _discover_shadow_dom_links(
+        self, base_url: str, domain: str, already_seen: set,
+    ) -> List[Tuple[str, str]]:
+        """Récupère les liens cachés dans les Shadow DOM via Playwright.
+        Renvoie [] si Playwright indisponible ou si la passe statique est déjà
+        riche (≥5 liens) et que le site n'est pas SPA."""
+        if not self.use_playwright:
+            return []
+        # Skip si on a déjà une nav riche et que le site n'a pas l'air SPA.
+        # On n'a pas encore needs_playwright ici (1.4 vient après 1.3) donc on
+        # se base sur le nombre de liens déjà ramassés.
+        if len(already_seen) >= 5:
+            return []
+        agent = self._get_browser_agent()
+        if agent is None:
+            return []
+        try:
+            raw = agent.extract_all_links_with_shadow(base_url)
+        except Exception as e:
+            self._log(f"    Shadow DOM walker échoué: {type(e).__name__}: {e}")
+            return []
+        out: List[Tuple[str, str]] = []
+        out_seen: set = set()
+        for item in raw:
+            href = item.get("href", "")
+            if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
+                continue
+            full = urljoin(base_url, href)
+            full = normalize_url(full, strip_tracking=True)
+            if not full:
+                continue
+            if urlparse(full).netloc.replace("www.", "") != domain.replace("www.", ""):
+                continue
+            if full in already_seen or full in out_seen:
+                continue
+            out_seen.add(full)
+            out.append((full, item.get("text", "")))
+        return out
 
     def _classify_listing(self, text: str, url: str) -> Tuple[str, str]:
         """Classifie un listing en (etat, source_categorie).
@@ -576,49 +666,78 @@ class SiteAnalyzer:
         html_str = str(soup)
         html_lower = html_str.lower()
 
-        spa_signals = 0
-        spa_reasons = []
-
+        # --- (1) Telemetry : signatures textuelles, pour diagnostic uniquement ---
+        # Plus utilisées comme décision SPA depuis P1.1 — la décision est désormais
+        # comportementale (cf. plus bas). On garde la liste pour les logs/health checks.
+        spa_signals_detected: List[str] = []
         if "__NEXT_DATA__" in html_str or "_next/static" in html_lower:
-            spa_signals += 2
-            spa_reasons.append("Next.js")
-
-        if "ng-app" in html_lower or "ng-controller" in html_lower or 'angular' in html_lower:
-            spa_signals += 2
-            spa_reasons.append("Angular")
-
+            spa_signals_detected.append("Next.js")
+        if "ng-app" in html_lower or "ng-controller" in html_lower or "angular" in html_lower:
+            spa_signals_detected.append("Angular")
         if "__react" in html_lower or "react-root" in html_lower or "data-reactroot" in html_lower:
-            spa_signals += 2
-            spa_reasons.append("React")
-
+            spa_signals_detected.append("React")
         if "__vue" in html_lower or "data-v-" in html_lower:
-            spa_signals += 2
-            spa_reasons.append("Vue.js")
-
+            spa_signals_detected.append("Vue.js")
         if "d2cmedia" in html_lower or "edealer" in html_lower:
-            spa_signals += 2
-            spa_reasons.append("D2C/eDealer")
-
+            spa_signals_detected.append("D2C/eDealer")
         if "dealer.com" in html_lower and "ddc-" in html_lower:
-            spa_signals += 2
-            spa_reasons.append("Dealer.com")
+            spa_signals_detected.append("Dealer.com")
 
         visible_text = soup.get_text(separator=" ", strip=True)
         html_size = len(html_str)
         text_ratio = len(visible_text) / max(html_size, 1)
         if html_size > 200000 and text_ratio < 0.05:
-            spa_signals += 1
-            spa_reasons.append(f"HTML lourd ({html_size//1000}K) mais peu de texte ({text_ratio:.1%})")
+            spa_signals_detected.append(f"HTML-lourd-{html_size//1000}k-text-{text_ratio:.0%}")
 
         scripts = soup.find_all("script", src=True)
-        bundle_scripts = [s["src"] for s in scripts if any(w in s["src"].lower() for w in ["bundle", "chunk", "main.", "app."])]
+        bundle_scripts = [s["src"] for s in scripts if any(
+            w in s["src"].lower() for w in ["bundle", "chunk", "main.", "app."]
+        )]
         if len(bundle_scripts) >= 3:
-            spa_signals += 1
-            spa_reasons.append(f"{len(bundle_scripts)} scripts bundle")
+            spa_signals_detected.append(f"bundles-{len(bundle_scripts)}")
 
-        if spa_signals >= 2:
-            analysis.needs_playwright = True
-            self._log(f"    SPA détecté: {', '.join(spa_reasons)}")
+        analysis.spa_signals_detected = spa_signals_detected
+        if spa_signals_detected:
+            self._log(f"    Signatures SPA (telemetry uniquement): {', '.join(spa_signals_detected)}")
+
+        # --- (2) Décision comportementale : static_count vs rendered_count ---
+        static_count = self._count_static_items(html_str, url)
+        analysis.spa_static_item_count = static_count
+        self._log(f"    Items statiques (HTML brut) détectés: {static_count}")
+
+        # Trigger rendu Playwright si :
+        #  - aucun item détecté en HTML brut, OU
+        #  - HTML très "vide" (text_ratio < 5% sur HTML > 200k) — symptôme classique de SPA hydraté.
+        should_probe_render = (
+            static_count == 0
+            or (html_size > 200_000 and text_ratio < 0.05)
+        )
+
+        if should_probe_render and self.use_playwright:
+            rendered_count = self._count_rendered_items(url)
+            if rendered_count is not None:
+                analysis.spa_rendered_item_count = rendered_count
+                self._log(f"    Items après rendu Playwright: {rendered_count} "
+                          f"(static={static_count})")
+                # Décision : on bascule en Playwright si le rendu débloque réellement
+                # des items (ratio 2x ou apparition à partir de zéro).
+                if (rendered_count >= 2 * max(static_count, 1)
+                        or (static_count == 0 and rendered_count >= 4)):
+                    analysis.needs_playwright = True
+                    self._log(f"    -> SPA confirmé comportementalement "
+                              f"(static={static_count} → rendered={rendered_count})")
+            else:
+                # BrowserAgent indisponible → garde-fou : on retombe sur l'heuristique
+                # textuelle historique pour ne pas régresser sur les sites où on ne peut
+                # pas mesurer dynamiquement.
+                if len(spa_signals_detected) >= 2:
+                    analysis.needs_playwright = True
+                    self._log(f"    -> Playwright indisponible, fallback signatures: "
+                              f"{', '.join(spa_signals_detected[:3])}")
+        elif not should_probe_render:
+            # HTML brut produit déjà des items ; pas besoin de Playwright pour la
+            # cartographie, indépendamment des frameworks détectés.
+            self._log(f"    -> rendu Playwright non nécessaire ({static_count} items en HTML brut)")
 
         infinite_scroll_signals = [
             "infinite-scroll", "infinitescroll", "infinite_scroll",
@@ -668,6 +787,44 @@ class SiteAnalyzer:
         if classes:
             return f"{tag}.{'.'.join(classes)}"
         return tag
+
+    def _count_static_items(self, html: str, url: str) -> int:
+        """Compte les items détectables en HTML brut via le détecteur statistique.
+        Retourne 0 si rien n'est trouvé. Utilisé par la décision SPA comportementale."""
+        try:
+            cand = best_listing(
+                html,
+                item_hints=self.profile.listing_item_hints,
+                base_url=url,
+                min_items=2,
+            )
+            return len(cand.items) if cand else 0
+        except Exception:
+            return 0
+
+    def _count_rendered_items(self, url: str) -> Optional[int]:
+        """Rend la page via Playwright et compte les items détectés statistiquement.
+        Retourne None si Playwright indisponible (signal pour le caller de retomber
+        sur le fallback signatures)."""
+        agent = self._get_browser_agent()
+        if agent is None:
+            return None
+        try:
+            # On capture aussi les réponses JSON : si 1.5 visite la même URL,
+            # il les rejouera sans recharger la page.
+            result = agent.render(url, capture_responses=True)
+        except Exception as e:
+            self._log(f"    BrowserAgent.render échoué: {type(e).__name__}: {e}")
+            return None
+        if not result.success or not result.html:
+            return None
+        # Mémorise le rendu pour 1.5 (api_interceptor)
+        self._home_render_cache[url] = {
+            "html": result.html,
+            "captured_responses": result.captured_responses,
+            "final_url": result.final_url,
+        }
+        return self._count_static_items(result.html, url)
 
     # ------------------------------------------------------------------
     # 1.4 Interception API (délégué à api_interceptor)
@@ -765,6 +922,42 @@ class SiteAnalyzer:
         self._detect_price_display_mode(analysis)
         self._log(f"    -> {analysis.price_display_mode.value} ({time.time()-t0:.1f}s)")
 
+    def _detect_detail_template_clusters(self, analysis: SiteAnalysis) -> None:
+        """Échantillonne 10-20 URLs détail et clusterise par signature DOM.
+        Stocke le résultat dans analysis.detail_template_clusters. Si un seul
+        cluster sort, le générateur garde son chemin nominal (rétrocompat)."""
+        urls: List[str] = []
+        # Source 1 : sitemap (déjà filtré sur les URLs produit)
+        if analysis.sitemap_urls:
+            urls.extend(analysis.sitemap_urls[:20])
+        # Source 2 : crawl des listings si on n'a pas assez d'URLs
+        if len(urls) < 10:
+            crawled = self._get_sample_detail_urls(analysis)
+            for u in crawled:
+                if u not in urls:
+                    urls.append(u)
+                    if len(urls) >= 20:
+                        break
+        if len(urls) < 4:
+            self._log(f"    Pas assez d'URLs détail ({len(urls)}) — skip clustering")
+            return
+
+        def _fetch(u: str) -> Optional[str]:
+            try:
+                resp = self.session.get(u, timeout=15)
+                if resp.status_code != 200:
+                    return None
+                return resp.text
+            except Exception:
+                return None
+
+        clusters = cluster_detail_templates(
+            urls,
+            fetch_html=_fetch,
+            log_fn=self._log,
+        )
+        analysis.detail_template_clusters = clusters
+
     def _get_sample_detail_urls(self, analysis: SiteAnalysis) -> List[str]:
         """Récupère quelques URLs de pages détail pour tester les sélecteurs."""
         if analysis.sitemap_urls:
@@ -815,15 +1008,23 @@ class SiteAnalyzer:
         return []
 
     def _detect_listing_selectors(self, listing_url: str) -> Optional[SelectorMap]:
-        """Détecte les sélecteurs d'un listing : (1) hints DomainProfile, (2) candidats
-        e-commerce communs, (3) détecteur statistique en fallback."""
+        """Détecte les sélecteurs d'un listing.
+
+        Ordre (P2.1) :
+          1. Détecteur statistique d'abord (indépendant du naming, plus robuste).
+          2. Si un candidat statistique sort, on tente les candidats fixes
+             (DomainProfile hints + e-commerce communs). Si l'un d'eux capture
+             le même ensemble d'items à >80%, on prend le sélecteur fixe (plus
+             stable et lisible) tout en gardant l'info statistique.
+          3. Si le détecteur statistique ne sort rien : fallback historique
+             (essai sériel des candidats fixes).
+        """
         try:
             resp = self.session.get(listing_url, timeout=15)
             if resp.status_code != 200:
                 return None
             soup = BeautifulSoup(resp.text, "lxml")
 
-            # 1) Hints du DomainProfile actif
             profile_candidates = [(s, "a") for s in self.profile.listing_item_hints]
             base_candidates = [
                 ("article.product-miniature", "h3 a, .product-title a"),
@@ -837,6 +1038,50 @@ class SiteAnalyzer:
             ]
             candidates = profile_candidates + base_candidates
 
+            # 1) Statistique en premier
+            cand = best_listing(
+                resp.text,
+                item_hints=self.profile.listing_item_hints,
+                base_url=listing_url,
+                min_items=4,
+            )
+
+            if cand:
+                stat_sel = cand.selector
+                stat_signatures = {self._item_signature(it) for it in cand.items}
+                self._log(f"      Statistical detector: '{stat_sel}' "
+                          f"(score={cand.score:.2f}, {len(cand.items)} items)")
+
+                # 2) Validation : un candidat fixe capture-t-il (presque) le même set ?
+                best_fixed: Optional[Tuple[str, str, List, float]] = None
+                for item_sel, link_sel in candidates:
+                    try:
+                        items = soup.select(item_sel)
+                    except Exception:
+                        continue
+                    if len(items) < 4:
+                        continue
+                    fixed_signatures = {self._item_signature(it) for it in items}
+                    overlap_n = len(stat_signatures & fixed_signatures)
+                    overlap_ratio = overlap_n / max(
+                        len(stat_signatures), len(fixed_signatures), 1,
+                    )
+                    if overlap_ratio >= 0.80 and (
+                        best_fixed is None or overlap_ratio > best_fixed[3]
+                    ):
+                        best_fixed = (item_sel, link_sel, items, overlap_ratio)
+
+                if best_fixed is not None:
+                    self._log(f"      Candidat fixe valide '{best_fixed[0]}' "
+                              f"(overlap={best_fixed[3]:.0%}) — utilisé comme sélecteur final")
+                    sm = self._build_listing_selector_map(
+                        best_fixed[2], best_fixed[0], best_fixed[1],
+                    )
+                else:
+                    sm = self._build_listing_selector_map(cand.items, stat_sel, "a")
+                return sm
+
+            # 3) Fallback : pas de candidat statistique → essai sériel des fixes (legacy)
             for item_sel, link_sel in candidates:
                 try:
                     items = soup.select(item_sel)
@@ -845,45 +1090,96 @@ class SiteAnalyzer:
                 if len(items) >= 4:
                     return self._build_listing_selector_map(items, item_sel, link_sel)
 
-            # 2) Fallback statistique
-            cand = best_listing(
-                resp.text,
-                item_hints=self.profile.listing_item_hints,
-                base_url=listing_url,
-                min_items=4,
-            )
-            if cand:
-                self._log(f"      Statistical detector: '{cand.selector}' "
-                          f"(score={cand.score:.2f}, {len(cand.items)} items)")
-                return self._build_listing_selector_map(cand.items, cand.selector, "a")
-
         except Exception:
             pass
         return None
 
-    def _build_listing_selector_map(self, items: List, item_sel: str, link_sel: str) -> SelectorMap:
-        """Construit un SelectorMap à partir d'un sample d'items détectés."""
-        sm = SelectorMap()
-        sm.listing_item = SelectorEntry(selector=item_sel, reliability=1.0)
-        sm.listing_link = SelectorEntry(selector=f"{item_sel} {link_sel}", reliability=1.0)
+    @staticmethod
+    def _item_signature(tag) -> str:
+        """Signature stable d'un élément pour comparer deux sélections d'items.
 
-        first = items[0]
-        price_text = first.get_text()
-        if re.search(r"\d[\d\s,.]*\$|\$[\d\s,.]+", price_text):
+        Combine tag + classes triées + premier href ancré. Ne dépend pas de
+        l'identité Python des objets Tag (utile car best_listing re-parse le HTML).
+        """
+        try:
+            classes = sorted(c for c in (tag.get("class") or []) if c)
+            href = ""
+            link = tag.find("a", href=True) if hasattr(tag, "find") else None
+            if link:
+                raw_href = link.get("href", "") or ""
+                href = raw_href.split("?")[0].split("#")[0].rstrip("/")
+            return f"{tag.name}|{','.join(classes[:3])}|{href}"
+        except Exception:
+            return f"{getattr(tag, 'name', '?')}|?"
+
+    def _build_listing_selector_map(self, items: List, item_sel: str, link_sel: str) -> SelectorMap:
+        """Construit un SelectorMap à partir d'un sample d'items détectés.
+
+        La reliability de chaque sélecteur est calculée comme le pourcentage
+        d'items où la valeur est réellement extractible (P2.3) — pas un
+        hardcode 1.0. Le seuil ≥ 4 items est conservé côté appelant pour
+        décider si on retient le candidat globalement.
+        """
+        sm = SelectorMap()
+        n = max(len(items), 1)
+        # listing_item : reliability sature à 10 items pour ne pas surestimer
+        # la stabilité d'un sélecteur basé sur 4 items seulement.
+        sm.listing_item = SelectorEntry(
+            selector=item_sel, reliability=min(1.0, len(items) / 10.0),
+        )
+
+        # listing_link : on compte combien d'items contiennent un <a> avec href
+        # non vide (le sélecteur composé est `{item_sel} {link_sel}` au final).
+        link_hits = 0
+        for it in items:
+            try:
+                a = it.find("a", href=True) if hasattr(it, "find") else None
+            except Exception:
+                a = None
+            if a and (a.get("href") or "").strip() not in ("", "#"):
+                link_hits += 1
+        sm.listing_link = SelectorEntry(
+            selector=f"{item_sel} {link_sel}", reliability=link_hits / n,
+        )
+
+        # listing_price : présence d'un signal $/€ dans le texte de l'item.
+        price_re = re.compile(r"\d[\d\s,.]*\$|\$[\d\s,.]+|€\s?[\d,.]+")
+        price_hits = 0
+        for it in items:
+            try:
+                text = it.get_text(separator=" ", strip=True) if hasattr(it, "get_text") else ""
+            except Exception:
+                text = ""
+            if price_re.search(text):
+                price_hits += 1
+        if price_hits > 0:
             sm.listing_price = SelectorEntry(
                 selector=f"{item_sel} .price, {item_sel} .prix, {item_sel} [itemprop='price']",
-                reliability=0.5,
+                reliability=price_hits / n,
             )
 
-        img = first.find("img")
-        if img:
-            attr = "src"
-            for data_attr in ["data-src", "data-lazy-src", "data-original"]:
+        # listing_image : on choisit l'attribut le plus fréquent (src vs data-src etc.).
+        img_attr_counts: Dict[str, int] = {}
+        img_hits = 0
+        for it in items:
+            try:
+                img = it.find("img") if hasattr(it, "find") else None
+            except Exception:
+                img = None
+            if not img:
+                continue
+            img_hits += 1
+            chosen_attr = "src"
+            for data_attr in ("data-src", "data-lazy-src", "data-original"):
                 if img.get(data_attr):
-                    attr = data_attr
+                    chosen_attr = data_attr
                     break
+            img_attr_counts[chosen_attr] = img_attr_counts.get(chosen_attr, 0) + 1
+        if img_hits > 0:
+            attr = max(img_attr_counts.items(), key=lambda x: x[1])[0]
             sm.listing_image = SelectorEntry(
-                selector=f"{item_sel} img", attribute=attr, reliability=1.0,
+                selector=f"{item_sel} img", attribute=attr,
+                reliability=img_hits / n,
             )
             sm.image_attr = attr
         return sm
