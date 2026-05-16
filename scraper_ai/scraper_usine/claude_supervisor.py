@@ -33,6 +33,7 @@ from .models import (
     ValidationReport, _to_serializable,
 )
 from .domain_profiles import get_profile
+from .lessons import record_lesson, extract_field_hints
 
 try:
     from scraper_ai.config import (
@@ -251,9 +252,28 @@ class ClaudeSupervisor:
             "`scraper_ai.dedicated_scrapers`."
         )
 
+        before_code = generated.code
         verdict = self._json_call(prompt, system=_SYSTEM_REWRITER, max_tokens=20000)
         applied = self._maybe_apply_rewrite(generated, verdict)
         self._save_audit("phase3_codegen", verdict, rewrite_applied=applied)
+        if applied:
+            try:
+                record_lesson(
+                    slug=generated.slug,
+                    url=analysis.site_url,
+                    platform=analysis.platform.name,
+                    phase="supervisor_initial",
+                    field_fixed=(extract_field_hints(verdict.reasoning) or [None])[0],
+                    weak_fields=extract_field_hints(verdict.reasoning),
+                    before_code=before_code,
+                    after_code=generated.code,
+                    claude_rationale=verdict.reasoning,
+                    tokens_used=(verdict.tokens_in + verdict.tokens_out) or None,
+                    iterations=1,
+                    verbose=self.verbose,
+                )
+            except Exception as e:
+                self._log(f"capture lesson Phase 3 KO : {e}")
         return verdict, generated.code if applied else None
 
     # ------------------------------------------------------------------
@@ -289,6 +309,7 @@ class ClaudeSupervisor:
             html_sample=html_sample,
         )
 
+        before_code = generated.code
         try:
             verdict = self._json_call(prompt, system=_SYSTEM_REWRITER, max_tokens=20000)
         except Exception as e:
@@ -297,6 +318,28 @@ class ClaudeSupervisor:
 
         applied = self._maybe_apply_rewrite(generated, verdict)
         self._save_audit("phase4_autocorrect", verdict, rewrite_applied=applied)
+        if applied:
+            try:
+                hint_fields = list(target_fields or []) or extract_field_hints(verdict.reasoning)
+                primary = (target_fields[0] if target_fields else
+                           (hint_fields[0] if hint_fields else None))
+                record_lesson(
+                    slug=generated.slug,
+                    url=analysis.site_url,
+                    platform=analysis.platform.name,
+                    phase="auto_correct",
+                    field_fixed=primary,
+                    weak_fields=hint_fields,
+                    before_code=before_code,
+                    after_code=generated.code,
+                    claude_rationale=verdict.reasoning,
+                    tokens_used=(verdict.tokens_in + verdict.tokens_out) or None,
+                    iterations=1,
+                    extra_signature=f"score:{report.score}",
+                    verbose=self.verbose,
+                )
+            except Exception as e:
+                self._log(f"capture lesson Phase 4 KO : {e}")
         return generated.code if applied else None
 
     # ------------------------------------------------------------------

@@ -1,0 +1,73 @@
+name: Rapport mensuel — Leçons Claude
+
+on:
+  schedule:
+    # Le 1er du mois à 06:00 UTC
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'Date de début (YYYY-MM-DD) — défaut 1er du mois précédent'
+        required: false
+        default: ''
+      until:
+        description: 'Date de fin exclusive (YYYY-MM-DD) — défaut maintenant'
+        required: false
+        default: ''
+
+concurrency:
+  group: usine-lessons-monthly
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Installer dépendances minimales
+        run: pip install requests
+
+      - name: Générer le rapport
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ARGS="--out-dir scraper_cache/lessons --also-json"
+          if [ -n "${{ inputs.since }}" ]; then ARGS="$ARGS --since ${{ inputs.since }}"; fi
+          if [ -n "${{ inputs.until }}" ]; then ARGS="$ARGS --until ${{ inputs.until }}"; fi
+          python scripts/usine_lessons_report.py $ARGS
+
+      - name: Créer une PR avec le rapport
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(usine): rapport mensuel leçons Claude'
+          title: 'Leçons Claude — rapport mensuel'
+          body: |
+            Rapport automatique généré par `.github/workflows/usine-lessons-monthly.yml`
+            via `scripts/usine_lessons_report.py`.
+
+            - Vérifier les recommandations dans le markdown.
+            - Mettre à jour les templates `scraper_ai/scraper_usine/blocks/` ou les
+              recettes `platforms.py` qui sont signalés comme récurrents.
+            - Une fois les changements appliqués, marquer les leçons concernées
+              comme `applied_to_template=true` via `/admin/usine?tab=lessons`.
+
+            _Cette PR est en draft : elle sert de support de revue, pas
+            à être mergée telle quelle si aucun template n'est modifié._
+          branch: chore/usine-lessons-monthly
+          draft: true
+          add-paths: |
+            scraper_cache/lessons/**

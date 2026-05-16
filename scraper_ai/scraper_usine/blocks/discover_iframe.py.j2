@@ -1,0 +1,70 @@
+    # ================================================================
+    # PHASE 1 — Découverte d'URLs via iframe inventaire tiers
+    # ================================================================
+    #
+    # L'inventaire est servi dans une <iframe> par un fournisseur externe
+    # (souvent une plateforme dealer comme PowerGO, eDealer, AIM, etc.).
+    # On ouvre l'iframe avec BrowserRuntime, on extrait les liens internes,
+    # puis on retombe sur le pipeline standard (extract via détail).
+    #
+    # Note : SITE_IFRAME_SRC est injecté par le générateur depuis
+    # analysis.iframe_src (cf. platforms.detect_iframe_inventory).
+
+    SITE_IFRAME_SRC = {{ iframe_src|tojson }}
+
+    def discover_product_urls(self, categories: List[str] = None) -> List[str]:
+        from ._browser_runtime import BrowserRuntime
+
+        target = self.SITE_IFRAME_SRC or self.SITE_URL
+        if not target:
+            return []
+
+        try:
+            with BrowserRuntime() as br:
+                result = br.render(
+                    target,
+                    scroll=True,
+                    post_load_wait_ms=2500,
+                    block_assets=True,
+                )
+        except Exception:
+            return []
+
+        html = result.html or ""
+        if not html:
+            return []
+
+        try:
+            soup = BeautifulSoup(html, "lxml")
+        except Exception:
+            soup = BeautifulSoup(html, "html.parser")
+
+        # Origine de l'iframe = base pour résoudre les hrefs relatifs.
+        from urllib.parse import urlparse, urljoin
+        parsed = urlparse(target)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+
+        seen: set = set()
+        urls: List[str] = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            absolute = urljoin(target, href)
+            # Filtre 1 : même origine (l'iframe peut linker hors fournisseur)
+            if not absolute.startswith(origin):
+                continue
+            # Filtre 2 : règles _is_product_url (paramétrées par DomainProfile)
+            if hasattr(self, "_is_product_url") and not self._is_product_url(absolute):
+                continue
+            if absolute in seen:
+                continue
+            seen.add(absolute)
+            urls.append(absolute)
+
+        # Préfère FR si méthode disponible côté base
+        if hasattr(self, "_filter_language_duplicates"):
+            try:
+                urls = self._filter_language_duplicates(urls, prefer="fr")
+            except Exception:
+                pass
+
+        return urls

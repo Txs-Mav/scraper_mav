@@ -372,12 +372,21 @@ class ScraperCodeGenerator:
         return tpl.render(**ctx)
 
     def _render_iframe_discovery(self, ctx: Dict) -> str:
-        iframe_src = ctx.get("iframe_src", "")
-        return (
-            "    def discover_product_urls(self, categories: List[str] = None) -> List[str]:\n"
-            "        return []\n"
-        )
-
+        """Phase 3 (durcissement) : utilise un vrai template Jinja qui ouvre
+        l'iframe via BrowserRuntime, extrait les hrefs internes filtrés par
+        `_is_product_url`, et renvoie une liste exploitable. Auparavant,
+        retournait une liste vide (TODO non implémenté).
+        """
+        iframe_src = ctx.get("iframe_src") or ""
+        if not iframe_src:
+            # Garde l'ancien comportement défensif si aucun iframe détecté.
+            return (
+                "    def discover_product_urls(self, categories: List[str] = None) -> List[str]:\n"
+                "        return []\n"
+            )
+        tpl = self.env.get_template("discover_iframe.py.j2")
+        return tpl.render(**{**ctx, "iframe_src": iframe_src})
+        
     def _render_extraction(self, ctx: Dict, strategy: ScrapingStrategy) -> str:
         em = strategy.extraction_method
         if em == ExtractionMethod.API_JSON:

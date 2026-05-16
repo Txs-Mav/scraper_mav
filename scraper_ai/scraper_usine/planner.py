@@ -194,10 +194,36 @@ class StrategyPlanner:
             strategy.pagination_method = PaginationMethod.QUERY_PARAM
 
     def _set_rendering(self, strategy: ScrapingStrategy, analysis: SiteAnalysis) -> None:
+        # Forçage Playwright (durcissement Phase 3) :
+        # - signaux SPA détectés (needs_playwright posé par l'analyzer)
+        # - scroll capture
+        # - plateforme inconnue/générique ET pas de sitemap clair : on suppose
+        #   du JS lourd plutôt que de risquer un scraping HTML brut qui rate
+        #   les listings (ex: sites Next.js custom non détectés comme PowerGO).
+        # - anti-bot non-bloquant détecté (Cloudflare passif, datadome) : on
+        #   doit passer par un navigateur stealth pour avoir une chance.
+        is_generic = analysis.platform.platform_type == PlatformType.GENERIC
+        no_sitemap_no_api = (
+            not analysis.sitemap_urls and not analysis.detected_apis
+        )
+        anti_bot_signal = bool(getattr(analysis, "anti_bot", None))
+
         if analysis.needs_playwright:
             strategy.rendering = RenderingMethod.PLAYWRIGHT
         elif strategy.pagination_method == PaginationMethod.SCROLL_CAPTURE:
             strategy.rendering = RenderingMethod.PLAYWRIGHT
+        elif is_generic and no_sitemap_no_api:
+            strategy.rendering = RenderingMethod.PLAYWRIGHT
+            self._log(
+                "Plateforme inconnue + ni sitemap ni API détectés → "
+                "fallback Playwright pour fiabiliser le rendu."
+            )
+        elif anti_bot_signal:
+            strategy.rendering = RenderingMethod.PLAYWRIGHT
+            self._log(
+                f"Signal anti-bot ({analysis.anti_bot}) → "
+                "Playwright + stealth pour limiter les blocages."
+            )
         else:
             strategy.rendering = RenderingMethod.REQUESTS
 

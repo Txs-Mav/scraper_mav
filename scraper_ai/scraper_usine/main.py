@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -174,10 +175,20 @@ def _process_url(
         analysis = analyzer.analyze(url)
         print(f"  [{_ts()}] Phase 1 terminée en {time.time()-phase1_start:.1f}s")
 
+        # Durcissement Phase 3 du plan : l'anti-bot n'arrête plus le pipeline.
+        # Le planner basculera automatiquement en Playwright + stealth, et
+        # l'agent Claude (Phase 4.5) peut explorer le site différemment.
+        # Pour rétablir l'ancien comportement, exporter USINE_ABORT_ON_ANTIBOT=1.
         if analysis.anti_bot:
-            print(f"\n  [{_ts()}] ABANDON : anti-bot détecté ({analysis.anti_bot})")
-            print(f"  Le site ne peut pas être scrapé de manière fiable.\n")
-            return None
+            if os.environ.get("USINE_ABORT_ON_ANTIBOT", "0") in ("1", "true", "yes"):
+                print(f"\n  [{_ts()}] ABANDON : anti-bot détecté ({analysis.anti_bot})")
+                print(f"  USINE_ABORT_ON_ANTIBOT=1 — arrêt explicite demandé.\n")
+                return None
+            print(
+                f"  [{_ts()}] WARN anti-bot ({analysis.anti_bot}) — "
+                f"on continue en mode Playwright + stealth. "
+                f"Configurer SCRAPER_PROXY_URL pour activer un proxy résidentiel."
+            )
 
         if analysis.needs_playwright and not analysis.listing_pages and not analysis.sitemap_urls and not analysis.detected_apis:
             playwright_ok = False

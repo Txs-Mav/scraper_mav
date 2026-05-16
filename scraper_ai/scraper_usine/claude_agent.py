@@ -36,6 +36,7 @@ from bs4 import BeautifulSoup
 from .models import GeneratedScraper, ScrapingStrategy, SiteAnalysis
 from .domain_profiles import get_profile
 from .generator import DEDICATED_DIR, GENERATED_REGISTRY_PATH
+from .lessons import record_lesson
 
 try:
     from scraper_ai.config import (
@@ -197,6 +198,42 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
             "required": ["slug", "module_name", "class_name"],
         },
     },
+    {
+        "name": "query_sitemap",
+        "description": (
+            "Cherche un sitemap.xml utilisable pour ce site et retourne un "
+            "échantillon d'URLs détectées (jusqu'à 50). Évite de réinventer "
+            "la découverte d'URLs quand un sitemap existe. Retourne "
+            "{ok, sitemap_url, product_urls: [...], total_estimated}."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "type": "string",
+                    "description": "URL racine du site (ex: https://www.exemple.ca)",
+                },
+            },
+            "required": ["base_url"],
+        },
+    },
+    {
+        "name": "try_known_platforms",
+        "description": (
+            "Vérifie si le HTML correspond à une plateforme connue (Shopify, "
+            "WooCommerce, Magento, eDealer, PowerGO, etc.). Si oui, retourne "
+            "les sélecteurs et la classe de base à hériter. Évite à l'agent "
+            "de réinventer un scraper pour une plateforme déjà couverte."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "html": {"type": "string", "description": "HTML d'une page du site"},
+                "url": {"type": "string", "description": "URL d'origine du HTML"},
+            },
+            "required": ["html", "url"],
+        },
+    },
 ]
 
 
@@ -270,6 +307,14 @@ class ClaudeAgent:
         self.set_slug(prior_attempt.slug)
         self._tokens_used = 0
         self._last_test_result: Optional[Dict[str, Any]] = None
+        # Snapshot du code avant agent — sert à calculer le diff pour la
+        # capture des leçons (Phase 2 du plan).
+        prior_code_snapshot: str = prior_attempt.code or ""
+        if not prior_code_snapshot and prior_attempt.file_path:
+            try:
+                prior_code_snapshot = Path(prior_attempt.file_path).read_text(encoding="utf-8")
+            except Exception:
+                prior_code_snapshot = ""
 
         system_prompt = self._build_system_prompt(analysis, strategy, prior_attempt)
         user_prompt = self._build_user_prompt(analysis, strategy, prior_attempt)
@@ -373,6 +418,34 @@ class ClaudeAgent:
                 "tokens_used": self._tokens_used,
                 "products_count": self._last_test_result.get("products_count", 0),
             })
+            # Capture de la leçon : agent fallback complet. On déduit les
+            # champs ciblés depuis le field_coverage du dernier test (champs
+            # qui sont passés de 0 à >0).
+            try:
+                cov = (self._last_test_result.get("field_coverage") or {})
+                weak = [k for k, v in cov.items() if v and v > 0]
+                primary = weak[0] if weak else None
+                record_lesson(
+                    slug=prior_attempt.slug,
+                    url=analysis.site_url,
+                    platform=analysis.platform.name,
+                    phase="agent_fallback",
+                    field_fixed=primary,
+                    weak_fields=weak,
+                    before_code=prior_code_snapshot,
+                    after_code=new_code,
+                    claude_rationale=(
+                        f"Agent autonome reconstruit ({turn} tours, "
+                        f"{self._tokens_used} tokens). "
+                        f"Produits validés : {self._last_test_result.get('products_count', 0)}."
+                    ),
+                    tokens_used=self._tokens_used,
+                    iterations=turn,
+                    extra_signature=f"tokens:{self._tokens_used}",
+                    verbose=self.verbose,
+                )
+            except Exception as e:
+                self._log(f"capture lesson Phase 4.5 KO : {e}")
             return GeneratedScraper(
                 slug=prior_attempt.slug,
                 class_name=prior_attempt.class_name,
@@ -409,6 +482,10 @@ class ClaudeAgent:
                 result = self._tool_run_scraper_test(**args)
                 self._last_test_result = result
                 return result, False
+            if name == "query_sitemap":
+                return self._tool_query_sitemap(**args), False
+            if name == "try_known_platforms":
+                return self._tool_try_known_platforms(**args), False
             return {"error": f"outil inconnu: {name}"}, True
         except TypeError as e:
             return {"error": f"args invalides: {e}"}, True
@@ -616,6 +693,93 @@ class ClaudeAgent:
             "field_coverage": coverage,
         }
 
+    # ------------------------------------------------------------------
+    # Outils ajoutés en Phase 3 (durcissement)
+    # ------------------------------------------------------------------
+
+    def _tool_query_sitemap(self, base_url: str) -> Dict[str, Any]:
+        """Tente de localiser et lire un sitemap.xml pour le site donné.
+
+        Délègue à ``platforms.probe_sitemap`` qui tente plusieurs chemins
+        connus (``/sitemap.xml``, ``/sitemap_index.xml``, etc.) et filtre
+        les URLs probables de pages produit. Retourne au plus 50 URLs pour
+        ne pas saturer le contexte Claude.
+        """
+        try:
+            from .platforms import probe_sitemap, detect_platform, PlatformRecipe
+        except Exception as e:
+            return {"ok": False, "error": f"import platforms KO: {e}"}
+
+        try:
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (compatible; ClaudeAgent/1.0)",
+            })
+            # On essaye d'abord avec une recette par défaut (générique)
+            recipe = PlatformRecipe()
+            urls, sitemap_url = probe_sitemap(session, base_url, recipe)
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}
+
+        urls = list(urls or [])[:50]
+        return {
+            "ok": bool(urls),
+            "sitemap_url": sitemap_url or "",
+            "product_urls": urls,
+            "total_estimated": len(urls),
+            "note": (
+                "Échantillon limité à 50 URLs. S'il y a plus dans le sitemap, "
+                "le scraper généré devra les lire à l'exécution réelle."
+                if urls else
+                "Aucun sitemap exploitable trouvé. Fallback sur listing + détail."
+            ),
+        }
+
+    def _tool_try_known_platforms(self, html: str, url: str) -> Dict[str, Any]:
+        """Vérifie si le HTML correspond à une plateforme reconnue.
+
+        Si oui, retourne la classe à hériter, les sélecteurs par défaut et le
+        chemin de sitemap probable — l'agent peut alors choisir d'écrire un
+        scraper "thin" qui hérite plutôt qu'un from-scratch.
+        """
+        try:
+            from .platforms import detect_platform
+        except Exception as e:
+            return {"matched": False, "error": f"import platforms KO: {e}"}
+
+        try:
+            recipe = detect_platform(html or "", {}, url)
+        except Exception as e:
+            return {"matched": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}
+
+        if not recipe or recipe.platform_type.value == "generic":
+            return {
+                "matched": False,
+                "platform": "generic",
+                "note": "Plateforme non reconnue, continue avec un from-scratch.",
+            }
+
+        return {
+            "matched": True,
+            "platform": recipe.platform_type.value,
+            "platform_name": recipe.name,
+            "inheritable_class": recipe.inheritable_scraper_class or None,
+            "default_listing_selector": recipe.default_listing_selector or "",
+            "default_item_selector": recipe.default_item_selector or "",
+            "default_price_selector": recipe.default_price_selector or "",
+            "default_sitemap_path": recipe.default_sitemap_path or "",
+            "default_pagination_param": recipe.default_pagination_param or "",
+            "note": (
+                f"Plateforme reconnue : {recipe.name}. "
+                + (
+                    f"Préférer hériter de `{recipe.inheritable_scraper_class}` "
+                    f"plutôt qu'un from-scratch."
+                    if recipe.inheritable_scraper_class
+                    else "Pas de classe d'héritage disponible — utiliser les sélecteurs proposés."
+                )
+            ),
+        }
+
     # ==================================================================
     # Construction des prompts
     # ==================================================================
@@ -642,11 +806,14 @@ class ClaudeAgent:
             "MÉTHODOLOGIE RECOMMANDÉE :\n"
             "  a) read_existing_scraper(slug) pour voir ce qui a échoué ;\n"
             "  b) fetch_url(site_url) pour comprendre la structure home ;\n"
-            "  c) extract_links + fetch_url pour identifier les pages listing ;\n"
-            "  d) inspect_html sur les listings pour trouver les item selectors ;\n"
-            "  e) fetch_url sur 1 page produit pour mapper les sélecteurs détail ;\n"
-            "  f) write_scraper_code avec un fichier .py complet ;\n"
-            "  g) run_scraper_test pour vérifier ; corriger si ko ; déclarer fini si ok.\n\n"
+            "  c) try_known_platforms(html, url) : si MATCH, écris un scraper "
+            "QUI HÉRITE de la classe proposée plutôt que from-scratch ;\n"
+            "  d) query_sitemap(base_url) : si OK, utilise les URLs trouvées "
+            "comme base de discover_product_urls ;\n"
+            "  e) extract_links + fetch_url pour compléter ;\n"
+            "  f) inspect_html sur les listings/pages détail pour mapper les sélecteurs ;\n"
+            "  g) write_scraper_code avec un fichier .py complet ;\n"
+            "  h) run_scraper_test pour vérifier ; corriger si ko ; déclarer fini si ok.\n\n"
             f"BUDGET : {CLAUDE_AGENT_MAX_TURNS} tours max, {CLAUDE_AGENT_MAX_TOKENS_PER_RUN} "
             "tokens cumulés. Sois concis dans tes raisonnements."
         )

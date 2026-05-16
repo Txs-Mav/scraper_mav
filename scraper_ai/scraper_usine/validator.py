@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -30,21 +31,62 @@ STRATEGIES_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache"
 # Au-delà, le sous-processus est tué pour éviter de bloquer la pipeline.
 DEFAULT_RUN_TIMEOUT_SECONDS = 180
 
+# Timeouts adaptés par DomainProfile (durcissement Phase 3).
+# Les sites e-commerce avec gros catalogues prennent plus de temps que les
+# annuaires immobiliers/jobs.
+PROFILE_TIMEOUTS: Dict[str, int] = {
+    "auto": 180,         # concessionnaires, calibré sur Motoplex/PowerGO
+    "ecommerce": 600,    # gros catalogue (Shopify, Magento)
+    "real_estate": 240,
+    "jobs": 180,
+    "generic": 240,
+}
+
+# Mode "sample" : limite à N URLs durant la validation pour scoring rapide.
+# Plus serré que la valeur par défaut VALIDATION_MAX_URLS=30 ; utile pour
+# itérer sur de gros catalogues sans payer 600s à chaque tentative Claude.
+SAMPLE_MODE_MAX_URLS = 20
+
 # Taille max d'un code à envoyer en une fois à Gemini pour auto-correction.
 # Au-delà, on découpe en chunks et on demande des corrections ciblées.
 MAX_CODE_INLINE_BYTES = 30_000
+
+
+def _timeout_for_profile(profile_key: Optional[str]) -> int:
+    """Renvoie le timeout par défaut pour un profil. Sur-couché par l'env
+    USINE_VALIDATOR_TIMEOUT (entier secondes) si défini."""
+    import os as _os
+    env = _os.environ.get("USINE_VALIDATOR_TIMEOUT")
+    if env:
+        try:
+            return max(30, int(env))
+        except ValueError:
+            pass
+    if not profile_key:
+        return DEFAULT_RUN_TIMEOUT_SECONDS
+    return PROFILE_TIMEOUTS.get(profile_key, DEFAULT_RUN_TIMEOUT_SECONDS)
 
 
 class ScraperValidator:
     """Valide un scraper généré par exécution réelle et scoring contextuel."""
 
     def __init__(self, verbose: bool = True,
-                 supervisor: Optional["ClaudeSupervisor"] = None):
+                 supervisor: Optional["ClaudeSupervisor"] = None,
+                 sample_mode: bool = False):
         self.verbose = verbose
         # Si non fourni, ``auto_correct`` essaiera de l'instancier à la
         # demande. Permet à main._process_url de partager un seul supervisor
         # (et donc un seul compteur de réécritures) pour tout le run.
         self.supervisor = supervisor
+        # Mode "sample" (durcissement Phase 3) : on tronque le nombre d'URLs
+        # extraites à SAMPLE_MODE_MAX_URLS pour éviter les timeouts sur les
+        # gros catalogues durant la validation. Le scoring reste valable
+        # tant que l'échantillon est représentatif.
+        self.sample_mode = (
+            sample_mode
+            or os.environ.get("USINE_VALIDATOR_SAMPLE_MODE", "").lower()
+            in ("1", "true", "yes")
+        )
 
     def validate(
         self,
@@ -65,8 +107,16 @@ class ScraperValidator:
         # Profil de domaine pour scoring adaptatif (auto, ecommerce, immo, jobs)
         profile = get_profile(analysis.domain_profile_key or "auto")
         categories = profile.default_categories or ["all"]
+        timeout = _timeout_for_profile(analysis.domain_profile_key)
+        self._log(
+            f"  Timeout adapté au profil '{analysis.domain_profile_key or 'auto'}' "
+            f"= {timeout}s (sample_mode={self.sample_mode})"
+        )
 
-        products, errors, elapsed = self._run_scraper(generated, categories=categories)
+        products, errors, elapsed = self._run_scraper(
+            generated, categories=categories, timeout=timeout,
+            sample_mode=self.sample_mode,
+        )
         report.execution_time_seconds = elapsed
         report.errors = errors
 
@@ -115,13 +165,19 @@ class ScraperValidator:
 
     def _run_scraper(self, generated: GeneratedScraper,
                      categories: Optional[List[str]] = None,
-                     timeout: int = DEFAULT_RUN_TIMEOUT_SECONDS) -> tuple:
+                     timeout: int = DEFAULT_RUN_TIMEOUT_SECONDS,
+                     sample_mode: bool = False) -> tuple:
         """Exécute le scraper généré dans un sous-processus avec timeout dur.
 
         Utilise ``multiprocessing.Queue`` (et non Pipe) pour éviter le deadlock
         classique : si le payload dépasse la capacité du Pipe (~64 KB sur
         macOS), ``conn.send()`` bloque et ``proc.join()`` attendrait
         indéfiniment. Queue gère le buffering en interne sans cette limite.
+
+        Si ``sample_mode`` est vrai, on patche ``discover_product_urls`` du
+        scraper dans le sous-processus pour limiter à SAMPLE_MODE_MAX_URLS
+        — utile sur les gros catalogues pour éviter les timeouts pendant la
+        validation.
         """
         import multiprocessing as mp
 
@@ -132,9 +188,13 @@ class ScraperValidator:
 
         ctx = mp.get_context("spawn")  # spawn = pas de fork, plus sûr
         result_queue: "mp.Queue" = ctx.Queue()
+        # En mode sample explicit, on garde la limite par défaut basse
+        # (VALIDATION_MAX_URLS). Sinon, on relève la limite pour les profils
+        # gros catalogue (laisse au subprocess le soin d'appliquer son défaut).
+        max_urls = SAMPLE_MODE_MAX_URLS if sample_mode else VALIDATION_MAX_URLS
         proc = ctx.Process(
             target=_run_scraper_subprocess,
-            args=(generated.module_name, generated.class_name, cats, result_queue),
+            args=(generated.module_name, generated.class_name, cats, result_queue, max_urls),
             daemon=True,
         )
         try:

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import {
   Loader2, Hammer, PlayCircle, AlertTriangle, Globe, Eye,
   Settings2, Terminal, CheckCircle2, XCircle, Upload, FileText,
-  ListPlus, Trash2,
+  ListPlus, Trash2, GraduationCap, CheckCheck, Filter,
 } from "lucide-react"
 
 interface JobStatus {
@@ -16,8 +16,36 @@ interface JobStatus {
 }
 
 type Mode = "single" | "batch"
+type TopTab = "generate" | "lessons"
+
+interface LessonRow {
+  id: string
+  created_at: string
+  slug: string | null
+  url: string | null
+  platform: string | null
+  phase: string
+  error_signature: string
+  field_fixed: string | null
+  diff: string | null
+  claude_rationale: string | null
+  tokens_used: number | null
+  iterations: number | null
+  applied_to_template: boolean
+  applied_at: string | null
+  applied_notes: string | null
+}
+
+interface LessonsSummary {
+  total: number
+  pending: number
+  byPlatform: { key: string; count: number }[]
+  byField: { key: string; count: number }[]
+  byPlatformField: { key: string; count: number }[]
+}
 
 export default function AdminUsinePage() {
+  const [topTab, setTopTab] = useState<TopTab>("generate")
   const [mode, setMode] = useState<Mode>("single")
 
   // Mode unique
@@ -167,13 +195,47 @@ export default function AdminUsinePage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-100">Scraper Usine</h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            Génère un nouveau scraper dédié. URL unique ou batch (1 fichier de plusieurs URLs).
-            Les scrapers validés apparaissent en pending dans <span className="text-indigo-300">/admin/scrapers</span>.
+            Génère un nouveau scraper dédié et capture ce que Claude a corrigé
+            pour améliorer l&apos;usine au fil du temps. Les scrapers validés
+            apparaissent en pending dans <span className="text-indigo-300">/admin/scrapers</span>.
           </p>
         </div>
       </header>
 
-      {/* Tabs */}
+      {/* Onglets de premier niveau : Générer vs Apprentissages */}
+      <div className="inline-flex rounded-xl bg-slate-900/60 border border-slate-800 p-1 mb-5 mr-3">
+        <button
+          type="button"
+          onClick={() => setTopTab("generate")}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+            topTab === "generate"
+              ? "bg-orange-600 text-white shadow shadow-orange-600/30"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Hammer className="h-3.5 w-3.5 inline mr-1.5" />
+          Générer
+        </button>
+        <button
+          type="button"
+          onClick={() => setTopTab("lessons")}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+            topTab === "lessons"
+              ? "bg-orange-600 text-white shadow shadow-orange-600/30"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <GraduationCap className="h-3.5 w-3.5 inline mr-1.5" />
+          Apprentissages
+        </button>
+      </div>
+
+      {topTab === "lessons" ? (
+        <LessonsTab />
+      ) : (
+        <>
+
+      {/* Tabs internes (single / batch) */}
       <div className="inline-flex rounded-xl bg-slate-900/60 border border-slate-800 p-1 mb-5">
         <button
           type="button"
@@ -419,6 +481,293 @@ https://www.autre-site.com/`}
           </pre>
         </section>
       )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Onglet "Apprentissages" — table usine_lessons (Phase 2 du plan)
+// ---------------------------------------------------------------------------
+
+type LessonStatusFilter = "pending" | "applied" | "all"
+
+function LessonsTab() {
+  const [statusFilter, setStatusFilter] = useState<LessonStatusFilter>("pending")
+  const [sinceDays, setSinceDays] = useState<number>(30)
+  const [lessons, setLessons] = useState<LessonRow[]>([])
+  const [summary, setSummary] = useState<LessonsSummary | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  const reload = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({
+        status: statusFilter,
+        sinceDays: String(sinceDays),
+        limit: "100",
+      })
+      const res = await fetch(`/api/admin/usine/lessons?${params.toString()}`, {
+        cache: "no-store",
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data?.error || "Erreur de chargement")
+        setLessons([])
+        setSummary(null)
+        return
+      }
+      setLessons(data.lessons || [])
+      setSummary(data.summary || null)
+    } catch (e: any) {
+      setError(e?.message || "Erreur réseau")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sinceDays])
+
+  const toggleApplied = async (lesson: LessonRow) => {
+    setSavingId(lesson.id)
+    try {
+      const res = await fetch("/api/admin/usine/lessons", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: lesson.id,
+          applied: !lesson.applied_to_template,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data?.error || `HTTP ${res.status}`)
+        return
+      }
+      await reload()
+    } catch (e: any) {
+      setError(e?.message || "Erreur réseau")
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Filtres */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 flex flex-wrap items-end gap-4">
+        <div>
+          <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1.5">
+            <Filter className="h-3 w-3 inline mr-1" /> Statut
+          </label>
+          <div className="inline-flex rounded-lg border border-slate-700 overflow-hidden">
+            {(["pending", "applied", "all"] as LessonStatusFilter[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1.5 text-xs font-medium transition ${
+                  statusFilter === s
+                    ? "bg-orange-600 text-white"
+                    : "bg-slate-950/60 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {s === "pending" ? "À intégrer" : s === "applied" ? "Intégrées" : "Toutes"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1.5">
+            Fenêtre
+          </label>
+          <select
+            value={sinceDays}
+            onChange={(e) => setSinceDays(parseInt(e.target.value, 10))}
+            className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-xs text-slate-200"
+          >
+            <option value={7}>7 derniers jours</option>
+            <option value={30}>30 derniers jours</option>
+            <option value={90}>90 derniers jours</option>
+            <option value={365}>365 derniers jours</option>
+          </select>
+        </div>
+
+        <div className="ml-auto text-xs text-slate-500">
+          {summary ? (
+            <>
+              {summary.total} leçon(s) — {summary.pending} en attente
+            </>
+          ) : loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin inline" />
+          ) : null}
+        </div>
+      </section>
+
+      {error && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5" />
+          <p className="text-sm text-red-200">{error}</p>
+        </div>
+      )}
+
+      {/* Top patterns */}
+      {summary && summary.byPlatformField.length > 0 && (
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <TopList title="Plateformes" items={summary.byPlatform} />
+          <TopList title="Champs corrigés" items={summary.byField} />
+          <TopList title="Plateforme × Champ" items={summary.byPlatformField} />
+        </section>
+      )}
+
+      {/* Liste des leçons */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+        <header className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-100">
+            Leçons capturées par Claude
+          </h2>
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />}
+        </header>
+
+        {lessons.length === 0 && !loading ? (
+          <p className="px-5 py-10 text-center text-sm text-slate-500">
+            Aucune leçon sur cette fenêtre. Les hooks s&apos;activent quand
+            Claude corrige réellement le code généré.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-800">
+            {lessons.map((l) => {
+              const isOpen = expanded === l.id
+              return (
+                <li key={l.id} className="px-5 py-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <code className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-200">
+                          {l.platform || "unknown"}
+                        </code>
+                        <code className="text-xs px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
+                          {l.field_fixed || "?"}
+                        </code>
+                        <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                          {l.phase}
+                        </span>
+                        {l.slug && (
+                          <span className="text-xs text-slate-400 truncate">
+                            · {l.slug}
+                          </span>
+                        )}
+                        {l.applied_to_template && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30">
+                            intégrée
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs font-mono text-slate-400 truncate">
+                        {l.error_signature}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {new Date(l.created_at).toLocaleString()} ·{" "}
+                        {l.tokens_used ? `${l.tokens_used} tok` : "—"} ·{" "}
+                        {l.iterations ?? "—"} itér.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      <button
+                        onClick={() => setExpanded(isOpen ? null : l.id)}
+                        className="text-xs text-slate-300 hover:text-white"
+                      >
+                        {isOpen ? "Masquer" : "Diff / Rationale"}
+                      </button>
+                      <button
+                        onClick={() => toggleApplied(l)}
+                        disabled={savingId === l.id}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
+                          l.applied_to_template
+                            ? "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                            : "bg-emerald-600 text-white hover:bg-emerald-700"
+                        }`}
+                      >
+                        {savingId === l.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <CheckCheck className="h-3 w-3" />
+                        )}
+                        {l.applied_to_template ? "Marquer non" : "Marquer intégrée"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isOpen && (
+                    <div className="mt-3 space-y-3">
+                      {l.claude_rationale && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                            Rationale Claude
+                          </p>
+                          <p className="rounded-lg bg-slate-950/60 border border-slate-800 p-3 text-xs text-slate-300 whitespace-pre-wrap">
+                            {l.claude_rationale}
+                          </p>
+                        </div>
+                      )}
+                      {l.diff && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                            Diff (unified)
+                          </p>
+                          <pre className="rounded-lg bg-slate-950/80 border border-slate-800 p-3 text-[11px] font-mono text-slate-300 overflow-auto max-h-[400px]">
+                            {l.diff}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function TopList({
+  title,
+  items,
+}: {
+  title: string
+  items: { key: string; count: number }[]
+}) {
+  if (!items || items.length === 0) return null
+  const max = items[0]?.count || 1
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
+      <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">{title}</p>
+      <ul className="space-y-1.5">
+        {items.slice(0, 8).map((it) => (
+          <li key={it.key} className="text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <code className="truncate text-slate-300">{it.key}</code>
+              <span className="text-slate-500">{it.count}</span>
+            </div>
+            <div className="h-1 mt-1 rounded bg-slate-800 overflow-hidden">
+              <div
+                className="h-full bg-orange-500/60"
+                style={{ width: `${(it.count / max) * 100}%` }}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

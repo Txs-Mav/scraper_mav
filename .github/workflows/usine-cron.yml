@@ -1,0 +1,67 @@
+name: Scraper Usine — health-check + queue (toutes les 2h)
+
+# Décalé de 30 min par rapport à scraper-cron.yml pour éviter qu'ils tournent
+# en même temps sur le même Supabase (limite de connexions).
+on:
+  schedule:
+    - cron: '30 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      max_healthchecks:
+        description: 'Nombre max de health-checks à exécuter (défaut 5)'
+        required: false
+        default: '5'
+      max_queue:
+        description: 'Nombre max d''URLs à dépiler de la queue (défaut 3)'
+        required: false
+        default: '3'
+
+concurrency:
+  group: usine-cron
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scraper_ai/requirements.txt
+
+      - name: Installer les dépendances Python
+        run: |
+          pip install -r scraper_ai/requirements.txt
+          pip install pyyaml
+
+      - name: Installer Chromium (Playwright)
+        run: playwright install chromium --with-deps
+
+      - name: Tick scraper_usine
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ADMIN_ALERT_EMAIL: ${{ secrets.ADMIN_ALERT_EMAIL }}
+          DEV_ADMIN_EMAIL: ${{ secrets.DEV_ADMIN_EMAIL }}
+          GITHUB_PAT: ${{ secrets.GH_PUSH_PAT }}
+          GITHUB_REPO: ${{ github.repository }}
+          USINE_CRON_MAX_HEALTHCHECKS: ${{ inputs.max_healthchecks || '5' }}
+          USINE_CRON_MAX_QUEUE: ${{ inputs.max_queue || '3' }}
+          USINE_CRON_LOCK_MINUTES: '110'
+          USINE_CRON_HEALTHCHECK_DROP: '15'
+          USINE_CRON_TIMEOUT_USINE: '1500'
+          USINE_CRON_TIMEOUT_CHECK: '240'
+          PYTHONUNBUFFERED: '1'
+        run: python scripts/usine_cron_tick.py
