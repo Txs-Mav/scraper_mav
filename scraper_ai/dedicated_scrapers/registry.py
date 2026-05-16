@@ -25,6 +25,13 @@ from .picotte_motosport import PicotteMotosportScraper
 from .moto_ducharme import MotoDucharmeScraper
 from .morin_sports import MorinSportsScraper
 
+# Sources de marché (annonces multi-vendeurs)
+from .marketplace_kijiji import KijijiMarketplaceScraper
+from .marketplace_lespac import LesPacMarketplaceScraper
+from .marketplace_autotrader import AutoTraderMarketplaceScraper
+from .marketplace_cycletrader import CycleTraderMarketplaceScraper
+from .motorcycledealers import MotorcycleDealersScraper
+
 
 _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'mvm-motosport': MvmMotosportScraper,
@@ -45,6 +52,13 @@ _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'moto-ducharme': MotoDucharmeScraper,
     'picotte-motosport': PicotteMotosportScraper,
     'morin-sports': MorinSportsScraper,
+
+    # Marketplaces (multi-vendeurs)
+    'marketplace-kijiji-ca': KijijiMarketplaceScraper,
+    'marketplace-lespac': LesPacMarketplaceScraper,
+    'marketplace-autotrader-ca': AutoTraderMarketplaceScraper,
+    'marketplace-cycletrader': CycleTraderMarketplaceScraper,
+    'motorcycledealers-ca': MotorcycleDealersScraper,
 }
 
 _DOMAIN_MAP: Dict[str, str] = {
@@ -68,6 +82,13 @@ _DOMAIN_MAP: Dict[str, str] = {
     'motoducharme.com': 'moto-ducharme',
     'picottemotosport.com': 'picotte-motosport',
     'morinsports.com': 'morin-sports',
+
+    # Marketplaces
+    'kijiji.ca': 'marketplace-kijiji-ca',
+    'lespac.com': 'marketplace-lespac',
+    'autotrader.ca': 'marketplace-autotrader-ca',
+    'cycletrader.com': 'marketplace-cycletrader',
+    'motorcycledealers.ca': 'motorcycledealers-ca',
 }
 
 
