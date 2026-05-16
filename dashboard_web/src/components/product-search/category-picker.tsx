@@ -14,6 +14,15 @@ interface CategoryPickerProps {
    * ancêtres ("vehicule") pour permettre la navigation jusqu'aux feuilles.
    */
   allowedPaths?: string[] | null
+  /**
+   * Classes additionnelles ou remplaçantes pour le trigger.
+   * Le parent peut ainsi adapter le picker à différents contextes
+   * (barre de recherche pleine largeur vs segmented control compact
+   * dans le header).
+   */
+  triggerClassName?: string
+  /** Largeur max du label tronqué (Tailwind class). */
+  labelMaxWidthClassName?: string
 }
 
 /**
@@ -72,7 +81,13 @@ function filterTree(
  *   - Si `allowedPaths` est fourni, on filtre l'arbre + un toggle "Tout voir"
  *     permet d'outrepasser le filtre au cas par cas.
  */
-export default function CategoryPicker({ value, onChange, allowedPaths }: CategoryPickerProps) {
+export default function CategoryPicker({
+  value,
+  onChange,
+  allowedPaths,
+  triggerClassName,
+  labelMaxWidthClassName,
+}: CategoryPickerProps) {
   const [tree, setTree] = useState<CategoryNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -151,14 +166,25 @@ export default function CategoryPicker({ value, onChange, allowedPaths }: Catego
         type="button"
         onClick={() => setOpen(o => !o)}
         className={cn(
-          "inline-flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-colors w-full md:w-auto",
-          "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-          "hover:bg-[var(--color-background-hover)] text-sm font-medium",
-          "text-[var(--color-text-primary)]"
+          triggerClassName
+            ? triggerClassName
+            : cn(
+                "inline-flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-colors w-full md:w-auto",
+                "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
+                "hover:bg-[var(--color-background-hover)] text-sm font-medium",
+                "text-[var(--color-text-primary)]",
+              ),
         )}
       >
         <FolderTree className="h-4 w-4 text-[var(--color-text-secondary)] shrink-0" />
-        <span className="truncate max-w-[200px] lg:max-w-[300px]">{labelText}</span>
+        <span
+          className={cn(
+            "truncate",
+            labelMaxWidthClassName ?? "max-w-[200px] lg:max-w-[300px]",
+          )}
+        >
+          {labelText}
+        </span>
         <ChevronRight
           className={cn(
             "h-3.5 w-3.5 text-[var(--color-text-secondary)] transition-transform shrink-0 ml-auto",

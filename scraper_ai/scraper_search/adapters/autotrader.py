@@ -226,7 +226,7 @@ class AutoTraderAdapter(BrowserSerpAdapter):
             if not (make and model and url):
                 continue
 
-            image = self._extract_image(card)
+            image = self._extract_image(card, base_url=base_url)
 
             trim_section = self._extract_trim_from_url(url, make=make, model=model)
 
@@ -350,18 +350,124 @@ class AutoTraderAdapter(BrowserSerpAdapter):
                 out.append(tok.title())
         return " ".join(out)
 
+    # ------------------------------------------------------------------
+    # Extraction d'images — robuste face au lazy-loading
+    # ------------------------------------------------------------------
+    #
+    # AutoTrader sert ses cards via Next.js Image (`next/image`), ce qui
+    # produit du markup du type :
+    #
+    #   <picture>
+    #     <source type="image/webp" srcset="https://cdn…/v1.webp 1x, …/v2.webp 2x">
+    #     <img loading="lazy"
+    #          src="data:image/svg+xml;base64,PHN2Zy…"      ← PLACEHOLDER
+    #          data-src="https://cdn…/v1.jpg"
+    #          srcset="…/v1.jpg 640w, …/v2.jpg 1080w">
+    #   </picture>
+    #
+    # On tourne avec `block_assets=True` dans Playwright (cf. _browser_serp_base) :
+    # les requêtes images sont bloquées et les lazy-loaders JS ne swappent
+    # jamais `src` → on doit aller chercher l'URL réelle dans `srcset`,
+    # `data-src`, `data-srcset`, `data-original`, etc. Sinon on remonte le
+    # placeholder data:image/svg+xml qui est inutilisable côté front.
+    #
+    # `_PLACEHOLDER_MARKERS` détecte les URLs qu'on doit ignorer (data URIs,
+    # gifs transparents 1×1, sentinelles textuelles « placeholder », « blank »).
+
+    _PLACEHOLDER_MARKERS = (
+        "data:image/",
+        "data:application/",
+        "blank.gif",
+        "transparent.gif",
+        "placeholder",
+        "spacer.gif",
+        "1x1.gif",
+        "pixel.gif",
+    )
+
+    @classmethod
+    def _is_valid_image_url(cls, url: str) -> bool:
+        if not url:
+            return False
+        u = url.strip().lower()
+        if not u:
+            return False
+        for marker in cls._PLACEHOLDER_MARKERS:
+            if marker in u:
+                return False
+        return True
+
+    @classmethod
+    def _pick_srcset_url(cls, srcset: str) -> str:
+        """Renvoie la meilleure URL d'un attribut `srcset`.
+
+        On préfère la plus haute résolution (dernière entrée d'un srcset
+        Next.js classique `…?w=384 1x, …?w=640 2x, …?w=1080 3x`) car elle
+        rend bien dans une grille de cards. Si la dernière n'est pas valide
+        (placeholder), on tombe sur la précédente, etc.
+        """
+        if not srcset:
+            return ""
+        candidates: List[str] = []
+        for chunk in srcset.split(","):
+            url = chunk.strip().split(" ", 1)[0].strip()
+            if url:
+                candidates.append(url)
+        # Préférer haute résolution (fin du srcset), puis fallback début
+        for url in reversed(candidates):
+            if cls._is_valid_image_url(url):
+                return url
+        for url in candidates:
+            if cls._is_valid_image_url(url):
+                return url
+        return ""
+
     @staticmethod
-    def _extract_image(card) -> str:
-        """Renvoie la 1re image utilisable de la card (priorité au srcset webp)."""
-        for src in card.find_all("source"):
-            srcset = src.get("srcset", "") or ""
-            if srcset:
-                first = srcset.split(",")[0].strip().split(" ")[0]
-                if first.startswith("http"):
-                    return first
-        img = card.find("img")
-        if img:
-            return (img.get("src") or img.get("data-src") or "").strip()
+    def _absolutize(url: str, base_url: str) -> str:
+        if not url:
+            return ""
+        url = url.strip()
+        if url.startswith("//"):
+            return "https:" + url
+        if url.startswith("http"):
+            return url
+        if base_url:
+            return urljoin(base_url, url)
+        return url
+
+    @classmethod
+    def _extract_image(cls, scope, *, base_url: str = "") -> str:
+        """Extrait l'URL de la 1re image utilisable depuis un noeud BS4.
+
+        Ordre de priorité :
+          1. `<source srcset>` (les `<picture>` ont l'URL définitive même
+             sous lazy-loading agressif).
+          2. Sur `<img>` : `srcset` / `data-srcset` (multi-résolution).
+          3. Sur `<img>` : attributs data-* connus avant `src` (pour éviter
+             les placeholders data:image/...).
+          4. Sur `<img>` : `src` en dernier recours.
+        """
+        for source in scope.find_all("source"):
+            url = cls._pick_srcset_url(source.get("srcset") or "")
+            if cls._is_valid_image_url(url):
+                return cls._absolutize(url, base_url)
+
+        for img in scope.find_all("img"):
+            for attr in ("srcset", "data-srcset"):
+                url = cls._pick_srcset_url(img.get(attr) or "")
+                if cls._is_valid_image_url(url):
+                    return cls._absolutize(url, base_url)
+            for attr in (
+                "data-src",
+                "data-lazy-src",
+                "data-original",
+                "data-image",
+                "data-lazy",
+                "src",
+            ):
+                url = (img.get(attr) or "").strip()
+                if cls._is_valid_image_url(url):
+                    return cls._absolutize(url, base_url)
         return ""
 
     @staticmethod
@@ -424,11 +530,25 @@ class AutoTraderAdapter(BrowserSerpAdapter):
             photos = node.get("Photos") or node.get("photos") or []
             image = ""
             if isinstance(photos, list) and photos:
-                first = photos[0]
-                if isinstance(first, str):
-                    image = first
-                elif isinstance(first, dict):
-                    image = first.get("url") or first.get("Photo") or ""
+                # On parcourt les photos jusqu'à en trouver une valide (les
+                # placeholders SVG sont parfois injectés en 1re position).
+                for photo in photos:
+                    if isinstance(photo, str):
+                        candidate = photo
+                    elif isinstance(photo, dict):
+                        candidate = (
+                            photo.get("url")
+                            or photo.get("Photo")
+                            or photo.get("LargePhoto")
+                            or photo.get("MediumPhoto")
+                            or photo.get("FullSize")
+                            or ""
+                        )
+                    else:
+                        candidate = ""
+                    if self._is_valid_image_url(candidate):
+                        image = self._absolutize(candidate, "https://www.autotrader.ca")
+                        break
             try:
                 price_v = (
                     float(price)
@@ -582,13 +702,25 @@ class AutoTraderAdapter(BrowserSerpAdapter):
 
         image = ""
         img_field = node.get("image")
+        candidates: List[str] = []
         if isinstance(img_field, str):
-            image = img_field
-        elif isinstance(img_field, list) and img_field:
-            first = img_field[0]
-            image = first if isinstance(first, str) else (first.get("url") if isinstance(first, dict) else "")
+            candidates.append(img_field)
+        elif isinstance(img_field, list):
+            for item in img_field:
+                if isinstance(item, str):
+                    candidates.append(item)
+                elif isinstance(item, dict):
+                    val = item.get("url") or item.get("contentUrl")
+                    if isinstance(val, str):
+                        candidates.append(val)
         elif isinstance(img_field, dict):
-            image = img_field.get("url", "")
+            val = img_field.get("url") or img_field.get("contentUrl")
+            if isinstance(val, str):
+                candidates.append(val)
+        for candidate in candidates:
+            if self._is_valid_image_url(candidate):
+                image = self._absolutize(candidate, "https://www.autotrader.ca")
+                break
 
         condition = ""
         cond_field = node.get("itemCondition") or node.get("vehicleCondition")
@@ -678,6 +810,10 @@ class AutoTraderAdapter(BrowserSerpAdapter):
             year, make, model = self._guess_year_make_model(canonical, txt)
             price = self._extract_price_from_text(txt)
             mileage = self._extract_mileage_from_text(txt)
+            # Récupère l'image depuis le container parent commun (qui devrait
+            # englober la card complète) — même logique de fallback que pour
+            # les cards data-testid pour gérer le lazy-loading.
+            image = self._extract_image(parent, base_url=base_url) if parent else ""
 
             name_parts: List[str] = []
             if year:
@@ -701,7 +837,7 @@ class AutoTraderAdapter(BrowserSerpAdapter):
                 "prix": price,
                 "kilometrage": mileage,
                 "currency": "CAD",
-                "image": "",
+                "image": image,
                 "sourceUrl": canonical,
                 "etat": "occasion" if (mileage or 0) > 100 else None,
             }

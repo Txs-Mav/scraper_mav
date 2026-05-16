@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react"
 import {
   Search, Loader2, ExternalLink, Globe, ShoppingBag,
   AlertCircle, CheckCircle2, Clock, Info, Settings2, X, ChevronDown,
-  Briefcase, Eye, Check,
+  Briefcase, Eye, Check, SlidersHorizontal, Gauge, Lock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import CategoryPicker from "./category-picker"
@@ -114,6 +114,8 @@ interface SourceMeta {
   label: string
   hint: string
   group: "instant" | "marketplace" | "vehicle" | "api"
+  disabled?: boolean
+  badge?: string
 }
 
 const SOURCES: SourceMeta[] = [
@@ -127,7 +129,7 @@ const SOURCES: SourceMeta[] = [
   { key: "lespac", label: "LesPAC", hint: "Petites annonces QC (~8s)", group: "marketplace" },
   { key: "autotrader", label: "AutoTrader", hint: "Voitures occasion + neuves (~12s)", group: "vehicle" },
   { key: "cycletrader", label: "CycleTrader", hint: "Powersport US (~10s)", group: "vehicle" },
-  { key: "facebook", label: "Facebook Marketplace", hint: "Cookies FB requis (FB_COOKIES_FILE)", group: "api" },
+  { key: "facebook", label: "Facebook Marketplace", hint: "Disponible bientôt", group: "api", disabled: true, badge: "Bientôt" },
 ]
 
 const QUERY_COMPLETIONS = [
@@ -299,7 +301,7 @@ export default function ProductSearch() {
         setState((prev) => ({
           ...prev,
           ...parsed,
-          adapters: { ...prev.adapters, ...(parsed.adapters || {}) },
+          adapters: { ...prev.adapters, ...(parsed.adapters || {}), facebook: false },
           vehicleSpecs: { ...prev.vehicleSpecs, ...(migratedSpecs || {}) },
         }))
         if (Array.isArray(parsed?.adapters?.shopify)) {
@@ -394,7 +396,7 @@ export default function ProductSearch() {
   const activeCount = useMemo(() => {
     let n = 0
     for (const s of SOURCES) {
-      if (state.adapters[s.key]) n++
+      if (!s.disabled && state.adapters[s.key]) n++
     }
     if (shopifyInput.trim()) n++
     if (dealersInput.trim()) n++
@@ -434,6 +436,28 @@ export default function ProductSearch() {
     setState((s) => ({ ...s, query: prediction }))
   }, [prediction])
 
+  // Les panneaux « Sources » et « Évaluer un véhicule » sont mutuellement
+  // exclusifs : ouvrir l'un ferme automatiquement l'autre. Évite que les
+  // deux panels s'empilent sous la barre de recherche et grossisse la
+  // surface au point de pousser les résultats hors vue.
+  const toggleSourcesPanel = useCallback(() => {
+    setShowSources((prev) => {
+      const next = !prev
+      if (next) {
+        setState((s) => (s.evaluatorEnabled ? { ...s, evaluatorEnabled: false } : s))
+      }
+      return next
+    })
+  }, [])
+
+  const toggleEvaluator = useCallback(() => {
+    setState((s) => {
+      const next = !s.evaluatorEnabled
+      if (next) setShowSources(false)
+      return { ...s, evaluatorEnabled: next }
+    })
+  }, [])
+
   const updateAdapter = useCallback(<K extends keyof AdapterToggles>(
     key: K, value: AdapterToggles[K]
   ) => {
@@ -444,7 +468,9 @@ export default function ProductSearch() {
     setState((s) => {
       const next = { ...s.adapters }
       for (const src of SOURCES) {
-        (next as Record<string, unknown>)[src.key] = value
+        if (!src.disabled) {
+          (next as Record<string, unknown>)[src.key] = value
+        }
       }
       return { ...s, adapters: next }
     })
@@ -484,6 +510,7 @@ export default function ProductSearch() {
           category: state.category,
           adapters: {
             ...state.adapters,
+            facebook: false,
             shopify: shopifyDomains,
             genericDealers: dealerDomains,
           },
@@ -526,8 +553,24 @@ export default function ProductSearch() {
     }
   }, [state, shopifyInput, dealersInput, activeCount])
 
+  // ── Helper d'affichage : libellé court de la catégorie sélectionnée pour
+  // l'afficher inline dans la barre de metadata (pas le breadcrumb complet,
+  // juste le dernier segment pour rester compact).
+  const categoryShortLabel = useMemo(() => {
+    if (!state.category) return null
+    const segments = state.category.split(".")
+    const last = segments[segments.length - 1]
+    return last.charAt(0).toUpperCase() + last.slice(1).replace(/-/g, " ")
+  }, [state.category])
+
+  const helperText = state.query.trim()
+    ? activeCount === 0
+      ? "Active au moins une source pour lancer la recherche."
+      : `Prêt à interroger ${activeCount} source${activeCount > 1 ? "s" : ""} en parallèle.`
+    : "Tape ta requête puis clique sur Rechercher."
+
   return (
-    <div className="space-y-5 max-w-6xl mx-auto">
+    <div className="relative z-10 space-y-5 max-w-[1400px] mx-auto">
       <BusinessTypeOnboardingModal
         open={showOnboarding}
         initialValue={user?.business_type ?? null}
@@ -540,84 +583,161 @@ export default function ProductSearch() {
         onDismiss={() => setShowOnboarding(false)}
       />
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)] flex items-center gap-2">
-            <Search className="h-6 w-6 text-emerald-600" />
-            Recherche par produit
-          </h1>
-          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            Compare en parallèle Amazon, eBay, Kijiji, Shopify et tes concessionnaires.
-            Tolère les fautes de frappe mineures.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {isAdmin && (
-            <AdminViewAsPicker value={adminViewAs} onChange={setAdminViewAs} />
-          )}
-          {!isAdmin && user && (
-            <button
-              type="button"
-              onClick={handleReopenOnboarding}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors",
-                "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-                "hover:bg-[var(--color-background-hover)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
-              )}
-              title="Changer mes domaines d'activité"
-            >
-              <Briefcase className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline truncate max-w-[300px]">
-                {effectiveBusinessTypes.length === 0
-                  ? "Choisir un domaine"
-                  : effectiveBusinessTypes.length === 1
-                    ? t(BT_LABEL_KEYS[effectiveBusinessTypes[0]])
-                    : `${effectiveBusinessTypes.length} domaines`}
+      {/* ── Header unifié (style Surveillance) ──
+          Une seule surface translucide, pas de card pleine. Hiérarchie :
+          status pill → H1 (titre de la vue) → metadata inline → actions
+          secondaires groupées en segmented control. Le background ambient
+          (SurveillanceBackground) gère la séparation avec le reste de la
+          page. */}
+      <header className="relative z-30 rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
+        <div className="flex items-center justify-between gap-5 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
               </span>
-            </button>
-          )}
-        </div>
-      </div>
+              <span className="font-medium uppercase tracking-wider">
+                Recherche multi-sources
+              </span>
+            </div>
 
-      {/* Formulaire principal — organisé en étapes implicites :
-          1. Catégorie  →  2. Requête  →  (3. Évaluation véhicule)  →  N. Sources  →  CTA.
-          NB: pas de `overflow-hidden` ici sinon les popovers absolus des enfants
-          (sélecteur de catégorie, etc.) sont clippés par le radius du form. */}
+            <h1 className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight">
+              Recherche par produit
+            </h1>
+
+            <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] flex items-center gap-2 flex-wrap">
+              <span className="min-w-0">
+                Compare en parallèle Amazon, eBay, Kijiji, Shopify et tes concessionnaires.
+              </span>
+              <span className="opacity-40">·</span>
+              <span>
+                <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">
+                  {activeCount}
+                </span>{" "}
+                source{activeCount > 1 ? "s" : ""}
+              </span>
+              {categoryShortLabel && (
+                <>
+                  <span className="opacity-40">·</span>
+                  <span className="truncate">
+                    <span className="font-semibold text-[var(--color-text-primary)]">
+                      {categoryShortLabel}
+                    </span>
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
+
+          {/* Actions header — catégorie + segmented control unifié pour
+              Sources + Évaluateur (si véhicule) + admin/business types.
+              La catégorie est désormais ici (et non plus dans la barre
+              de recherche) pour libérer l'input et donner plus de poids
+              au CTA primaire. */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            <CategoryPicker
+              value={state.category}
+              onChange={(path) => setState((s) => ({ ...s, category: path }))}
+              allowedPaths={allowedCategoryPaths}
+              triggerClassName={cn(
+                "inline-flex items-center gap-2 h-10 px-3.5 rounded-lg border text-sm font-medium transition-colors",
+                "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 backdrop-blur-sm shadow-sm",
+                "hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]",
+              )}
+              labelMaxWidthClassName="max-w-[160px] lg:max-w-[220px]"
+            />
+
+            <div className="inline-flex items-stretch h-10 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 shadow-sm overflow-hidden divide-x divide-[var(--color-border-tertiary)] backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={toggleSourcesPanel}
+                className={cn(
+                  "inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors",
+                  showSources
+                    ? "text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]"
+                    : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]",
+                )}
+                title="Configurer les sources interrogées"
+              >
+                <SlidersHorizontal className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                <span className="hidden sm:inline">Sources</span>
+                {activeCount > 0 && (
+                  <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                    {activeCount}
+                  </span>
+                )}
+              </button>
+
+              {isVehicleCat && (
+                <button
+                  type="button"
+                  onClick={toggleEvaluator}
+                  className={cn(
+                    "inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors",
+                    state.evaluatorEnabled
+                      ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10"
+                      : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]",
+                  )}
+                  title="Estimer la valeur du véhicule à partir des comparables"
+                  aria-pressed={state.evaluatorEnabled}
+                >
+                  <Gauge className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                  <span className="hidden sm:inline">Évaluer</span>
+                </button>
+              )}
+            </div>
+
+            {isAdmin ? (
+              <AdminViewAsPicker value={adminViewAs} onChange={setAdminViewAs} />
+            ) : user ? (
+              <button
+                type="button"
+                onClick={handleReopenOnboarding}
+                className={cn(
+                  "inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-lg border text-sm font-medium transition-colors",
+                  "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 backdrop-blur-sm",
+                  "hover:bg-[var(--color-background-hover)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
+                )}
+                title="Changer mes domaines d'activité"
+              >
+                <Briefcase className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                <span className="hidden md:inline truncate max-w-[180px]">
+                  {effectiveBusinessTypes.length === 0
+                    ? "Domaine"
+                    : effectiveBusinessTypes.length === 1
+                      ? t(BT_LABEL_KEYS[effectiveBusinessTypes[0]])
+                      : `${effectiveBusinessTypes.length} domaines`}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </header>
+
+      {/* ── Panneau de commande unifié ──
+          La catégorie est désormais dans le header : cette surface ne
+          contient plus que l'input dominant + le CTA primaire pour
+          maximiser l'amplitude visuelle de la requête. Texte d'aide +
+          chips contextuelles en footer discret. Les panels (sources,
+          évaluateur véhicule) s'inscrivent sous cette même surface. */}
       <form
         onSubmit={onSubmit}
-        className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl shadow-sm"
+        className="relative z-0 rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md"
       >
-        <StepBlock
-          number={1}
-          title="Catégorie"
-          hint="Cible le contexte (auto, électronique, véhicule…) pour activer les bonnes sources."
-        >
-          <CategoryPicker
-            value={state.category}
-            onChange={(path) => setState((s) => ({ ...s, category: path }))}
-            allowedPaths={allowedCategoryPaths}
-          />
-        </StepBlock>
-
-        <StepBlock
-          number={2}
-          title="Ce que tu cherches"
-          hint="Marque, modèle, année, mots-clés. Les fautes de frappe mineures sont tolérées."
-        >
+        <div className="p-3 flex items-stretch gap-2.5 flex-wrap md:flex-nowrap">
           <div
             className={cn(
-              "relative w-full rounded-xl border",
+              "relative flex-1 min-w-0 w-full rounded-xl border h-12",
               "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
               "focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-transparent",
             )}
           >
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-text-tertiary)] pointer-events-none z-20" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-text-tertiary)] pointer-events-none z-20" />
             {prediction && prediction.length > state.query.length && (
               <div
                 aria-hidden="true"
-                className="absolute inset-0 flex items-center pl-10 pr-20 py-2.5 text-sm pointer-events-none overflow-hidden z-0"
+                className="absolute inset-0 flex items-center pl-11 pr-20 text-[15px] pointer-events-none overflow-hidden z-0"
               >
                 <span className="text-transparent whitespace-pre">{state.query}</span>
                 <span className="text-[var(--color-text-tertiary)]/70 whitespace-pre truncate">
@@ -637,14 +757,15 @@ export default function ProductSearch() {
               }}
               placeholder='Ex: "iPhone 15 Pro 256GB", "casque Bell", "Ski-Doo Summit 850"'
               className={cn(
-                "relative z-10 w-full pl-10 pr-20 py-2.5 rounded-xl text-sm bg-transparent",
+                "relative z-10 w-full h-full pl-11 pr-20 rounded-xl text-[15px] bg-transparent",
                 "text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]",
-                "focus:outline-none"
+                "focus:outline-none",
               )}
               disabled={loading}
+              autoFocus
             />
             {prediction && prediction.length > state.query.length && !loading && (
-              <span className="absolute right-8 top-1/2 -translate-y-1/2 z-20 hidden sm:inline-flex items-center rounded-md border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
+              <span className="absolute right-9 top-1/2 -translate-y-1/2 z-20 hidden sm:inline-flex items-center rounded-md border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
                 Tab
               </span>
             )}
@@ -652,70 +773,80 @@ export default function ProductSearch() {
               <button
                 type="button"
                 onClick={() => setState((s) => ({ ...s, query: "" }))}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
                 aria-label="Effacer la recherche"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-        </StepBlock>
 
-        {isVehicleCat && (
-          <StepBlock
-            number={3}
-            title="Évaluer un véhicule"
-            optional
-            hint={
-              state.evaluatorEnabled
-                ? "Renseigne les specs pour obtenir une fourchette de valeur ajustée."
-                : "Active pour estimer la valeur à partir des comparables trouvés."
-            }
-            action={
-              <ToggleSwitch
-                checked={state.evaluatorEnabled}
-                disabled={loading}
-                onChange={(enabled) =>
-                  setState((s) => ({ ...s, evaluatorEnabled: enabled }))
-                }
-                ariaLabel="Activer l'évaluation de véhicule"
-              />
-            }
-          >
-            {state.evaluatorEnabled && (
-              <VehicleSpecsBox
-                specs={state.vehicleSpecs}
-                disabled={loading}
-                categoryPath={state.category}
-                queryText={state.query}
-                onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
-              />
+          <button
+            type="submit"
+            disabled={loading || !state.query.trim()}
+            className={cn(
+              "inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-sm font-semibold transition-all shrink-0 w-full md:w-auto md:min-w-[160px]",
+              "bg-gradient-to-b from-emerald-600 to-emerald-700 text-white",
+              "hover:from-emerald-500 hover:to-emerald-600 hover:-translate-y-0.5",
+              "shadow-md shadow-emerald-700/25 hover:shadow-lg hover:shadow-emerald-700/30",
+              "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:from-emerald-600 disabled:hover:to-emerald-700",
             )}
-          </StepBlock>
-        )}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            <span>{loading ? "Recherche…" : "Rechercher"}</span>
+          </button>
+        </div>
 
-        <StepBlock
-          number={isVehicleCat ? 4 : 3}
-          title="Sources de recherche"
-          optional
-          hint={`${activeCount} active${activeCount > 1 ? "s" : ""} — Amazon, eBay, Kijiji, concessionnaires…`}
-          action={
+        {/* Footer discret : texte d'aide contextuel + raccourci d'évaluateur
+            quand on est en catégorie véhicule (pratique pour les gens qui
+            ne regardent pas la barre d'actions du header). */}
+        <div className="px-4 py-2.5 border-t border-[var(--color-border-tertiary)]/40 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-[11px] text-[var(--color-text-tertiary)] min-w-0 flex-1">
+            {helperText}
+          </p>
+          {isVehicleCat && (
             <button
               type="button"
-              onClick={() => setShowSources((v) => !v)}
+              onClick={toggleEvaluator}
               className={cn(
-                "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors",
-                "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-                "hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]"
+                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors shrink-0",
+                state.evaluatorEnabled
+                  ? "bg-emerald-50 dark:bg-emerald-500/15 border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+                  : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-tertiary)]",
               )}
+              aria-pressed={state.evaluatorEnabled}
             >
-              <Settings2 className="h-3.5 w-3.5" />
-              <span>{showSources ? "Masquer" : "Configurer"}</span>
-              <ChevronDown className={cn("h-3 w-3 transition-transform", showSources && "rotate-180")} />
+              <Gauge className="h-3 w-3" />
+              <span>
+                {state.evaluatorEnabled
+                  ? "Évaluation activée"
+                  : "Activer l'évaluation véhicule"}
+              </span>
             </button>
-          }
-        >
-          {showSources && (
+          )}
+        </div>
+
+        {/* Panel "Évaluateur véhicule" — s'inscrit naturellement sous la
+            barre de recherche quand activé. Pas de header dédié, pas de
+            numéro d'étape : c'est juste une extension contextuelle de la
+            requête principale. */}
+        {evaluatorActive && (
+          <div className="px-4 pb-4 pt-1">
+            <VehicleSpecsBox
+              specs={state.vehicleSpecs}
+              disabled={loading}
+              categoryPath={state.category}
+              queryText={state.query}
+              onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
+            />
+          </div>
+        )}
+
+        {/* Panel "Sources" — même logique d'extension contextuelle. Reste
+            replié par défaut ; s'ouvre via le segmented control du header
+            ou via tout autre déclencheur. */}
+        {showSources && (
+          <div className="px-4 pb-4 pt-1 border-t border-[var(--color-border-tertiary)]/40">
             <SourcesPanel
               adapters={state.adapters}
               shopifyInput={shopifyInput}
@@ -725,34 +856,8 @@ export default function ProductSearch() {
               onToggle={updateAdapter}
               onToggleAll={toggleAll}
             />
-          )}
-        </StepBlock>
-
-        {/* Bandeau CTA final — clôt naturellement le flow des étapes.
-            `rounded-b-2xl` préserve le radius bas du form (qui n'a plus
-            `overflow-hidden`) malgré le background coloré du bandeau. */}
-        <div className="px-5 py-4 bg-[var(--color-background-secondary)]/40 border-t border-[var(--color-border-secondary)] rounded-b-2xl flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-[var(--color-text-secondary)] min-w-0">
-            {state.query.trim()
-              ? activeCount === 0
-                ? "Active au moins une source pour lancer la recherche."
-                : `Prêt à interroger ${activeCount} source${activeCount > 1 ? "s" : ""} en parallèle.`
-              : "Renseigne ta requête à l'étape 2 pour lancer la recherche."}
-          </p>
-          <button
-            type="submit"
-            disabled={loading || !state.query.trim()}
-            className={cn(
-              "inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all",
-              "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98]",
-              "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
-              "shadow-sm shadow-emerald-600/20"
-            )}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            <span>{loading ? "Recherche..." : "Rechercher"}</span>
-          </button>
-        </div>
+          </div>
+        )}
       </form>
 
       {/* Erreur globale */}
@@ -929,9 +1034,9 @@ function SourcesPanel({
   ]
 
   return (
-    <div className="border-t border-[var(--color-border-secondary)] mt-4 pt-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--color-text-secondary)]">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-xs text-[var(--color-text-secondary)] min-w-0 flex-1">
           Active uniquement les sources pertinentes pour ton produit.
         </p>
         <div className="flex items-center gap-1">
@@ -974,7 +1079,9 @@ function SourcesPanel({
                   key={src.key}
                   label={src.label}
                   hint={src.hint}
-                  checked={adapters[src.key] as boolean}
+                  checked={!src.disabled && (adapters[src.key] as boolean)}
+                  disabled={src.disabled}
+                  badge={src.badge}
                   onChange={(v) => onToggle(src.key, v as AdapterToggles[typeof src.key])}
                 />
               ))}
@@ -1055,22 +1162,31 @@ function SourceChip({
   checked,
   onChange,
   hint,
+  disabled,
+  badge,
 }: {
   label: string
   checked: boolean
   onChange: (v: boolean) => void
   hint?: string
+  disabled?: boolean
+  badge?: string
 }) {
   return (
     <button
       type="button"
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        if (!disabled) onChange(!checked)
+      }}
       title={hint}
+      disabled={disabled}
+      aria-disabled={disabled}
       className={cn(
         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
         checked
           ? "bg-emerald-600 border-emerald-600 text-white shadow-sm shadow-emerald-600/20"
-          : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
+          : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]",
+        disabled && "cursor-not-allowed opacity-70 hover:border-[var(--color-border-secondary)] hover:text-[var(--color-text-secondary)]"
       )}
     >
       <span
@@ -1084,102 +1200,12 @@ function SourceChip({
         {checked && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
       </span>
       {label}
-    </button>
-  )
-}
-
-/**
- * Bloc « étape » du formulaire de recherche.
- *
- * Donne une hiérarchie visuelle implicite (numéro + titre + indice) sans
- * imposer un wizard rigide : toutes les étapes restent simultanément
- * éditables, mais l'œil suit naturellement l'ordre 1 → 2 → 3 → CTA.
- */
-function StepBlock({
-  number,
-  title,
-  hint,
-  optional,
-  action,
-  children,
-}: {
-  number: number
-  title: string
-  hint?: string
-  optional?: boolean
-  action?: React.ReactNode
-  children?: React.ReactNode
-}) {
-  return (
-    <section className="px-5 py-4 border-b border-[var(--color-border-secondary)] last:border-b-0">
-      <header className="flex items-start justify-between gap-3 mb-2.5">
-        <div className="min-w-0 flex items-start gap-2.5 flex-1">
-          <span
-            aria-hidden="true"
-            className="inline-flex items-center justify-center h-5 w-5 mt-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold tabular-nums shrink-0"
-          >
-            {number}
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                {title}
-              </h3>
-              {optional && (
-                <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-semibold">
-                  optionnel
-                </span>
-              )}
-            </div>
-            {hint && (
-              <p className="mt-0.5 text-[11px] text-[var(--color-text-secondary)] leading-snug">
-                {hint}
-              </p>
-            )}
-          </div>
-        </div>
-        {action && <div className="shrink-0">{action}</div>}
-      </header>
-      {children && <div>{children}</div>}
-    </section>
-  )
-}
-
-/**
- * Petit switch on/off réutilisable (utilisé dans l'action d'un StepBlock).
- */
-function ToggleSwitch({
-  checked,
-  onChange,
-  disabled,
-  ariaLabel,
-}: {
-  checked: boolean
-  onChange: (v: boolean) => void
-  disabled?: boolean
-  ariaLabel?: string
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
-        checked ? "bg-emerald-600" : "bg-[var(--color-border-secondary)]",
-        disabled && "opacity-50 cursor-not-allowed",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1",
+      {disabled && <Lock className="h-3 w-3" aria-hidden="true" />}
+      {badge && (
+        <span className="ml-0.5 rounded-full bg-[var(--color-background-secondary)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
+          {badge}
+        </span>
       )}
-    >
-      <span
-        className={cn(
-          "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
-          checked ? "translate-x-5" : "translate-x-1",
-        )}
-      />
     </button>
   )
 }
@@ -1594,7 +1620,49 @@ function evaluationBadgeTone(score: number): "emerald" | "amber" | "orange" | "s
   return "slate"
 }
 
+const resolvedImageCache = new Map<string, string>()
+
+function shouldResolveListingImage(hit: ScoredHit) {
+  if (hit.image || !hit.source_url) return false
+  return (hit.source_site || "").toLowerCase().includes("autotrader")
+}
+
+function useResolvedListingImage(hit: ScoredHit) {
+  const cacheKey = hit.source_url || ""
+  const [resolvedImage, setResolvedImage] = useState(() =>
+    hit.image || (cacheKey ? resolvedImageCache.get(cacheKey) || "" : ""),
+  )
+
+  useEffect(() => {
+    const cached = cacheKey ? resolvedImageCache.get(cacheKey) || "" : ""
+    setResolvedImage(hit.image || cached)
+
+    if (hit.image || cached || !shouldResolveListingImage(hit)) return
+
+    const controller = new AbortController()
+    fetch(`/api/product-search/resolve-image?url=${encodeURIComponent(hit.source_url)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { image?: unknown } | null) => {
+        const image = typeof data?.image === "string" ? data.image : ""
+        if (!image) return
+        resolvedImageCache.set(cacheKey, image)
+        setResolvedImage(image)
+      })
+      .catch(() => {
+        /* Image fallback best-effort seulement. */
+      })
+
+    return () => controller.abort()
+  }, [cacheKey, hit])
+
+  return resolvedImage
+}
+
 function ResultCard({ hit }: { hit: ScoredHit }) {
+  const resolvedImage = useResolvedListingImage(hit)
+  const [imageFailed, setImageFailed] = useState(false)
   const formatPrice = (p: number | null) => {
     if (p == null) return null
     return new Intl.NumberFormat("fr-CA", {
@@ -1609,6 +1677,11 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
   const breakdownTitle =
     `Texte ${hit.breakdown.text}% · Année ${hit.breakdown.year}% · ` +
     `KM ${hit.breakdown.mileage}% · Prix ${hit.breakdown.price}% · Variante ${hit.breakdown.variant}%`
+  const displayImage = imageFailed ? "" : resolvedImage
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [resolvedImage])
 
   return (
     <a
@@ -1622,14 +1695,14 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
       )}
     >
       <div className="aspect-[4/3] bg-[var(--color-background-secondary)] relative overflow-hidden">
-        {hit.image ? (
+        {displayImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={hit.image}
+            src={displayImage}
             alt={hit.name}
             loading="lazy"
             className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+            onError={() => setImageFailed(true)}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-[var(--color-text-tertiary)]">
