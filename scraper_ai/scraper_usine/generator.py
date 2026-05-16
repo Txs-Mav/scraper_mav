@@ -54,6 +54,10 @@ class ScraperCodeGenerator:
         else:
             code = self._render_full_scraper(context, strategy)
 
+        # Validation complète (syntaxe + chargement du corps de classe) AVANT
+        # toute écriture disque : si le code est invalide, on ne pollue ni
+        # `dedicated_scrapers/` ni `_generated_registry.py` (sinon un seul bug
+        # template peut bloquer l'import de tout le registre).
         self._validate_syntax(code, slug)
 
         file_path.write_text(code, encoding="utf-8")
@@ -410,12 +414,16 @@ class ScraperCodeGenerator:
     def _update_generated_registry(self, slug: str, module: str, class_name: str, domain: str) -> None:
         header = "# AUTO-GENERE par scraper_usine. Ne pas modifier.\nGENERATED_SCRAPERS = {}\nGENERATED_DOMAINS = {}\n\n"
 
+        # NOTE: on attrape `Exception` (et pas seulement `ImportError`) parce
+        # qu'un scraper généré qui contient un bug à l'exécution de son corps
+        # de classe (ex: NameError sur une constante mal échappée) lèverait
+        # `NameError`/`SyntaxError` et bloquerait sinon TOUT le registre.
         entry = (
             f"try:\n"
             f"    from .{module} import {class_name}\n"
             f"    GENERATED_SCRAPERS['{slug}'] = {class_name}\n"
             f"    GENERATED_DOMAINS['{domain}'] = '{slug}'\n"
-            f"except ImportError:\n"
+            f"except Exception:\n"
             f"    pass\n\n"
         )
 
@@ -489,7 +497,7 @@ class ScraperCodeGenerator:
 
     def _validate_syntax(self, code: str, slug: str) -> None:
         try:
-            compile(code, f"<generated:{slug}>", "exec")
+            compiled = compile(code, f"<generated:{slug}>", "exec")
         except SyntaxError as e:
             raise ValueError(f"Code généré invalide pour {slug}: {e}") from e
 
@@ -497,6 +505,22 @@ class ScraperCodeGenerator:
         class_defs = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
         if not class_defs:
             raise ValueError(f"Aucune classe trouvée dans le code généré pour {slug}")
+
+        # Exécute le module dans un namespace isolé pour attraper les erreurs
+        # qui surviennent uniquement à l'évaluation du corps de classe
+        # (NameError sur une constante mal échappée, AttributeError, etc.).
+        # `compile()` seul ne déroule pas les corps de classe — sans cette
+        # étape, un littéral comme `USE_PLAYWRIGHT_FOR_DISCOVERY = true`
+        # passerait inaperçu et casserait le registre à l'import.
+        # Les __init__ ne sont pas appelés ici, donc aucune logique réseau
+        # ne se déclenche.
+        try:
+            exec(compiled, {"__name__": f"__usine_validate_{slug}__"})
+        except Exception as e:
+            raise ValueError(
+                f"Code généré pour {slug} ne se charge pas : "
+                f"{type(e).__name__}: {e}"
+            ) from e
 
     # ------------------------------------------------------------------
     # Slugs

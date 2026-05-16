@@ -111,7 +111,7 @@
 
     # Activé par le générateur si rendering=PLAYWRIGHT pour la découverte de
     # listings (sites SPA dont le HTML brut est vide).
-    USE_PLAYWRIGHT_FOR_DISCOVERY = {{ use_playwright_for_discovery|default(False)|tojson }}
+    USE_PLAYWRIGHT_FOR_DISCOVERY = {{ "True" if use_playwright_for_discovery|default(False) else "False" }}
 
     def _fetch_listing_html(self, url: str):
         """Récupère le HTML d'une page listing. Utilise le BrowserRuntime
