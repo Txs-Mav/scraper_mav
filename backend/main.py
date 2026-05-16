@@ -744,6 +744,44 @@ async def scrapers_pending_test(body: PendingScraperTestRequest):
     }
 
 
+@app.get("/product-search/categories", dependencies=[Depends(verify_secret)])
+async def product_search_categories():
+    """Renvoie la taxonomie de catégories sous forme d'arbre JSON.
+
+    Consommé par `/api/product-search/categories` côté Next.js qui sert le
+    sélecteur hiérarchique de la page Recherche. La logique est strictement
+    identique au fallback local `spawn(python3)` de la route Next.js — on
+    évite ainsi un 503 « Service de catégories indisponible en production »
+    quand l'app tourne en serverless (Vercel) où `python3` n'est pas dispo.
+
+    Format de réponse :
+        { "tree": [ { "slug", "name", "path", "children": [...] }, ... ] }
+    """
+    try:
+        from scraper_ai.scraper_search.categories import (
+            _CATEGORIES_BY_SLUG,
+            get_path,
+            root_categories,
+        )
+    except ImportError as e:
+        raise HTTPException(500, detail={
+            "error": "import_error",
+            "message": f"Impossible de charger la taxonomie : {e}",
+        })
+
+    def serialize(slug: str) -> dict:
+        cat = _CATEGORIES_BY_SLUG[slug]
+        return {
+            "slug": cat.slug,
+            "name": cat.name,
+            "path": get_path(cat.slug),
+            "children": [serialize(child) for child in cat.children],
+        }
+
+    tree = [serialize(r.slug) for r in root_categories()]
+    return {"tree": tree}
+
+
 @app.get("/health")
 async def health():
     active_jobs = sum(1 for j in jobs.values() if not j.is_complete)
