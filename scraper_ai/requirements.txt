@@ -18,6 +18,9 @@ lxml>=5.0.0
 # HTTP Client
 httpx>=0.25.0
 requests>=2.31.0
+# Décompression Brotli pour `requests` (sinon les sites qui répondent
+# en `br` renvoient un blob compressé qui casse la détection de plateforme).
+brotli>=1.1.0
 
 # Browser automation
 playwright>=1.40.0

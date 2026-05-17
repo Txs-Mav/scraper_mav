@@ -2,11 +2,12 @@
 
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck, Square } from "lucide-react"
+import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck, Square, Store } from "lucide-react"
 import { logActivity } from "@/hooks/use-activity-tracker"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
+import { MARKETPLACE_SOURCES, type MarketplaceSource } from "@/lib/marketplace-sources"
 
 const DEFAULT_REFERENCE_URL = ""
 const SCRAPING_SESSION_KEY = "go-data-scraping-session"
@@ -610,6 +611,27 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     setSharedSearchResults([])
   }
 
+  const toggleMarketplaceCompetitor = (source: MarketplaceSource) => {
+    const alreadyAdded = urls.some(u => u.trim() && getDomain(u) === source.site_domain)
+    if (alreadyAdded) {
+      setUrls(prev => {
+        const next = prev.filter(u => !u.trim() || getDomain(u) !== source.site_domain)
+        return next.length ? next : ['']
+      })
+      setCompetitorEnabled(prev => {
+        const kept = prev.filter((_, i) => {
+          const u = urls[i]
+          return !u?.trim() || getDomain(u) !== source.site_domain
+        })
+        return kept.length ? kept : [true]
+      })
+      return
+    }
+    if (getDomain(referenceUrl) === source.site_domain) return
+    setUrls(prev => [...prev.filter(u => u.trim()), source.site_url])
+    setCompetitorEnabled(prev => [...prev.filter((_, i) => urls[i]?.trim()), true])
+  }
+
   useEffect(() => {
     loadConfig()
     loadAllSharedScrapers()
@@ -808,6 +830,52 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Séparateur */}
+          <div className="h-px bg-[var(--color-background-primary)]" />
+
+          {/* Marketplaces (sources de marché préconfigurées) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2">
+              <Store className="w-3.5 h-3.5 text-[var(--color-text-secondary)]" />
+              <span className="text-sm font-medium text-[var(--color-text-primary)]">{t("config.marketplaces")}</span>
+              <span className="text-[11px] text-[var(--color-text-secondary)]">{t("config.marketplacesHint")}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {MARKETPLACE_SOURCES.map((source) => {
+                const isAdded = urls.some(u => u.trim() && getDomain(u) === source.site_domain)
+                const isReference = referenceUrl.trim() && getDomain(referenceUrl) === source.site_domain
+                const disabled = !!isReference
+                return (
+                  <button
+                    key={source.id}
+                    type="button"
+                    onClick={() => toggleMarketplaceCompetitor(source)}
+                    disabled={disabled}
+                    title={disabled ? t("config.marketplaceIsReference") : source.description}
+                    className={`group flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all ${
+                      isAdded
+                        ? 'border-emerald-300 dark:border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-500/[0.07]'
+                        : disabled
+                          ? 'border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] opacity-50 cursor-not-allowed'
+                          : 'border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:bg-emerald-50/30 dark:hover:bg-emerald-500/[0.04]'
+                    }`}
+                  >
+                    <SiteFavicon url={source.site_url} name={source.site_name} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium text-[var(--color-text-primary)] truncate">
+                        {source.site_name}
+                      </p>
+                      <p className="text-[10px] text-[var(--color-text-secondary)] truncate">
+                        {source.site_domain}
+                      </p>
+                    </div>
+                    {isAdded && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Séparateur */}

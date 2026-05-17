@@ -56,19 +56,25 @@ COMPLETION_PATTERNS = [
     "💾 Backup local:",
 ]
 
+# Patterns d'erreur détectés en streaming pour court-circuiter le polling
+# côté frontend. ATTENTION : la détection se fait sur le log CUMULÉ
+# (`combined`), donc tout pattern présent une seule fois marque le job en
+# erreur jusqu'à la fin. On ne garde que des patterns sans ambiguïté.
+#
+# Les patterns comme `TypeError:`, `AttributeError:`, `exception:` etc. ont
+# été retirés : ils produisaient des faux positifs (apparition d'un message
+# de log qui *cite* une exception, d'une docstring, d'un commentaire dans
+# l'output du subprocess Python suffit à flagger le job en erreur).
+#
+# Le filet de sécurité ultime reste `proc.wait()` + `proc.returncode != 0`
+# dans `_stream_output`, qui marque correctement les vrais crashs même
+# sans aucun match de pattern.
 ERROR_PATTERNS = [
     "erreur fatale",
     "erreur critique",
     "AUTHENTIFICATION REQUISE",
     "❌ Aucun site de référence configuré",
     "Traceback (most recent call last)",
-    "TypeError:",
-    "AttributeError:",
-    "KeyError:",
-    "ImportError:",
-    "ModuleNotFoundError:",
-    "fatal error",
-    "exception:",
 ]
 
 

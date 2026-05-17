@@ -74,8 +74,12 @@ const DEFAULT_STATE: PersistedState = {
   query: "",
   category: null,
   adapters: {
-    amazon: true,
-    bestbuy: true,
+    // Sources verrouillées tant qu'elles n'ont pas été connectées dans le
+    // dashboard admin (amazon, bestbuy, walmart, costco, cycletrader). On
+    // les force à false par défaut pour éviter qu'un ancien state local
+    // ne réactive silencieusement une source désormais en lecture seule.
+    amazon: false,
+    bestbuy: false,
     dedicated: true,
     ebay: true,
     kijiji: false,
@@ -118,17 +122,22 @@ interface SourceMeta {
   badge?: string
 }
 
+// Note : amazon, bestbuy, walmart, costco et cycletrader sont marquées
+// `disabled` (cadenas) tant que la source n'a pas été configurée dans le
+// dashboard admin. Elles seront automatiquement réactivées dès que
+// l'admin aura branché le scraper correspondant — pour l'instant on
+// montre seulement le placeholder verrouillé pour donner la liste cible.
 const SOURCES: SourceMeta[] = [
   { key: "dedicated", label: "Concessionnaires", hint: "Tes 20 scrapers dédiés (motoplex, moto-ducharme, db-moto…)", group: "instant" },
-  { key: "amazon", label: "Amazon.ca", hint: "Autocomplete public — ultra rapide, sans prix", group: "instant" },
+  { key: "amazon", label: "Amazon.ca", hint: "À connecter dans le dashboard admin", group: "instant", disabled: true, badge: "À connecter" },
   { key: "ebay", label: "eBay", hint: "API officielle (EBAY_CLIENT_ID/SECRET requis)", group: "instant" },
-  { key: "bestbuy", label: "Best Buy", hint: "Électronique + électroménager (~10s)", group: "marketplace" },
-  { key: "walmart", label: "Walmart", hint: "Marketplace généraliste (~12s)", group: "marketplace" },
-  { key: "costco", label: "Costco", hint: "Membre requis pour certains prix (~12s)", group: "marketplace" },
+  { key: "bestbuy", label: "Best Buy", hint: "À connecter dans le dashboard admin", group: "marketplace", disabled: true, badge: "À connecter" },
+  { key: "walmart", label: "Walmart", hint: "À connecter dans le dashboard admin", group: "marketplace", disabled: true, badge: "À connecter" },
+  { key: "costco", label: "Costco", hint: "À connecter dans le dashboard admin", group: "marketplace", disabled: true, badge: "À connecter" },
   { key: "kijiji", label: "Kijiji", hint: "Petites annonces (~8s)", group: "marketplace" },
   { key: "lespac", label: "LesPAC", hint: "Petites annonces QC (~8s)", group: "marketplace" },
   { key: "autotrader", label: "AutoTrader", hint: "Voitures occasion + neuves (~12s)", group: "vehicle" },
-  { key: "cycletrader", label: "CycleTrader", hint: "Powersport US (~10s)", group: "vehicle" },
+  { key: "cycletrader", label: "CycleTrader", hint: "À connecter dans le dashboard admin", group: "vehicle", disabled: true, badge: "À connecter" },
   { key: "facebook", label: "Facebook Marketplace", hint: "Disponible bientôt", group: "api", disabled: true, badge: "Bientôt" },
 ]
 
@@ -240,8 +249,6 @@ export default function ProductSearch() {
   const isAdmin = isDevAdminUserPublic(user)
 
   const [state, setState] = useState<PersistedState>(DEFAULT_STATE)
-  const [shopifyInput, setShopifyInput] = useState("")
-  const [dealersInput, setDealersInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<SearchResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -301,15 +308,26 @@ export default function ProductSearch() {
         setState((prev) => ({
           ...prev,
           ...parsed,
-          adapters: { ...prev.adapters, ...(parsed.adapters || {}), facebook: false },
+          adapters: {
+            ...prev.adapters,
+            ...(parsed.adapters || {}),
+            // Sources désactivées tant qu'elles ne sont pas branchées
+            // dans le dashboard admin : on force false même si un ancien
+            // localStorage les avait à true.
+            amazon: false,
+            bestbuy: false,
+            walmart: false,
+            costco: false,
+            cycletrader: false,
+            facebook: false,
+            // Les inputs URL libres (Shopify, concessionnaires génériques)
+            // ont été retirés de l'UI : on les remet à zéro côté state.
+            shopify: [],
+            genericDealers: [],
+            includeMyCompetitors: false,
+          },
           vehicleSpecs: { ...prev.vehicleSpecs, ...(migratedSpecs || {}) },
         }))
-        if (Array.isArray(parsed?.adapters?.shopify)) {
-          setShopifyInput(parsed.adapters!.shopify.join(", "))
-        }
-        if (Array.isArray(parsed?.adapters?.genericDealers)) {
-          setDealersInput(parsed.adapters!.genericDealers.join(", "))
-        }
       }
       const viewAs = localStorage.getItem(ADMIN_VIEW_AS_KEY)
       if (viewAs) {
@@ -398,11 +416,8 @@ export default function ProductSearch() {
     for (const s of SOURCES) {
       if (!s.disabled && state.adapters[s.key]) n++
     }
-    if (shopifyInput.trim()) n++
-    if (dealersInput.trim()) n++
-    if (state.adapters.includeMyCompetitors) n++
     return n
-  }, [state.adapters, shopifyInput, dealersInput])
+  }, [state.adapters])
 
   const isVehicleCat = useMemo(
     () => isVehicleCategory(state.category),
@@ -488,19 +503,21 @@ export default function ProductSearch() {
       return
     }
 
-    const shopifyDomains = shopifyInput
-      .split(/[,\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const dealerDomains = dealersInput
-      .split(/[,\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-
     setLoading(true)
     setError(null)
     setResult(null)
     try {
+      // Garde-fou : on force à false toute source marquée `disabled`
+      // dans `SOURCES` (cadenas), même si un ancien state local les
+      // avait à true. Les inputs Shopify / concessionnaires génériques
+      // ont été retirés de l'UI → on envoie systématiquement des listes
+      // vides côté API.
+      const safeAdapters: AdapterToggles = { ...state.adapters }
+      for (const src of SOURCES) {
+        if (src.disabled) {
+          (safeAdapters as unknown as Record<string, unknown>)[src.key] = false
+        }
+      }
       const res = await fetch("/api/product-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -509,10 +526,11 @@ export default function ProductSearch() {
           query: state.query,
           category: state.category,
           adapters: {
-            ...state.adapters,
+            ...safeAdapters,
             facebook: false,
-            shopify: shopifyDomains,
-            genericDealers: dealerDomains,
+            shopify: [],
+            genericDealers: [],
+            includeMyCompetitors: false,
           },
           maxResults: 30,
           minScore: 0.3,
@@ -551,7 +569,7 @@ export default function ProductSearch() {
     } finally {
       setLoading(false)
     }
-  }, [state, shopifyInput, dealersInput, activeCount])
+  }, [state, activeCount])
 
   // ── Helper d'affichage : libellé court de la catégorie sélectionnée pour
   // l'afficher inline dans la barre de metadata (pas le breadcrumb complet,
@@ -608,7 +626,7 @@ export default function ProductSearch() {
 
             <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] flex items-center gap-2 flex-wrap">
               <span className="min-w-0">
-                Compare en parallèle Amazon, eBay, Kijiji, Shopify et tes concessionnaires.
+                Compare en parallèle eBay, Kijiji, AutoTrader et tes concessionnaires.
               </span>
               <span className="opacity-40">·</span>
               <span>
@@ -849,10 +867,6 @@ export default function ProductSearch() {
           <div className="px-4 pb-4 pt-1 border-t border-[var(--color-border-tertiary)]/40">
             <SourcesPanel
               adapters={state.adapters}
-              shopifyInput={shopifyInput}
-              onShopifyChange={setShopifyInput}
-              dealersInput={dealersInput}
-              onDealersChange={setDealersInput}
               onToggle={updateAdapter}
               onToggleAll={toggleAll}
             />
@@ -1011,18 +1025,10 @@ function AdminViewAsPicker({
 
 function SourcesPanel({
   adapters,
-  shopifyInput,
-  onShopifyChange,
-  dealersInput,
-  onDealersChange,
   onToggle,
   onToggleAll,
 }: {
   adapters: AdapterToggles
-  shopifyInput: string
-  onShopifyChange: (v: string) => void
-  dealersInput: string
-  onDealersChange: (v: string) => void
   onToggle: <K extends keyof AdapterToggles>(key: K, value: AdapterToggles[K]) => void
   onToggleAll: (value: boolean) => void
 }) {
@@ -1090,69 +1096,10 @@ function SourcesPanel({
         )
       })}
 
-      <div>
-        <label className="block text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-1.5">
-          Boutiques Shopify spécifiques (optionnel)
-        </label>
-        <input
-          type="text"
-          value={shopifyInput}
-          onChange={(e) => onShopifyChange(e.target.value)}
-          placeholder="allbirds.com, monshop.myshopify.com"
-          className={cn(
-            "w-full px-3 py-2 rounded-lg border text-sm",
-            "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-            "text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]",
-            "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-          )}
-        />
-        <p className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
-          Domaines séparés par virgules. Nécessite{" "}
-          <code className="px-1 py-0.5 rounded bg-[var(--color-background-secondary)] text-[10px]">/search/suggest.json</code>
-          {" "}actif sur la boutique.
-        </p>
-      </div>
-
-      {/* Concessionnaires sans scraper dédié — adapter générique */}
-      <div className="border-t border-[var(--color-border-secondary)] pt-4">
-        <div className="flex items-baseline justify-between mb-2">
-          <label className="block text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide">
-            Concessionnaires sans scraper dédié
-          </label>
-          <span className="text-[10px] text-[var(--color-text-tertiary)]">
-            recherche on-site générique
-          </span>
-        </div>
-        <textarea
-          value={dealersInput}
-          onChange={(e) => onDealersChange(e.target.value)}
-          rows={2}
-          placeholder="monconcess.com, autre-concess.ca"
-          className={cn(
-            "w-full px-3 py-2 rounded-lg border text-sm",
-            "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-            "text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]",
-            "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent",
-          )}
-        />
-        <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-[11px] text-[var(--color-text-tertiary)] flex-1 min-w-0">
-            Domaines séparés par virgules. On essaie plusieurs patterns d&apos;URL de
-            recherche (<code className="px-1 rounded bg-[var(--color-background-secondary)] text-[10px]">/search</code>,
-            <code className="ml-1 px-1 rounded bg-[var(--color-background-secondary)] text-[10px]">/recherche</code>,
-            etc.) puis fallback Google site:.
-          </p>
-          <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)] cursor-pointer shrink-0">
-            <input
-              type="checkbox"
-              checked={adapters.includeMyCompetitors}
-              onChange={(e) => onToggle("includeMyCompetitors", e.target.checked)}
-              className="h-3.5 w-3.5 rounded border-[var(--color-border-secondary)] text-emerald-600 focus:ring-emerald-500"
-            />
-            <span>Inclure mes concurrents</span>
-          </label>
-        </div>
-      </div>
+      <p className="text-[11px] text-[var(--color-text-tertiary)] border-t border-[var(--color-border-secondary)] pt-3">
+        Les sources marquées d&apos;un cadenas seront activables une fois
+        connectées dans le dashboard admin.
+      </p>
     </div>
   )
 }

@@ -41,6 +41,8 @@ export type PricingProduct = {
   name?: string
   modele?: string
   marque?: string
+  annee?: number | null
+  etat?: string
   prix?: number | null
   price_on_request?: boolean
   prixReference?: number | null
@@ -224,11 +226,19 @@ export function buildPricingRowsFromProducts(
     sourceUrl: product.sourceUrl,
     marque: product.marque,
     modele: product.modele,
+    annee: product.annee ?? null,
+    etat: product.etat,
   })
 
   const productsWithComparison = products.filter(product => product.prixReference != null)
   const productsRefOnly = products.filter(product => product.prixReference == null)
   const refInfoByKey = new Map<string, { sourceUrl?: string; name?: string; price: number | null }>()
+
+  const getGroupKey = (product: PricingProduct) => {
+    const referenceUrl = product.produitReference?.sourceUrl
+    if (referenceUrl) return `ref:${referenceUrl}`
+    return normalizeProductGroupKeyWithMode(toAnalyticsProduct(product), matchMode)
+  }
 
   for (const product of productsRefOnly) {
     const key = normalizeProductGroupKeyWithMode(toAnalyticsProduct(product), matchMode)
@@ -242,9 +252,10 @@ export function buildPricingRowsFromProducts(
   }
 
   for (const product of productsWithComparison) {
-    const key = normalizeProductGroupKeyWithMode(toAnalyticsProduct(product), matchMode)
+    const key = getGroupKey(product)
     if (!groups.has(key)) {
-      const refInfo = refInfoByKey.get(key)
+      const normalizedKey = normalizeProductGroupKeyWithMode(toAnalyticsProduct(product), matchMode)
+      const refInfo = refInfoByKey.get(normalizedKey)
       const displayName = product.produitReference?.name || refInfo?.name || product.name || "Produit"
       const referenceUrl = product.produitReference?.sourceUrl || refInfo?.sourceUrl
       const reference = product.prixReference ?? product.produitReference?.prix ?? refInfo?.price ?? null

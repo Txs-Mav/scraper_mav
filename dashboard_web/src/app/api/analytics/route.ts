@@ -39,12 +39,29 @@ export async function GET() {
     }
     try {
       const supabase = await createClient()
-      const { data: scrapings, error } = await supabase
+
+      // Borne « analytics_reset_at » : permet à l'utilisateur de
+      // réinitialiser la page Analyse sans toucher à l'historique du
+      // rapport. Les scrapings <= cette borne sont ignorés ici.
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('analytics_reset_at')
+        .eq('id', user.id)
+        .single()
+      const analyticsResetAt: string | null =
+        (userRow as { analytics_reset_at?: string | null } | null)
+          ?.analytics_reset_at ?? null
+
+      let latestQuery = supabase
         .from('scrapings')
         .select('products, metadata, reference_url, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
+      if (analyticsResetAt) {
+        latestQuery = latestQuery.gt('created_at', analyticsResetAt)
+      }
+      const { data: scrapings, error } = await latestQuery
       if (!error && scrapings && scrapings.length > 0) {
         const latestScraping = scrapings[0]
         products = latestScraping.products || []
@@ -55,11 +72,15 @@ export async function GET() {
         dataAsOf = latestScraping.created_at || null
       }
 
-      const { data: scrapeDates, error: datesError } = await supabase
+      let datesQuery = supabase
         .from('scrapings')
         .select('created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true })
+      if (analyticsResetAt) {
+        datesQuery = datesQuery.gt('created_at', analyticsResetAt)
+      }
+      const { data: scrapeDates, error: datesError } = await datesQuery
       if (!datesError && scrapeDates) {
         totalScrapes = scrapeDates.length
         scrapesParJour = calculateScrapesPerDay(scrapeDates)

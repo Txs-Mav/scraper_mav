@@ -181,12 +181,33 @@ export default function AnalyticsPage() {
     try {
       setRefreshing(true)
       const response = await fetch('/api/analytics/reset', {
-        method: 'POST'
+        method: 'POST',
       })
+      const data: {
+        error?: string
+        details?: string
+        hint?: string
+        deleted?: number
+        partial?: number
+      } = await response.json().catch(() => ({}))
 
       if (!response.ok) {
-        const data = await response.json()
-        alert(data.error || t("analytics.resetError"))
+        console.error('Error resetting analytics:', {
+          status: response.status,
+          statusText: response.statusText,
+          ...data,
+        })
+
+        // Cas typique : Vercel timeout 504 sans corps JSON utile.
+        const isTimeout =
+          response.status === 504 ||
+          response.status === 408 ||
+          response.status === 524
+        const message = isTimeout
+          ? "La suppression a pris trop de temps. Vous avez beaucoup de données accumulées — réessayez, l'opération se poursuivra par lots successifs."
+          : data.error || t("analytics.resetError")
+        const detail = data.details || data.hint || ''
+        alert(detail ? `${message}\n\n${detail}` : message)
         return
       }
 

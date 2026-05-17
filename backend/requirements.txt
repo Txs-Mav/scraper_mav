@@ -9,6 +9,9 @@ beautifulsoup4>=4.12.0
 lxml>=5.0.0
 httpx>=0.25.0
 requests>=2.31.0
+# Décompression Brotli pour `requests` (sinon les sites qui répondent
+# en `br` renvoient un blob compressé qui casse la détection de plateforme).
+brotli>=1.1.0
 playwright>=1.40.0
 jinja2>=3.1.0
 python-dotenv>=1.0.0

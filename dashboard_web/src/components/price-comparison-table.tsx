@@ -6,6 +6,7 @@ import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, C
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { normalizeProductGroupKeyWithMode, getProductFamilyKey, type MatchMode, type Product as AnalyticsProduct } from "@/lib/analytics-calculations"
+import { cn } from "@/lib/utils"
 import { getEffectiveStatus } from "@/lib/product-status"
 import { printSection, exportComparisonToExcel, shareComparisonByEmail, type ComparisonRow } from "@/lib/export-utils"
 import type { TranslationKey } from "@/lib/translations"
@@ -63,7 +64,7 @@ type PriceComparisonTableProps = {
   onSetPricingSelection?: (productKeys: string[], selected: boolean) => void
   onPricingKeysAvailable?: (keys: string[]) => void
   creatingChangeSheet?: boolean
-  onCreateChangeSheet?: (productKeys: string[]) => Promise<void> | void
+  onCreateChangeSheet?: (productKeys: string[], priceOverrides?: Record<string, number>) => Promise<void> | void
 }
 
 function hostnameFromUrl(url: string) {
@@ -255,6 +256,17 @@ function stripColorWords(text: string): string {
   return cleaned || text
 }
 
+function parseEditablePrice(value: string): number | null {
+  const normalized = value.replace(/[^\d]/g, "")
+  if (!normalized) return null
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : null
+}
+
+function formatEditablePrice(price: number) {
+  return Math.round(price).toString()
+}
+
 function hasListedPrice(product: Product): product is Product & { prix: number } {
   return !product.price_on_request && typeof product.prix === "number" && product.prix > 0
 }
@@ -283,7 +295,7 @@ function toAnalyticsProduct(product: Product): AnalyticsProduct {
   }
 }
 
-const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceComparisonTableProps>(function PriceComparisonTable({ products, competitorsUrls = [], stripColorsFromDisplay = false, matchMode = 'exact', onMatchModeChange, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel, pricingSettings, pricingEnabled = false, pricingUpdates = [], onPricingEnabledChange, selectedPricingKeys, onTogglePricingSelection, onSetPricingSelection, onPricingKeysAvailable, creatingChangeSheet = false, onCreateChangeSheet }, ref) {
+const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceComparisonTableProps>(function PriceComparisonTable({ products, competitorsUrls = [], stripColorsFromDisplay = false, matchMode = 'exact', onMatchModeChange, searchQuery, onSearchChange, onToggleColors, searchPlaceholder, hideColorsLabel, showColorsLabel, pricingSettings, pricingEnabled = false, onPricingEnabledChange, selectedPricingKeys, onTogglePricingSelection, onSetPricingSelection, onPricingKeysAvailable, creatingChangeSheet = false, onCreateChangeSheet }, ref) {
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
@@ -556,6 +568,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
   const [groupByFamily, setGroupByFamily] = useState(false)
   const [compFilter, setCompFilter] = useState<'all' | 'competitive' | 'non-competitive'>('all')
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const [editedPricingPrices, setEditedPricingPrices] = useState<Record<string, string>>({})
   const overflowMenuRef = useRef<HTMLDivElement | null>(null)
 
   // Ferme le dropdown overflow ("…") au clic extérieur. Pattern UX standard
@@ -613,15 +626,19 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     return map
   }, [filteredTableData, pricingSettings])
 
-  const pricingUpdatesByKey = useMemo(() => {
-    return new Map(pricingUpdates.map(update => [update.product_key, update]))
-  }, [pricingUpdates])
-
   const visiblePricingKeys = useMemo(() => {
     return filteredTableData
       .map(row => pricingRecommendations.get(row.productKey)?.productKey)
       .filter((key): key is string => Boolean(key))
   }, [filteredTableData, pricingRecommendations])
+
+  const selectedVisiblePricingKeys = useMemo(() => {
+    return visiblePricingKeys.filter(key => selectedPricingKeys?.has(key))
+  }, [visiblePricingKeys, selectedPricingKeys])
+
+  const allVisiblePricingSelected =
+    visiblePricingKeys.length > 0 &&
+    selectedVisiblePricingKeys.length === visiblePricingKeys.length
 
   const lastNotifiedKeysRef = useRef<string>("")
   useEffect(() => {
@@ -632,6 +649,50 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     lastNotifiedKeysRef.current = signature
     onPricingKeysAvailable(visiblePricingKeys)
   }, [visiblePricingKeys, pricingEnabled, onPricingKeysAvailable])
+
+  const updateEditedPricingPrice = useCallback((productKey: string, value: string) => {
+    setEditedPricingPrices(prev => ({
+      ...prev,
+      [productKey]: value.replace(/[^\d\s,.]/g, ""),
+    }))
+  }, [])
+
+  const resetEditedPricingPrice = useCallback((productKey: string) => {
+    setEditedPricingPrices(prev => {
+      if (!(productKey in prev)) return prev
+      const next = { ...prev }
+      delete next[productKey]
+      return next
+    })
+  }, [])
+
+  const commitEditedPricingPrice = useCallback((productKey: string, automaticPrice: number) => {
+    setEditedPricingPrices(prev => {
+      if (!(productKey in prev)) return prev
+      const parsed = parseEditablePrice(prev[productKey])
+      const next = { ...prev }
+      if (parsed === null || parsed === Math.round(automaticPrice)) {
+        delete next[productKey]
+      } else {
+        next[productKey] = formatEditablePrice(parsed)
+      }
+      return next
+    })
+  }, [])
+
+  const getSelectedPricingOverrides = useCallback((productKeys: string[]) => {
+    const overrides: Record<string, number> = {}
+    for (const productKey of productKeys) {
+      const recommendation = pricingRecommendations.get(productKey)
+      const editedValue = editedPricingPrices[productKey]
+      if (!recommendation || editedValue == null) continue
+      const parsed = parseEditablePrice(editedValue)
+      if (parsed !== null && parsed !== Math.round(recommendation.recommendedPrice)) {
+        overrides[productKey] = parsed
+      }
+    }
+    return overrides
+  }, [editedPricingPrices, pricingRecommendations])
 
   const flatRows = useMemo(() => {
     const result: Array<{ type: 'family'; label: string; count: number } | { type: 'row'; row: TableRow; globalIdx: number }> = []
@@ -759,8 +820,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     // Colonnes sticky gauche : Image 80px + Produit 280px + Prix réf 120px.
     // Base 500px pour garder un peu d'air et éviter que les colonnes
     // concurrentes commencent sous la colonne prix référence.
-    const dynamicMinWidth = 500 + (showPricingRecommendations ? 180 : cols.length * 140)
-    const dynamicColumnCount = showPricingRecommendations ? 1 : cols.length
+    const dynamicMinWidth = 500 + (showPricingRecommendations ? 240 : cols.length * 140)
+    const dynamicColumnCount = showPricingRecommendations ? 2 : cols.length
     return (
       <div className="relative">
         {/* Wrapper du tableau — totalement transparent (pas de fond, pas
@@ -772,6 +833,40 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           <div style={{ minWidth: Math.max(900, dynamicMinWidth) }}>
             <table className="w-full border-collapse">
               <thead>
+                {showPricingRecommendations && onCreateChangeSheet && (
+                  <tr className="sticky top-0">
+                    <th colSpan={3} className="border-b border-[var(--color-border-tertiary)] bg-transparent" />
+                    <th colSpan={2} className="border-b border-[var(--color-border-tertiary)] px-2 py-2 text-center">
+                      <div className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 px-2 py-1 shadow-sm">
+                        {onSetPricingSelection && (
+                          <button
+                            type="button"
+                            disabled={visiblePricingKeys.length === 0}
+                            onClick={() => onSetPricingSelection(visiblePricingKeys, !allVisiblePricingSelected)}
+                            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-background-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <Check className="h-3 w-3" />
+                            {allVisiblePricingSelected ? "Décocher" : "Tout cocher"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={creatingChangeSheet || selectedVisiblePricingKeys.length === 0}
+                          onClick={() => onCreateChangeSheet(
+                            selectedVisiblePricingKeys,
+                            getSelectedPricingOverrides(selectedVisiblePricingKeys),
+                          )}
+                          className="inline-flex h-7 items-center gap-1 rounded-md bg-[var(--color-text-primary)] px-2.5 text-[11px] font-semibold text-[var(--color-background-primary)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={selectedVisiblePricingKeys.length === 0 ? t("table.selectVehicleTooltip") : t("table.createSheetTooltip")}
+                        >
+                          {creatingChangeSheet ? <Loader2 className="h-3 w-3 animate-spin" /> : <ClipboardList className="h-3 w-3" />}
+                          Créer une fiche
+                          <span className="opacity-70 tabular-nums">· {selectedVisiblePricingKeys.length}</span>
+                        </button>
+                      </div>
+                    </th>
+                  </tr>
+                )}
                 <tr className="sticky top-0">
                   {/* Colonnes sticky : aucune couleur de fond. Au scroll
                       horizontal, on applique un `backdrop-blur` pour flouter
@@ -794,32 +889,42 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                     {t("table.refPrice")}
                   </th>
                   {showPricingRecommendations ? (
-                    <th className="px-3 py-2.5 text-right border-b border-[var(--color-border-tertiary)] min-w-[180px]">
-                      <div className="flex items-center justify-end gap-2">
-                        {onSetPricingSelection && visiblePricingKeys.length > 0 && (() => {
-                          const selectedCount = visiblePricingKeys.filter(k => selectedPricingKeys?.has(k)).length
-                          const allSelected = selectedCount === visiblePricingKeys.length
-                          const someSelected = selectedCount > 0 && !allSelected
-                          return (
+                    <>
+                      <th className="w-[58px] min-w-[58px] px-1 py-2.5 text-center border-b border-[var(--color-border-tertiary)]">
+                        <div className="flex flex-col items-center gap-1">
+                          {onSetPricingSelection && visiblePricingKeys.length > 0 && (
                             <button
                               type="button"
-                              onClick={() => onSetPricingSelection(visiblePricingKeys, !allSelected)}
-                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                                allSelected || someSelected
+                              onClick={() => onSetPricingSelection(visiblePricingKeys, !allVisiblePricingSelected)}
+                              className={cn(
+                                "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 bg-white shadow-sm transition",
+                                allVisiblePricingSelected
                                   ? "border-emerald-500 bg-emerald-500 text-white"
-                                  : "border-[var(--color-border-secondary)] hover:border-[var(--color-text-secondary)]"
-                              }`}
-                              title={allSelected ? "Tout décocher" : "Tout cocher"}
-                              aria-label={allSelected ? "Tout décocher" : "Tout cocher"}
+                                  : selectedVisiblePricingKeys.length > 0
+                                    ? "border-emerald-500 bg-emerald-500 text-white"
+                                    : "border-slate-400 text-transparent hover:border-emerald-500 dark:border-slate-500 dark:bg-slate-950/60",
+                              )}
+                              title={allVisiblePricingSelected ? "Tout décocher" : "Tout cocher"}
+                              aria-label={allVisiblePricingSelected ? "Tout décocher" : "Tout cocher"}
                             >
-                              {allSelected && <Check className="h-3 w-3" strokeWidth={3} />}
-                              {someSelected && <span className="h-0.5 w-2 bg-white rounded-full" />}
+                              {allVisiblePricingSelected ? (
+                                <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                              ) : selectedVisiblePricingKeys.length > 0 ? (
+                                <span className="h-0.5 w-2.5 rounded-full bg-white" />
+                              ) : null}
                             </button>
-                          )
-                        })()}
-                        <span className="truncate block text-[11px] font-semibold text-[var(--color-text-primary)]">Prix recommandé</span>
-                      </div>
-                    </th>
+                          )}
+                          <span className="truncate text-[11px] font-semibold text-[var(--color-text-primary)]">
+                            Fiche
+                          </span>
+                        </div>
+                      </th>
+                      <th className="w-[182px] min-w-[182px] px-2 py-2.5 text-center border-b border-[var(--color-border-tertiary)]">
+                        <span className="truncate block text-[11px] font-semibold text-[var(--color-text-primary)]">
+                          Prix recommandé
+                        </span>
+                      </th>
+                    </>
                   ) : (
                     cols.map(c => (
                       <th key={c.id} className="px-3 py-2.5 text-right border-b border-[var(--color-border-tertiary)] min-w-[130px]" title={c.label}>
@@ -993,36 +1098,81 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                           </span>
                         </td>
                         {showPricingRecommendations ? (
-                          <td className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[180px]">
-                            {recommendation ? (
-                              <div className="flex items-start justify-end gap-2">
-                                {onTogglePricingSelection && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onTogglePricingSelection(recommendation.productKey)}
-                                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                                      selectedPricingKeys?.has(recommendation.productKey)
-                                        ? "border-emerald-500 bg-emerald-500 text-white"
-                                        : "border-[var(--color-border-secondary)] hover:border-[var(--color-text-secondary)]"
-                                    }`}
-                                    title={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
-                                    aria-label={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
-                                  >
-                                    {selectedPricingKeys?.has(recommendation.productKey) && <Check className="h-3 w-3" strokeWidth={3} />}
-                                  </button>
-                                )}
-                                <div className="flex flex-col items-end gap-0.5">
-                                  <span className="font-semibold">{recommendation.recommendedPrice.toFixed(0)} $</span>
-                                  <span className={`text-xs font-semibold ${recommendation.difference < 0 ? "text-red-600 dark:text-red-400" : recommendation.difference > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-secondary)]"}`}>
-                                    {recommendation.difference > 0 ? "+" : ""}{recommendation.difference.toFixed(0)} $
-                                  </span>
-                                  <span className="text-[10px] text-[var(--color-text-secondary)]">{recommendation.strategyLabel}</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-[var(--color-text-secondary)]">—</span>
-                            )}
-                          </td>
+                          <>
+                            <td className="w-[58px] min-w-[58px] px-1 py-2 text-center text-sm text-[var(--color-text-primary)]">
+                              {recommendation && onTogglePricingSelection ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onTogglePricingSelection(recommendation.productKey)}
+                                  className={cn(
+                                    "mx-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 bg-white shadow-sm transition",
+                                    "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1",
+                                    selectedPricingKeys?.has(recommendation.productKey)
+                                      ? "border-emerald-500 bg-emerald-500 text-white"
+                                      : "border-slate-400 text-transparent hover:border-emerald-500 hover:bg-emerald-50 dark:border-slate-500 dark:bg-slate-950/60 dark:hover:border-emerald-400 dark:hover:bg-emerald-500/10",
+                                  )}
+                                  title={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
+                                  aria-label={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
+                                >
+                                  {selectedPricingKeys?.has(recommendation.productKey) && <Check className="h-4 w-4" strokeWidth={3} />}
+                                </button>
+                              ) : (
+                                <span className="text-[var(--color-text-secondary)]">—</span>
+                              )}
+                            </td>
+                            <td className="w-[182px] min-w-[182px] px-2 py-2 text-center text-sm text-[var(--color-text-primary)]">
+                              {recommendation ? (
+                                (() => {
+                                  const editedValue = editedPricingPrices[recommendation.productKey]
+                                  const editedPrice = editedValue != null ? parseEditablePrice(editedValue) : null
+                                  const displayedPrice = editedPrice ?? recommendation.recommendedPrice
+                                  const displayedDifference = displayedPrice - recommendation.oldPrice
+                                  const hasOverride = editedPrice !== null && editedPrice !== Math.round(recommendation.recommendedPrice)
+                                  return (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <div className="relative">
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          value={editedValue ?? formatEditablePrice(recommendation.recommendedPrice)}
+                                          onChange={(event) => updateEditedPricingPrice(recommendation.productKey, event.target.value)}
+                                          onBlur={() => commitEditedPricingPrice(recommendation.productKey, recommendation.recommendedPrice)}
+                                          aria-label={`Modifier le prix recommandé pour ${recommendation.productName}`}
+                                          className={cn(
+                                            "h-8 w-[112px] rounded-lg border bg-[var(--color-background-primary)] pr-6 pl-2 text-center text-sm font-semibold tabular-nums",
+                                            "border-[var(--color-border-secondary)] text-[var(--color-text-primary)] shadow-sm",
+                                            "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent",
+                                          )}
+                                        />
+                                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--color-text-tertiary)]">
+                                          $
+                                        </span>
+                                      </div>
+                                      <span className={`text-xs font-semibold ${displayedDifference < 0 ? "text-red-600 dark:text-red-400" : displayedDifference > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-secondary)]"}`}>
+                                        {displayedDifference > 0 ? "+" : ""}{displayedDifference.toFixed(0)} $
+                                      </span>
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <span className="text-[10px] text-[var(--color-text-secondary)]">{recommendation.strategyLabel}</span>
+                                        {hasOverride && (
+                                          <button
+                                            type="button"
+                                            onClick={() => resetEditedPricingPrice(recommendation.productKey)}
+                                            className="inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                                            title="Revenir au prix calculé automatiquement"
+                                          >
+                                            <X className="h-2.5 w-2.5" />
+                                            modifié
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })()
+                              ) : (
+                                <span className="text-[var(--color-text-secondary)]">—</span>
+                              )}
+                            </td>
+                          </>
                         ) : (
                           p.prices.map(priceEntry => (
                             <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[130px]">
@@ -1105,7 +1255,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       {/* ── Toolbar v3 ──
            Layout horizontal en 1 ligne :
               [🔍 Recherche large flex-1]  [● Compétitif] [● Non compétitif]
-                   [▦ Regrouper par modèle]  [$ Stratégie pricing]  [Créer fiche]  [⋯]
+                   [▦ Regrouper par modèle]  [$ Stratégie pricing]  [⋯]
 
            Changements vs v2 :
              - Recherche `flex-1` (s'étire jusqu'à la zone des actions à
@@ -1181,7 +1331,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         {/* Séparateur visuel entre filtres et actions de mode */}
         <div className="w-px h-6 bg-[var(--color-border-tertiary)] shrink-0" />
 
-        {/* Actions à droite : Regrouper, Stratégie, Créer fiche, ⋯ */}
+        {/* Actions à droite : Regrouper, Stratégie, ⋯ */}
         <div className="flex items-center gap-1 shrink-0">
           {/* Regrouper par modèle — sorti du menu overflow car
               fonctionnellement proche de "Stratégie pricing" (les deux
@@ -1220,23 +1370,6 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
               <span className="hidden md:inline">{t("table.applyPricingStrategy")}</span>
             </button>
           )}
-
-          {pricingEnabled && onCreateChangeSheet && (() => {
-            const selectedVisible = visiblePricingKeys.filter(k => selectedPricingKeys?.has(k))
-            return (
-              <button
-                type="button"
-                disabled={creatingChangeSheet || selectedVisible.length === 0}
-                onClick={() => onCreateChangeSheet(selectedVisible)}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold text-[var(--color-background-primary)] bg-[var(--color-text-primary)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title={selectedVisible.length === 0 ? t("table.selectVehicleTooltip") : t("table.createSheetTooltip")}
-              >
-                {creatingChangeSheet ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5" />}
-                {t("table.createSheet")}
-                <span className="opacity-70 tabular-nums">· {selectedVisible.length}</span>
-              </button>
-            )
-          })()}
 
           {/* Menu overflow ⋯ : Affichage (couleurs + match mode) + Export */}
           <div ref={overflowMenuRef} className="relative">

@@ -626,14 +626,19 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
     setSortBy("prix"); setSortOrder("asc")
   }
 
-  const handleCreateChangeSheet = async (productKeys: string[]) => {
+  const handleCreateChangeSheet = async (productKeys: string[], priceOverrides?: Record<string, number>) => {
     if (productKeys.length === 0) return
     setCreatingChangeSheet(true)
     try {
+      const hasPriceOverrides = priceOverrides && Object.keys(priceOverrides).length > 0
       const res = await fetch('/api/pricing/change-sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productKeys, matchMode }),
+        body: JSON.stringify({
+          productKeys,
+          matchMode,
+          ...(hasPriceOverrides ? { priceOverrides } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) {

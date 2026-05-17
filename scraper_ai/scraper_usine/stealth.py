@@ -7,11 +7,37 @@ Helpers anti-détection pour scraper_usine et les scrapers générés.
 
 Note : pas de dépendance à playwright-stealth (lib externe). On applique les
 contournements manuellement.
+
+IMPORTANT — Brotli : on n'annonce `br` dans Accept-Encoding QUE si une lib
+de décompression Brotli (`brotli` ou `brotlicffi`) est installée. Sinon,
+`requests` reçoit un payload `br` qu'il ne sait pas décoder et renvoie du
+contenu binaire pourri (~10x plus petit), ce qui casse silencieusement la
+détection de plateforme, JSON-LD, etc. C'est la cause classique d'un
+analyzer qui « voit » un site comme générique alors qu'il est Next.js/PowerGo.
 """
 from __future__ import annotations
 
 import random
 from typing import Dict, List, Optional
+
+
+def _brotli_decoder_available() -> bool:
+    """`requests` ne décode `br` que si `brotli` ou `brotlicffi` est installé.
+    On vérifie une seule fois au boot du module pour éviter l'overhead par appel.
+    """
+    try:
+        import brotli  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    try:
+        import brotlicffi  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+_BROTLI_OK = _brotli_decoder_available()
 
 
 # Pool d'User-Agents desktop Windows/Mac récents (mis à jour 2026-Q1)
@@ -62,7 +88,9 @@ def stealth_headers(user_agent: Optional[str] = None,
             "application/signed-exchange;v=b3;q=0.7"
         ),
         "Accept-Language": locale,
-        "Accept-Encoding": "gzip, deflate, br",
+        # Voir docstring du module : `br` annoncé seulement si on sait le décoder,
+        # sinon `requests` retourne un blob compressé indéchiffrable.
+        "Accept-Encoding": "gzip, deflate, br" if _BROTLI_OK else "gzip, deflate",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
         "Sec-Fetch-Dest": "document",

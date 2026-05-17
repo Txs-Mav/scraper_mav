@@ -91,7 +91,7 @@ const NAV_CATEGORIES: NavCategory[] = [
     icon: BarChart2,
     items: [
       { id: "analytics", labelKey: "topnav.item.analytics", descriptionKey: "topnav.item.analyticsDesc", href: "/dashboard/analytics", icon: BarChart2, requiresPaid: true },
-      { id: "rapports", labelKey: "topnav.item.rapports", descriptionKey: "topnav.item.rapportsDesc", icon: FileBarChart, locked: true },
+      { id: "rapports", labelKey: "topnav.item.rapports", descriptionKey: "topnav.item.rapportsDesc", href: "/dashboard/reports", icon: FileBarChart, requiresPaid: true },
       { id: "par-detaillant", labelKey: "topnav.item.parDetaillant", descriptionKey: "topnav.item.parDetaillantDesc", href: "/dashboard/comparaisons", icon: LayoutGrid },
     ],
   },
@@ -119,6 +119,7 @@ function categoryForPath(pathname: string | null): string | null {
   if (pathname.startsWith("/dashboard/changements")) return "prix"
   if (pathname.startsWith("/dashboard/alerte")) return "prix"
   if (pathname.startsWith("/dashboard/analytics")) return "analyse"
+  if (pathname.startsWith("/dashboard/reports")) return "analyse"
   if (pathname.startsWith("/dashboard/comparaisons")) return "analyse"
   if (pathname.startsWith("/dashboard/payments")) return "compte"
   if (pathname.startsWith("/dashboard/help")) return "compte"
@@ -195,6 +196,9 @@ export default function TopNav() {
     if (!link.href) return null
     if (!link.requiresPaid) return link.href
     if (link.href === "/dashboard/analytics") {
+      return canAccessAnalytics(plan, subscriptionSource) ? link.href : null
+    }
+    if (link.href === "/dashboard/reports") {
       return canAccessAnalytics(plan, subscriptionSource) ? link.href : null
     }
     if (link.href === "/dashboard/alerte") {
