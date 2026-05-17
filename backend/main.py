@@ -4,12 +4,13 @@ import uuid
 import time
 import threading
 import subprocess
+import json
 from pathlib import Path
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -169,6 +170,49 @@ class ScraperUsineBatchRequest(BaseModel):
     dryRun: bool = False
     forcePlaywright: bool = False
     publishThreshold: int = 95
+
+
+class ProductSearchAdapters(BaseModel):
+    """Sources activées par l'interface Recherche par produit."""
+    amazon: bool = False
+    ebay: bool = False
+    kijiji: bool = False
+    bestbuy: bool = False
+    walmart: bool = False
+    costco: bool = False
+    lespac: bool = False
+    autotrader: bool = False
+    cycletrader: bool = False
+    facebook: bool = False
+    shopify: list[str] = Field(default_factory=list)
+    dedicated: bool | None = True
+    genericDealers: list[str] = Field(default_factory=list)
+
+
+class ProductSearchRequest(BaseModel):
+    """Payload proxyfié depuis `/api/product-search` côté Next.js."""
+    query: str
+    category: str | None = None
+    adapters: ProductSearchAdapters = Field(default_factory=ProductSearchAdapters)
+    maxResults: int = 30
+    minScore: float = 0.3
+    timeout: int = 30
+    userId: str | None = None
+
+
+def _extract_json_object(raw: str) -> dict:
+    """Parse le premier objet JSON valide dans une sortie pouvant contenir des logs."""
+    decoder = json.JSONDecoder()
+    for idx, char in enumerate(raw):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(raw[idx:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    raise ValueError("Aucun objet JSON valide trouvé dans la sortie Python")
 
 
 # ---------------------------------------------------------------------------
@@ -742,6 +786,142 @@ async def scrapers_pending_test(body: PendingScraperTestRequest):
         "metadata": metadata,
         "categories_tested": categories,
     }
+
+
+@app.post("/product-search", dependencies=[Depends(verify_secret)])
+async def product_search(body: ProductSearchRequest):
+    """Lance la recherche produit fédérée depuis le backend Railway.
+
+    En production, Next.js proxyfie `/api/product-search` vers cet endpoint
+    parce que Vercel ne peut pas exécuter le CLI Python localement.
+    """
+    query = (body.query or "").strip()
+    if not query:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "query_required", "message": "query is required"},
+        )
+
+    max_results = min(max(int(body.maxResults or 30), 1), 100)
+    min_score = min(max(float(body.minScore or 0.3), 0.0), 1.0)
+    per_adapter_timeout = min(max(int(body.timeout or 30), 5), 45)
+    total_timeout = min(per_adapter_timeout * 2, 50)
+    process_timeout = total_timeout + 5
+
+    args = [
+        sys.executable,
+        "-u",
+        "-m",
+        "scraper_ai.scraper_search.main",
+        query,
+        "--json",
+        "--quiet",
+        "--max-results",
+        str(max_results),
+        "--min-score",
+        str(min_score),
+        "--timeout",
+        str(per_adapter_timeout),
+        "--total-timeout",
+        str(total_timeout),
+    ]
+
+    if body.category and body.category.strip():
+        args.extend(["--category", body.category.strip()])
+
+    adapters = body.adapters
+    if adapters.amazon:
+        args.append("--amazon")
+    if adapters.ebay:
+        args.append("--ebay")
+    if adapters.kijiji:
+        args.append("--kijiji")
+    if adapters.bestbuy:
+        args.append("--bestbuy")
+    if adapters.walmart:
+        args.append("--walmart")
+    if adapters.costco:
+        args.append("--costco")
+    if adapters.lespac:
+        args.append("--lespac")
+    if adapters.autotrader:
+        args.append("--autotrader")
+    if adapters.cycletrader:
+        args.append("--cycletrader")
+    if adapters.facebook:
+        args.append("--facebook")
+
+    shopify_domains = [d.strip() for d in adapters.shopify if d and d.strip()]
+    if shopify_domains:
+        args.extend(["--shopify", ",".join(shopify_domains)])
+
+    generic_dealers = [d.strip() for d in adapters.genericDealers if d and d.strip()]
+    if generic_dealers:
+        args.extend(["--generic-dealers", ",".join(generic_dealers)])
+
+    if adapters.dedicated is False:
+        args.append("--no-dedicated")
+    else:
+        # Recherche interactive : lire les inventaires en cache sans scraper live.
+        args.append("--dedicated-cache-only")
+
+    env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "NEXTJS_API_URL": os.environ.get("NEXTJS_API_URL", ""),
+        "NEXT_PUBLIC_SUPABASE_URL": os.environ.get(
+            "NEXT_PUBLIC_SUPABASE_URL",
+            os.environ.get("SUPABASE_URL", ""),
+        ),
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+    }
+
+    try:
+        proc = subprocess.run(
+            args,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=process_timeout,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return JSONResponse(
+            status_code=504,
+            content={
+                "error": "product_search_timeout",
+                "message": (
+                    "La recherche a pris trop de temps. "
+                    "Essaie avec moins de sources actives ou une requête plus précise."
+                ),
+            },
+        )
+
+    if proc.returncode != 0:
+        message = (proc.stderr or proc.stdout or "Recherche produit échouée").strip()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "product_search_failed",
+                "message": message[-1000:],
+                "code": proc.returncode,
+            },
+        )
+
+    try:
+        return JSONResponse(content=_extract_json_object(proc.stdout or ""))
+    except ValueError as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "invalid_product_search_json",
+                "message": str(e),
+                "stdout": (proc.stdout or "")[-1000:],
+                "stderr": (proc.stderr or "")[-1000:],
+            },
+        )
 
 
 @app.get("/product-search/categories", dependencies=[Depends(verify_secret)])
