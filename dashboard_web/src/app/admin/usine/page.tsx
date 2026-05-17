@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react"
 import {
   Loader2, Hammer, PlayCircle, AlertTriangle, Globe, Eye,
   Settings2, Terminal, CheckCircle2, XCircle, Upload, FileText,
-  ListPlus, Trash2, GraduationCap, CheckCheck, Filter,
+  ListPlus, Trash2, GraduationCap, CheckCheck, Filter, Zap, RefreshCw,
+  DollarSign, TrendingUp,
 } from "lucide-react"
 
 interface JobStatus {
@@ -59,6 +60,10 @@ export default function AdminUsinePage() {
   // Options communes
   const [dryRun, setDryRun] = useState(false)
   const [forcePlaywright, setForcePlaywright] = useState(false)
+  // Phase 2.8 du plan optim couts : toggle "Mode qualite max" (force Opus full)
+  // pour ce run uniquement. Defaut OFF : on utilise le mode hybride par defaut
+  // si CLAUDE_HYBRID_ENABLED=1 cote serveur.
+  const [forceFullClaude, setForceFullClaude] = useState(false)
   const [threshold, setThreshold] = useState(95)
 
   const [submitting, setSubmitting] = useState(false)
@@ -111,7 +116,7 @@ export default function AdminUsinePage() {
     if (file) void handleFile(file)
   }
 
-  const submitSingle = async () => {
+  const submitSingle = async (overrideForceFull?: boolean) => {
     setError(null)
     if (!url.trim()) { setError("URL requise"); return }
     setSubmitting(true); setLogs([]); setJob(null)
@@ -120,7 +125,13 @@ export default function AdminUsinePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: url.trim(), dryRun, forcePlaywright, publishThreshold: threshold,
+          url: url.trim(),
+          dryRun,
+          forcePlaywright,
+          // Phase 2.8 : si overrideForceFull est passe (bouton Relancer en mode
+          // qualite max), il prend le pas sur la valeur du toggle.
+          forceFullClaude: overrideForceFull ?? forceFullClaude,
+          publishThreshold: threshold,
         }),
       })
       const data = await res.json()
@@ -234,6 +245,8 @@ export default function AdminUsinePage() {
         <LessonsTab />
       ) : (
         <>
+      {/* Phase 5.3 du plan optim couts : cartes de cout Claude */}
+      <CostCards />
 
       {/* Tabs internes (single / batch) */}
       <div className="inline-flex rounded-xl bg-slate-900/60 border border-slate-800 p-1 mb-5">
@@ -352,7 +365,7 @@ export default function AdminUsinePage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Toggle
               label="Dry run"
               description="Analyse + stratégie sans générer de fichier."
@@ -366,6 +379,13 @@ export default function AdminUsinePage() {
               checked={forcePlaywright}
               onChange={setForcePlaywright}
               icon={Settings2}
+            />
+            <Toggle
+              label="Mode qualité max"
+              description="Force Opus full (plus cher, qualité maximale)."
+              checked={forceFullClaude}
+              onChange={setForceFullClaude}
+              icon={Zap}
             />
           </div>
 
@@ -389,7 +409,7 @@ export default function AdminUsinePage() {
 
           <button
             type="button"
-            onClick={mode === "single" ? submitSingle : submitBatch}
+            onClick={mode === "single" ? () => void submitSingle() : submitBatch}
             disabled={
               submitting || polling ||
               (mode === "single" ? !url.trim() : batchUrls.length === 0)
@@ -460,6 +480,27 @@ export default function AdminUsinePage() {
             )}
             <div ref={logEndRef} />
           </div>
+
+          {/* Phase 2.8 : bouton "Relancer en mode qualité max"
+              apparait apres tout run termine, peu importe le score.
+              Reinjette la meme URL avec forceFullClaude=true. */}
+          {mode === "single" && job?.isComplete && url.trim() && !polling && (
+            <div className="border-t border-slate-800 px-5 py-3 bg-slate-950/40">
+              <button
+                type="button"
+                onClick={() => void submitSingle(true)}
+                disabled={submitting}
+                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 text-xs font-medium hover:bg-amber-500/20 transition disabled:opacity-40"
+                title="Relance ce site avec Opus full (mode qualité max). Plus cher mais ignore l'hybride."
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Relancer ce site en mode qualité max
+              </button>
+              <p className="mt-1.5 text-[10px] text-slate-500 text-center">
+                Force Opus full pour ce run (écrase la version actuelle)
+              </p>
+            </div>
+          )}
         </section>
       </div>
 
@@ -797,5 +838,137 @@ function Toggle({
       </div>
       <p className="text-[11px] text-slate-500">{description}</p>
     </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5.3 — Cartes de cout Claude
+// ---------------------------------------------------------------------------
+
+interface CostSummary {
+  cost_7d_usd: number
+  cost_30d_usd: number
+  runs_7d: number
+  runs_30d: number
+  average_cost_per_run_7d_usd: number
+  average_cost_per_run_30d_usd: number
+  mode_distribution: { hybrid: number; full_claude: number; hybrid_pct: number }
+  top_5_sites_by_cost: { slug: string; url: string | null; cost_usd_total: number; runs: number; last_score: number | null }[]
+}
+
+function CostCards() {
+  const [data, setData] = useState<CostSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch("/api/admin/usine/costs", { cache: "no-store" })
+        const j = await res.json()
+        if (cancelled) return
+        if (!res.ok) {
+          setError(j?.error || `HTTP ${res.status}`)
+          return
+        }
+        setData(j as CostSummary)
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Erreur réseau")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/40 px-5 py-3 flex items-center gap-2 text-xs text-slate-500">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Chargement coûts Claude…
+      </div>
+    )
+  }
+
+  if (error || !data) {
+    return (
+      <div className="mb-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-xs text-amber-200">
+        Coûts Claude indisponibles ({error || "données vides"}). La migration{" "}
+        <code className="px-1 py-0.5 rounded bg-slate-900/60 text-slate-300">
+          migration_usine_runs_cost_tracking.sql
+        </code>{" "}
+        est-elle appliquée ?
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <CostCard
+        label="Coût 7j"
+        value={`$${data.cost_7d_usd.toFixed(2)}`}
+        subtitle={`${data.runs_7d} run${data.runs_7d > 1 ? "s" : ""}`}
+        icon={DollarSign}
+        accent="emerald"
+      />
+      <CostCard
+        label="Coût 30j"
+        value={`$${data.cost_30d_usd.toFixed(2)}`}
+        subtitle={`${data.runs_30d} run${data.runs_30d > 1 ? "s" : ""}`}
+        icon={TrendingUp}
+        accent="indigo"
+      />
+      <CostCard
+        label="Moy. par run (7j)"
+        value={`$${data.average_cost_per_run_7d_usd.toFixed(3)}`}
+        subtitle={
+          data.average_cost_per_run_30d_usd > 0
+            ? `vs $${data.average_cost_per_run_30d_usd.toFixed(3)} sur 30j`
+            : ""
+        }
+        icon={DollarSign}
+        accent="slate"
+      />
+      <CostCard
+        label="Mode hybride"
+        value={`${data.mode_distribution.hybrid_pct}%`}
+        subtitle={`${data.mode_distribution.hybrid} hybrid / ${data.mode_distribution.full_claude} full`}
+        icon={Zap}
+        accent={data.mode_distribution.hybrid_pct >= 50 ? "emerald" : "amber"}
+      />
+    </div>
+  )
+}
+
+function CostCard({
+  label, value, subtitle, icon: Icon, accent = "slate",
+}: {
+  label: string
+  value: string
+  subtitle: string
+  icon: any
+  accent?: "emerald" | "indigo" | "amber" | "slate"
+}) {
+  const accentClasses: Record<string, string> = {
+    emerald: "ring-emerald-500/30 text-emerald-300",
+    indigo: "ring-indigo-500/30 text-indigo-300",
+    amber: "ring-amber-500/30 text-amber-300",
+    slate: "ring-slate-700 text-slate-300",
+  }
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={`p-1.5 rounded-lg bg-slate-800/60 ring-1 ${accentClasses[accent]}`}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
+      </div>
+      <p className="text-2xl font-bold text-slate-100">{value}</p>
+      {subtitle && (
+        <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>
+      )}
+    </div>
   )
 }

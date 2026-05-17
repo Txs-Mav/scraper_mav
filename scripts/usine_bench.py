@@ -67,6 +67,11 @@ class SiteResult:
     error: Optional[str] = None
     report_path: Optional[str] = None
     log_excerpt: str = ""
+    # Cost tracking (Phase 1.1) - extrait du fichier audit Claude
+    cost_usd: float = 0.0
+    cost_breakdown: Dict[str, float] = field(default_factory=dict)
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 def _slug_from_url(url: str) -> str:
@@ -175,12 +180,34 @@ def _run_one(site: Dict[str, Any], threshold: int, timeout_sec: int,
     else:
         result.verdict = "fail"
 
+    # Extraire le coût Claude depuis l'audit (Phase 1.1)
+    audit_path = PROJECT_ROOT / "scraper_cache" / "supervision" / f"{slug}_audit.json"
+    if audit_path.exists():
+        try:
+            audit = json.loads(audit_path.read_text(encoding="utf-8"))
+            result.cost_usd = round(float(audit.get("total_cost_usd") or 0.0), 6)
+            # Coût par phase pour debug + comparaison A/B
+            breakdown: Dict[str, float] = {}
+            cache_read = 0
+            cache_creation = 0
+            for ev in audit.get("events", []):
+                phase = ev.get("phase") or "unknown"
+                breakdown[phase] = breakdown.get(phase, 0.0) + float(ev.get("cost_usd") or 0.0)
+                cache_read += int(ev.get("cache_read_tokens") or 0)
+                cache_creation += int(ev.get("cache_creation_tokens") or 0)
+            result.cost_breakdown = {k: round(v, 6) for k, v in breakdown.items()}
+            result.cache_read_tokens = cache_read
+            result.cache_creation_tokens = cache_creation
+        except Exception:
+            pass  # best-effort, l'absence de cost ne doit pas casser le bench
+
     return result
 
 
 def _aggregate(results: List[SiteResult], threshold: int) -> Dict[str, Any]:
     scored = [r for r in results if r.score is not None]
     avg = sum(r.score for r in scored) / len(scored) if scored else 0.0
+    total_cost = sum(r.cost_usd for r in results)
     return {
         "total": len(results),
         "scored": len(scored),
@@ -194,6 +221,8 @@ def _aggregate(results: List[SiteResult], threshold: int) -> Dict[str, Any]:
         "claude_supervisor_uses": sum(1 for r in results if r.claude_supervisor_used),
         "claude_agent_uses": sum(1 for r in results if r.claude_agent_used),
         "total_duration_sec": round(sum(r.duration_sec for r in results), 1),
+        "total_cost_usd": round(total_cost, 6),
+        "average_cost_usd_per_site": round(total_cost / max(1, len(results)), 6),
     }
 
 

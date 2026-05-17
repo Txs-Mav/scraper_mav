@@ -51,13 +51,55 @@ CLAUDE_MAX_REWRITES = int(os.environ.get("CLAUDE_MAX_REWRITES", "3"))
 CLAUDE_AGENT_ENABLED = os.environ.get("CLAUDE_AGENT_ENABLED", "1") not in ("0", "false", "False")
 
 # Plafond de tours (échanges assistant <-> tool_result) dans la boucle agent.
-# 15 tours = ~7-8 actions concrètes (fetch, inspect, write, run...) ce qui
-# couvre la plupart des sites en une exploration.
-CLAUDE_AGENT_MAX_TURNS = int(os.environ.get("CLAUDE_AGENT_MAX_TURNS", "15"))
+# 10 tours = ~5-7 actions concrètes (fetch, inspect, write, run...) ce qui
+# couvre la plupart des sites en une exploration. Au-delà des rendements
+# décroissants : si l'agent n'a pas réussi en 10 tours, il ne réussira
+# probablement pas en 15.
+CLAUDE_AGENT_MAX_TURNS = int(os.environ.get("CLAUDE_AGENT_MAX_TURNS", "10"))
 
 # Plafond cumulé de tokens (in+out) sur l'ensemble d'un run d'agent. Au-delà,
-# on coupe net pour éviter les coûts runaway.
-CLAUDE_AGENT_MAX_TOKENS_PER_RUN = int(os.environ.get("CLAUDE_AGENT_MAX_TOKENS_PER_RUN", "500000"))
+# on coupe net pour éviter les coûts runaway. Resserré de 500K à 200K
+# (un run sain consomme typiquement 50-100K tokens).
+CLAUDE_AGENT_MAX_TOKENS_PER_RUN = int(os.environ.get("CLAUDE_AGENT_MAX_TOKENS_PER_RUN", "200000"))
+
+# =============================================================================
+# CONFIGURATION HYBRIDE DIAGNOSE/WRITE (Phase 2 du plan optim coûts)
+# =============================================================================
+# Architecture diagnose-then-write : Opus diagnostique (raisonnement) puis
+# Sonnet 4.5 écrit le code (5x moins cher pour la partie verbeuse). Voir le
+# plan : scripts/BENCH_README.md et le markdown de plan dans .cursor/plans/.
+
+# Modèle pour les phases de DIAGNOSTIC (Phase 1, 2, 5 + diagnostic du
+# correct_scraper). Opus = meilleur raisonnement, ~500 tokens output suffisent.
+CLAUDE_MODEL_DIAGNOSIS = os.environ.get("CLAUDE_MODEL_DIAGNOSIS", "claude-opus-4-7")
+
+# Modèle pour les phases d'ÉCRITURE (rewrite code, exécution agent). Sonnet
+# 4.5 = qualité 9.5/10 sur du coding, 5x moins cher qu'Opus.
+CLAUDE_MODEL_REWRITE = os.environ.get("CLAUDE_MODEL_REWRITE", "claude-sonnet-4-5")
+
+# Master switch hybride. Default 0 = comportement actuel (Opus partout) pour
+# garantir aucune surprise tant que le bench A/B Phase 3 n'est pas validé.
+# Activer en prod après canary 48h OK.
+CLAUDE_HYBRID_ENABLED = os.environ.get("CLAUDE_HYBRID_ENABLED", "0") == "1"
+
+# Liste blanche de plateformes/sites où Opus reste obligatoire pour l'écriture,
+# peu importe le flag hybride global. Format CSV : "Shopify-Custom,eDealer-X".
+# Match contre `analysis.platform.name`.
+#
+# Phase 1.5 du plan : à définir EXPLICITEMENT avec l'utilisateur avant la
+# bascule en prod. Critères suggérés :
+#   - domaines avec >= 3 scrapers en prod qui marchent
+#   - marchands stratégiques business
+#   - plateformes où un bug coûte cher en image (gros volumes, exposition)
+#
+# Si vide à la fin de Phase 1.5 : noter comme "décision différée", ne pas
+# basculer en Phase 5 sans avoir tranché.
+_critical_csv = os.environ.get("CLAUDE_CRITICAL_PLATFORMS", "").strip()
+CLAUDE_CRITICAL_PLATFORMS = (
+    {p.strip() for p in _critical_csv.split(",") if p.strip()}
+    if _critical_csv
+    else set()
+)
 
 # Validation de la configuration
 if AI_PROVIDER == "vertex":

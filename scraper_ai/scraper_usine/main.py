@@ -50,6 +50,11 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument("--no-agent-fallback", action="store_true",
                         help="Désactiver UNIQUEMENT la Phase 4.5 (agent autonome). "
                              "La supervision Claude reste active.")
+    parser.add_argument("--no-hybrid", action="store_true",
+                        help="Forcer Opus full pour ce run (mode qualité max). "
+                             "Désactive l'architecture diagnose/write hybride pour "
+                             "ce subprocess uniquement. Utile pour relancer un site "
+                             "où le hybride n'a pas suffi (cf. /admin/usine).")
     parser.add_argument("--force-playwright", action="store_true",
                         help="Forcer l'utilisation de Playwright")
     parser.add_argument("--check", metavar="SLUG",
@@ -117,6 +122,7 @@ def main(argv: Optional[List[str]] = None) -> None:
             resume=args.resume,
             no_claude=args.no_claude,
             no_agent_fallback=args.no_agent_fallback,
+            no_hybrid=args.no_hybrid,
             force_playwright=args.force_playwright,
             verbose=verbose,
             profile=args.profile,
@@ -136,6 +142,7 @@ def _process_url(
     resume: bool = False,
     no_claude: bool = False,
     no_agent_fallback: bool = False,
+    no_hybrid: bool = False,
     force_playwright: bool = False,
     verbose: bool = True,
     profile: Optional[str] = None,
@@ -148,11 +155,16 @@ def _process_url(
     print(f"  SCRAPER USINE : {url}")
     print(f"{'='*70}")
     print(f"  [{_ts()}] Démarrage pipeline\n")
+    if no_hybrid:
+        print(f"  [{_ts()}] Mode qualité max actif (--no-hybrid : Opus full pour ce run)")
 
     # Superviseur Claude unique pour tout le run (compteur de réécritures partagé).
-    # On l'instancie tôt pour bénéficier du logging d'init mais on ne lui donne
-    # le slug qu'après la Phase 3 (le slug est calculé par le générateur).
-    supervisor = ClaudeSupervisor(enabled=not no_claude, verbose=verbose)
+    # Le flag force_full_claude (Phase 2.8) lui dit d'ignorer CLAUDE_HYBRID_ENABLED
+    # pour CE run uniquement, sans toucher la config globale.
+    supervisor = ClaudeSupervisor(
+        enabled=not no_claude, verbose=verbose,
+        force_full_claude=no_hybrid,
+    )
     if not supervisor.enabled and not no_claude:
         print(f"  [{_ts()}] (Supervision Claude indisponible — pipeline en mode dégradé)")
 
@@ -247,11 +259,27 @@ def _process_url(
     if supervisor.enabled:
         supervisor.set_slug(generated.slug)
 
-        # Hook Phase 3 : review + rewrite éventuel du code généré
-        v3, rewritten = supervisor.review_and_fix_code(generated, analysis)
-        print(f"  [{_ts()}] Claude review Phase 3 : {v3.status} — {v3.reasoning[:120]}")
-        if rewritten:
-            print(f"  [{_ts()}] Code Phase 3 réécrit par Claude ({len(rewritten)} chars)")
+        # Hook Phase 3 : review + rewrite éventuel du code généré.
+        # Optimisation coût : on ne lance la review que sur les plateformes
+        # GENERIC (non reconnues). Sur Shopify / WooCommerce / eDealer / Magento
+        # / Prestashop etc., les templates Jinja2 sont éprouvés et la Phase 4
+        # (validation par exécution réelle) est le filet réel — la review
+        # Phase 3 ne ferait que coûter ~35K tokens d'input sans valeur ajoutée.
+        # Réactiver via USINE_FORCE_PHASE3_REVIEW=1 pour debug.
+        from .models import PlatformType
+        force_review = os.environ.get("USINE_FORCE_PHASE3_REVIEW", "0") in ("1", "true", "yes")
+        platform_is_known = analysis.platform.platform_type != PlatformType.GENERIC
+        if platform_is_known and not force_review:
+            print(
+                f"  [{_ts()}] Claude review Phase 3 : SKIP "
+                f"(plateforme connue: {analysis.platform.platform_type.value}, "
+                f"templates Jinja2 fiables - la Phase 4 valide en exécution)"
+            )
+        else:
+            v3, rewritten = supervisor.review_and_fix_code(generated, analysis)
+            print(f"  [{_ts()}] Claude review Phase 3 : {v3.status} — {v3.reasoning[:120]}")
+            if rewritten:
+                print(f"  [{_ts()}] Code Phase 3 réécrit par Claude ({len(rewritten)} chars)")
 
     # --- Phase 4 : Validation ---
     print(f"\n  [{_ts()}] Phase 4 : Validation...")
@@ -402,7 +430,24 @@ def _process_url(
     elif publish:
         print(f"  Statut     : score < seuil ({publish_threshold}) — non publié")
     if supervisor.enabled:
+        # Phase 2.8 : logger mode_used dans le summary + audit
+        mode_used = "full_claude" if no_hybrid else (
+            "hybrid" if os.environ.get("CLAUDE_HYBRID_ENABLED", "0") == "1" else "full_claude"
+        )
+        print(f"  Mode       : {mode_used}")
         print(f"  Audit      : scraper_cache/supervision/{generated.slug}_audit.json")
+        # Persister le mode_used dans l'audit JSON pour les requêtes du dashboard
+        try:
+            audit_path = SUPERVISION_DIR / f"{generated.slug}_audit.json"
+            if audit_path.exists():
+                ad = json.loads(audit_path.read_text(encoding="utf-8"))
+                ad["mode_used"] = mode_used
+                audit_path.write_text(
+                    json.dumps(ad, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+        except Exception:
+            pass  # best-effort
     if workflow_relpath:
         print(f"  Workflow   : {workflow_relpath}")
     if push_result and push_result.pushed:

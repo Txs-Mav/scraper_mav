@@ -36,6 +36,7 @@ from bs4 import BeautifulSoup
 from .models import GeneratedScraper, ScrapingStrategy, SiteAnalysis
 from .domain_profiles import get_profile
 from .generator import DEDICATED_DIR, GENERATED_REGISTRY_PATH
+from .html_cleanup import clean_html_for_llm
 from .lessons import record_lesson
 
 try:
@@ -43,6 +44,9 @@ try:
         CLAUDE_AGENT_ENABLED,
         CLAUDE_AGENT_MAX_TOKENS_PER_RUN,
         CLAUDE_AGENT_MAX_TURNS,
+        CLAUDE_HYBRID_ENABLED,
+        CLAUDE_MODEL_DIAGNOSIS,
+        CLAUDE_MODEL_REWRITE,
     )
     from scraper_ai.claude_client import ClaudeClient, ClaudeUnavailableError
 except ImportError:  # pragma: no cover
@@ -50,6 +54,9 @@ except ImportError:  # pragma: no cover
         CLAUDE_AGENT_ENABLED,
         CLAUDE_AGENT_MAX_TOKENS_PER_RUN,
         CLAUDE_AGENT_MAX_TURNS,
+        CLAUDE_HYBRID_ENABLED,
+        CLAUDE_MODEL_DIAGNOSIS,
+        CLAUDE_MODEL_REWRITE,
     )
     from ..claude_client import (  # type: ignore[no-redef]
         ClaudeClient, ClaudeUnavailableError,
@@ -306,6 +313,7 @@ class ClaudeAgent:
 
         self.set_slug(prior_attempt.slug)
         self._tokens_used = 0
+        self._cost_usd_cumulative = 0.0
         self._last_test_result: Optional[Dict[str, Any]] = None
         # Snapshot du code avant agent — sert à calculer le diff pour la
         # capture des leçons (Phase 2 du plan).
@@ -316,19 +324,39 @@ class ClaudeAgent:
             except Exception:
                 prior_code_snapshot = ""
 
-        system_prompt = self._build_system_prompt(analysis, strategy, prior_attempt)
+        # Phase 2.7 : architecture hybride pour l'agent.
+        # - Mode actuel (CLAUDE_HYBRID_ENABLED=0) : Opus partout (comportement historique).
+        # - Mode hybride : tour 1 = Opus produit un PlanDeMission JSON court,
+        #   puis tours 2-N en Sonnet 4.5 avec le plan en system_prompt. Si Sonnet
+        #   bloque après 8 tours, on injecte 1 tour Opus de recovery.
+        mission_plan: Optional[Dict[str, Any]] = None
+        if CLAUDE_HYBRID_ENABLED:
+            mission_plan = self._build_mission_plan(analysis, strategy, prior_attempt)
+
+        system_prompt = self._build_system_prompt(
+            analysis, strategy, prior_attempt, mission_plan=mission_plan,
+        )
         user_prompt = self._build_user_prompt(analysis, strategy, prior_attempt)
 
         messages: List[Dict[str, Any]] = [
             {"role": "user", "content": user_prompt},
         ]
 
-        self._log(f"Démarrage agent (max {CLAUDE_AGENT_MAX_TURNS} tours)...")
+        # Compteur de tours Sonnet sans run_scraper_test ok=True (déclencheur recovery)
+        sonnet_unsuccessful_streak = 0
+        SONNET_RECOVERY_THRESHOLD = 8
+
+        self._log(
+            f"Démarrage agent (max {CLAUDE_AGENT_MAX_TURNS} tours, "
+            f"hybride={'ON' if CLAUDE_HYBRID_ENABLED else 'OFF'})..."
+        )
         self._trace_event("agent_start", {
             "site_url": analysis.site_url,
             "slug": prior_attempt.slug,
             "max_turns": CLAUDE_AGENT_MAX_TURNS,
             "max_tokens": CLAUDE_AGENT_MAX_TOKENS_PER_RUN,
+            "hybrid_enabled": CLAUDE_HYBRID_ENABLED,
+            "mission_plan": mission_plan,
         })
 
         for turn in range(1, CLAUDE_AGENT_MAX_TURNS + 1):
@@ -340,9 +368,33 @@ class ClaudeAgent:
                 })
                 break
 
+            # Phase 2.7 : choix du modèle pour ce tour
+            # - Mode actuel : Opus partout (CLAUDE_MODEL_DIAGNOSIS pour cohérence)
+            # - Mode hybride : Sonnet par défaut, MAIS Opus de recovery si Sonnet
+            #   a stagné > 8 tours sans run_scraper_test ok=True.
+            if CLAUDE_HYBRID_ENABLED:
+                if sonnet_unsuccessful_streak >= SONNET_RECOVERY_THRESHOLD:
+                    turn_model = CLAUDE_MODEL_DIAGNOSIS  # Opus recovery
+                    sonnet_unsuccessful_streak = 0  # reset après recovery
+                    self._log(
+                        f"Tour {turn} : RECOVERY Opus déclenché "
+                        f"(Sonnet stagne depuis {SONNET_RECOVERY_THRESHOLD} tours)"
+                    )
+                else:
+                    turn_model = CLAUDE_MODEL_REWRITE  # Sonnet
+            else:
+                turn_model = self._client.model  # type: ignore[union-attr]
+
+            # Snapshot compteurs AVANT pour calculer le delta de ce tour
+            in_before = self._client.total_tokens_in  # type: ignore[union-attr]
+            out_before = self._client.total_tokens_out  # type: ignore[union-attr]
+            cr_before = self._client.total_cache_read_tokens  # type: ignore[union-attr]
+            cc_before = self._client.total_cache_creation_tokens  # type: ignore[union-attr]
+
             try:
                 response = self._client.call_with_tools(  # type: ignore[union-attr]
                     messages, system=system_prompt, tools=TOOL_DEFINITIONS,
+                    model=turn_model,
                 )
             except Exception as e:
                 self._log(f"Tour {turn} : appel Claude échoué — {type(e).__name__}: {e}")
@@ -353,6 +405,24 @@ class ClaudeAgent:
                 self._client.total_tokens_in + self._client.total_tokens_out  # type: ignore[union-attr]
             )
 
+            # Delta tokens de ce tour précis (utile pour cost tracking)
+            from .cost_tracking import compute_cost_usd
+            delta_in = self._client.total_tokens_in - in_before  # type: ignore[union-attr]
+            delta_out = self._client.total_tokens_out - out_before  # type: ignore[union-attr]
+            delta_cr = self._client.total_cache_read_tokens - cr_before  # type: ignore[union-attr]
+            delta_cc = self._client.total_cache_creation_tokens - cc_before  # type: ignore[union-attr]
+            non_cached_in = max(0, delta_in - delta_cr - delta_cc)
+            turn_cost = compute_cost_usd(
+                turn_model,
+                input_tokens=non_cached_in,
+                output_tokens=delta_out,
+                cache_read_tokens=delta_cr,
+                cache_creation_tokens=delta_cc,
+            )
+            self._cost_usd_cumulative = (
+                getattr(self, "_cost_usd_cumulative", 0.0) + turn_cost
+            )
+
             stop_reason = getattr(response, "stop_reason", "")
             blocks = list(getattr(response, "content", []) or [])
 
@@ -360,6 +430,14 @@ class ClaudeAgent:
                 "turn": turn,
                 "stop_reason": stop_reason,
                 "tokens_total": self._tokens_used,
+                "tokens_in_delta": non_cached_in,
+                "tokens_out_delta": delta_out,
+                "cache_read_delta": delta_cr,
+                "cache_creation_delta": delta_cc,
+                "model": turn_model,
+                "cost_usd_turn": round(turn_cost, 6),
+                "cost_usd_cumulative": round(self._cost_usd_cumulative, 6),
+                "sonnet_streak": sonnet_unsuccessful_streak,
                 "blocks": [
                     {"type": getattr(b, "type", "?"),
                      "preview": self._block_preview(b)}
@@ -409,6 +487,14 @@ class ClaudeAgent:
 
             messages.append({"role": "user", "content": tool_results})
 
+            # Incrémenter le streak Sonnet si ce tour était Sonnet ET qu'aucun
+            # run_scraper_test n'a renvoyé ok=True. Reset si succès.
+            if CLAUDE_HYBRID_ENABLED and turn_model == CLAUDE_MODEL_REWRITE:
+                if self._last_test_result and self._last_test_result.get("ok"):
+                    sonnet_unsuccessful_streak = 0
+                else:
+                    sonnet_unsuccessful_streak += 1
+
         # Décision finale : on accepte le code si le dernier run_scraper_test
         # a renvoyé >= 1 produit avec name + (prix OU sourceUrl).
         if self._last_test_result and self._last_test_result.get("ok"):
@@ -416,6 +502,7 @@ class ClaudeAgent:
             new_code = new_path.read_text(encoding="utf-8") if new_path.exists() else ""
             self._trace_event("agent_success", {
                 "tokens_used": self._tokens_used,
+                "cost_usd_total": round(getattr(self, "_cost_usd_cumulative", 0.0), 6),
                 "products_count": self._last_test_result.get("products_count", 0),
             })
             # Capture de la leçon : agent fallback complet. On déduit les
@@ -458,6 +545,7 @@ class ClaudeAgent:
         self._log("Agent n'a pas produit de scraper validé — fallback sur ancien code")
         self._trace_event("agent_failure", {
             "tokens_used": self._tokens_used,
+            "cost_usd_total": round(getattr(self, "_cost_usd_cumulative", 0.0), 6),
             "last_test": self._last_test_result,
         })
         return None
@@ -497,17 +585,23 @@ class ClaudeAgent:
     # ------------------------------------------------------------------
 
     def _tool_fetch_url(self, url: str, render_js: bool = False) -> Dict[str, Any]:
+        # Note : on pré-traite le HTML avec clean_html_for_llm AVANT troncature.
+        # JSON-LD, og-meta et microdata sont préservés (cf. html_cleanup.py),
+        # mais on retire les ~30-40% de bruit (scripts JS, styles, svg, data-attrs
+        # non sémantiques). Le `length` retourné est la longueur originale pour
+        # que Claude sache combien d'info source existe.
         if render_js:
             try:
                 from .browser_agent import BrowserAgent
                 with BrowserAgent() as agent:
                     result = agent.render(url)
-                html = (result.html or "")[:FETCH_TRUNCATE_BYTES]
+                raw_html = result.html or ""
+                cleaned = clean_html_for_llm(raw_html, aggressive=True)
                 return {
                     "status": result.status or 0,
                     "final_url": result.final_url or url,
-                    "length": len(result.html or ""),
-                    "html_truncated": html,
+                    "length": len(raw_html),
+                    "html_truncated": cleaned[:FETCH_TRUNCATE_BYTES],
                     "rendered_via": "playwright",
                     "error": result.error or "",
                 }
@@ -518,12 +612,12 @@ class ClaudeAgent:
             resp = requests.get(url, timeout=20, allow_redirects=True, headers={
                 "User-Agent": "Mozilla/5.0 (compatible; ClaudeAgent/1.0)",
             })
-            html = resp.text[:FETCH_TRUNCATE_BYTES]
+            cleaned = clean_html_for_llm(resp.text, aggressive=True)
             return {
                 "status": resp.status_code,
                 "final_url": resp.url,
                 "length": len(resp.text),
-                "html_truncated": html,
+                "html_truncated": cleaned[:FETCH_TRUNCATE_BYTES],
                 "rendered_via": "requests",
             }
         except Exception as e:
@@ -786,8 +880,10 @@ class ClaudeAgent:
 
     def _build_system_prompt(self, analysis: SiteAnalysis,
                              strategy: ScrapingStrategy,
-                             prior: GeneratedScraper) -> str:
-        return (
+                             prior: GeneratedScraper,
+                             *,
+                             mission_plan: Optional[Dict[str, Any]] = None) -> str:
+        base = (
             "Tu es un agent autonome chargé de construire un scraper Python qui "
             "extrait l'inventaire d'un site e-commerce ou concessionnaire.\n\n"
             "RÈGLES D'OR :\n"
@@ -817,6 +913,117 @@ class ClaudeAgent:
             f"BUDGET : {CLAUDE_AGENT_MAX_TURNS} tours max, {CLAUDE_AGENT_MAX_TOKENS_PER_RUN} "
             "tokens cumulés. Sois concis dans tes raisonnements."
         )
+
+        # Phase 2.7 : si on est en mode hybride, on injecte le PlanDeMission
+        # produit par Opus en tour 0. Sonnet l'utilise comme guide d'exécution
+        # mécanique au lieu de re-raisonner à chaque tour.
+        if mission_plan:
+            plan_block = json.dumps(mission_plan, indent=2, ensure_ascii=False)
+            base += (
+                "\n\nPLAN DE MISSION (produit par l'architecte Opus) :\n"
+                f"```json\n{plan_block}\n```\n\n"
+                "Suis ce plan d'execution. Si tu rencontres un blocage non prevu, "
+                "tu peux t'en ecarter mais explique pourquoi en 1 phrase concise."
+            )
+        return base
+
+    def _build_mission_plan(
+        self,
+        analysis: SiteAnalysis,
+        strategy: ScrapingStrategy,
+        prior: GeneratedScraper,
+    ) -> Optional[Dict[str, Any]]:
+        """Phase 2.7 : tour 0 d'Opus = PlanDeMission JSON court.
+
+        Sortie typique (~500 tokens output) :
+            {
+                "strategy": "scraper_thin_inheriting_X" | "from_scratch",
+                "discovery": "sitemap_then_filter" | "listing_pagination" | ...,
+                "extraction_priority": ["json_ld", "css_selector", "regex_fallback"],
+                "tools_sequence": ["query_sitemap", "fetch_url", ...]
+            }
+
+        Si l'appel échoue (timeout, JSON invalide), on retourne None et
+        l'agent tourne sans plan (= comportement Sonnet pur).
+        """
+        if self._client is None:
+            return None
+
+        from .cost_tracking import compute_cost_usd
+
+        profile = get_profile(analysis.domain_profile_key or "auto")
+        target_fields = ", ".join(f.name for f in profile.fields)
+
+        prompt = (
+            f"PLAN DE MISSION pour reconstruire le scraper de "
+            f"{analysis.site_url}.\n\n"
+            f"Plateforme detectee : {analysis.platform.name}\n"
+            f"Domain profile : {profile.name} (champs : {target_fields})\n"
+            f"json_ld_available : {analysis.json_ld_available}\n"
+            f"sitemap : {analysis.sitemap_xml_url or '(aucun)'}\n"
+            f"discovery_method (planner) : {strategy.discovery_method.value}\n"
+            f"extraction_method (planner) : {strategy.extraction_method.value}\n\n"
+            "Ton role : produire un PLAN court (JSON strict) que l'agent "
+            "executor suivra. Tu n'ecris PAS de code. Output JSON :\n"
+            "{\n"
+            '  "strategy": "scraper_thin_inheriting_<class>" | "from_scratch",\n'
+            '  "discovery": "sitemap_then_filter" | "listing_pagination" | "api_endpoint",\n'
+            '  "extraction_priority": ["json_ld", "css_selector", "microdata", "regex_fallback"],\n'
+            '  "tools_sequence": ["read_existing_scraper", "fetch_url", "try_known_platforms", "query_sitemap", "inspect_html", "write_scraper_code", "run_scraper_test"],\n'
+            '  "key_selectors_hints": ["[data-price-amount]", "h1.product-title", "..."],\n'
+            '  "rationale": "1 phrase courte"\n'
+            "}\n"
+            "Sois concis : <500 tokens output. Aucun markdown."
+        )
+
+        # Snapshot compteurs avant
+        in_before = self._client.total_tokens_in
+        out_before = self._client.total_tokens_out
+        cr_before = self._client.total_cache_read_tokens
+        cc_before = self._client.total_cache_creation_tokens
+
+        try:
+            data = self._client.call(
+                prompt,
+                system="Tu es un architecte expert en web scraping. Tu produis "
+                       "un plan JSON strict, jamais de code, jamais de markdown.",
+                max_tokens=800,
+                response_mime_type="application/json",
+                model=CLAUDE_MODEL_DIAGNOSIS,
+            )
+        except Exception as e:
+            self._log(f"Mission plan KO : {type(e).__name__}: {e}")
+            self._trace_event("mission_plan_error", {"error": str(e)})
+            return None
+
+        delta_in = self._client.total_tokens_in - in_before
+        delta_out = self._client.total_tokens_out - out_before
+        delta_cr = self._client.total_cache_read_tokens - cr_before
+        delta_cc = self._client.total_cache_creation_tokens - cc_before
+        non_cached_in = max(0, delta_in - delta_cr - delta_cc)
+        plan_cost = compute_cost_usd(
+            CLAUDE_MODEL_DIAGNOSIS,
+            input_tokens=non_cached_in,
+            output_tokens=delta_out,
+            cache_read_tokens=delta_cr,
+            cache_creation_tokens=delta_cc,
+        )
+        self._cost_usd_cumulative = (
+            getattr(self, "_cost_usd_cumulative", 0.0) + plan_cost
+        )
+
+        if not isinstance(data, dict):
+            self._log("Mission plan : reponse non-dict, agent sans plan")
+            return None
+
+        self._trace_event("mission_plan", {
+            "model": CLAUDE_MODEL_DIAGNOSIS,
+            "tokens_in_delta": non_cached_in,
+            "tokens_out_delta": delta_out,
+            "cost_usd": round(plan_cost, 6),
+            "plan": data,
+        })
+        return data
 
     def _build_user_prompt(self, analysis: SiteAnalysis,
                            strategy: ScrapingStrategy,

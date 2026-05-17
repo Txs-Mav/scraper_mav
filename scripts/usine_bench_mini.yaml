@@ -1,0 +1,34 @@
+# Mini-bench scraper_usine — 3 sites représentatifs pour A/B testing
+# du mode hybride (Opus diagnose + Sonnet write).
+#
+# Choix : couvre les 3 cas d'usage les plus différenciants
+#   - 1 Shopify-like clair (templates fiables, peu de corrections nécessaires)
+#   - 1 eDealer/PowerGO (concessionnaire structuré, plateforme reconnue)
+#   - 1 site générique difficile (souvent Phase 4.5 / agent autonome)
+#
+# Usage :
+#   python scripts/usine_bench.py --sites scripts/usine_bench_mini.yaml
+#
+# Comparaison A/B (Phase 3 du plan) :
+#   CLAUDE_HYBRID_ENABLED=0 python scripts/usine_bench.py --sites scripts/usine_bench_mini.yaml
+#   CLAUDE_HYBRID_ENABLED=1 python scripts/usine_bench.py --sites scripts/usine_bench_mini.yaml
+
+shopify_like:
+  - url: "https://www.sportplusmoto.com/"
+    note: "Sport Plus Moto (St-Hyacinthe) - Shopify clair"
+
+edealer:
+  - url: "https://www.bmwlaval.com/"
+    note: "BMW Laval - eDealer concessionnaire structuré"
+
+generic_hard:
+  - url: "https://www.machinexperts.ca/"
+    note: "Machin Experts - site powersport générique, déclenche souvent Phase 4.5"
+
+# Options identiques à usine_bench_sites.yaml
+options:
+  publish_threshold: 80   # plus permissif sur le mini-bench (3 sites = variance haute)
+  parallel: 1             # séquentiel pour éviter pollution de logs / quotas Anthropic
+  dry_run: false
+  no_publish: true        # bench ne publie jamais
+  timeout_per_site_sec: 1800

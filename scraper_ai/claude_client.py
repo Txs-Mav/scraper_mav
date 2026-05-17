@@ -12,12 +12,26 @@ Pourquoi un client séparé plutôt que multiplexer GeminiClient ?
     explicitement à :class:`scraper_ai.scraper_usine.claude_agent.ClaudeAgent`.
   - On évite de coupler la dispo Anthropic à celle de Gemini (un peut
     tomber sans bloquer l'autre).
+
+Prompt caching :
+  Les system prompts et tool definitions sont automatiquement annotés avec
+  ``cache_control: {"type": "ephemeral"}`` quand ils dépassent ~1 024 tokens
+  (seuil minimum exigé par Anthropic). Le cache hit coûte 0,1× le tarif input
+  (90 % off), TTL 5 min. C'est essentiel sur l'agent qui ré-envoie les mêmes
+  blocs à chaque tour.
 """
 from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+
+# Seuil minimal sous lequel Anthropic refuse le caching (en caractères).
+# La doc parle de 1024 tokens (Sonnet/Opus) ou 2048 (Haiku). On approxime
+# avec ~4 chars/token et on prend une marge de sécurité à 1500 caractères.
+# Si un bloc est plus court, on n'ajoute pas cache_control (Anthropic l'accepte
+# mais ne mettra rien en cache, donc autant économiser le bruit).
+_CACHE_MIN_CHARS = 1500
 
 try:
     from .config import (
@@ -59,6 +73,10 @@ class ClaudeClient:
         self._call_count = 0
         self.total_tokens_in = 0
         self.total_tokens_out = 0
+        # Tokens lus depuis le cache (facturés à 0,1× input) et créés
+        # (facturés à 1,25× input). Cf. https://docs.anthropic.com/.../prompt-caching
+        self.total_cache_read_tokens = 0
+        self.total_cache_creation_tokens = 0
 
         key = api_key or ANTHROPIC_API_KEY
         if not key:
@@ -93,6 +111,7 @@ class ClaudeClient:
         response_mime_type: str = "text/plain",
         temperature: Optional[float] = None,
         show_prompt: bool = False,
+        model: Optional[str] = None,
     ) -> Any:
         """Appelle Claude avec un prompt utilisateur.
 
@@ -110,23 +129,33 @@ class ClaudeClient:
         if show_prompt:
             self._log_prompt(prompt, system)
 
+        effective_model = model or self.model
         max_out = max_tokens or CLAUDE_MAX_OUTPUT_TOKENS
         kwargs: Dict[str, Any] = {
-            "model": self.model,
+            "model": effective_model,
             "max_tokens": max_out,
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:
-            kwargs["system"] = system
-        if temperature is not None and self._supports_temperature():
+            kwargs["system"] = self._build_cacheable_system(system)
+        if temperature is not None and self._supports_temperature(effective_model):
             kwargs["temperature"] = temperature
 
         response = self._client.messages.create(**kwargs)
 
         # Comptage tokens (utilisable par le superviseur pour les coûts).
+        # Anthropic renvoie aussi cache_creation_input_tokens et
+        # cache_read_input_tokens quand le caching est actif - on les agrège
+        # dans total_tokens_in mais on les expose séparément pour le calcul
+        # de coût ($0.10×input pour les cache reads).
         usage = getattr(response, "usage", None)
         if usage is not None:
-            self.total_tokens_in += getattr(usage, "input_tokens", 0) or 0
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            self.total_tokens_in += input_tokens + cache_read + cache_creation
+            self.total_cache_read_tokens += cache_read
+            self.total_cache_creation_tokens += cache_creation
             self.total_tokens_out += getattr(usage, "output_tokens", 0) or 0
 
         text = self._extract_text(response)
@@ -151,6 +180,7 @@ class ClaudeClient:
         tools: List[Dict[str, Any]],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        model: Optional[str] = None,
     ) -> Any:
         """Envoie un tour d'agent avec outils disponibles.
 
@@ -165,40 +195,102 @@ class ClaudeClient:
             ``message.content`` (liste de blocks ``text`` / ``tool_use``) et
             ``message.stop_reason`` (``"end_turn"`` / ``"tool_use"`` / ...).
         """
+        effective_model = model or self.model
         max_out = max_tokens or CLAUDE_MAX_OUTPUT_TOKENS
         kwargs: Dict[str, Any] = {
-            "model": self.model,
+            "model": effective_model,
             "max_tokens": max_out,
             "messages": messages,
-            "tools": tools,
+            "tools": self._build_cacheable_tools(tools),
         }
         if system:
-            kwargs["system"] = system
-        if temperature is not None and self._supports_temperature():
+            kwargs["system"] = self._build_cacheable_system(system)
+        if temperature is not None and self._supports_temperature(effective_model):
             kwargs["temperature"] = temperature
 
         response = self._client.messages.create(**kwargs)
         usage = getattr(response, "usage", None)
         if usage is not None:
-            self.total_tokens_in += getattr(usage, "input_tokens", 0) or 0
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            self.total_tokens_in += input_tokens + cache_read + cache_creation
+            self.total_cache_read_tokens += cache_read
+            self.total_cache_creation_tokens += cache_creation
             self.total_tokens_out += getattr(usage, "output_tokens", 0) or 0
         self._call_count += 1
         return response
 
     # ------------------------------------------------------------------
+    # Prompt caching helpers
+    # ------------------------------------------------------------------
+
+    def _build_cacheable_system(
+        self, system: Union[str, List[Dict[str, Any]]]
+    ) -> Union[str, List[Dict[str, Any]]]:
+        """Annote un system prompt avec ``cache_control`` si assez long.
+
+        Anthropic exige un minimum de tokens (1024 pour Sonnet/Opus) pour
+        accepter le caching. En dessous, on laisse le format string brut
+        (Anthropic l'accepte aussi, sans caching).
+
+        Le caller peut aussi passer directement une liste de blocs
+        pré-annotés s'il veut un contrôle plus fin (ex: deux blocs avec
+        cache_control différents).
+        """
+        if isinstance(system, list):
+            return system  # caller a déjà construit la structure
+        if not system or len(system) < _CACHE_MIN_CHARS:
+            return system  # trop court pour mériter le cache
+        return [
+            {
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+    def _build_cacheable_tools(
+        self, tools: Optional[List[Dict[str, Any]]]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Annote la dernière tool definition avec ``cache_control``.
+
+        Cache la totalité du bloc tools (Anthropic cache tout ce qui précède
+        le marqueur). Effet massif sur l'agent qui rejoue les ~2 000 tokens
+        de tool definitions à chaque tour.
+
+        On n'annote que si l'ensemble est assez gros pour mériter le cache
+        (le seuil 1024 tokens d'Anthropic s'applique à l'ensemble cacheable).
+        """
+        if not tools:
+            return tools
+        # Estimation grossière de la taille totale des tools (sérialisation JSON).
+        total_size = sum(len(json.dumps(t, default=str)) for t in tools)
+        if total_size < _CACHE_MIN_CHARS:
+            return tools
+        # Copie superficielle pour ne pas muter l'argument du caller.
+        annotated = [dict(t) for t in tools]
+        annotated[-1]["cache_control"] = {"type": "ephemeral"}
+        return annotated
+
+    # ------------------------------------------------------------------
     # Utilitaires
     # ------------------------------------------------------------------
 
-    def _supports_temperature(self) -> bool:
+    def _supports_temperature(self, model: Optional[str] = None) -> bool:
         """Indique si le modèle accepte le paramètre ``temperature``.
 
         À partir de Claude Opus 4.7, Anthropic a déprécié ``temperature``
         (l'API renvoie 400 si on l'envoie). On exclut donc cette famille.
         Liste maintenue manuellement — étendre quand de nouveaux modèles
         rejoignent la dépréciation.
+
+        Args:
+            model: nom du modèle à vérifier. Si None, utilise self.model.
         """
+        target = model or self.model
         deprecated_prefixes = ("claude-opus-4-7",)
-        return not any(self.model.startswith(p) for p in deprecated_prefixes)
+        return not any(target.startswith(p) for p in deprecated_prefixes)
 
     @staticmethod
     def _extract_text(response: Any) -> str:

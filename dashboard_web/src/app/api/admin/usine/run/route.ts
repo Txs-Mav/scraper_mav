@@ -41,6 +41,11 @@ export async function POST(req: Request) {
         url,
         dryRun: !!body?.dryRun,
         forcePlaywright: !!body?.forcePlaywright,
+        // Phase 2.8 du plan optim couts Claude : si forceFullClaude=true,
+        // le backend doit ajouter --no-hybrid a la commande python pour
+        // forcer le mode Opus full sur ce run uniquement (sans toucher
+        // la config globale CLAUDE_HYBRID_ENABLED).
+        forceFullClaude: !!body?.forceFullClaude,
         publishThreshold: typeof body?.publishThreshold === 'number' ? body.publishThreshold : 95,
       },
       timeout: 30_000,
