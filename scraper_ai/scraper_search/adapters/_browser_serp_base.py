@@ -22,10 +22,23 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..extractors import GenericProductExtractor, extract_products_from_listing
+from ..extractors import extract_products_from_listing
 from ..models import SearchHit, SearchQuery
 from ..scoring import make_hit, score_product
 from .base import AdapterError, SearchAdapter
+
+
+def _normalize_url_key(url: str) -> str:
+    """Clé de comparaison robuste pour détecter qu'un sourceUrl pointe vers
+    la page SERP. On retire scheme/www, query string et trailing slash."""
+    if not url:
+        return ""
+    u = url.strip().lower()
+    u = re.sub(r"^https?://", "", u)
+    if u.startswith("www."):
+        u = u[4:]
+    u = u.split("?", 1)[0].split("#", 1)[0]
+    return u.rstrip("/")
 
 
 # Marqueurs textuels qui indiquent un blocage anti-bot
@@ -170,7 +183,15 @@ class BrowserSerpAdapter(SearchAdapter):
         raise NotImplementedError
 
     def _parse_listing(self, html: str, *, base_url: str) -> List[Dict[str, Any]]:
-        """À override pour parsing custom. Par défaut : extract_products_from_listing()."""
+        """À override pour parsing custom. Par défaut : extract_products_from_listing().
+
+        IMPORTANT : on ne retombe PAS sur un `GenericProductExtractor` sur la
+        page entière en dernier recours. Sur une SERP, ça produit un faux
+        positif systématique (titre = `<title>` de la page de recherche,
+        image = `og:image` = logo du site, URL = URL de la page de recherche),
+        qui passe ensuite la barre de score parce qu'il contient les mots-clés
+        de la requête. Mieux vaut renvoyer 0 résultat honnêtement.
+        """
         products = extract_products_from_listing(
             html, base_url=base_url,
             item_selector=self.item_selector or None,
@@ -178,27 +199,28 @@ class BrowserSerpAdapter(SearchAdapter):
         )
         if products:
             return self._post_process(products, base_url=base_url)
-
-        # Fallback : 1 seul extract (= la page entière vue comme 1 produit)
-        single = GenericProductExtractor(
-            html, base_url=base_url,
-            marketplace_hint=self.marketplace_hint or None,
-        ).extract()
-        if single.get("name"):
-            return self._post_process([single], base_url=base_url)
         return []
 
     def _post_process(self, products: List[Dict[str, Any]], *,
                        base_url: str) -> List[Dict[str, Any]]:
-        """Hook de normalisation post-extraction. Par défaut : filtre les produits
-        sans nom OU sans URL si require_url=True."""
+        """Hook de normalisation post-extraction.
+
+        Filtre :
+          - les produits sans nom ;
+          - sans URL (si `require_url=True`) ;
+          - dont l'URL pointe vers la page SERP elle-même (faux positif
+            issu d'un extracteur générique appliqué à la page de recherche).
+        """
+        serp_key = _normalize_url_key(base_url)
         out: List[Dict[str, Any]] = []
         for p in products:
             if not p.get("name"):
                 continue
-            if self.require_url and not p.get("sourceUrl"):
+            url = p.get("sourceUrl") or ""
+            if self.require_url and not url:
                 continue
-            # Tag source pour traçabilité
+            if url and _normalize_url_key(url) == serp_key:
+                continue
             p.setdefault("_source", self.name)
             out.append(p)
         return out

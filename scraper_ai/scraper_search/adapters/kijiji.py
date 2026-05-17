@@ -430,27 +430,37 @@ class KijijiAdapter(SearchAdapter):
         # 1) __NEXT_DATA__ (le plus propre, Kijiji est en Next.js)
         products = self._parse_next_data(html, base_url=base_url)
         if products:
-            return products
+            return self._filter_serp_self(products, base_url=base_url)
 
         # 2) Fallback : JSON-LD ItemList + extraction par card
-        from ..extractors.generic_product import (
-            extract_products_from_listing, GenericProductExtractor,
-        )
+        from ..extractors.generic_product import extract_products_from_listing
         products = extract_products_from_listing(
             html, base_url=base_url,
             item_selector="[data-testid='listing-card'], .listing-card, "
                           "section[data-listing-id], li[data-listing-id]",
         )
         if products:
-            for p in products:
-                if not p.get("sourceUrl") and p.get("name"):
-                    # Reconstruire l'URL si on n'a que le titre
-                    pass
-            return products
+            return self._filter_serp_self(products, base_url=base_url)
 
-        # 3) Dernier recours : extraction sur la page complète (1 produit)
-        single = GenericProductExtractor(html, base_url=base_url, marketplace_hint="kijiji").extract()
-        return [single] if single.get("name") else []
+        # On ne retombe PAS sur un GenericProductExtractor "page entière" :
+        # ça produit un faux positif systématique sur les SERP Kijiji (titre
+        # = "<query> in All Categories in Canada | Kijiji Marketplaces",
+        # image = logo Kijiji, sourceUrl = la page de recherche elle-même).
+        return []
+
+    @staticmethod
+    def _filter_serp_self(products: List[Dict[str, Any]], *,
+                          base_url: str) -> List[Dict[str, Any]]:
+        """Rejette les "produits" dont l'URL pointe vers la SERP elle-même."""
+        from ._browser_serp_base import _normalize_url_key
+        serp_key = _normalize_url_key(base_url)
+        out: List[Dict[str, Any]] = []
+        for p in products:
+            url = p.get("sourceUrl") or ""
+            if url and _normalize_url_key(url) == serp_key:
+                continue
+            out.append(p)
+        return out
 
     def _parse_next_data(self, html: str, *, base_url: str) -> List[Dict[str, Any]]:
         """Cherche un bloc <script id="__NEXT_DATA__"> et en extrait les listings."""
