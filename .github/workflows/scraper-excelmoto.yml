@@ -13,7 +13,9 @@ name: 'Scraping Excel Moto (horaire)'
 
 on:
   schedule:
-    - cron: '23 * * * *'
+    # Toutes les 2h entre 10h et 22h UTC = 6h-18h Montréal (EDT été,
+    # 5h-17h EST hiver). 7 runs/jour : 6h, 8h, 10h, 12h, 14h, 16h, 18h.
+    - cron: '23 10-22/2 * * *'
   workflow_dispatch:
     inputs:
       force:
