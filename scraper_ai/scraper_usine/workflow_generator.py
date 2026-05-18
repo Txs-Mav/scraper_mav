@@ -2,18 +2,27 @@
 
 Quand ``scraper_usine`` valide un nouveau scraper, on crée en plus du code Python
 un workflow ``.github/workflows/scraper-<slug>.yml`` qui scrape le site
-toutes les heures et upserte les résultats dans Supabase.
+**toutes les 2 heures** et upserte les résultats dans Supabase.
 
 Le workflow utilise ``scripts/scrape_single_site.py --slug <slug>`` qui :
   - skip automatiquement si le cache est <55 min,
   - sauvegarde dans ``scraped_site_data`` (succès ou erreur),
   - tourne en mode ``--force`` si déclenché manuellement.
 
-Pourquoi un workflow par scraper plutôt qu'un workflow global ?
+Fréquence : 2h (alignée sur le cron global ``scraper-cron.yml``).
+Le workflow dédié sert de filet de redondance :
+  - si le cron global plante, le dédié continue de scraper le site ;
+  - si le cron global est en attente (queue GitHub Actions saturée),
+    le dédié peut prendre le relais ;
+  - chaque scraper a son propre run history facile à consulter.
+
+Pourquoi un workflow par scraper plutôt qu'UNIQUEMENT le cron global ?
   - Indépendance : un site qui plante ne bloque pas les autres.
   - Lisibilité : chaque site a son propre run history GitHub.
   - Décalage anti-collision : minute aléatoire dérivée du slug pour
     éviter que tous les workflows tapent Supabase en même temps.
+  - Cache 55 min côté Supabase : aucun risque de doublon avec le cron
+    orchestrateur global.
 
 Configuration des secrets GitHub (à définir une seule fois sur le repo) :
   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -80,9 +89,9 @@ def generate_workflow_yaml(
     if needs_quote:
         # YAML : on échappe les ' en '' à l'intérieur de quotes simples.
         escaped = safe_name.replace("'", "''")
-        name_field = f"'Scraping {escaped} (horaire)'"
+        name_field = f"'Scraping {escaped} (toutes les 2h)'"
     else:
-        name_field = f"Scraping {safe_name} (horaire)"
+        name_field = f"Scraping {safe_name} (toutes les 2h)"
 
     # On évite les f-strings imbriquées avec ${{ }} en les construisant
     # à part — sinon Python interprète les accolades.
@@ -92,7 +101,9 @@ def generate_workflow_yaml(
 
     yaml = f"""name: {name_field}
 
-# Cron horaire DÉDIÉ à {safe_name}.
+# Cron toutes les 2h DÉDIÉ à {safe_name}, aligné sur la fréquence du
+# cron global `scraper-cron.yml` mais décalé en minute pour ne pas saturer
+# Supabase et créer une couche de redondance.
 #
 # Auto-généré par scraper_usine.workflow_generator. Ne pas éditer à la main :
 # régénérer via `python -m scraper_ai.scraper_usine.main <url>` ou via
@@ -100,7 +111,7 @@ def generate_workflow_yaml(
 #
 # Le script `scrape_single_site.py` skip automatiquement si le cache Supabase
 # est < 55 min — donc aucun risque de doublon avec le cron orchestrateur
-# global qui tourne à HH:00.
+# global qui tourne aux heures paires (HH:00).
 
 on:
   schedule:
@@ -151,19 +162,23 @@ jobs:
 
 
 def derive_cron_schedule(site_slug: str) -> str:
-    """Retourne une expression cron horaire avec une minute déterministe
-    dérivée du slug.
+    """Retourne une expression cron **toutes les 2h** avec une minute
+    déterministe dérivée du slug.
 
-    Objectif : étaler les workflows sur l'heure pour éviter que tous les
-    sites tapent Supabase en même temps (et créent une queue de runs).
-    On évite les minutes 0 et 30 qui sont déjà utilisées par le cron
-    Vercel principal et le workflow Morin Sports historique.
+    Aligné sur la fréquence du cron global ``scraper-cron.yml`` (``0 */2 * * *``)
+    pour éviter le sur-coût d'un cron horaire en plus du global 2h.
+
+    On évite les minutes 0 (cron global) et 30 (cron usine ``usine-cron.yml``)
+    pour ne pas saturer la queue Supabase. La minute déterministe permet
+    d'étaler les workflows sur les autres minutes de l'heure.
     """
     h = hashlib.sha1(site_slug.encode("utf-8")).hexdigest()
     minute = int(h[:8], 16) % 60
+    # Évite minute 0 (cron global scraper-cron.yml) et 30 (cron usine).
     if minute in (0, 30):
         minute = (minute + 13) % 60
-    return f"{minute} * * * *"
+    # `*/2` = toutes les 2h (0h, 2h, 4h, ..., 22h en UTC).
+    return f"{minute} */2 * * *"
 
 
 def workflow_path_for_slug(repo_root: Path, site_slug: str) -> Path:
