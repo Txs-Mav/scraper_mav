@@ -413,11 +413,20 @@ class MotoProGranbyScraper(DedicatedScraper):
                         out.setdefault('marque', item['manufacturer'])
                     if item.get('model'):
                         out.setdefault('modele', item['model'])
-                    if item.get('vehicleModelDate'):
+                    # schema.org expose plusieurs clés selon le type :
+                    # Vehicle → vehicleModelDate ; Product → modelDate ;
+                    # certains templates Power Go → productionDate.
+                    for _year_key in ('vehicleModelDate', 'modelDate', 'productionDate'):
+                        _raw = item.get(_year_key)
+                        if _raw is None:
+                            continue
                         try:
-                            out.setdefault('annee', int(item['vehicleModelDate']))
+                            _yr = int(str(_raw)[:4])
                         except (ValueError, TypeError):
-                            pass
+                            continue
+                        if 1900 < _yr < 2100:
+                            out.setdefault('annee', _yr)
+                            break
                     if item.get('color'):
                         out.setdefault('couleur', item['color'])
                     if item.get('sku'):

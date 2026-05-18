@@ -461,11 +461,25 @@ class MotoplexScraper(DedicatedScraper):
 
                 if item.get('model'):
                     out.setdefault('modele', item['model'])
-                if item.get('vehicleModelDate'):
+                # Année : PowerGO utilise plusieurs clés selon le type de produit.
+                # - 'vehicleModelDate' : schema.org/Vehicle standard (motos, VTT)
+                # - 'modelDate' : schema.org/Product (catalogue, accessoires)
+                # - 'productionDate' : utilisé par Excel Moto et certains
+                #   templates Power Go récents pour les équipements mécaniques
+                #   (souffleuses, génératrices, etc.).
+                # On accepte la 1re trouvée, en ne touchant pas une valeur déjà
+                # fixée par une couche plus fiable (slug, h1 contexte amont).
+                for year_key in ('vehicleModelDate', 'modelDate', 'productionDate'):
+                    raw_year = item.get(year_key)
+                    if raw_year is None:
+                        continue
                     try:
-                        out.setdefault('annee', int(item['vehicleModelDate']))
+                        year_int = int(str(raw_year)[:4])
                     except (ValueError, TypeError):
-                        pass
+                        continue
+                    if 1900 < year_int < 2100:
+                        out.setdefault('annee', year_int)
+                        break
                 if item.get('color'):
                     out.setdefault('couleur', item['color'])
                 if item.get('sku'):
