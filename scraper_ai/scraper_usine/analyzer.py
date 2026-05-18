@@ -313,6 +313,13 @@ class SiteAnalyzer:
             title = soup.find("title")
             analysis.site_name = title.get_text(strip=True) if title else analysis.domain
 
+        # Applique le fix mojibake sur le nom de site quand le HTML source est
+        # en latin1-vu-comme-utf8 (typique des CMS PowerGO/PrestaShop mal
+        # configurés). Sans ça, le titre "Excel Moto | Your Dealership in
+        # Montréal" devient "MontrÃ©al" dans tous les rapports + dashboard.
+        if analysis.site_name and analysis.needs_mojibake_fix:
+            analysis.site_name = fix_mojibake(analysis.site_name)
+
         analysis.analysis_timestamp = datetime.now(timezone.utc).isoformat()
 
         elapsed = time.time() - start

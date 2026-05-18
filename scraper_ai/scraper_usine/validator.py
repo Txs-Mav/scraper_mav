@@ -137,6 +137,14 @@ class ScraperValidator:
 
         report.sample_products = [_sanitize(p) for p in products[:5]]
 
+        # Normalise les alias de clés (price→prix, model→modele, year→annee,
+        # mileage→kilometrage, url→sourceUrl, brand→marque, make→marque).
+        # Le scraper généré par templates Jinja2 utilise les noms canoniques
+        # mais les scrapers reconstruits par l'agent Claude utilisent souvent
+        # les conventions schema.org/JSON-LD (price, model, etc.). Sans cette
+        # étape, on aurait 0% de couverture sur des champs effectivement
+        # extraits par le scraper.
+        products = [_normalize_product_keys(p) for p in products]
         valid = [p for p in products if p.get("name")]
         effective_total = max(1, len(products) - soft_404)
         report.success_rate = len(valid) / effective_total if effective_total > 0 else 0.0
@@ -846,6 +854,72 @@ class ScraperValidator:
     def _log(self, msg: str) -> None:
         if self.verbose:
             print(f"  [Validator] {msg}")
+
+
+# Mapping alias → champ canonique attendu par le scoring du validator.
+# Le scraper généré par templates utilise les noms canoniques (prix, modele,
+# marque, etc.) mais les scrapers reconstruits par l'agent Claude utilisent
+# souvent les conventions schema.org / JSON-LD (price, model, brand, year,
+# mileage, url). Sans ce mapping, on a une couverture artificiellement à 0%
+# pour des champs effectivement extraits.
+_FIELD_ALIASES: Dict[str, tuple] = {
+    "prix": ("price", "amount"),
+    "modele": ("model",),
+    "marque": ("brand", "make", "manufacturer"),
+    "annee": ("year", "modelDate"),
+    "kilometrage": ("mileage", "kms", "km", "odometer"),
+    "sourceUrl": ("url", "source_url", "sourceURL", "link"),
+    "couleur": ("color", "colour"),
+}
+
+
+def _coerce_numeric(value, *, as_int: bool = False):
+    """Convertit '23399.00' / '23,399' / '1 234' en float (ou int) ; None si KO."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value) if as_int else float(value)
+    if isinstance(value, str):
+        s = value.strip().replace("\xa0", " ").replace(" ", "").replace(",", "")
+        if not s:
+            return None
+        try:
+            v = float(s)
+            return int(v) if as_int else v
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _normalize_product_keys(p: Dict) -> Dict:
+    """Mappe les alias schema.org/JSON-LD vers les noms canoniques du scoring.
+
+    Ne remplace JAMAIS une valeur canonique déjà présente — on enrichit
+    seulement les champs vides.
+    """
+    if not isinstance(p, dict):
+        return p
+    for canon, aliases in _FIELD_ALIASES.items():
+        if p.get(canon) not in (None, "", 0):
+            continue
+        for alias in aliases:
+            v = p.get(alias)
+            if v in (None, "", 0):
+                continue
+            if canon in ("prix",):
+                coerced = _coerce_numeric(v, as_int=False)
+                if coerced is not None and coerced > 0:
+                    p[canon] = coerced
+                    break
+            elif canon in ("annee", "kilometrage"):
+                coerced = _coerce_numeric(v, as_int=True)
+                if coerced is not None and coerced > 0:
+                    p[canon] = coerced
+                    break
+            else:
+                p[canon] = v
+                break
+    return p
 
 
 def _sanitize(product: Dict) -> Dict:

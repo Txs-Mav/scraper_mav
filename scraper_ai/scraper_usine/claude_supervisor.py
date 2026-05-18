@@ -156,6 +156,12 @@ class Verdict:
     model: Optional[str] = None
     cost_usd: float = 0.0
     suggestions: List[str] = field(default_factory=list)
+    # Payload JSON brut renvoyé par Claude. Indispensable au mode hybride
+    # (diagnose → write) qui parse un schema Diagnosis non reconnu par
+    # _verdict_from_json (clés différentes : verdict/root_cause/targeted_fixes
+    # au lieu de status/reasoning). Sans ça, le dict est perdu et l'hybride
+    # tombe systématiquement en escalation parse_error.
+    raw_response: Optional[Dict[str, Any]] = None
 
 
 class ClaudeSupervisor:
@@ -668,29 +674,40 @@ class ClaudeSupervisor:
     def _extract_diagnosis_payload(verdict: Verdict) -> Any:
         """Récupère le payload Diagnosis depuis un Verdict.
 
-        Notre _verdict_from_json ne reconnait pas Diagnosis (clés différentes),
-        donc le dict initial peut être perdu. On essaie plusieurs fallbacks.
+        Priorité :
+          1. ``verdict.raw_response`` (dict brut Opus, stocké par
+             ``_verdict_from_json``). C'est la voie nominale.
+          2. ``verdict.suggestions[0]`` si c'est un dict (rétro-compat).
+          3. Re-parsing du ``verdict.reasoning`` comme JSON (cas où le client
+             a renvoyé un str JSON au lieu d'un dict).
+          4. Dict minimal de secours → forcera un échec parse_diagnosis et
+             donc un fallback ``_correct_monolithic`` propre.
         """
+        if isinstance(verdict.raw_response, dict) and verdict.raw_response:
+            return verdict.raw_response
         if isinstance(verdict.suggestions, list) and verdict.suggestions:
-            # Cas où le client a stocké le dict raw dans suggestions
             first = verdict.suggestions[0]
             if isinstance(first, dict):
                 return first
-        # On essaie de re-parser le reasoning comme JSON si c'est du texte JSON
         if verdict.reasoning:
             try:
                 return json.loads(verdict.reasoning)
             except (ValueError, json.JSONDecodeError):
                 pass
-        # Sinon, on retourne un dict minimal qui forcera un parse_diagnosis échec
-        # propre (et donc fallback monolithic).
         return {"verdict": verdict.status, "reasoning": verdict.reasoning}
 
     @staticmethod
     def _extract_write_payload(verdict: Verdict) -> Optional[Dict[str, Any]]:
-        """Récupère ``{patches: [...], full_rewrite: str|None}`` depuis Verdict."""
-        # Sonnet répond en JSON {patches, full_rewrite, reasoning}. Notre
-        # _verdict_from_json a peut-être vu rewritten_code ; sinon parse manuel.
+        """Récupère ``{patches: [...], full_rewrite: str|None}`` depuis Verdict.
+
+        Sonnet répond en JSON ``{patches, full_rewrite, reasoning}``. Le
+        Verdict standard a peut-être déjà capté ``rewritten_code`` ; sinon
+        on inspecte ``raw_response`` (dict brut conservé) puis fallback parse.
+        """
+        if isinstance(verdict.raw_response, dict) and verdict.raw_response:
+            data = verdict.raw_response
+            if data.get("patches") or data.get("full_rewrite"):
+                return data
         if verdict.rewritten_code:
             return {"patches": [], "full_rewrite": verdict.rewritten_code}
         if verdict.reasoning:
@@ -985,6 +1002,10 @@ class ClaudeSupervisor:
             reasoning=str(data.get("reasoning", ""))[:2000],
             rewritten_code=data.get("rewritten_code"),
             suggestions=list(data.get("suggestions", []) or []),
+            # Conserve le dict brut pour les schemas non-standard (Diagnosis,
+            # write_payload, etc.). Voir _extract_diagnosis_payload qui
+            # l'utilise en priorité.
+            raw_response=data,
         )
 
     # --- Audit JSON --------------------------------------------------

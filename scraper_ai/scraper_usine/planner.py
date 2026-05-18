@@ -46,15 +46,53 @@ class StrategyPlanner:
         strategy.base_class, strategy.base_class_import = self._pick_base_class(analysis)
 
         if strategy.base_class != "DedicatedScraper":
-            strategy.needs_scrape_override = False
-            strategy.needs_detail_pages = True
-            strategy.discovery_method = DiscoveryMethod.SITEMAP
-            strategy.pagination_method = PaginationMethod.SITEMAP_ONLY
-            strategy.extraction_method = ExtractionMethod.JSON_LD
-            strategy.rendering = RenderingMethod.REQUESTS
-            self._log(f"Héritage plateforme → {strategy.base_class} (scraper minimal)")
-            self._finalize(strategy, analysis)
-            return strategy
+            # L'héritage de plateforme suppose typiquement JSON-LD côté détail
+            # (cas MotoplexScraper / PowerGO). Si le site cible n'a PAS de
+            # JSON-LD, l'héritage minimal mène à 0 produits valides. Dans ce
+            # cas, on retombe sur un scraper DedicatedScraper full pour
+            # exploiter les sélecteurs CSS détectés en Phase 1.
+            #
+            # Critère d'éligibilité à l'héritage :
+            #   - JSON-LD dispo sur les pages détail, OU
+            #   - aucun sélecteur détail fort (on n'a rien de mieux à offrir
+            #     que les fallbacks HTML du parent).
+            has_strong_detail_selector = (
+                analysis.selectors
+                and analysis.selectors.detail_name
+                and analysis.selectors.detail_name.reliability >= 0.6
+            )
+            if not analysis.json_ld_available and has_strong_detail_selector:
+                self._log(
+                    f"Héritage {strategy.base_class} ABANDONNÉ : pas de JSON-LD sur "
+                    f"{analysis.domain} mais sélecteurs détail forts détectés "
+                    f"(reliability={analysis.selectors.detail_name.reliability:.2f}). "
+                    f"Fallback DedicatedScraper full pour exploiter les sélecteurs CSS."
+                )
+                strategy.base_class = "DedicatedScraper"
+                strategy.base_class_import = "from .base import DedicatedScraper"
+                # On laisse retomber sur les branches normales du planner
+                # (sitemap / listing / etc.) ci-dessous.
+            else:
+                strategy.needs_scrape_override = False
+                strategy.needs_detail_pages = True
+                strategy.discovery_method = DiscoveryMethod.SITEMAP
+                strategy.pagination_method = PaginationMethod.SITEMAP_ONLY
+                # Choisir extraction selon la dispo réelle de JSON-LD pour ne
+                # pas générer une stratégie incohérente que la review Phase 2
+                # marquerait fail.
+                if analysis.json_ld_available:
+                    strategy.extraction_method = ExtractionMethod.JSON_LD
+                else:
+                    # Plateforme connue mais pas de JSON-LD : laisse le parent
+                    # tenter ses fallbacks HTML (_extract_html_specs etc.).
+                    strategy.extraction_method = ExtractionMethod.HYBRID
+                strategy.rendering = RenderingMethod.REQUESTS
+                self._log(
+                    f"Héritage plateforme → {strategy.base_class} "
+                    f"(extraction={strategy.extraction_method.value})"
+                )
+                self._finalize(strategy, analysis)
+                return strategy
 
         # --- Iframe inventaire tiers ---
         if analysis.has_iframe_inventory and analysis.iframe_src:

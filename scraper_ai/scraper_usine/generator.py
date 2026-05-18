@@ -514,8 +514,17 @@ class ScraperCodeGenerator:
         # passerait inaperçu et casserait le registre à l'import.
         # Les __init__ ne sont pas appelés ici, donc aucune logique réseau
         # ne se déclenche.
+        #
+        # IMPORTANT : on définit `__package__` pour que les imports relatifs
+        # du code généré (`from .base import DedicatedScraper`,
+        # `from .motoplex import MotoplexScraper`, etc.) résolvent
+        # correctement. Sans ça, `exec()` lève `ImportError: attempted
+        # relative import with no known parent package`.
         try:
-            exec(compiled, {"__name__": f"__usine_validate_{slug}__"})
+            exec(compiled, {
+                "__name__": f"scraper_ai.dedicated_scrapers.__usine_validate_{slug}",
+                "__package__": "scraper_ai.dedicated_scrapers",
+            })
         except Exception as e:
             raise ValueError(
                 f"Code généré pour {slug} ne se charge pas : "
