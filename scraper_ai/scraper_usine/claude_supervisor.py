@@ -86,6 +86,52 @@ CODE_SAMPLE_MAX_BYTES = 40_000
 VerdictStatus = Literal["ok", "warning", "fail"]
 
 
+def _normalize_python_bool_literals(code: str) -> str:
+    """Convertit ``true``/``false`` JS-style en ``True``/``False`` Python.
+
+    Bug récurrent observé sur les réécritures Claude (cf. bench 2026-05-16,
+    9/10 sites) : le modèle produit ``USE_PLAYWRIGHT_FOR_DISCOVERY = true``
+    avec une minuscule. ``ast.parse`` accepte (``true`` est un identifiant
+    Python valide) mais l'import lève ``NameError`` et casse tout le scraper.
+
+    On utilise ``tokenize`` pour ne remplacer que les vrais ``NAME`` tokens —
+    pas les occurrences à l'intérieur de chaînes ou de commentaires (ex.
+    ``"value": true`` dans un payload JSON-as-string n'est PAS modifié).
+
+    Le remplacement se fait par positions ligne/colonne pour préserver le
+    formatage du code (``tokenize.untokenize`` peut réintroduire des espaces).
+    """
+    import io
+    import tokenize
+
+    try:
+        tokens = list(tokenize.tokenize(
+            io.BytesIO(code.encode("utf-8")).readline
+        ))
+    except (tokenize.TokenizeError, SyntaxError, IndentationError):
+        return code
+
+    bad = [
+        t for t in tokens
+        if t.type == tokenize.NAME and t.string in ("true", "false")
+    ]
+    if not bad:
+        return code
+
+    lines = code.splitlines(keepends=True)
+    # Sens inverse : éviter de décaler les colonnes des tokens suivants.
+    for tok in reversed(bad):
+        line_idx = tok.start[0] - 1
+        col_start = tok.start[1]
+        col_end = tok.end[1]
+        if 0 <= line_idx < len(lines):
+            line = lines[line_idx]
+            replacement = "True" if tok.string == "true" else "False"
+            lines[line_idx] = line[:col_start] + replacement + line[col_end:]
+
+    return "".join(lines)
+
+
 @dataclass
 class Verdict:
     """Résultat d'un appel de supervision Claude.
@@ -828,6 +874,17 @@ class ClaudeSupervisor:
         if "class " not in new_code:
             self._log("rewrite ignoré : pas de classe détectée")
             return False
+
+        # Sanity-check des littéraux booléens JS-style. Les réécritures Claude
+        # produisent récurremment `= true` / `= false` (minuscules) au lieu de
+        # `True` / `False` Python, ce qui ne casse pas ast.parse mais provoque
+        # un NameError à l'import du module. Sans ce fix, chaque rewrite
+        # déclenche une nouvelle review Claude pour corriger un bug de Claude.
+        normalized = _normalize_python_bool_literals(new_code)
+        if normalized != new_code:
+            self._log("rewrite : `true`/`false` JS-style normalisés en `True`/`False`")
+            new_code = normalized
+            verdict.rewritten_code = new_code
 
         try:
             ast.parse(new_code)

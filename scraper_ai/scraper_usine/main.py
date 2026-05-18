@@ -202,6 +202,19 @@ def _process_url(
                 f"Configurer SCRAPER_PROXY_URL pour activer un proxy résidentiel."
             )
 
+        # Garde-fou critique : sans slug + domain, le générateur écrit dans
+        # `dedicated_scrapers/.py` (nom vide) et chaque subprocess parallèle
+        # écrase celui d'à côté → la re-validation Phase 4.5 charge le code
+        # d'un autre site (cf. bench 2026-05-16, bug machinexperts qui chargeait
+        # repentignyhonda). On abort propre AVANT la Phase 2 plutôt que de
+        # produire des artefacts corrompus.
+        if not analysis.slug or not analysis.domain:
+            print(f"\n  [{_ts()}] ABANDON : Phase 1 n'a pas pu identifier le site "
+                  f"(slug='{analysis.slug}', domain='{analysis.domain}').")
+            print(f"  Causes typiques : DNS échec, Cloudflare bloqué dès la home, "
+                  f"URL invalide. Vérifier l'URL et la connectivité réseau.\n")
+            return None
+
         if analysis.needs_playwright and not analysis.listing_pages and not analysis.sitemap_urls and not analysis.detected_apis:
             playwright_ok = False
             try:

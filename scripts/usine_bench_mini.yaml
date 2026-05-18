@@ -22,8 +22,8 @@ edealer:
     note: "BMW Laval - eDealer concessionnaire structuré"
 
 generic_hard:
-  - url: "https://www.machinexperts.ca/"
-    note: "Machin Experts - site powersport générique, déclenche souvent Phase 4.5"
+  - url: "https://machinexpert.ca/"
+    note: "MachineXpert - site powersport générique (domaine sans 's' final), déclenche souvent Phase 4.5"
 
 # Options identiques à usine_bench_sites.yaml
 options:

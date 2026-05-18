@@ -14,31 +14,33 @@
 #   python -c "from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry as R; print(R.has_dedicated_scraper('https://...'))"
 
 moto_qc:
-  # 8 concessionnaires moto QC absents du registre — à VALIDER avec le user
+  # Concessionnaires moto QC absents du registre — à VALIDER avec le user
   # avant exécution du bench.
+  #
+  # NOTE bench 2026-05-16 : daniellambert / fortinmoto / rpmsuzukimoto /
+  # sherbrookehondamoto échouent en `NameResolutionError` (DNS).
+  # Soit les domaines sont morts, soit ils ont changé. À VÉRIFIER avant
+  # de réintégrer dans le bench.
   - url: "https://www.sportplusmoto.com/"
     note: "Sport Plus Moto (St-Hyacinthe)"
   - url: "https://www.actionmoto.ca/"
     note: "Action Moto (Sherbrooke)"
-  - url: "https://www.daniellambert.com/"
-    note: "Daniel Lambert Honda Moto (Beauceville)"
   - url: "https://www.properformance.ca/"
     note: "Pro Performance Moto"
-  - url: "https://www.rpmsuzukimoto.com/"
-    note: "RPM Suzuki Moto"
-  - url: "https://www.fortinmoto.com/"
-    note: "Fortin Moto (Quebec)"
-  - url: "https://www.machinexperts.ca/"
-    note: "Machin Experts (powersport)"
+  - url: "https://machinexpert.ca/"
+    note: "MachineXpert (powersport) — domaine sans 's' final"
   - url: "https://www.repentignyhonda.ca/"
     note: "Repentigny Honda Moto"
 
 auto_qc:
   # 2 concessionnaires auto QC absents du registre
+  #
+  # NOTE bench 2026-05-16 : bmwlaval bloque sur Cloudflare 403 sur tous les
+  # sitemaps. Phase 1 doit fallback Playwright + stealth pour ce site.
   - url: "https://www.hyundaitr.com/"
     note: "Hyundai Trois-Rivieres"
   - url: "https://www.bmwlaval.com/"
-    note: "BMW Laval"
+    note: "BMW Laval (Cloudflare actif)"
 
 # Options globales pour le bench. Ces valeurs sont surchargeables en CLI.
 options:

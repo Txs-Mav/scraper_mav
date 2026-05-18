@@ -24,21 +24,9 @@ except Exception:
     pass
 
 try:
-    from .machinexperts import MachinexpertsScraper
-    GENERATED_SCRAPERS['machinexperts'] = MachinexpertsScraper
-except Exception:
-    pass
-
-try:
-    from .hyundaitr import HyundaitrScraper
-    GENERATED_SCRAPERS['hyundaitr'] = HyundaitrScraper
-    GENERATED_DOMAINS['hyundaitr.com'] = 'hyundaitr'
-except Exception:
-    pass
-
-try:
-    from .bmwlaval import BmwLavalScraper
-    GENERATED_SCRAPERS['bmwlaval'] = BmwLavalScraper
+    from .excelmoto import ExcelmotoScraper
+    GENERATED_SCRAPERS['excelmoto'] = ExcelmotoScraper
+    GENERATED_DOMAINS['excelmoto.com'] = 'excelmoto'
 except Exception:
     pass
 

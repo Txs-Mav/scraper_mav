@@ -166,6 +166,13 @@ class SiteAnalyzer:
         self._log(f"    Fetch terminé en {time.time()-t0:.1f}s ({len(homepage_html or '')} chars)")
         if homepage_html is None:
             self._log("ERREUR: Impossible de charger la page d'accueil")
+            # Slug + nom du site même en sortie anticipée : sinon les phases
+            # suivantes (générateur, validator, audit) écrivent toutes dans
+            # `_strategy.json` / `.py` (slug vide) et écrasent les autres
+            # subprocess en parallèle. Voir bench 2026-05-16.
+            analysis.slug = self._generate_slug(analysis)
+            if not analysis.site_name:
+                analysis.site_name = analysis.domain or url
             return analysis
 
         self._log("    Parsing HTML...")
@@ -1557,8 +1564,15 @@ class SiteAnalyzer:
         return valid
 
     def _generate_slug(self, analysis: SiteAnalysis) -> str:
+        # Fallback en cascade : domain (peuplé depuis urlparse de l'URL initiale)
+        # → netloc parsé depuis site_url → site_url brute. Évite "unknown-site"
+        # qui collisionne entre tous les runs ratés en parallèle.
         domain = analysis.domain
-        slug = re.sub(r"\.(com|ca|net|org|fr|qc\.ca)$", "", domain)
+        if not domain and analysis.site_url:
+            domain = urlparse(analysis.site_url).netloc.replace("www.", "")
+        if not domain and analysis.site_url:
+            domain = analysis.site_url
+        slug = re.sub(r"\.(com|ca|net|org|fr|qc\.ca)$", "", domain or "")
         slug = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")
         return slug or "unknown-site"
 
