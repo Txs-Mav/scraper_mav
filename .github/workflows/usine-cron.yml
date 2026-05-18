@@ -1,10 +1,11 @@
-name: Scraper Usine — health-check + queue (toutes les 2h)
+name: Scraper Usine — health-check + queue (toutes les 2h, 6h-18h Montréal)
 
-# Décalé de 30 min par rapport à scraper-cron.yml pour éviter qu'ils tournent
-# en même temps sur le même Supabase (limite de connexions).
+# 10-22 UTC = 6h-18h Montréal (EDT). Décalé de 30 min par rapport à
+# scraper-cron.yml pour éviter qu'ils tournent en même temps sur le
+# même Supabase (limite de connexions). Aucun run la nuit.
 on:
   schedule:
-    - cron: '30 */2 * * *'
+    - cron: '30 10-22/2 * * *'
   workflow_dispatch:
     inputs:
       max_healthchecks:

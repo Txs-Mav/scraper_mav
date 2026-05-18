@@ -2,14 +2,15 @@
 
 Quand ``scraper_usine`` valide un nouveau scraper, on crée en plus du code Python
 un workflow ``.github/workflows/scraper-<slug>.yml`` qui scrape le site
-**toutes les 2 heures** et upserte les résultats dans Supabase.
+**toutes les 2 heures, uniquement en plage 10-22 UTC** (= 6h-18h Montréal)
+et upserte les résultats dans Supabase. Aucun run la nuit.
 
 Le workflow utilise ``scripts/scrape_single_site.py --slug <slug>`` qui :
   - skip automatiquement si le cache est <55 min,
   - sauvegarde dans ``scraped_site_data`` (succès ou erreur),
   - tourne en mode ``--force`` si déclenché manuellement.
 
-Fréquence : 2h (alignée sur le cron global ``scraper-cron.yml``).
+Fréquence : 2h en journée (alignée sur le cron global ``scraper-cron.yml``).
 Le workflow dédié sert de filet de redondance :
   - si le cron global plante, le dédié continue de scraper le site ;
   - si le cron global est en attente (queue GitHub Actions saturée),
@@ -101,9 +102,10 @@ def generate_workflow_yaml(
 
     yaml = f"""name: {name_field}
 
-# Cron toutes les 2h DÉDIÉ à {safe_name}, aligné sur la fréquence du
-# cron global `scraper-cron.yml` mais décalé en minute pour ne pas saturer
-# Supabase et créer une couche de redondance.
+# Cron toutes les 2h en plage de jour (10-22 UTC = 6h-18h Montréal EDT)
+# DÉDIÉ à {safe_name}, aligné sur la fréquence du cron global
+# `scraper-cron.yml` mais décalé en minute pour ne pas saturer Supabase.
+# Aucun run la nuit (l'inventaire concessionnaire ne bouge pas).
 #
 # Auto-généré par scraper_usine.workflow_generator. Ne pas éditer à la main :
 # régénérer via `python -m scraper_ai.scraper_usine.main <url>` ou via
@@ -111,7 +113,7 @@ def generate_workflow_yaml(
 #
 # Le script `scrape_single_site.py` skip automatiquement si le cache Supabase
 # est < 55 min — donc aucun risque de doublon avec le cron orchestrateur
-# global qui tourne aux heures paires (HH:00).
+# global qui tourne aux heures paires (HH:00) sur la même plage horaire.
 
 on:
   schedule:
@@ -162,23 +164,27 @@ jobs:
 
 
 def derive_cron_schedule(site_slug: str) -> str:
-    """Retourne une expression cron **toutes les 2h** avec une minute
-    déterministe dérivée du slug.
+    """Retourne une expression cron **toutes les 2h, plage de jour** avec
+    une minute déterministe dérivée du slug.
 
-    Aligné sur la fréquence du cron global ``scraper-cron.yml`` (``0 */2 * * *``)
-    pour éviter le sur-coût d'un cron horaire en plus du global 2h.
+    Plage horaire UTC ``10-22`` = 6h-18h en heure de Montréal (EDT, été)
+    et 5h-17h (EST, hiver). Aucun run la nuit (économie GitHub Actions
+    minutes — l'inventaire des concessionnaires bouge rarement entre
+    18h-6h).
 
-    On évite les minutes 0 (cron global) et 30 (cron usine ``usine-cron.yml``)
-    pour ne pas saturer la queue Supabase. La minute déterministe permet
-    d'étaler les workflows sur les autres minutes de l'heure.
+    Aligné sur la fréquence du cron global ``scraper-cron.yml`` mais
+    décalé en minute (anti-collision Supabase). On évite les minutes 0
+    (cron global) et 30 (cron ``usine-cron.yml``).
+
+    7 runs/jour par scraper aux heures Montréal : 6h, 8h, 10h, 12h, 14h,
+    16h, 18h.
     """
     h = hashlib.sha1(site_slug.encode("utf-8")).hexdigest()
     minute = int(h[:8], 16) % 60
-    # Évite minute 0 (cron global scraper-cron.yml) et 30 (cron usine).
     if minute in (0, 30):
         minute = (minute + 13) % 60
-    # `*/2` = toutes les 2h (0h, 2h, 4h, ..., 22h en UTC).
-    return f"{minute} */2 * * *"
+    # `10-22/2` = heures UTC 10, 12, 14, 16, 18, 20, 22 (6h-18h Montréal EDT).
+    return f"{minute} 10-22/2 * * *"
 
 
 def workflow_path_for_slug(repo_root: Path, site_slug: str) -> Path:

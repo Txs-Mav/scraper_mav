@@ -421,6 +421,35 @@ def _process_url(
     elif publish and not published:
         print(f"\n  [{_ts()}] Phases 6-7 SKIP : score insuffisant pour générer + push.")
 
+    # --- Phase 8 : Run initial immédiat du scraper en Supabase ---
+    # Le workflow GitHub dédié tourne en plage de jour (10-22 UTC). Si on
+    # génère un scraper à 23h, le 1er run "live" serait demain matin 10h UTC.
+    # On lance donc un scrape immédiat ici pour avoir des données dans
+    # ``scraped_site_data`` dès la fin du pipeline. Idempotent grâce au flag
+    # `--force` qui ignore le cache 55 min.
+    initial_run_ok = False
+    if publish and published and push_result and push_result.pushed:
+        from subprocess import run as _subprocess_run
+        project_root = Path(generated.file_path).resolve().parent.parent.parent
+        print(f"\n  [{_ts()}] Phase 8 : Run initial du scraper (1er scraping immédiat dans Supabase)...")
+        try:
+            _result = _subprocess_run(
+                [sys.executable, "scripts/scrape_single_site.py",
+                 "--slug", generated.slug, "--force"],
+                cwd=str(project_root),
+                capture_output=True,
+                text=True,
+                timeout=900,  # 15 min max, suffisant pour un gros catalogue
+            )
+            if _result.returncode == 0:
+                print(f"  [{_ts()}] ✅ Run initial OK — données disponibles dans Supabase")
+                initial_run_ok = True
+            else:
+                err_tail = (_result.stderr or _result.stdout or "")[-400:]
+                print(f"  [{_ts()}] ⚠️ Run initial échoué (code {_result.returncode}) : {err_tail}")
+        except Exception as e:
+            print(f"  [{_ts()}] ⚠️ Run initial impossible : {type(e).__name__}: {e}")
+
     elapsed = time.time() - total_start
 
     # --- Résumé ---
@@ -467,6 +496,10 @@ def _process_url(
         short_sha = (push_result.commit_sha or "")[:8]
         print(f"  Git        : commit {short_sha} pushé sur {push_result.repo}@{push_result.branch}")
         print(f"               → Railway redéploiera dans ~2 min, scraper actif au prochain cron")
+    if initial_run_ok:
+        print(f"  Run init   : ✅ premier scraping live effectué (données dans Supabase)")
+    elif publish and published and push_result and push_result.pushed:
+        print(f"  Run init   : ⚠️ run initial échoué — le scraper sera ramassé au prochain cron 2h (10-22 UTC)")
     elif push_result and push_result.skipped_reason == "env_missing":
         print(f"  Git        : push manuel requis (GITHUB_PAT/GITHUB_REPO non configurés)")
     elif push_result and push_result.skipped_reason == "no_changes_to_commit":
