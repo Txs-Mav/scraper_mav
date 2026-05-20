@@ -19,6 +19,44 @@ const COOKIE_OPTIONS = {
 }
 
 /**
+ * Détecte une erreur de refresh token (token absent, révoqué, expiré, déjà
+ * utilisé). Ces erreurs sont récupérables côté serveur en nettoyant les
+ * cookies `sb-*` périmés pour casser la boucle d'auto-refresh côté browser.
+ */
+function isRefreshTokenError(error: unknown): boolean {
+  if (!error) return false
+  const code = (error as { code?: string })?.code
+  if (
+    code === 'refresh_token_not_found' ||
+    code === 'invalid_refresh_token' ||
+    code === 'refresh_token_already_used'
+  ) {
+    return true
+  }
+  const message = error instanceof Error ? error.message : String(error)
+  return /refresh token/i.test(message) && /(not found|invalid|already used|expired)/i.test(message)
+}
+
+/**
+ * Efface tous les cookies `sb-*` sur la réponse. À appeler quand on détecte
+ * une session corrompue (refresh token mort). Sans ça, le navigateur continue
+ * d'envoyer les mêmes cookies périmés à chaque requête, et le SDK retente un
+ * refresh en background → spam dans la console : `AuthApiError: Invalid
+ * Refresh Token: Refresh Token Not Found`.
+ */
+function clearSupabaseCookies(request: NextRequest, response: NextResponse): void {
+  for (const cookie of request.cookies.getAll()) {
+    if (cookie.name.startsWith('sb-')) {
+      response.cookies.set(cookie.name, '', {
+        path: '/',
+        maxAge: 0,
+        expires: new Date(0),
+      })
+    }
+  }
+}
+
+/**
  * Détermine si le middleware doit faire un round-trip Supabase pour cette
  * route. Le `auth.getUser()` ajoute 100-300ms de latence ; on ne le paie que
  * sur les routes qui en dépendent réellement.
@@ -91,16 +129,33 @@ export async function updateSession(request: NextRequest) {
   // veut quand même laisser passer la requête plutôt que renvoyer 500.
   // L'authentification effective sera (re)vérifiée par le layout/page server
   // component qui appelle `getCurrentUser()` avec ses propres garanties.
+  //
+  // Cas spécial : refresh token mort (révoqué, expiré, absent côté Supabase).
+  // Le SDK ne throw PAS — il retourne `{ data: { user: null }, error }`.
+  // Si on ignore cette erreur, le browser garde ses cookies périmés et le
+  // SDK browser retente un refresh en boucle → spam console
+  // `AuthApiError: Invalid Refresh Token: Refresh Token Not Found`. On
+  // efface donc les cookies `sb-*` pour casser la boucle.
   let user = null
   try {
-    const { data } = await supabase.auth.getUser()
+    const { data, error } = await supabase.auth.getUser()
     user = data.user
+
+    if (error && isRefreshTokenError(error)) {
+      clearSupabaseCookies(request, supabaseResponse)
+      user = null
+    }
   } catch (error) {
-    console.warn(
-      '[middleware] supabase.auth.getUser() a échoué — on laisse passer:',
-      error instanceof Error ? error.message : String(error),
-    )
-    return supabaseResponse
+    if (isRefreshTokenError(error)) {
+      clearSupabaseCookies(request, supabaseResponse)
+      user = null
+    } else {
+      console.warn(
+        '[middleware] supabase.auth.getUser() a échoué — on laisse passer:',
+        error instanceof Error ? error.message : String(error),
+      )
+      return supabaseResponse
+    }
   }
 
   // Routes protégées nécessitant une authentification

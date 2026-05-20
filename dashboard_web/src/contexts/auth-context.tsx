@@ -143,7 +143,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('[Auth] refreshUser() called')
     try {
       // Utiliser getSession au lieu de getUser pour éviter les problèmes de blocage
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: { session }, error } = await supabase.auth.getSession()
+
+      // Refresh token mort (révoqué, expiré, absent) : Supabase a déjà fire
+      // un SIGNED_OUT, on aligne juste notre state local. Le middleware
+      // serveur s'occupe d'effacer les cookies sb-* au prochain round-trip.
+      if (error) {
+        const code = (error as { code?: string })?.code
+        const isAuthGone =
+          code === 'refresh_token_not_found' ||
+          code === 'invalid_refresh_token' ||
+          code === 'refresh_token_already_used' ||
+          /refresh token/i.test(error.message || '')
+        if (isAuthGone) {
+          setUser(null)
+          return
+        }
+        console.warn('[Auth] refreshUser getSession error (non-fatal):', error.message)
+      }
 
       if (session?.user) {
         const result = await loadUserFromTable(session.user.id, session.access_token)
