@@ -29,7 +29,7 @@ from urllib.parse import quote_plus, urljoin
 import requests
 
 from ..models import SearchHit, SearchQuery
-from ..scoring import make_hit, score_product
+from ..scoring import select_hits
 from .base import AdapterError, SearchAdapter
 
 try:
@@ -103,27 +103,20 @@ class AmazonAdapter(SearchAdapter):
             products = self._search_via_autocomplete(text)
 
         if not products:
+            self.last_products_scanned = 0
+            self.last_approximate_count = 0
             return []
 
-        hits: List[SearchHit] = []
-        seen = set()
-        for p in products:
-            url = p.get("sourceUrl", "")
-            sku = p.get("sku", "")
-            key = sku or url
-            if key in seen:
-                continue
-            seen.add(key)
-            sc, reason = score_product(query, p)
-            if sc < query.min_score:
-                continue
-            hits.append(make_hit(
-                p, sc, reason,
-                source_site=self.host,
-                source_slug=f"amazon:{self.region}",
-            ))
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:max_results]
+        hits, scanned, approx = select_hits(
+            query, products,
+            max_results=max_results,
+            source_site=self.host,
+            source_slug=f"amazon:{self.region}",
+            dedup_key=lambda p: (p.get("sku") or "") or p.get("sourceUrl") or None,
+        )
+        self.last_products_scanned = scanned
+        self.last_approximate_count = approx
+        return hits
 
     # ------------------------------------------------------------------
     # 1) Autocomplete (pas de protection, mais résultats minimalistes)

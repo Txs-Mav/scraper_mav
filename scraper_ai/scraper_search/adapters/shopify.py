@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 import requests
 
 from ..models import SearchHit, SearchQuery
-from ..scoring import make_hit, score_product
+from ..scoring import select_hits
 from .base import AdapterError, SearchAdapter
 
 try:
@@ -88,20 +88,19 @@ class ShopifySearchAdapter(SearchAdapter):
             products = self._products_json_filter(text)
 
         if not products:
+            self.last_products_scanned = 0
+            self.last_approximate_count = 0
             return []
 
-        hits: List[SearchHit] = []
-        for p in products:
-            sc, reason = score_product(query, p)
-            if sc < query.min_score:
-                continue
-            hits.append(make_hit(
-                p, sc, reason,
-                source_site=self.domain,
-                source_slug=f"shopify:{self.domain}",
-            ))
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:max_results]
+        hits, scanned, approx = select_hits(
+            query, products,
+            max_results=max_results,
+            source_site=self.domain,
+            source_slug=f"shopify:{self.domain}",
+        )
+        self.last_products_scanned = scanned
+        self.last_approximate_count = approx
+        return hits
 
     # ------------------------------------------------------------------
     # /search/suggest.json

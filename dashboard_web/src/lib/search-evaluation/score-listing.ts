@@ -40,6 +40,15 @@ function tokenizeCoreText(value: string): string[] {
 }
 
 function coreTextMatches(query: ParsedEvaluationQuery, hit: Hit): boolean {
+  // Les hits explicitement marqués approximatifs par le backend ont déjà été
+  // jugés "proches mais pas exacts" par le scorer relaxé Python (différence
+  // d'année, modèle proche, marque même catégorie). Re-filtrer ici avec un
+  // ratio strict (qui exige tous les tokens numériques) annule ce travail
+  // et fait disparaître la quasi-totalité des comparables. On laisse donc
+  // passer ces hits — le backend reste la source de vérité sur leur
+  // pertinence.
+  if (hit.is_approximate) return true
+
   const queryTokens = tokenizeCoreText(query.rawText)
   if (queryTokens.length === 0) return true
 

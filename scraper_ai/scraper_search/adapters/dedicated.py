@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from ..cache import SearchCache, DEFAULT_TTL_SECONDS
 from ..models import SearchHit, SearchQuery
-from ..scoring import make_hit, score_product
+from ..scoring import select_hits
 from .base import AdapterError, SearchAdapter
 
 
@@ -114,23 +114,20 @@ class DedicatedScraperAdapter(SearchAdapter):
             self._resolve()
             products = self._get_inventory()
         if not products:
+            self.last_products_scanned = 0
+            self.last_approximate_count = 0
             return []
 
-        scored: List[SearchHit] = []
-        for p in products:
-            if not isinstance(p, dict):
-                continue
-            sc, reason = score_product(query, p)
-            if sc < query.min_score:
-                continue
-            hit = make_hit(p, sc, reason,
-                           source_site=(self._site_url or self.site_url
-                                         or self._site_name or self.name),
-                           source_slug=self.slug)
-            scored.append(hit)
-
-        scored.sort(key=lambda h: h.score, reverse=True)
-        return scored[:max_results]
+        site = (self._site_url or self.site_url
+                or self._site_name or self.name)
+        hits, scanned, approx = select_hits(
+            query, products,
+            max_results=max_results,
+            source_site=site, source_slug=self.slug,
+        )
+        self.last_products_scanned = scanned
+        self.last_approximate_count = approx
+        return hits
 
     # ------------------------------------------------------------------
     # Inventaire (avec cache)

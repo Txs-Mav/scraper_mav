@@ -65,8 +65,10 @@ function ValueStat({
   return (
     <div
       className={cn(
-        "rounded-xl border border-[var(--color-border-secondary)] p-3",
-        emphasis ? "bg-emerald-50/70 dark:bg-emerald-500/10" : "bg-[var(--color-background-secondary)]",
+        "rounded-xl border p-3",
+        emphasis
+          ? "border-[var(--color-text-primary)]/15 bg-[var(--color-background-secondary)]"
+          : "border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)]/60",
       )}
     >
       <div className="text-[11px] uppercase tracking-wide text-[var(--color-text-tertiary)]">
@@ -75,7 +77,7 @@ function ValueStat({
       <div
         className={cn(
           "mt-1 font-bold tabular-nums text-[var(--color-text-primary)]",
-          emphasis ? "text-2xl text-emerald-700 dark:text-emerald-300" : "text-lg",
+          emphasis ? "text-2xl" : "text-lg",
         )}
       >
         {formatMoney(value)}
@@ -121,7 +123,7 @@ export default function EvaluationCard({ result }: { result: ValuationResult }) 
               {specChips.map((chip) => (
                 <span
                   key={chip}
-                  className="rounded-full border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
+                  className="rounded-full border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-text-secondary)]"
                 >
                   {chip}
                 </span>

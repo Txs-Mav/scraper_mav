@@ -17,9 +17,9 @@ export default function PriceBand({ position }: { position: PricePosition }) {
         </span>
       </div>
       <div className="relative mt-3 h-2 rounded-full bg-[var(--color-background-primary)] overflow-hidden">
-        <div className="absolute inset-y-0 left-1/4 right-1/4 bg-emerald-500/25" />
+        <div className="absolute inset-y-0 left-1/4 right-1/4 bg-[var(--color-text-primary)]/15" />
         <div
-          className="absolute top-1/2 h-4 w-1.5 -translate-y-1/2 rounded-full bg-emerald-600"
+          className="absolute top-1/2 h-4 w-1.5 -translate-y-1/2 rounded-full bg-[var(--color-text-primary)]"
           style={{ left: `${position.markerPercent}%` }}
         />
       </div>

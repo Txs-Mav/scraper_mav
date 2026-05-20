@@ -97,12 +97,25 @@ class FederatedSearch:
 
         # Dédup + tri global
         deduped = _dedup_hits(all_hits)
-        deduped.sort(key=lambda h: h.score, reverse=True)
+
+        # Cohérence cross-adapter : si AU MOINS un adapter a renvoyé un hit
+        # strict, on ignore tous les hits approximatifs des autres adapters.
+        # Sinon l'utilisateur verrait par exemple 2 vrais matches sur Kijiji
+        # noyés au milieu de 40 "presque" matches venus des concessionnaires.
+        strict_only = [h for h in deduped if not h.is_approximate]
+        if strict_only:
+            deduped = strict_only
+            result.is_approximate = False
+        else:
+            result.is_approximate = bool(deduped)
+
+        deduped.sort(key=lambda h: (not h.is_approximate, h.score), reverse=True)
         result.hits = deduped[:query.max_results]
         result.total = len(deduped)
         result.elapsed_seconds = time.time() - start
 
-        self._log(f"Terminé en {result.elapsed_seconds:.1f}s : {result.total} hits "
+        approx_tag = " [APPROX]" if result.is_approximate else ""
+        self._log(f"Terminé en {result.elapsed_seconds:.1f}s : {result.total} hits{approx_tag} "
                   f"({result.adapters_succeeded}/{len(relevant)} sources OK, "
                   f"{result.cache_hits} cache)")
         return result
@@ -133,7 +146,21 @@ class FederatedSearch:
             hits = adapter.search(query, max_results=query.max_results)
             stats.hits_returned = len(hits)
             stats.duration_seconds = round(time.time() - t0, 2)
-            self._log(f"  ✓ {stats.name}: {stats.hits_returned} hits "
+            # Récupère les stats internes de l'adapter si disponibles
+            # (utile pour distinguer "cache vide" de "cache plein mais
+            # 0 match" dans l'UI).
+            stats.products_scanned = int(
+                getattr(adapter, "last_products_scanned", 0) or 0
+            )
+            stats.approximate_returned = int(
+                getattr(adapter, "last_approximate_count", 0) or 0
+            )
+            approx_suffix = (f" ({stats.approximate_returned} approx)"
+                             if stats.approximate_returned else "")
+            scanned_suffix = (f" [{stats.products_scanned} scannés]"
+                              if stats.products_scanned else "")
+            self._log(f"  ✓ {stats.name}: {stats.hits_returned} hits"
+                      f"{approx_suffix}{scanned_suffix} "
                       f"en {stats.duration_seconds:.1f}s"
                       + (f" [cache {cache_age:.0f}s]" if stats.cache_hit and cache_age else ""))
             return stats, hits

@@ -108,6 +108,11 @@ class SearchHit:
 
     score: float = 0.0                      # pertinence (0..1)
     match_reason: str = ""                  # debug : pourquoi ce hit matche
+    # True si ce hit vient du 2e pass relaxé (un veto strict aurait été
+    # appliqué). Sert au frontend pour afficher un badge "approximatif" et
+    # à l'orchestrateur pour ne pas mélanger strict + relaxé quand des
+    # hits stricts existent.
+    is_approximate: bool = False
     raw: Dict[str, Any] = field(default_factory=dict)  # données brutes du scraper
 
     def to_display_dict(self) -> Dict[str, Any]:
@@ -125,6 +130,7 @@ class SearchHit:
             "source_url": self.source_url,
             "score": round(self.score, 3),
             "match_reason": self.match_reason,
+            "is_approximate": self.is_approximate,
         }
 
 
@@ -136,6 +142,7 @@ class AdapterRunStats:
     duration_seconds: float = 0.0
     products_scanned: int = 0           # nb de produits passés au filtre
     hits_returned: int = 0              # nb de produits matchant
+    approximate_returned: int = 0       # parmi hits_returned, nb venant du 2e pass relaxé
     cache_hit: bool = False             # données venaient du cache
     error: str = ""                     # message si l'adapter a échoué
 
@@ -146,6 +153,10 @@ class SearchResult:
     query: SearchQuery = field(default_factory=SearchQuery)
     hits: List[SearchHit] = field(default_factory=list)
     total: int = 0
+    # True si l'agrégat global ne contient QUE des hits approximatifs (le
+    # 1er pass strict a tout rejeté). Le frontend affiche alors une bannière
+    # explicative au-dessus de la grille.
+    is_approximate: bool = False
 
     elapsed_seconds: float = 0.0
     adapters_run: List[AdapterRunStats] = field(default_factory=list)
@@ -162,14 +173,20 @@ class SearchResult:
     def cache_hits(self) -> int:
         return sum(1 for a in self.adapters_run if a.cache_hit)
 
+    @property
+    def total_products_scanned(self) -> int:
+        return sum(a.products_scanned for a in self.adapters_run)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "query": asdict(self.query),
             "total": self.total,
+            "is_approximate": self.is_approximate,
             "elapsed_seconds": round(self.elapsed_seconds, 2),
             "adapters_succeeded": self.adapters_succeeded,
             "adapters_failed": self.adapters_failed,
             "cache_hits": self.cache_hits,
+            "products_scanned": self.total_products_scanned,
             "adapters_run": [asdict(a) for a in self.adapters_run],
             "hits": [h.to_display_dict() for h in self.hits],
         }

@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from ..models import SearchHit, SearchQuery
-from ..scoring import make_hit, score_product
+from ..scoring import select_hits
 from .base import AdapterError, SearchAdapter
 
 
@@ -196,18 +196,15 @@ class EbayBrowseAdapter(SearchAdapter):
         if self._looks_like_vehicle_query(query):
             products = [p for p in products if not self._looks_like_part_listing(p)]
 
-        hits: List[SearchHit] = []
-        for p in products:
-            sc, reason = score_product(query, p)
-            if sc < query.min_score:
-                continue
-            hits.append(make_hit(
-                p, sc, reason,
-                source_site="ebay.ca" if self.marketplace_id == "EBAY_CA" else "ebay.com",
-                source_slug=f"ebay:{self.marketplace_id.lower()}",
-            ))
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:max_results]
+        hits, scanned, approx = select_hits(
+            query, products,
+            max_results=max_results,
+            source_site="ebay.ca" if self.marketplace_id == "EBAY_CA" else "ebay.com",
+            source_slug=f"ebay:{self.marketplace_id.lower()}",
+        )
+        self.last_products_scanned = scanned
+        self.last_approximate_count = approx
+        return hits
 
     @staticmethod
     def _looks_like_vehicle_query(query: SearchQuery) -> bool:

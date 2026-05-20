@@ -30,7 +30,7 @@ from urllib.parse import quote_plus, urlparse
 
 from ..extractors import GenericProductExtractor, extract_products_from_listing
 from ..models import SearchHit, SearchQuery
-from ..scoring import make_hit, score_product
+from ..scoring import select_hits
 from .base import AdapterError, SearchAdapter
 
 
@@ -315,25 +315,16 @@ class GenericDealerAdapter(SearchAdapter):
     def _score_and_filter(self, query: SearchQuery,
                           products: List[Dict[str, Any]],
                           max_results: int) -> List[SearchHit]:
-        hits: List[SearchHit] = []
-        seen = set()
-        for p in products:
-            url = p.get("sourceUrl", "")
-            sku = p.get("sku") or ""
-            key = sku or url or p.get("name", "")
-            if key in seen:
-                continue
-            seen.add(key)
-            sc, reason = score_product(query, p)
-            if sc < query.min_score:
-                continue
-            hits.append(make_hit(
-                p, sc, reason,
-                source_site=self.domain,
-                source_slug=f"generic-{re.sub(r'[^a-z0-9]+', '-', self.domain).strip('-')}",
-            ))
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:max_results]
+        slug = f"generic-{re.sub(r'[^a-z0-9]+', '-', self.domain).strip('-')}"
+        hits, scanned, approx = select_hits(
+            query, products,
+            max_results=max_results,
+            source_site=self.domain, source_slug=slug,
+            dedup_key=lambda p: (p.get("sku") or "") or p.get("sourceUrl") or p.get("name") or None,
+        )
+        self.last_products_scanned = scanned
+        self.last_approximate_count = approx
+        return hits
 
 
 # ---------------------------------------------------------------------------

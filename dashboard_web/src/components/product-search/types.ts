@@ -18,6 +18,12 @@ export interface SearchHit {
   source_url: string
   score: number
   match_reason: string
+  /**
+   * True quand ce hit vient du 2e pass relaxé (un veto strict aurait été
+   * appliqué : marque manquante, année hors range, modèle précis incomplet).
+   * Le frontend affiche un badge "Approchant" dans ce cas.
+   */
+  is_approximate?: boolean
 }
 
 export interface AdapterRunStats {
@@ -25,6 +31,16 @@ export interface AdapterRunStats {
   site: string
   duration_seconds: number
   hits_returned: number
+  /**
+   * Parmi `hits_returned`, combien viennent du 2e pass relaxé. Permet à l'UI
+   * de distinguer "match exact" d'un "comparable approchant" par adapter.
+   */
+  approximate_returned?: number
+  /**
+   * Nb de produits effectivement scorés (après dédup). Utile pour distinguer
+   * un cache vide d'un cache plein dont rien ne matche la requête.
+   */
+  products_scanned?: number
   cache_hit: boolean
   error: string
 }
@@ -36,6 +52,18 @@ export interface SearchResult {
   adapters_succeeded: number
   adapters_failed: string[]
   cache_hits: number
+  /**
+   * True quand l'agrégat global ne contient QUE des hits approximatifs (le
+   * 1er pass strict a tout rejeté). Le frontend affiche une bannière
+   * explicative au-dessus de la grille.
+   */
+  is_approximate?: boolean
+  /**
+   * Total cumulé de produits scannés à travers tous les adapters. Utile pour
+   * le message "Aucun résultat" : on peut dire "127 produits scannés, aucun
+   * ne correspond" vs "aucun produit dans le cache".
+   */
+  products_scanned?: number
   adapters_run: AdapterRunStats[]
   hits: SearchHit[]
 }

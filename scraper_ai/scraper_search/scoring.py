@@ -29,18 +29,31 @@ from .models import SearchHit, SearchQuery
 _FUZZY_THRESHOLD = 0.85
 
 
-def score_product(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, str]:
+def score_product(
+    query: SearchQuery,
+    product: Dict[str, Any],
+    *,
+    approximate: bool = False,
+) -> Tuple[float, str]:
     """Score un produit (dict scrapé) contre une requête.
     Retourne (score, raison_humaine_pour_debug).
 
     Mode véhicule (par défaut) : applique les vetos durs sur marque/année.
     Mode générique (`query.is_generic_product`) : pas de veto, scoring additif souple
-    qui mise sur les keywords et le SKU pour les sites e-commerce."""
+    qui mise sur les keywords et le SKU pour les sites e-commerce.
+
+    Mode approximatif (`approximate=True`) : les vetos durs (marque manquante,
+    année hors range, modèle précis incomplet) deviennent des pénalités
+    multiplicatives au lieu de retourner 0. Utilisé en 2e pass quand le 1er
+    pass strict ne retourne aucun résultat — permet de proposer des
+    comparables "proches" plutôt que d'afficher un écran vide. Le filtre de
+    catégorie reste actif (on ne mélange jamais des cellulaires avec des
+    motos)."""
     if not _product_fits_selected_category(query, product):
         return 0.0, ""
 
     if query.is_generic_product:
-        return _score_generic(query, product)
+        return _score_generic(query, product, approximate=approximate)
 
     score = 0.0
     reasons: List[str] = []
@@ -51,8 +64,12 @@ def score_product(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, s
            _string_in_text(query.marque, product.get("name", "")):
             score += 0.30
             reasons.append(f"marque={query.marque}")
+        elif approximate:
+            # Pas de marque : on ne veto pas mais on garde 0 sur ce critère
+            # ET on flag pour réduire le poids global plus tard (×0.5).
+            reasons.append("marque≠")
         else:
-            # Pas de marque → veto léger sur ce hit (pertinence faible)
+            # Pas de marque → veto strict (pertinence faible)
             return 0.0, ""
 
     # --- Année (20 pts si exacte, 15 si range) ---
@@ -66,8 +83,16 @@ def score_product(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, s
             elif abs(p_year - query.annee) <= 1:
                 score += 0.10
                 reasons.append(f"annee~{p_year}")
+            elif approximate:
+                # Distance > 1 an : score décroissant avec l'écart (5 pts à
+                # 2 ans, 2 pts à 5 ans, 0 au-delà de 10).
+                gap = abs(p_year - query.annee)
+                bonus = max(0.0, 0.05 - 0.005 * (gap - 2))
+                if bonus > 0:
+                    score += bonus
+                    reasons.append(f"annee={p_year}(±{gap}a)")
             else:
-                # Année très différente : veto si query précise
+                # Année très différente : veto strict
                 return 0.0, ""
         elif query.annee_min or query.annee_max:
             lo = query.annee_min or 1900
@@ -75,6 +100,13 @@ def score_product(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, s
             if lo <= p_year <= hi:
                 score += 0.15
                 reasons.append(f"annee={p_year}∈[{lo},{hi}]")
+            elif approximate:
+                # Hors range : pénalité proportionnelle à la distance au bord.
+                gap = max(lo - p_year, p_year - hi, 0)
+                bonus = max(0.0, 0.05 - 0.01 * gap)
+                if bonus > 0:
+                    score += bonus
+                    reasons.append(f"annee={p_year}(hors[{lo},{hi}])")
             else:
                 return 0.0, ""
 
@@ -82,11 +114,18 @@ def score_product(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, s
     if query.modele:
         m_score, m_matched = _model_score(query.modele, product)
         if _is_precise_model_query(query.modele) and m_score < 1.0:
-            return 0.0, ""
-        if m_score > 0:
+            if approximate:
+                # On garde le score partiel mais avec coefficient réduit pour
+                # ne pas concurrencer un vrai match précis.
+                if m_score > 0:
+                    score += 0.15 * m_score
+                    reasons.append(f"modele≈{m_matched}({m_score:.0%}, partiel)")
+            else:
+                return 0.0, ""
+        elif m_score > 0:
             score += 0.30 * m_score
             reasons.append(f"modele≈{m_matched}({m_score:.0%})")
-        elif query.marque is None:
+        elif query.marque is None and not approximate:
             # Si même la marque n'est pas trouvée et le modèle non plus → 0
             return 0.0, ""
 
@@ -129,7 +168,12 @@ def score_product(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, s
     return min(1.0, score), " · ".join(reasons)
 
 
-def _score_generic(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, str]:
+def _score_generic(
+    query: SearchQuery,
+    product: Dict[str, Any],
+    *,
+    approximate: bool = False,
+) -> Tuple[float, str]:
     """Scoring pour produits e-commerce génériques (Amazon/eBay/Shopify/Kijiji…).
 
     Pondération :
@@ -144,6 +188,9 @@ def _score_generic(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, 
     pour passer le seuil par défaut. Cela permet à des marques inconnues de ne pas
     être filtrées (ex: une recherche "casque moto bluetooth" matchera des marques
     obscures sur Amazon).
+
+    En mode approximatif, on relâche le seul veto restant (modèle précis incomplet)
+    et on garde tout le reste comme une simple addition de signaux.
     """
     score = 0.0
     reasons: List[str] = []
@@ -194,7 +241,10 @@ def _score_generic(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, 
                 matched += 1
             elif len(norm) >= 4 and _fuzzy_contains(norm, blob_normalized):
                 matched += 1
-        if query.modele and _is_precise_model_query(query.modele) and matched < len(all_keywords):
+        if (query.modele
+                and _is_precise_model_query(query.modele)
+                and matched < len(all_keywords)
+                and not approximate):
             return 0.0, ""
         ratio = matched / len(all_keywords)
         if ratio > 0:
@@ -228,7 +278,8 @@ def _score_generic(query: SearchQuery, product: Dict[str, Any]) -> Tuple[float, 
 
 
 def make_hit(product: Dict[str, Any], score: float, reason: str,
-             source_site: str, source_slug: str) -> SearchHit:
+             source_site: str, source_slug: str,
+             *, is_approximate: bool = False) -> SearchHit:
     """Construit un SearchHit à partir d'un produit scrapé."""
     return SearchHit(
         name=str(product.get("name", "")),
@@ -246,8 +297,121 @@ def make_hit(product: Dict[str, Any], score: float, reason: str,
         source_url=str(product.get("sourceUrl") or product.get("url") or ""),
         score=score,
         match_reason=reason,
+        is_approximate=is_approximate,
         raw=product,
     )
+
+
+# Seuil minimum pour qu'un hit approximatif soit retenu, exprimé en
+# fraction de `query.min_score`. À 0.5, on accepte les hits qui auraient
+# obtenu au moins la moitié du seuil strict — assez pour offrir un
+# comparable utile sans flooder le résultat avec du bruit complet.
+APPROXIMATE_MIN_SCORE_RATIO = 0.5
+
+
+def has_hard_criteria(query: SearchQuery) -> bool:
+    """True si la requête a au moins un critère qui peut déclencher un veto
+    strict — c'est uniquement dans ce cas qu'un fallback relaxé a du sens.
+
+    Une requête purement keyword/SKU (mode générique sans modèle précis)
+    n'a déjà aucun veto à relâcher : pas la peine d'engager un 2e pass.
+    """
+    if query.is_generic_product:
+        return bool(query.modele and _is_precise_model_query(query.modele))
+    if query.marque:
+        return True
+    if query.annee or query.annee_min or query.annee_max:
+        return True
+    if query.modele and _is_precise_model_query(query.modele):
+        return True
+    return False
+
+
+def score_product_relaxed(
+    query: SearchQuery,
+    product: Dict[str, Any],
+) -> Tuple[float, str]:
+    """Wrapper qui appelle `score_product(approximate=True)` puis pondère le
+    score quand la marque ne matchait pas — pour qu'un produit "même
+    catégorie mais mauvaise marque" n'ait jamais autant de poids qu'un
+    produit "même marque mais mauvaise année"."""
+    score, reason = score_product(query, product, approximate=True)
+    if score <= 0:
+        return 0.0, reason
+    if query.marque and "marque≠" in reason:
+        score *= 0.5
+    return score, reason
+
+
+def select_hits(
+    query: SearchQuery,
+    products: Iterable[Dict[str, Any]],
+    *,
+    max_results: int,
+    source_site: str,
+    source_slug: str,
+    dedup_key=None,
+) -> Tuple[List[SearchHit], int, int]:
+    """Applique le scoring 2-pass (strict puis relaxé) à une liste de
+    produits déjà extraits par un adapter.
+
+    Le 1er pass est strict (`score_product` avec ses vetos historiques). Si
+    aucun produit ne passe le seuil `query.min_score`, on retombe sur les
+    meilleurs candidats du 2e pass relaxé (vetos transformés en pénalités,
+    seuil divisé par `APPROXIMATE_MIN_SCORE_RATIO`). Les hits du 2e pass
+    sont marqués `is_approximate=True` pour que l'UI puisse les afficher
+    avec un badge dédié.
+
+    Returns:
+        (hits, products_scanned, approximate_count)
+        - hits : liste triée par score décroissant, tronquée à max_results.
+        - products_scanned : nb de produits effectivement passés au scoring
+          (après dédup éventuelle), utile pour distinguer "cache vide" de
+          "cache plein mais 0 match" dans les stats adapter.
+        - approximate_count : nb de hits venant du 2e pass relaxé.
+    """
+    strict: List[SearchHit] = []
+    relaxed: List[SearchHit] = []
+    seen = set()
+    scanned = 0
+    wants_fallback = has_hard_criteria(query)
+    relaxed_threshold = query.min_score * APPROXIMATE_MIN_SCORE_RATIO
+
+    for p in products:
+        if not isinstance(p, dict):
+            continue
+        if dedup_key is not None:
+            key = dedup_key(p)
+            if key:
+                if key in seen:
+                    continue
+                seen.add(key)
+        scanned += 1
+        sc, reason = score_product(query, p)
+        if sc >= query.min_score:
+            strict.append(make_hit(
+                p, sc, reason,
+                source_site=source_site, source_slug=source_slug,
+            ))
+            continue
+        if not wants_fallback:
+            continue
+        sc_relaxed, reason_relaxed = score_product_relaxed(query, p)
+        if sc_relaxed >= relaxed_threshold:
+            relaxed.append(make_hit(
+                p, sc_relaxed, reason_relaxed,
+                source_site=source_site, source_slug=source_slug,
+                is_approximate=True,
+            ))
+
+    if strict:
+        strict.sort(key=lambda h: h.score, reverse=True)
+        return strict[:max_results], scanned, 0
+    if relaxed:
+        relaxed.sort(key=lambda h: h.score, reverse=True)
+        top = relaxed[:max_results]
+        return top, scanned, len(top)
+    return [], scanned, 0
 
 
 # ---------------------------------------------------------------------------

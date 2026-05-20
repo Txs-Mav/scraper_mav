@@ -234,7 +234,7 @@ export default function CategoryPicker({
                     onChange(null)
                     setOpen(false)
                   }}
-                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                  className="text-xs text-[var(--color-text-primary)] hover:opacity-80 font-medium"
                 >
                   Toutes les catégories
                 </button>
@@ -262,7 +262,7 @@ export default function CategoryPicker({
                   <button
                     type="button"
                     onClick={() => setShowAll(true)}
-                    className="mt-2 text-xs font-medium text-emerald-600 hover:text-emerald-700"
+                    className="mt-2 text-xs font-medium text-[var(--color-text-primary)] hover:opacity-80"
                   >
                     Voir tout l&apos;arbre
                   </button>
@@ -356,7 +356,7 @@ function MillerColumns({
                 )}
               >
                 <span className="truncate flex items-center gap-1.5">
-                  {isSelected && <Check className="h-3 w-3 text-emerald-600 shrink-0" />}
+                  {isSelected && <Check className="h-3 w-3 text-[var(--color-text-primary)] shrink-0" />}
                   {node.name}
                 </span>
                 {node.children.length > 0 && (
@@ -371,9 +371,8 @@ function MillerColumns({
               <button
                 type="button"
                 onClick={() => onSelect(hoverPath)}
-                className="w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                className="w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md bg-[var(--color-text-primary)] text-[var(--color-background-primary)] hover:opacity-90 transition-opacity"
               >
-                <Check className="h-3 w-3" />
                 Choisir cette catégorie
               </button>
             </div>

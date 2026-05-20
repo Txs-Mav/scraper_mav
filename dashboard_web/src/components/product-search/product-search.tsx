@@ -2,8 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react"
 import {
-  Search, Loader2, ExternalLink, Globe, ShoppingBag,
-  AlertCircle, CheckCircle2, Clock, Info, Settings2, X, ChevronDown,
+  Search, Loader2, AlertCircle, CheckCircle2, Info, X, ChevronDown,
   Briefcase, Eye, Check, SlidersHorizontal, Gauge, Lock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -557,8 +556,18 @@ export default function ProductSearch() {
       setResult(data as SearchResult)
       rememberQuerySuggestions(state.query, (data as SearchResult)?.hits || [])
       const total = data?.total ?? 0
+      const isApprox = !!(data as SearchResult)?.is_approximate
       if (total === 0) {
-        toast.warning("Aucun résultat — élargis la requête ou ajoute des sources")
+        const scanned = (data as SearchResult)?.products_scanned ?? 0
+        toast.warning(
+          scanned > 0
+            ? `Aucun résultat — ${scanned} produit${scanned > 1 ? "s" : ""} scanné${scanned > 1 ? "s" : ""}, retire l'année ou simplifie le modèle`
+            : "Aucun résultat — élargis la requête ou ajoute des sources",
+        )
+      } else if (isApprox) {
+        toast.warning(
+          `Aucun match exact — voici ${total} comparable${total > 1 ? "s" : ""} approchant${total > 1 ? "s" : ""}`,
+        )
       } else {
         toast.success(`${total} résultat${total > 1 ? "s" : ""} en ${data?.elapsed_seconds?.toFixed?.(1) ?? "?"}s`)
       }
@@ -681,7 +690,7 @@ export default function ProductSearch() {
                 <SlidersHorizontal className="h-5 w-5 shrink-0" strokeWidth={1.75} />
                 <span className="hidden sm:inline">Sources</span>
                 {activeCount > 0 && (
-                  <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                  <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-[var(--color-background-secondary)] text-[var(--color-text-primary)]">
                     {activeCount}
                   </span>
                 )}
@@ -694,7 +703,7 @@ export default function ProductSearch() {
                   className={cn(
                     "inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors",
                     state.evaluatorEnabled
-                      ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10"
+                      ? "text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]"
                       : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]",
                   )}
                   title="Estimer la valeur du véhicule à partir des comparables"
@@ -748,7 +757,7 @@ export default function ProductSearch() {
             className={cn(
               "relative flex-1 min-w-0 w-full rounded-xl border h-12",
               "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-              "focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-transparent",
+              "focus-within:ring-2 focus-within:ring-[var(--color-text-primary)]/20 focus-within:border-[var(--color-text-tertiary)]",
             )}
           >
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-text-tertiary)] pointer-events-none z-20" />
@@ -804,13 +813,13 @@ export default function ProductSearch() {
             disabled={loading || !state.query.trim()}
             className={cn(
               "inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-sm font-semibold transition-all shrink-0 w-full md:w-auto md:min-w-[160px]",
-              "bg-gradient-to-b from-emerald-600 to-emerald-700 text-white",
-              "hover:from-emerald-500 hover:to-emerald-600 hover:-translate-y-0.5",
-              "shadow-md shadow-emerald-700/25 hover:shadow-lg hover:shadow-emerald-700/30",
-              "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:from-emerald-600 disabled:hover:to-emerald-700",
+              "bg-gradient-to-b from-[var(--color-text-primary)] to-[var(--color-text-primary)]/90 text-[var(--color-background-primary)]",
+              "hover:from-[var(--color-text-primary)]/95 hover:to-[var(--color-text-primary)]/85 hover:-translate-y-0.5",
+              "shadow-md shadow-black/10 dark:shadow-black/40 hover:shadow-lg hover:shadow-black/15",
+              "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0",
             )}
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             <span>{loading ? "Recherche…" : "Rechercher"}</span>
           </button>
         </div>
@@ -829,12 +838,11 @@ export default function ProductSearch() {
               className={cn(
                 "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors shrink-0",
                 state.evaluatorEnabled
-                  ? "bg-emerald-50 dark:bg-emerald-500/15 border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+                  ? "bg-[var(--color-text-primary)] border-[var(--color-text-primary)] text-[var(--color-background-primary)]"
                   : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-tertiary)]",
               )}
               aria-pressed={state.evaluatorEnabled}
             >
-              <Gauge className="h-3 w-3" />
               <span>
                 {state.evaluatorEnabled
                   ? "Évaluation activée"
@@ -991,7 +999,7 @@ function AdminViewAsPicker({
                   className={cn(
                     "w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2",
                     isSelected
-                      ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold"
+                      ? "bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] font-semibold"
                       : "text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]",
                   )}
                 >
@@ -999,11 +1007,11 @@ function AdminViewAsPicker({
                     className={cn(
                       "shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors",
                       isSelected
-                        ? "bg-emerald-600 border-emerald-600"
+                        ? "bg-[var(--color-text-primary)] border-[var(--color-text-primary)]"
                         : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)]",
                     )}
                   >
-                    {isSelected && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                    {isSelected && <Check className="h-2.5 w-2.5 text-[var(--color-background-primary)]" strokeWidth={3} />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{t(BT_LABEL_KEYS[bt])}</span>
@@ -1049,7 +1057,7 @@ function SourcesPanel({
           <button
             type="button"
             onClick={() => onToggleAll(true)}
-            className="text-xs font-medium px-2 py-1 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+            className="text-xs font-medium px-2 py-1 rounded-md text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
           >
             Tout activer
           </button>
@@ -1129,27 +1137,24 @@ function SourceChip({
       disabled={disabled}
       aria-disabled={disabled}
       className={cn(
-        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
         checked
-          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm shadow-emerald-600/20"
+          ? "bg-[var(--color-text-primary)] border-[var(--color-text-primary)] text-[var(--color-background-primary)]"
           : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]",
         disabled && "cursor-not-allowed opacity-70 hover:border-[var(--color-border-secondary)] hover:text-[var(--color-text-secondary)]"
       )}
     >
-      <span
-        className={cn(
-          "inline-flex items-center justify-center h-3.5 w-3.5 rounded-full border transition-all",
-          checked
-            ? "bg-white border-white"
-            : "border-current"
-        )}
-      >
-        {checked && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
-      </span>
       {label}
       {disabled && <Lock className="h-3 w-3" aria-hidden="true" />}
       {badge && (
-        <span className="ml-0.5 rounded-full bg-[var(--color-background-secondary)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
+        <span
+          className={cn(
+            "ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+            checked
+              ? "bg-[var(--color-background-primary)]/15 text-[var(--color-background-primary)]/80"
+              : "bg-[var(--color-background-secondary)] text-[var(--color-text-tertiary)]",
+          )}
+        >
           {badge}
         </span>
       )}
@@ -1247,7 +1252,7 @@ function VehicleSpecsBox({
   }, [specs.options, availableOptions])
 
   return (
-    <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-500/[0.06] p-3">
+    <div className="rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)]/60 p-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
@@ -1260,7 +1265,7 @@ function VehicleSpecsBox({
             className={cn(
               "w-full px-3 py-2 rounded-lg border text-sm",
               "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
-              "text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500",
+              "text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-text-primary)]/20 focus:border-[var(--color-text-tertiary)]",
             )}
           >
             <option value="">Non précisé</option>
@@ -1284,7 +1289,7 @@ function VehicleSpecsBox({
               "w-full px-3 py-2 rounded-lg border text-sm",
               "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
               "text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]",
-              "focus:outline-none focus:ring-2 focus:ring-emerald-500",
+              "focus:outline-none focus:ring-2 focus:ring-[var(--color-text-primary)]/20 focus:border-[var(--color-text-tertiary)]",
             )}
           />
         </label>
@@ -1304,23 +1309,23 @@ function VehicleSpecsBox({
               "w-full px-3 py-2 rounded-lg border text-sm",
               "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
               "text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]",
-              "focus:outline-none focus:ring-2 focus:ring-emerald-500",
+              "focus:outline-none focus:ring-2 focus:ring-[var(--color-text-primary)]/20 focus:border-[var(--color-text-tertiary)]",
             )}
           />
         </label>
       </div>
 
       {availableOptions.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-emerald-200/60 dark:border-emerald-500/20">
+        <div className="mt-4 pt-3 border-t border-[var(--color-border-tertiary)]/60">
           <div className="flex items-baseline justify-between gap-2 mb-2.5">
             <div className="min-w-0 flex items-baseline gap-2 flex-wrap">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
                 Options & équipement
               </span>
               {detectedMake && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/15 px-1.5 py-0.5 rounded">
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--color-text-secondary)] bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)] px-1.5 py-0.5 rounded">
                   <span className="capitalize">{detectedMake}</span>
-                  <span className="text-emerald-600/70 dark:text-emerald-400/70 font-normal">détecté</span>
+                  <span className="text-[var(--color-text-tertiary)] font-normal">détecté</span>
                 </span>
               )}
               <span className="text-[10px] text-[var(--color-text-tertiary)]">
@@ -1364,8 +1369,8 @@ function VehicleSpecsBox({
                           className={cn(
                             "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors",
                             checked
-                              ? "bg-emerald-600 border-emerald-600 text-white shadow-sm shadow-emerald-600/20"
-                              : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-primary)] hover:border-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300",
+                              ? "bg-[var(--color-text-primary)] border-[var(--color-text-primary)] text-[var(--color-background-primary)]"
+                              : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-primary)] hover:border-[var(--color-text-tertiary)]",
                             disabled && "opacity-50 cursor-not-allowed",
                           )}
                           aria-pressed={checked}
@@ -1375,10 +1380,8 @@ function VehicleSpecsBox({
                             className={cn(
                               "tabular-nums",
                               checked
-                                ? "text-white/80"
-                                : opt.premium === 0
-                                  ? "text-[var(--color-text-tertiary)]"
-                                  : "text-emerald-600 dark:text-emerald-400",
+                                ? "opacity-70"
+                                : "text-[var(--color-text-tertiary)]",
                             )}
                           >
                             {opt.premium === 0 ? "—" : `+${opt.premium.toLocaleString("fr-CA")} $`}
@@ -1401,9 +1404,9 @@ function LoadingSkeleton() {
   return (
     <div className="space-y-3">
       <div className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-xl px-4 py-3 flex items-center gap-3">
-        <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+        <Loader2 className="h-4 w-4 animate-spin text-[var(--color-text-secondary)]" />
         <span className="text-sm text-[var(--color-text-secondary)]">
-          Interrogation des sources en parallèle...
+          Interrogation des sources en parallèle…
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -1427,10 +1430,7 @@ function LoadingSkeleton() {
 
 function EmptyState() {
   return (
-    <div className="bg-[var(--color-background-primary)] border border-dashed border-[var(--color-border-secondary)] rounded-2xl py-16 px-6 text-center">
-      <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 mb-3">
-        <Search className="h-7 w-7 text-emerald-600" />
-      </div>
+    <div className="bg-[var(--color-background-primary)]/40 border border-dashed border-[var(--color-border-secondary)] rounded-2xl py-14 px-6 text-center backdrop-blur-sm">
       <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
         Cherche un produit
       </h3>
@@ -1461,6 +1461,14 @@ function ResultsView({
     const parsed = parseEvaluationQuery(showValuation ? valuationQueryText : queryText)
     return scoreHits(parsed, result.hits)
   }, [queryText, valuationQueryText, showValuation, result.hits])
+  const isApproximate = !!result.is_approximate
+  const totalScanned = result.products_scanned ?? 0
+  // Nb de hits que le re-scoring frontend (`coreTextMatches`) a écartés. Si
+  // > 0, on affiche un sous-titre "(X masqués par le filtre de pertinence)"
+  // pour que l'utilisateur ne croie pas que le backend a renvoyé moins que
+  // ce qu'annonçait le toast.
+  const backendTotal = result.hits.length
+  const filteredOut = Math.max(0, backendTotal - scoredHits.length)
   const valuation = useMemo(
     // On évalue à partir des véhicules effectivement affichés (déjà filtrés
     // par la pertinence textuelle) pour garantir la cohérence entre les
@@ -1475,6 +1483,21 @@ function ResultsView({
 
   return (
     <div className="space-y-4">
+      {isApproximate && totalHits > 0 && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/[0.08] px-4 py-3 flex items-start gap-3">
+          <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900 dark:text-amber-200 min-w-0 flex-1">
+            <div className="font-semibold">Aucun match exact — voici des comparables approchants</div>
+            <p className="mt-0.5 text-amber-800/90 dark:text-amber-200/80 text-[13px]">
+              Les sources interrogées n&apos;ont rien qui matche parfaitement ta requête.
+              Ces produits diffèrent par l&apos;année, le modèle exact ou la marque.
+              Affine ta recherche (retire l&apos;année, garde juste la marque) pour
+              re-filtrer.
+            </p>
+          </div>
+        </div>
+      )}
+
       <details className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-xl overflow-hidden group">
         <summary className="px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm cursor-pointer hover:bg-[var(--color-background-hover)] list-none">
           <div className="flex items-center gap-1.5 text-[var(--color-text-primary)] font-semibold">
@@ -1482,20 +1505,25 @@ function ResultsView({
             <span className="text-[var(--color-text-secondary)] font-normal">
               résultat{totalHits > 1 ? "s" : ""}
             </span>
+            {filteredOut > 0 && (
+              <span
+                className="text-[11px] font-normal text-[var(--color-text-tertiary)]"
+                title={`Le backend a renvoyé ${backendTotal} hits ; ${filteredOut} ont été masqués par le filtre de pertinence textuelle local.`}
+              >
+                ({filteredOut} masqué{filteredOut > 1 ? "s" : ""})
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-[var(--color-text-secondary)]">
-            <Globe className="h-3.5 w-3.5" />
-            <span>{successCount}/{successCount + errorCount} sources</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[var(--color-text-secondary)]">
-            <Clock className="h-3.5 w-3.5" />
-            <span className="tabular-nums">{result.elapsed_seconds.toFixed(1)}s</span>
-          </div>
+          <span className="text-[var(--color-text-secondary)] tabular-nums">
+            {successCount}/{successCount + errorCount} sources
+          </span>
+          <span className="text-[var(--color-text-secondary)] tabular-nums">
+            {result.elapsed_seconds.toFixed(1)}s
+          </span>
           {result.cache_hits > 0 && (
-            <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 text-xs">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>{result.cache_hits} cache</span>
-            </div>
+            <span className="text-[var(--color-text-secondary)] tabular-nums text-xs">
+              {result.cache_hits} en cache
+            </span>
           )}
           {hasErrors && (
             <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs ml-auto">
@@ -1519,7 +1547,7 @@ function ResultsView({
                 )}
                 <span className="font-medium text-[var(--color-text-primary)] truncate">{a.name}</span>
                 {a.cache_hit && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold uppercase">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] font-semibold uppercase">
                     cache
                   </span>
                 )}
@@ -1530,7 +1558,26 @@ function ResultsView({
                     {a.error.slice(0, 100)}
                   </span>
                 ) : (
-                  <span className="tabular-nums">{a.hits_returned} hit{a.hits_returned > 1 ? "s" : ""}</span>
+                  <span
+                    className="tabular-nums"
+                    title={
+                      a.products_scanned
+                        ? `${a.products_scanned} produit${a.products_scanned > 1 ? "s" : ""} scanné${a.products_scanned > 1 ? "s" : ""}`
+                        : undefined
+                    }
+                  >
+                    {a.hits_returned} hit{a.hits_returned > 1 ? "s" : ""}
+                    {a.approximate_returned ? (
+                      <span className="ml-1 text-amber-600 dark:text-amber-400">
+                        ({a.approximate_returned} approx)
+                      </span>
+                    ) : null}
+                    {a.hits_returned === 0 && a.products_scanned ? (
+                      <span className="ml-1 text-[var(--color-text-tertiary)]">
+                        / {a.products_scanned} scannés
+                      </span>
+                    ) : null}
+                  </span>
                 )}
                 <span className="tabular-nums">{a.duration_seconds.toFixed(1)}s</span>
               </div>
@@ -1546,7 +1593,9 @@ function ResultsView({
           <Info className="h-8 w-8 text-[var(--color-text-tertiary)] mx-auto mb-2" />
           <p className="text-sm font-medium text-[var(--color-text-primary)]">Aucun produit ne correspond</p>
           <p className="text-xs text-[var(--color-text-tertiary)] mt-1 max-w-sm mx-auto">
-            Simplifie ta requête (ex: juste la marque + modèle) ou ajoute des sources.
+            {totalScanned > 0
+              ? `${totalScanned.toLocaleString("fr-CA")} produit${totalScanned > 1 ? "s" : ""} scanné${totalScanned > 1 ? "s" : ""} dans les inventaires — aucun ne matche cette combinaison. Essaie de retirer l'année ou de garder juste la marque + le modèle.`
+              : "Les caches d'inventaire sont vides pour ces sources. Active d'autres sources (Kijiji, AutoTrader) ou réessaie dans quelques minutes."}
           </p>
         </div>
       ) : (
@@ -1560,11 +1609,11 @@ function ResultsView({
   )
 }
 
-function evaluationBadgeTone(score: number): "emerald" | "amber" | "orange" | "slate" {
-  if (score >= 80) return "emerald"
-  if (score >= 60) return "amber"
-  if (score >= 40) return "orange"
-  return "slate"
+function evaluationBadgeTone(score: number): "strong" | "medium" | "weak" | "faint" {
+  if (score >= 80) return "strong"
+  if (score >= 60) return "medium"
+  if (score >= 40) return "weak"
+  return "faint"
 }
 
 const resolvedImageCache = new Map<string, string>()
@@ -1637,7 +1686,7 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
       rel="noopener noreferrer"
       className={cn(
         "group flex flex-col bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)]",
-        "rounded-xl overflow-hidden hover:border-emerald-500/40 hover:shadow-md hover:-translate-y-0.5 transition-all",
+        "rounded-xl overflow-hidden hover:border-[var(--color-text-tertiary)] hover:shadow-md hover:-translate-y-0.5 transition-all",
         !hit.source_url && "pointer-events-none opacity-60"
       )}
     >
@@ -1652,40 +1701,42 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
             onError={() => setImageFailed(true)}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-[var(--color-text-tertiary)]">
-            <ShoppingBag className="h-10 w-10" />
+          <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+            Sans image
           </div>
         )}
 
         <span
           className={cn(
             "absolute top-2 left-2 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-sm",
-            matchTone === "emerald" && "bg-emerald-600/90 text-white",
-            matchTone === "amber" && "bg-amber-500/90 text-white",
-            matchTone === "orange" && "bg-orange-500/90 text-white",
-            matchTone === "slate" && "bg-slate-700/80 text-white"
+            matchTone === "strong" && "bg-[var(--color-text-primary)]/90 text-[var(--color-background-primary)]",
+            matchTone === "medium" && "bg-[var(--color-text-primary)]/65 text-[var(--color-background-primary)]",
+            matchTone === "weak" && "bg-[var(--color-text-primary)]/40 text-[var(--color-background-primary)]",
+            matchTone === "faint" && "bg-[var(--color-text-primary)]/25 text-[var(--color-background-primary)]"
           )}
           title={breakdownTitle}
         >
           {matchPct}% match
         </span>
 
-        {hit.etat && (
+        {hit.is_approximate && (
           <span
-            className={cn(
-              "absolute top-2 right-2 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold backdrop-blur-sm capitalize",
-              hit.etat === "neuf"
-                ? "bg-blue-600/90 text-white"
-                : "bg-orange-500/90 text-white"
-            )}
+            className="absolute top-2 left-1/2 -translate-x-1/2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-sm bg-amber-500/90 text-white"
+            title={hit.match_reason || "Comparable approchant — un veto strict aurait été appliqué"}
           >
+            Approchant
+          </span>
+        )}
+
+        {hit.etat && (
+          <span className="absolute top-2 right-2 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold backdrop-blur-sm capitalize bg-[var(--color-background-primary)]/90 text-[var(--color-text-primary)] border border-[var(--color-border-secondary)]">
             {hit.etat}
           </span>
         )}
 
         {hit.isDeal && (
-          <span className="absolute bottom-2 left-2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-sm bg-rose-600/90 text-white">
-            🔥 AUBAINE {Math.abs(Math.round(hit.priceVsMedian * 100))}% sous médian
+          <span className="absolute bottom-2 left-2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-sm bg-[var(--color-text-primary)] text-[var(--color-background-primary)]">
+            Aubaine · {Math.abs(Math.round(hit.priceVsMedian * 100))}% sous médian
           </span>
         )}
       </div>
@@ -1698,7 +1749,7 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
         <div className="mt-auto flex items-end justify-between gap-2">
           <div>
             {priceStr ? (
-              <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+              <span className="text-lg font-bold text-[var(--color-text-primary)] tabular-nums">
                 {priceStr}
               </span>
             ) : (
@@ -1719,14 +1770,10 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--color-border-secondary)]">
-          <div className="flex items-center gap-1 min-w-0">
-            <Globe className="h-3 w-3 text-[var(--color-text-tertiary)] shrink-0" />
-            <span className="text-[11px] text-[var(--color-text-secondary)] truncate">
-              {hit.source_site}
-            </span>
-          </div>
-          <ExternalLink className="h-3 w-3 text-[var(--color-text-tertiary)] group-hover:text-emerald-500 shrink-0" />
+        <div className="pt-2 border-t border-[var(--color-border-secondary)]">
+          <span className="text-[11px] text-[var(--color-text-secondary)] truncate block">
+            {hit.source_site}
+          </span>
         </div>
       </div>
     </a>

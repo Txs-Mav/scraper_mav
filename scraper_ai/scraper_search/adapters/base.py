@@ -24,6 +24,12 @@ class SearchAdapter(ABC):
     name: str = "<unnamed>"
     site_url: str = ""
 
+    # Stats du dernier `search()` — lus par FederatedSearch pour alimenter
+    # AdapterRunStats. Réinitialisés à chaque appel par les implémentations
+    # qui les supportent (sinon ils restent à 0).
+    last_products_scanned: int = 0
+    last_approximate_count: int = 0
+
     # Catégories produits historiques (legacy) :
     # ('moto', 'auto', 'vtt', 'motoneige', 'ecommerce', …). Si vide →
     # l'adapter accepte toutes les requêtes.
