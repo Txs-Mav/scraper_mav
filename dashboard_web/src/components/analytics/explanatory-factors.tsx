@@ -1,7 +1,7 @@
 "use client"
 
-import { Package, Tag, BookOpen, Recycle } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
+import SectionCard from "./section-card"
 
 interface Product {
   name: string
@@ -23,81 +23,68 @@ interface ExplanatoryFactorsProps {
 }
 
 export default function ExplanatoryFactors({ produits }: ExplanatoryFactorsProps) {
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
 
   const stats = {
     usage: produits.filter(p => {
       const etat = (p.etat || '').toLowerCase()
-      return etat === 'usagé' || etat === 'usage' || etat === 'usagé' || etat === 'used'
+      return etat === 'usagé' || etat === 'usage' || etat === 'used'
     }).length,
     inventaire: produits.filter(p => {
       const inv = (p.inventaire || '').toLowerCase()
       const etat = (p.etat || '').toLowerCase()
-      const isUsed = etat === 'usagé' || etat === 'usage' || etat === 'usagé' || etat === 'used'
+      const isUsed = etat === 'usagé' || etat === 'usage' || etat === 'used'
       return !isUsed && (inv === 'inventaire' || inv === 'inventory' || inv === 'en_stock' || p.disponibilite === 'en_stock')
     }).length,
     catalogue: produits.filter(p => {
       const inv = (p.inventaire || '').toLowerCase()
       const etat = (p.etat || '').toLowerCase()
-      const isUsed = etat === 'usagé' || etat === 'usage' || etat === 'usagé' || etat === 'used'
+      const isUsed = etat === 'usagé' || etat === 'usage' || etat === 'used'
       const isInventaire = inv === 'inventaire' || inv === 'inventory' || inv === 'en_stock' || p.disponibilite === 'en_stock'
       return !isUsed && !isInventaire
     }).length,
     total: produits.length,
   }
 
-  return (
-    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        {t("ap.factors")}
-      </h3>
+  const rows: Array<{ label: string; value: number; pct: number }> = [
+    { label: t("ap.used"), value: stats.usage, pct: stats.total > 0 ? (stats.usage / stats.total) * 100 : 0 },
+    { label: t("ap.inventory"), value: stats.inventaire, pct: stats.total > 0 ? (stats.inventaire / stats.total) * 100 : 0 },
+    { label: t("ap.catalogue"), value: stats.catalogue, pct: stats.total > 0 ? (stats.catalogue / stats.total) * 100 : 0 },
+  ]
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Recycle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-              {t("ap.used")}
-            </span>
-          </div>
-          <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-            {stats.usage}
-          </div>
-        </div>
-        <div className="bg-[#EAF3DE] dark:bg-[#3B6D11]/15 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Package className="h-5 w-5 text-[#3B6D11]" />
-            <span className="text-sm font-semibold text-[#27500A] dark:text-[#3B6D11]">
-              {t("ap.inventory")}
-            </span>
-          </div>
-          <div className="text-2xl font-bold text-[#27500A] dark:text-[#3B6D11]">
-            {stats.inventaire}
-          </div>
-        </div>
-        <div className="bg-[#EAF3DE] dark:bg-[#3B6D11]/15 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <BookOpen className="h-5 w-5 text-[#3B6D11]" />
-            <span className="text-sm font-semibold text-[#27500A] dark:text-[#3B6D11]">
-              {t("ap.catalogue")}
-            </span>
-          </div>
-          <div className="text-2xl font-bold text-[#27500A] dark:text-[#3B6D11]">
-            {stats.catalogue}
-          </div>
-        </div>
-        <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Tag className="h-5 w-5 text-gray-500 dark:text-[#B0B0B0]" />
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-300">
-              {t("ap.total")}
-            </span>
-          </div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white">
-            {stats.total}
-          </div>
-        </div>
+  // Bars look like Image 2 — colonnes Source | Clicks | %
+  return (
+    <SectionCard
+      title={t("ap.factors")}
+      meta={
+        <span className="text-xs text-[var(--color-text-secondary)] tabular-nums">
+          <span className="font-semibold text-[var(--color-text-primary)]">{stats.total.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}</span>{" "}
+          {t("ap.total").toLowerCase()}
+        </span>
+      }
+      bodyClassName="px-0 py-0"
+    >
+      <div className="px-5 py-2 grid grid-cols-[1fr_5rem_4rem] gap-3 items-center text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)]/40">
+        <span>{t("ap.factorSource")}</span>
+        <span className="text-right">{t("ap.factorCount")}</span>
+        <span className="text-right">%</span>
       </div>
-    </div>
+      <ul>
+        {rows.map((row, i) => (
+          <li
+            key={i}
+            className="grid grid-cols-[1fr_5rem_4rem] gap-3 items-center px-5 py-2.5 text-sm border-b last:border-b-0 border-[var(--color-border-tertiary)]/30"
+          >
+            <span className="text-[var(--color-text-primary)] truncate">{row.label}</span>
+            <span className="text-right tabular-nums font-semibold text-[var(--color-text-primary)]">
+              {row.value.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+            </span>
+            <span className="text-right tabular-nums text-[var(--color-text-secondary)]">
+              {row.pct.toFixed(1)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
   )
 }

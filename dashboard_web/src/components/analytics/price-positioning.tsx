@@ -1,7 +1,7 @@
 "use client"
 
-import { TrendingDown, TrendingUp, Minus, Award } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
+import SectionCard from "./section-card"
 
 interface PricePositioningProps {
   positionnement: {
@@ -17,28 +17,6 @@ interface PricePositioningProps {
 export default function PricePositioningCard({ positionnement }: PricePositioningProps) {
   const { t } = useLanguage()
 
-  const getPositionIcon = () => {
-    switch (positionnement.position) {
-      case 'lowest':
-        return <TrendingDown className="h-8 w-8 text-[#3B6D11]" />
-      case 'above':
-        return <TrendingUp className="h-8 w-8 text-[#A32D2D]" />
-      default:
-        return <Minus className="h-8 w-8 text-gray-500" />
-    }
-  }
-
-  const getPositionColor = () => {
-    switch (positionnement.position) {
-      case 'lowest':
-        return 'text-[#3B6D11] dark:text-[#3B6D11]'
-      case 'above':
-        return 'text-[#A32D2D] dark:text-[#A32D2D]'
-      default:
-        return 'text-gray-500 dark:text-[#B0B0B0]'
-    }
-  }
-
   const getPositionLabel = () => {
     switch (positionnement.position) {
       case 'lowest':
@@ -50,66 +28,77 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
     }
   }
 
-  return (
-    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          {t("ap.positioning")}
-        </h3>
-        {getPositionIcon()}
-      </div>
+  const ecartPct = positionnement.ecartPourcentage
+  const ecartValeur = positionnement.ecartValeur
+  const ecartSign = ecartPct >= 0 ? '+' : ''
 
-      <div className="space-y-4">
-        {/* Position globale */}
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Award className="h-5 w-5 text-gray-500" />
-            <span className={`text-xl font-bold ${getPositionColor()}`}>
-              {getPositionLabel()}
+  // Couleur sémantique uniquement sur la valeur d'écart, jamais sur un fond.
+  const ecartColor =
+    ecartPct < -0.5
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : ecartPct > 0.5
+        ? 'text-red-600 dark:text-red-400'
+        : 'text-[var(--color-text-primary)]'
+
+  // Jauge horizontale du classement (1er en bas = vert / dernier = rouge).
+  // On ne montre la jauge que si totalDetailleurs >= 2.
+  const total = Math.max(0, positionnement.totalDetailleurs)
+  const rank = Math.max(1, Math.min(total, positionnement.classement || 1))
+  // Position normalisée de la flèche : 1er => 0%, dernier => 100%.
+  const arrowPct = total > 1 ? ((rank - 1) / (total - 1)) * 100 : 50
+
+  return (
+    <SectionCard
+      title={t("ap.positioning")}
+      subtitle={getPositionLabel()}
+      details={
+        <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+          {positionnement.message}
+        </p>
+      }
+      detailsLabel={t("ap.detailsToggle")}
+    >
+      {/* ── Chiffre dominant — l'écart en % ── */}
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <span className={`text-5xl font-extrabold tabular-nums leading-none tracking-tight ${ecartColor}`}>
+          {ecartSign}{ecartPct.toFixed(1)}%
+        </span>
+        <span className="text-sm text-[var(--color-text-secondary)] tabular-nums">
+          {ecartSign}{ecartValeur.toFixed(2)}$
+        </span>
+      </div>
+      <p className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] mt-1.5 font-medium">
+        {t("ap.gapPercent")} · {t("ap.gapValue").toLowerCase()}
+      </p>
+
+      {/* ── Jauge classement ── */}
+      {total >= 2 && (
+        <div className="mt-5 pt-4 border-t border-[var(--color-border-tertiary)]/40">
+          <div className="flex items-baseline justify-between mb-2">
+            <span className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
+              {t("ap.ranking")}
+            </span>
+            <span className="tabular-nums text-sm font-semibold text-[var(--color-text-primary)]">
+              {rank}<span className="text-[var(--color-text-secondary)] font-normal text-xs">{getOrdinalSuffix(rank)} / {total}</span>
             </span>
           </div>
-        </div>
-
-        {/* Écart */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
-            <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
-              {t("ap.gapPercent")}
-            </div>
-            <div className={`text-2xl font-bold ${getPositionColor()}`}>
-              {positionnement.ecartPourcentage >= 0 ? '+' : ''}
-              {positionnement.ecartPourcentage.toFixed(1)}%
-            </div>
+          <div className="relative h-1.5 rounded-full bg-[var(--color-background-secondary)] overflow-visible">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-[var(--color-text-primary)]/70"
+              style={{ width: `${100 - arrowPct}%` }}
+            />
+            <span
+              className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-[var(--color-text-primary)] border-2 border-[var(--color-background-primary)] shadow-md"
+              style={{ left: `calc(${arrowPct}% - 6px)` }}
+            />
           </div>
-          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
-            <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
-              {t("ap.gapValue")}
-            </div>
-            <div className={`text-2xl font-bold ${getPositionColor()}`}>
-              {positionnement.ecartValeur >= 0 ? '+' : ''}
-              {positionnement.ecartValeur.toFixed(2)}$
-            </div>
+          <div className="flex items-center justify-between mt-1.5 text-[10px] tabular-nums text-[var(--color-text-secondary)]">
+            <span>1er · {t("ap.lowest").toLowerCase()}</span>
+            <span>{total}{getOrdinalSuffix(total)}</span>
           </div>
         </div>
-
-        {/* Classement */}
-        <div className="bg-[#EAF3DE] dark:bg-[#3B6D11]/15 rounded-lg p-4">
-          <div className="text-sm text-[#27500A] dark:text-gray-500 dark:text-[#B0B0B0] mb-1">
-              {t("ap.ranking")}
-          </div>
-          <div className="text-xl font-semibold text-[#3B6D11] dark:text-[#3B6D11]">
-            {positionnement.classement}{getOrdinalSuffix(positionnement.classement)} {t("ap.cheapestOf")} {positionnement.totalDetailleurs} {t("ap.retailers")}
-          </div>
-        </div>
-
-        {/* Message résumé */}
-        <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
-          <p className="text-sm text-gray-900 dark:text-white">
-            {positionnement.message}
-          </p>
-        </div>
-      </div>
-    </div>
+      )}
+    </SectionCard>
   )
 }
 
@@ -117,5 +106,3 @@ function getOrdinalSuffix(n: number): string {
   if (n === 1) return 'er'
   return 'e'
 }
-
-

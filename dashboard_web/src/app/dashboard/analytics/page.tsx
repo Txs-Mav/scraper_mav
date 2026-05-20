@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Layout from "@/components/kokonutui/layout"
+import SurveillanceBackground from "@/components/kokonutui/surveillance-background"
 import PricePositioningCard from "@/components/analytics/price-positioning"
 import ProductCategoryAnalysis from "@/components/analytics/product-analysis"
 import PriceEvolutionChart from "@/components/analytics/price-evolution"
@@ -13,10 +14,9 @@ import AlertsAndInsights from "@/components/analytics/alerts-insights"
 import ExplanatoryFactors from "@/components/analytics/explanatory-factors"
 import Visualizations from "@/components/analytics/visualizations"
 import RetailerPriceTrends from "@/components/analytics/retailer-price-trends"
-import { Lock, RefreshCw, RotateCcw, Package, Store, TrendingUp, Printer } from "lucide-react"
+import { Lock, RefreshCw, RotateCcw, Printer } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
-import BlocTemplate from "@/components/ui/bloc-template"
 import { canAccessAnalytics } from "@/lib/plan-restrictions"
 import { printCurrentPage } from "@/lib/export-utils"
 import { AnalyticsSkeleton } from "@/components/skeleton-loader"
@@ -198,7 +198,6 @@ export default function AnalyticsPage() {
           ...data,
         })
 
-        // Cas typique : Vercel timeout 504 sans corps JSON utile.
         const isTimeout =
           response.status === 504 ||
           response.status === 408 ||
@@ -248,8 +247,8 @@ export default function AnalyticsPage() {
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <Lock className="h-12 w-12 text-amber-500" />
-          <p className="text-lg font-medium text-gray-900 dark:text-white">{t("analytics.accessDenied")}</p>
-          <p className="text-sm text-gray-500 dark:text-[#B0B0B0]">{t("analytics.redirecting")}</p>
+          <p className="text-lg font-medium text-[var(--color-text-primary)]">{t("analytics.accessDenied")}</p>
+          <p className="text-sm text-[var(--color-text-secondary)]">{t("analytics.redirecting")}</p>
         </div>
       </Layout>
     )
@@ -270,13 +269,6 @@ export default function AnalyticsPage() {
   const competitifRatio = comparableCount > 0 ? (competitifCount / comparableCount) * 100 : 0
   const isEmpty = displayAnalytics.stats.nombreScrapes === 0 && totalProducts === 0
 
-  const kpis = [
-    { label: t("analytics.productsAnalyzed"), value: totalProducts, icon: Package, dot: "bg-[#3B6D11]" },
-    { label: t("analytics.retailers"), value: displayAnalytics.detailleurs.length, icon: Store, dot: "bg-sky-500" },
-    { label: t("analytics.opportunities"), value: displayAnalytics.opportunites.length, icon: TrendingUp, dot: "bg-amber-500" },
-    { label: t("analytics.scrapes"), value: displayAnalytics.stats.nombreScrapes, icon: RefreshCw, dot: "bg-violet-500" },
-  ]
-
   const updatedAgoLabel = (() => {
     if (!lastUpdated) return null
     const diffMs = Date.now() - lastUpdated.getTime()
@@ -287,134 +279,168 @@ export default function AnalyticsPage() {
     return t("analytics.updatedHAgo").replace("{n}", String(diffH))
   })()
 
+  const lc = locale === 'en' ? 'en-CA' : 'fr-CA'
+
+  // KPIs principaux affichés en grille — chiffres XL.
+  const headerKpis = [
+    {
+      label: t("analytics.productsAnalyzed"),
+      value: totalProducts.toLocaleString(lc),
+    },
+    {
+      label: t("analytics.retailers"),
+      value: displayAnalytics.detailleurs.length.toLocaleString(lc),
+    },
+    {
+      label: t("analytics.opportunities"),
+      value: displayAnalytics.opportunites.length.toLocaleString(lc),
+    },
+    {
+      label: t("analytics.scrapes"),
+      value: displayAnalytics.stats.nombreScrapes.toLocaleString(lc),
+    },
+  ]
+
+  // Anneau de progression pour le ratio compétitif (SVG vectoriel pur).
+  const ringSize = 64
+  const ringStroke = 6
+  const ringRadius = (ringSize - ringStroke) / 2
+  const ringCircumference = 2 * Math.PI * ringRadius
+  const ringOffset = ringCircumference * (1 - competitifRatio / 100)
+
   return (
     <Layout>
-      <div id="analytics-print-area" className="space-y-5">
-        {/* ── Page header ── */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--color-text-primary)] leading-tight">
-              {t("analytics.title")}
-            </h1>
-            <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-              {t("analytics.subtitle")}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {updatedAgoLabel && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#3B6D11]/15 border border-[#3B6D11]/30">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3B6D11] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B6D11]" />
+      <SurveillanceBackground />
+      <div id="analytics-print-area" className="space-y-4 relative">
+        {/* ── Header unifié (style Surveillance) ── */}
+        <header className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
+          <div className="flex items-center justify-between gap-5 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
                 </span>
-                <span className="text-xs font-medium text-[#27500A] dark:text-[#3B6D11]">{updatedAgoLabel}</span>
+                <span className="font-medium uppercase tracking-wider">
+                  {t("analytics.title")}
+                </span>
+                {updatedAgoLabel && (
+                  <span className="tabular-nums opacity-70">· {updatedAgoLabel}</span>
+                )}
+                {dataAsOf && (
+                  <span className="tabular-nums opacity-60">· {formatDate(dataAsOf)}</span>
+                )}
               </div>
-            )}
 
-            <button
-              onClick={() => printCurrentPage(t("analytics.title"))}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
-              title={t("analytics.printAction")}
-            >
-              <Printer className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("analytics.printAction")}</span>
-            </button>
-            <button
-              onClick={() => loadAnalytics(true)}
-              disabled={refreshing}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{t("analytics.refreshAction")}</span>
-            </button>
-            <button
-              onClick={handleReset}
-              disabled={refreshing || loading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[#A32D2D]/80 hover:text-[#A32D2D] hover:bg-[#A32D2D]/10 transition disabled:opacity-50"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("analytics.resetAction")}</span>
-            </button>
+              <h1 className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight leading-tight">
+                {t("analytics.subtitle")}
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="inline-flex items-stretch h-9 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 shadow-sm overflow-hidden divide-x divide-[var(--color-border-tertiary)] backdrop-blur-sm">
+                <button
+                  onClick={() => printCurrentPage(t("analytics.title"))}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
+                  title={t("analytics.printAction")}
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t("analytics.printAction")}</span>
+                </button>
+                <button
+                  onClick={() => loadAnalytics(true)}
+                  disabled={refreshing}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">{t("analytics.refreshAction")}</span>
+                </button>
+                <button
+                  onClick={handleReset}
+                  disabled={refreshing || loading}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t("analytics.resetAction")}</span>
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* ── KPI strip ── */}
-        <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] overflow-hidden">
-          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[var(--color-border-tertiary)]">
-            {kpis.map((k, i) => {
-              const Icon = k.icon
-              return (
-                <div key={i} className="p-5 flex flex-col justify-center">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`h-1.5 w-1.5 rounded-full ${k.dot}`} />
-                      <p className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                        {k.label}
-                      </p>
-                    </div>
-                    <Icon className="h-3.5 w-3.5 text-[var(--color-text-secondary)] opacity-40" />
-                  </div>
-                  <p className="text-3xl font-extrabold text-[var(--color-text-primary)] tabular-nums leading-none tracking-tight">
-                    {k.value.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
+          {/* ── KPI strip : 4 chiffres XL + anneau ratio compétitif ── */}
+          <div className="mt-5 grid grid-cols-2 md:grid-cols-[repeat(4,1fr)_auto] gap-x-5 gap-y-4 items-end">
+            {headerKpis.map((k, i) => (
+              <div
+                key={i}
+                className={i > 0 ? 'md:pl-5 md:border-l border-[var(--color-border-tertiary)]/40' : ''}
+              >
+                <p className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
+                  {k.label}
+                </p>
+                <p className="text-[1.85rem] md:text-3xl font-extrabold tabular-nums leading-none mt-1.5 text-[var(--color-text-primary)] tracking-tight">
+                  {k.value}
+                </p>
+              </div>
+            ))}
+
+            {/* Anneau compétitif */}
+            {comparableCount > 0 && (
+              <div className="md:pl-5 md:border-l border-[var(--color-border-tertiary)]/40 flex items-center gap-3 col-span-2 md:col-span-1">
+                <div className="relative shrink-0" style={{ width: ringSize, height: ringSize }}>
+                  <svg width={ringSize} height={ringSize} className="rotate-[-90deg]">
+                    <circle
+                      cx={ringSize / 2}
+                      cy={ringSize / 2}
+                      r={ringRadius}
+                      stroke="currentColor"
+                      strokeOpacity="0.15"
+                      strokeWidth={ringStroke}
+                      fill="none"
+                    />
+                    <circle
+                      cx={ringSize / 2}
+                      cy={ringSize / 2}
+                      r={ringRadius}
+                      stroke="currentColor"
+                      strokeWidth={ringStroke}
+                      strokeLinecap="round"
+                      fill="none"
+                      strokeDasharray={ringCircumference}
+                      strokeDashoffset={ringOffset}
+                      className="text-emerald-500 transition-all duration-500"
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold tabular-nums text-[var(--color-text-primary)]">
+                    {Math.round(competitifRatio)}%
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
+                    {t("analytics.competitive")}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 tabular-nums">
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">{competitifCount}</span>
+                    <span className="opacity-60"> / </span>
+                    <span className="font-semibold text-[var(--color-text-primary)]">{comparableCount}</span>
+                    <span className="opacity-60"> produits</span>
                   </p>
                 </div>
-              )
-            })}
-          </div>
-
-          {/* Competitive ratio bar */}
-          {comparableCount > 0 && (
-            <div className="border-t border-[var(--color-border-tertiary)] px-5 py-3.5 flex items-center gap-4">
-              <div className="flex items-center gap-6 text-xs font-medium">
-                <span className="flex items-center gap-1.5 text-[#27500A] dark:text-[#3B6D11]">
-                  <span className="h-2 w-2 rounded-full bg-[#3B6D11]" />
-                  <span className="tabular-nums font-bold">{competitifCount}</span>
-                  <span className="text-[var(--color-text-secondary)] font-normal">{t("analytics.competitive")}</span>
-                </span>
-                <span className="flex items-center gap-1.5 text-[#791F1F] dark:text-[#A32D2D]">
-                  <span className="h-2 w-2 rounded-full bg-[#A32D2D]" />
-                  <span className="tabular-nums font-bold">{nonCompetitifCount}</span>
-                  <span className="text-[var(--color-text-secondary)] font-normal">{t("analytics.aboveMarket")}</span>
-                </span>
               </div>
-              <div className="flex-1 h-1.5 rounded-full bg-[var(--color-background-secondary)] overflow-hidden max-w-xs ml-auto">
-                <div
-                  className="h-full bg-[#3B6D11] rounded-full transition-all"
-                  style={{ width: `${competitifRatio}%` }}
-                />
-              </div>
-              <span className="text-xs font-semibold text-[var(--color-text-primary)] tabular-nums min-w-[3rem] text-right">
-                {competitifRatio.toFixed(0)}%
-              </span>
-            </div>
-          )}
-
-          {/* Data freshness footer */}
-          <div className="border-t border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]/40 px-5 py-2.5 flex items-center justify-between gap-4 text-[11px] text-[var(--color-text-secondary)]">
-            <span className="tabular-nums">
-              {t("analytics.data")} <span className="font-medium text-[var(--color-text-primary)]">{dataAsOf ? formatDate(dataAsOf) : t("analytics.na")}</span>
-            </span>
-            <span className="tabular-nums">
-              {t("analytics.updated")} <span className="font-medium text-[var(--color-text-primary)]">{lastUpdated ? formatDate(lastUpdated) : formatDate(new Date())}</span>
-            </span>
+            )}
           </div>
-        </div>
+        </header>
 
         {error && (
-          <div className="rounded-xl border border-[#A32D2D]/30 dark:border-[#A32D2D]/40 bg-[#FCEBEB]/80 dark:bg-[#A32D2D]/15 px-4 py-3">
-            <p className="text-[#791F1F] dark:text-[#A32D2D] text-sm font-medium">{error}</p>
+          <div className="rounded-xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 backdrop-blur-md px-4 py-3">
+            <p className="text-[var(--color-text-primary)] text-sm font-medium">{error}</p>
           </div>
         )}
 
         {/* Empty state */}
         {isEmpty && (
-          <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-10 text-center">
+          <div className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 backdrop-blur-md p-10 text-center">
             <div className="max-w-md mx-auto">
-              <div className="mx-auto w-16 h-16 rounded-2xl bg-[#EAF3DE] dark:bg-[#3B6D11]/15 flex items-center justify-center mb-5">
-                <Package className="h-7 w-7 text-[#3B6D11]" />
-              </div>
-              <h3 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">{t("analytics.noData")}</h3>
+              <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">{t("analytics.noData")}</h3>
               <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
                 {t("analytics.noDataDesc")}
               </p>
@@ -425,65 +451,37 @@ export default function AnalyticsPage() {
         {/* ── Analysis sections ── */}
         {!isEmpty && (
           <div className="space-y-4">
-            {/* Positionnement + Évolution des prix */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-1">
-                <BlocTemplate className="hover-elevate h-full">
-                  <PricePositioningCard positionnement={displayAnalytics.positionnement} />
-                </BlocTemplate>
+                <PricePositioningCard positionnement={displayAnalytics.positionnement} />
               </div>
               <div className="lg:col-span-2">
-                <BlocTemplate className="hover-elevate h-full">
-                  <PriceEvolutionChart
-                    evolutionPrix={displayAnalytics.evolutionPrix}
-                    scrapesParJour={displayAnalytics.stats.scrapesParJour}
-                  />
-                </BlocTemplate>
+                <PriceEvolutionChart
+                  evolutionPrix={displayAnalytics.evolutionPrix}
+                  scrapesParJour={displayAnalytics.stats.scrapesParJour}
+                />
               </div>
             </div>
 
-            {/* Opportunités + Alertes / insights */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <BlocTemplate className="hover-elevate h-full">
-                <OpportunitiesDetection opportunites={displayAnalytics.opportunites} />
-              </BlocTemplate>
-              <BlocTemplate className="hover-elevate h-full">
-                <AlertsAndInsights alertes={displayAnalytics.alertes} stats={displayAnalytics.stats} />
-              </BlocTemplate>
+              <OpportunitiesDetection opportunites={displayAnalytics.opportunites} />
+              <AlertsAndInsights alertes={displayAnalytics.alertes} stats={displayAnalytics.stats} />
             </div>
 
-            {/* Tendances de prix par concessionnaire (sous Alertes) */}
-            <BlocTemplate className="hover-elevate">
-              <RetailerPriceTrends evolutionPrix={displayAnalytics.evolutionPrix} />
-            </BlocTemplate>
+            <RetailerPriceTrends evolutionPrix={displayAnalytics.evolutionPrix} />
 
-            {/* Facteurs explicatifs (strip compact pleine largeur) */}
-            <BlocTemplate className="hover-elevate">
-              <ExplanatoryFactors produits={displayAnalytics.produits} />
-            </BlocTemplate>
+            <ExplanatoryFactors produits={displayAnalytics.produits} />
 
-            {/* Analyse produit (pleine largeur) */}
-            <BlocTemplate className="hover-elevate">
-              <ProductCategoryAnalysis produits={displayAnalytics.produits} />
-            </BlocTemplate>
+            <ProductCategoryAnalysis produits={displayAnalytics.produits} />
 
-            {/* Analyse par catégorie (pleine largeur) */}
-            <BlocTemplate className="hover-elevate">
-              <CategoryAnalysis categories={displayAnalytics.categories} />
-            </BlocTemplate>
+            <CategoryAnalysis categories={displayAnalytics.categories} />
 
-            {/* Détaillants (pleine largeur) */}
-            <BlocTemplate className="hover-elevate">
-              <RetailerAnalysis detailleurs={displayAnalytics.detailleurs} />
-            </BlocTemplate>
+            <RetailerAnalysis detailleurs={displayAnalytics.detailleurs} />
 
-            {/* Visualisations avancées (pleine largeur) */}
-            <BlocTemplate className="hover-elevate">
-              <Visualizations
-                produits={displayAnalytics.produits}
-                detailleurs={displayAnalytics.detailleurs}
-              />
-            </BlocTemplate>
+            <Visualizations
+              produits={displayAnalytics.produits}
+              detailleurs={displayAnalytics.detailleurs}
+            />
           </div>
         )}
       </div>

@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts"
-import { LineChart as LineChartIcon, Calendar } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
+import SectionCard from "./section-card"
 
 interface EvolutionEntry {
   date: string
@@ -18,25 +18,22 @@ interface RetailerPriceTrendsProps {
 
 type Granularity = "day" | "week" | "month"
 
-// Palette catégorielle (12 teintes distinctes, sans vert/rouge brand
-// pour ne pas se confondre avec la sémantique compétitif/non compétitif)
+// Palette neutre (12 teintes désaturées). On évite les saturations
+// brand pour ne pas concurrencer la couleur de la « référence ».
 const PALETTE = [
-  "#60A5FA", // blue
-  "#F472B6", // pink
-  "#FBBF24", // amber
-  "#A78BFA", // violet
-  "#22D3EE", // cyan
-  "#FB923C", // orange
-  "#E879F9", // fuchsia
-  "#FCD34D", // yellow
-  "#2DD4BF", // teal
-  "#818CF8", // indigo
-  "#C084FC", // purple
-  "#94A3B8", // slate
+  "#94a3b8", // slate-400
+  "#a8a29e", // stone-400
+  "#9ca3af", // gray-400
+  "#71717a", // zinc-500
+  "#6b7280", // gray-500
+  "#78716c", // stone-500
+  "#737373", // neutral-500
+  "#64748b", // slate-500
+  "#525b6f", // mid slate
+  "#5e5e5e", // mid neutral
+  "#4b5563", // gray-600
+  "#57534e", // stone-600
 ]
-
-const REFERENCE_COLOR = "#3B82F6"
-const MARKET_COLOR = "#9CA3AF"
 
 function isoWeekKey(d: Date): string {
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
@@ -75,7 +72,6 @@ function formatLabel(key: string, gran: Granularity, locale: string): string {
 interface RetailerSeries {
   site: string
   color: string
-  values: number[]
 }
 
 function PriceTooltip({ active, payload, label }: any) {
@@ -83,14 +79,14 @@ function PriceTooltip({ active, payload, label }: any) {
   const visible = payload.filter((e: any) => e.value !== null && e.value !== undefined)
   if (visible.length === 0) return null
   return (
-    <div className="bg-[#1c1e20] border border-[#343638] rounded-xl px-4 py-3 shadow-2xl max-w-xs">
-      <p className="text-xs text-gray-400 mb-2">{label}</p>
+    <div className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-xl px-3 py-2 shadow-2xl max-w-xs text-xs">
+      <p className="text-[var(--color-text-secondary)] mb-1.5">{label}</p>
       <div className="space-y-1">
         {visible.map((entry: any, i: number) => (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
-            <span className="text-gray-400 truncate flex-1 min-w-0">{entry.name}</span>
-            <span className="font-semibold text-white tabular-nums whitespace-nowrap">
+          <div key={i} className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
+            <span className="text-[var(--color-text-secondary)] truncate flex-1 min-w-0">{entry.name}</span>
+            <span className="font-semibold text-[var(--color-text-primary)] tabular-nums whitespace-nowrap">
               {Number(entry.value).toLocaleString("fr-CA", { maximumFractionDigits: 0 })}$
             </span>
           </div>
@@ -182,11 +178,9 @@ export default function RetailerPriceTrends({ evolutionPrix }: RetailerPriceTren
     return allSites.map((site, i) => ({
       site,
       color: PALETTE[i % PALETTE.length],
-      values: aggregated.map(b => b.retailers[site] ?? NaN),
     }))
-  }, [allSites, aggregated])
+  }, [allSites])
 
-  // Données prêtes pour Recharts: une entrée par bucket avec toutes les valeurs aplaties
   const chartData = useMemo(() => {
     return aggregated.map(b => {
       const row: Record<string, string | number | null> = {
@@ -219,58 +213,47 @@ export default function RetailerPriceTrends({ evolutionPrix }: RetailerPriceTren
   ]
 
   return (
-    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-        <div className="flex items-start gap-2">
-          <LineChartIcon className="h-5 w-5 text-[#3B6D11] mt-0.5 flex-shrink-0" />
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white leading-tight">
-              {t("ap.retailerTrends")}
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mt-0.5">
-              {t("ap.retailerTrendsDesc")}
-            </p>
-          </div>
-        </div>
-
-        {/* Toggle granularité */}
-        <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-[#242628] border border-gray-200 dark:border-[#2a2c2e]">
-          <Calendar className="h-3.5 w-3.5 text-gray-400 ml-1.5" />
+    <SectionCard
+      title={t("ap.retailerTrends")}
+      subtitle={t("ap.retailerTrendsDesc")}
+      actions={
+        <div className="inline-flex items-center rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]/50 p-0.5">
           {granularityOptions.map(opt => (
             <button
               key={opt.id}
+              type="button"
               onClick={() => setGranularity(opt.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
                 granularity === opt.id
-                  ? "bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white shadow-sm"
-                  : "text-gray-500 dark:text-[#B0B0B0] hover:text-gray-900 dark:hover:text-white"
+                  ? 'bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
               }`}
             >
               {opt.label}
             </button>
           ))}
         </div>
-      </div>
-
+      }
+    >
       {!hasData ? (
-        <div className="text-center py-12 text-gray-500 dark:text-[#B0B0B0] text-sm">
+        <p className="text-sm text-[var(--color-text-secondary)] text-center py-6">
           {t("ap.noTrendData")}
-        </div>
+        </p>
       ) : (
         <>
-          <ResponsiveContainer width="100%" height={360}>
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
-              <CartesianGrid stroke="rgba(120,120,120,0.12)" strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid stroke="currentColor" strokeOpacity={0.08} strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="label"
                 stroke="transparent"
-                tick={{ fill: "#9CA3AF", fontSize: 11 }}
+                tick={{ fill: 'currentColor', fontSize: 11, opacity: 0.6 }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 stroke="transparent"
-                tick={{ fill: "#9CA3AF", fontSize: 11 }}
+                tick={{ fill: 'currentColor', fontSize: 11, opacity: 0.6 }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v: number) =>
@@ -281,34 +264,32 @@ export default function RetailerPriceTrends({ evolutionPrix }: RetailerPriceTren
               <Legend
                 wrapperStyle={{ paddingTop: 8, fontSize: 11 }}
                 iconType="circle"
-                iconSize={8}
+                iconSize={6}
               />
 
-              {/* Référence (votre prix) */}
               <Line
                 type="monotone"
                 dataKey="__reference__"
                 name={t("ap.yourPrice")}
-                stroke={REFERENCE_COLOR}
-                strokeWidth={2.5}
+                stroke="currentColor"
+                strokeWidth={2}
                 connectNulls
-                dot={{ fill: REFERENCE_COLOR, r: 3, strokeWidth: 0 }}
-                activeDot={{ fill: REFERENCE_COLOR, r: 5, strokeWidth: 2, stroke: "#1c1e20" }}
+                dot={{ r: 2.5, strokeWidth: 0, fill: 'currentColor' }}
+                activeDot={{ r: 4, strokeWidth: 0 }}
               />
 
-              {/* Moyenne marché */}
               <Line
                 type="monotone"
                 dataKey="__market__"
                 name={t("ap.avgCompetitors")}
-                stroke={MARKET_COLOR}
+                stroke="currentColor"
+                strokeOpacity={0.4}
                 strokeWidth={1.5}
-                strokeDasharray="6 3"
+                strokeDasharray="4 3"
                 connectNulls
                 dot={false}
               />
 
-              {/* Concessionnaires */}
               {series.map(s => (
                 <Line
                   key={s.site}
@@ -316,34 +297,34 @@ export default function RetailerPriceTrends({ evolutionPrix }: RetailerPriceTren
                   dataKey={s.site}
                   name={s.site}
                   stroke={s.color}
-                  strokeWidth={1.75}
+                  strokeWidth={1.25}
                   connectNulls
                   hide={hiddenSeries.has(s.site)}
-                  dot={{ fill: s.color, r: 2.5, strokeWidth: 0 }}
-                  activeDot={{ fill: s.color, r: 5, strokeWidth: 2, stroke: "#1c1e20" }}
+                  dot={false}
+                  activeDot={{ r: 3.5, strokeWidth: 0 }}
                 />
               ))}
             </LineChart>
           </ResponsiveContainer>
 
-          {/* Toggles concessionnaires */}
           {series.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5 pt-4 border-t border-gray-100 dark:border-[#2a2c2e]">
+            <div className="mt-3 flex flex-wrap gap-1.5 pt-3 border-t border-[var(--color-border-tertiary)]/40">
               {series.map(s => {
                 const hidden = hiddenSeries.has(s.site)
                 return (
                   <button
                     key={s.site}
+                    type="button"
                     onClick={() => toggleSeries(s.site)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
                       hidden
-                        ? "bg-gray-50 dark:bg-[#242628] text-gray-400 dark:text-[#B0B0B0]/60 line-through"
-                        : "bg-gray-100 dark:bg-[#2a2c2e] text-gray-900 dark:text-white"
+                        ? 'bg-transparent text-[var(--color-text-secondary)] opacity-50 line-through'
+                        : 'bg-[var(--color-background-secondary)]/60 text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]'
                     }`}
                   >
                     <span
-                      className="h-2 w-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: hidden ? "#6B7280" : s.color }}
+                      className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: hidden ? 'currentColor' : s.color }}
                     />
                     <span className="truncate max-w-[160px]">{s.site}</span>
                   </button>
@@ -353,6 +334,6 @@ export default function RetailerPriceTrends({ evolutionPrix }: RetailerPriceTren
           )}
         </>
       )}
-    </div>
+    </SectionCard>
   )
 }

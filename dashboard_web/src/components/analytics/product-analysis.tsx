@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
+import SectionCard from "./section-card"
 
 interface Product {
   name: string
@@ -96,229 +97,155 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
 
   const categories = Array.from(new Set(produits.map(p => p.categorie))).filter(Boolean)
 
-  const categorySummary = useMemo(() => {
-    const compared = produits.filter(p => p.hasCompetitor)
-    const summary: Record<string, { total: number; competitif: number; ecartSum: number }> = {}
-    for (const p of compared) {
-      const cat = p.categorie || 'autre'
-      if (!summary[cat]) {
-        summary[cat] = { total: 0, competitif: 0, ecartSum: 0 }
-      }
-      summary[cat].total++
-      const ecart = compareMode === "min" ? p.ecartPourcentageMin : p.ecartPourcentage
-      summary[cat].ecartSum += ecart
-      if (ecart < threshold) summary[cat].competitif++
-    }
-    return Object.entries(summary)
-      .map(([cat, s]) => ({
-        categorie: cat,
-        total: s.total,
-        competitif: s.competitif,
-        ecartMoyen: s.total > 0 ? s.ecartSum / s.total : 0,
-      }))
-      .sort((a, b) => b.total - a.total)
-  }, [produits, threshold, compareMode])
+  const ecartColor = (ecart: number, hasCompetitor: boolean) => {
+    if (!hasCompetitor) return 'text-[var(--color-text-secondary)] opacity-60'
+    if (ecart < -threshold) return 'text-emerald-600 dark:text-emerald-400'
+    if (ecart >= threshold) return 'text-red-600 dark:text-red-400'
+    return 'text-[var(--color-text-secondary)]'
+  }
 
   return (
-    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-        {t("ap.productAnalysis")}
-      </h3>
-      <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-4">
-        {t("ap.productAnalysisDesc")}
-      </p>
-
-      {/* Toggle: Moyenne vs Prix le plus bas */}
-      <div className="mb-4 flex items-center gap-1 rounded-xl border border-gray-200 dark:border-[#2a2c2e] bg-gray-50 dark:bg-[#242628] p-1 w-fit">
-        <button
-          onClick={() => setCompareMode("avg")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            compareMode === "avg"
-              ? "bg-white dark:bg-[#2a2c2e] text-gray-900 dark:text-white shadow-sm"
-              : "text-gray-500 dark:text-[#B0B0B0] hover:text-gray-700 dark:hover:text-white"
-          }`}
-        >
-          {t("ap.compareModeAvg")}
-        </button>
-        <button
-          onClick={() => setCompareMode("min")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            compareMode === "min"
-              ? "bg-white dark:bg-[#2a2c2e] text-gray-900 dark:text-white shadow-sm"
-              : "text-gray-500 dark:text-[#B0B0B0] hover:text-gray-700 dark:hover:text-white"
-          }`}
-        >
-          {t("ap.compareModeMin")}
-        </button>
-      </div>
-
-      {/* Statistiques — 4 blocs distincts */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        <button
-          onClick={() => setShowFilter("compared")}
-          className={`rounded-lg p-3 text-left transition-all border ${
-            showFilter === "compared"
-              ? "ring-2 ring-[#3B6D11] border-[#3B6D11]/30 dark:border-[#3B6D11]/40"
-              : "border-transparent"
-          } bg-[#EAF3DE] dark:bg-[#3B6D11]/15`}
-        >
-          <div className="text-xs font-medium text-[#3B6D11] dark:text-[#3B6D11]">{t("ap.comparedProducts")}</div>
-          <div className="text-xl font-bold text-[#27500A] dark:text-[#3B6D11]">{counts.compared}</div>
-        </button>
-        <div className="rounded-lg p-3 bg-[#EAF3DE] dark:bg-[#3B6D11]/15">
-          <div className="text-xs font-medium text-[#3B6D11] dark:text-[#3B6D11]">{t("ap.competitiveProducts")}</div>
-          <div className="text-xl font-bold text-[#27500A] dark:text-[#3B6D11]">{counts.competitifs}</div>
-        </div>
-        <div className="rounded-lg p-3 bg-[#FCEBEB] dark:bg-[#A32D2D]/15">
-          <div className="text-xs font-medium text-[#A32D2D] dark:text-[#A32D2D]">{t("ap.notCompetitiveProducts")}</div>
-          <div className="text-xl font-bold text-[#791F1F] dark:text-[#A32D2D]">{counts.nonCompetitifs}</div>
-        </div>
-        <button
-          onClick={() => setShowFilter(showFilter === "no-competitor" ? "compared" : "no-competitor")}
-          className={`rounded-lg p-3 text-left transition-all border ${
-            showFilter === "no-competitor"
-              ? "ring-2 ring-gray-400 border-gray-200 dark:border-[#2a2c2e]"
-              : "border-transparent"
-          } bg-gray-50 dark:bg-[#242628]`}
-        >
-          <div className="text-xs font-medium text-gray-500 dark:text-[#B0B0B0]">{t("ap.noCompetitor")}</div>
-          <div className="text-xl font-bold text-gray-500 dark:text-[#B0B0B0]">{counts.sansCompetitor}</div>
-        </button>
-      </div>
-
-      {/* Seuil de compétitivité */}
-      <div className="mb-5 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0]">
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          <span>{t("ap.thresholdLabel")}</span>
-        </div>
-        <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-          <input
-            type="range"
-            min={0}
-            max={20}
-            step={0.5}
-            value={threshold}
-            onChange={e => setThreshold(parseFloat(e.target.value))}
-            className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200 dark:bg-[#2a2c2e] accent-[#3B6D11]"
-          />
-          <span className="tabular-nums text-sm font-bold text-gray-900 dark:text-white min-w-[52px] text-right">
-            {threshold.toFixed(1)}%
+    <SectionCard
+      title={t("ap.productAnalysis")}
+      subtitle={t("ap.productAnalysisDesc")}
+      meta={
+        <div className="flex items-center gap-3 text-xs text-[var(--color-text-secondary)] flex-wrap">
+          <span>
+            <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">{counts.compared}</span>{" "}
+            {t("ap.comparedProducts").toLowerCase()}
+          </span>
+          <span className="opacity-40">·</span>
+          <span>
+            <span className="tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{counts.competitifs}</span>{" "}
+            {t("ap.competitiveProducts").toLowerCase()}
+          </span>
+          <span className="opacity-40">·</span>
+          <span>
+            <span className="tabular-nums font-semibold text-red-600 dark:text-red-400">{counts.nonCompetitifs}</span>{" "}
+            {t("ap.notCompetitiveProducts").toLowerCase()}
+          </span>
+          <span className="opacity-40">·</span>
+          <span>
+            <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">{counts.sansCompetitor}</span>{" "}
+            {t("ap.noCompetitor").toLowerCase()}
           </span>
         </div>
+      }
+      actions={
+        <div className="inline-flex items-center rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]/50 p-0.5">
+          {(["avg", "min"] as const).map(mode => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setCompareMode(mode)}
+              className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                compareMode === mode
+                  ? 'bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+              }`}
+            >
+              {mode === 'avg' ? t("ap.compareModeAvg") : t("ap.compareModeMin")}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {/* Filter toolbar — neutre, simple */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-text-secondary)] opacity-60" />
+          <input
+            type="text"
+            placeholder={t("ap.searchProduct")}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 border border-[var(--color-border-tertiary)] rounded-lg bg-[var(--color-background-primary)]/60 text-[var(--color-text-primary)] text-sm placeholder:text-[var(--color-text-secondary)] focus:outline-none focus:border-[var(--color-border-secondary)]"
+          />
+        </div>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className="px-3 py-1.5 border border-[var(--color-border-tertiary)] rounded-lg bg-[var(--color-background-primary)]/60 text-[var(--color-text-primary)] text-sm"
+        >
+          <option value="all">{t("ap.allCategories")}</option>
+          {categories.map(cat => (
+            <option key={cat} value={cat}>{categoryLabels[cat] || cat}</option>
+          ))}
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as "name" | "prix" | "ecart")}
+          className="px-3 py-1.5 border border-[var(--color-border-tertiary)] rounded-lg bg-[var(--color-background-primary)]/60 text-[var(--color-text-primary)] text-sm"
+        >
+          <option value="ecart">{t("ap.sortByGap")}</option>
+          <option value="prix">{t("ap.sortByPrice")}</option>
+          <option value="name">{t("ap.sortByName")}</option>
+        </select>
+        <div className="inline-flex items-center rounded-lg border border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]/50 p-0.5">
+          {(["compared", "all", "no-competitor"] as const).map(mode => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setShowFilter(mode)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap ${
+                showFilter === mode
+                  ? 'bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+              }`}
+            >
+              {mode === 'all' ? t("ap.filterAll") : mode === 'compared' ? t("ap.filterCompared") : t("ap.filterNoComp")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Seuil */}
+      <div className="mb-4 flex items-center gap-3">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] whitespace-nowrap">
+          {t("ap.thresholdLabel")}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={20}
+          step={0.5}
+          value={threshold}
+          onChange={e => setThreshold(parseFloat(e.target.value))}
+          className="flex-1 h-1 rounded-full appearance-none cursor-pointer bg-[var(--color-background-secondary)] accent-[var(--color-text-primary)]"
+        />
+        <span className="tabular-nums text-xs font-semibold text-[var(--color-text-primary)] min-w-[3rem] text-right">
+          {threshold.toFixed(1)}%
+        </span>
         {threshold !== DEFAULT_THRESHOLD && (
           <button
+            type="button"
             onClick={() => setThreshold(DEFAULT_THRESHOLD)}
-            className="text-[11px] font-medium text-[#3B6D11] hover:text-[#27500A] dark:hover:text-[#3B6D11] transition-colors"
+            className="text-[11px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
           >
             {t("ap.thresholdReset")}
           </button>
         )}
       </div>
 
-      {/* Résumé par catégorie (seulement produits comparés) */}
-      {categorySummary.length > 1 && showFilter !== "no-competitor" && (
-        <div className="mb-4">
-          <div className="text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] mb-2 uppercase tracking-wide">
-            {t("ap.avgGapByCategory")}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {categorySummary.map(cs => {
-              const ecartColor = cs.ecartMoyen < -2
-                ? 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30 text-[#27500A] dark:text-[#3B6D11]'
-                : cs.ecartMoyen > 2
-                ? 'bg-[#FCEBEB] dark:bg-[#A32D2D]/15 border-[#A32D2D]/20 dark:border-[#A32D2D]/30 text-[#791F1F] dark:text-[#A32D2D]'
-                : 'bg-gray-50 dark:bg-[#242628] border-gray-200 dark:border-[#2a2c2e] text-gray-900 dark:text-white'
-              return (
-                <button
-                  key={cs.categorie}
-                  onClick={() => setSelectedCategory(
-                    selectedCategory === cs.categorie ? 'all' : cs.categorie
-                  )}
-                  className={`rounded-lg px-3 py-2 border text-xs font-medium transition-all ${ecartColor} ${
-                    selectedCategory === cs.categorie ? 'ring-2 ring-[#3B6D11]' : ''
-                  }`}
-                >
-                  <span className="font-semibold">{categoryLabels[cs.categorie] || cs.categorie}</span>
-                  <span className="ml-2">
-                    {cs.ecartMoyen >= 0 ? '+' : ''}{cs.ecartMoyen.toFixed(1)}%
-                  </span>
-                  <span className="ml-1 text-gray-500 dark:text-[#B0B0B0]">
-                    ({cs.competitif}/{cs.total})
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Filtres et recherche */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder={t("ap.searchProduct")}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-[#2a2c2e] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white text-sm"
-          />
-        </div>
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="px-3 py-2 border border-gray-200 dark:border-[#2a2c2e] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white text-sm"
-        >
-          <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.allCategories")}</option>
-          {categories.map(cat => (
-            <option key={cat} value={cat} style={{ backgroundColor: "#ffffff", color: "#111827" }}>{categoryLabels[cat] || cat}</option>
-          ))}
-        </select>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as "name" | "prix" | "ecart")}
-          className="px-3 py-2 border border-gray-200 dark:border-[#2a2c2e] rounded-lg bg-white dark:bg-[#1c1e20] text-gray-900 dark:text-white text-sm"
-        >
-          <option value="ecart" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByGap")}</option>
-          <option value="prix" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByPrice")}</option>
-          <option value="name" style={{ backgroundColor: "#ffffff", color: "#111827" }}>{t("ap.sortByName")}</option>
-        </select>
-        <button
-          onClick={() => setShowFilter(showFilter === "all" ? "compared" : "all")}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-            showFilter === "all"
-              ? "bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/30 dark:border-[#3B6D11]/40 text-[#27500A] dark:text-[#3B6D11]"
-              : "border-gray-200 dark:border-[#2a2c2e] text-gray-500 dark:text-[#B0B0B0] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e]"
-          }`}
-        >
-          <Filter className="h-3.5 w-3.5" />
-          {showFilter === "all" ? t("ap.filterAll") : showFilter === "compared" ? t("ap.filterCompared") : t("ap.filterNoComp")}
-        </button>
-      </div>
-
-      {/* Tableau des produits */}
-      <div className="overflow-x-auto">
+      {/* Table */}
+      <div className="overflow-x-auto -mx-5">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200 dark:border-[#2a2c2e]">
-              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] uppercase tracking-wider">
+            <tr className="border-y border-[var(--color-border-tertiary)]/40">
+              <th className="text-left py-2 px-5 text-[11px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
                 {t("ap.headerProduct")}
               </th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] uppercase tracking-wider">
+              <th className="text-left py-2 px-3 text-[11px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
                 {t("ap.headerCategory")}
               </th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] uppercase tracking-wider">
+              <th className="text-right py-2 px-3 text-[11px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
                 {t("ap.headerYourPrice")}
               </th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] uppercase tracking-wider">
+              <th className="text-right py-2 px-3 text-[11px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
                 {compareMode === "min" ? t("ap.headerMinComp") : t("ap.headerAvgComp")}
               </th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] uppercase tracking-wider">
+              <th className="text-right py-2 px-5 text-[11px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
                 {t("ap.headerGap")}
-              </th>
-              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 dark:text-[#B0B0B0] uppercase tracking-wider">
-                {t("ap.headerStatus")}
               </th>
             </tr>
           </thead>
@@ -326,51 +253,26 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
             {paginatedProducts.map((produit, index) => (
               <tr
                 key={index}
-                className="border-b border-gray-100 dark:border-[#2a2c2e] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e] transition-colors"
+                className="border-b border-[var(--color-border-tertiary)]/25 hover:bg-[var(--color-background-hover)]/40 transition-colors"
               >
-                <td className="py-3 px-4 text-sm text-gray-900 dark:text-white">
+                <td className="py-2.5 px-5 text-sm text-[var(--color-text-primary)] truncate max-w-xs">
                   {produit.name}
                 </td>
-                <td className="py-3 px-4 text-sm text-gray-500 dark:text-[#B0B0B0]">
+                <td className="py-2.5 px-3 text-sm text-[var(--color-text-secondary)]">
                   {categoryLabels[produit.categorie] || produit.categorie}
                 </td>
-                <td className="py-3 px-4 text-sm text-right font-semibold text-gray-900 dark:text-white tabular-nums">
+                <td className="py-2.5 px-3 text-sm text-right font-medium text-[var(--color-text-primary)] tabular-nums">
                   {produit.prix.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$
                 </td>
-                <td className="py-3 px-4 text-sm text-right text-gray-500 dark:text-[#B0B0B0] tabular-nums">
+                <td className="py-2.5 px-3 text-sm text-right text-[var(--color-text-secondary)] tabular-nums">
                   {produit.hasCompetitor
                     ? `${getCompPrice(produit).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$`
-                    : '—'
-                  }
+                    : '—'}
                 </td>
-                <td className={`py-3 px-4 text-sm text-right font-semibold tabular-nums ${
-                  !produit.hasCompetitor
-                    ? 'text-gray-400 dark:text-gray-600'
-                    : getEcart(produit) < -threshold
-                    ? 'text-[#3B6D11] dark:text-[#3B6D11]'
-                    : getEcart(produit) >= threshold
-                    ? 'text-[#A32D2D] dark:text-[#A32D2D]'
-                    : 'text-gray-500 dark:text-[#B0B0B0]'
-                }`}>
+                <td className={`py-2.5 px-5 text-sm text-right font-semibold tabular-nums ${ecartColor(getEcart(produit), produit.hasCompetitor)}`}>
                   {produit.hasCompetitor
                     ? `${getEcart(produit) >= 0 ? '+' : ''}${getEcart(produit).toFixed(1)}%`
-                    : '—'
-                  }
-                </td>
-                <td className="py-3 px-4 text-center">
-                  {!produit.hasCompetitor ? (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 dark:bg-[#242628] text-gray-500 dark:text-[#B0B0B0]">
-                      {t("ap.noCompetitorBadge")}
-                    </span>
-                  ) : isCompetitif(produit) ? (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-[#EAF3DE] text-[#27500A] dark:bg-[#3B6D11]/20 dark:text-[#3B6D11]">
-                      {t("ap.competitiveBadge")}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-[#FCEBEB] text-[#791F1F] dark:bg-[#A32D2D]/20 dark:text-[#A32D2D]">
-                      {t("ap.tooExpensive")}
-                    </span>
-                  )}
+                    : '—'}
                 </td>
               </tr>
             ))}
@@ -379,57 +281,34 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
       </div>
 
       {sortedProducts.length === 0 && (
-        <div className="text-center py-8 text-gray-500 dark:text-[#B0B0B0]">
-          {showFilter === "compared"
-            ? t("ap.noCompetitorFound")
-            : t("ap.noProductFound")
-          }
-        </div>
+        <p className="text-center py-6 text-sm text-[var(--color-text-secondary)]">
+          {showFilter === "compared" ? t("ap.noCompetitorFound") : t("ap.noProductFound")}
+        </p>
       )}
 
       {sortedProducts.length > ROWS_PER_PAGE && (
-        <div className="flex items-center justify-between mt-4 px-1">
-          <span className="text-xs text-gray-500 dark:text-[#B0B0B0] tabular-nums">
-            {currentPage * ROWS_PER_PAGE + 1} – {Math.min((currentPage + 1) * ROWS_PER_PAGE, sortedProducts.length)} {t("ap.paginationOf")} {sortedProducts.length}
+        <div className="flex items-center justify-between mt-3">
+          <span className="text-xs text-[var(--color-text-secondary)] tabular-nums">
+            {currentPage * ROWS_PER_PAGE + 1}–{Math.min((currentPage + 1) * ROWS_PER_PAGE, sortedProducts.length)} {t("ap.paginationOf")} {sortedProducts.length}
           </span>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
               disabled={currentPage === 0}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-[#B0B0B0] border border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-white/[0.03] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e] transition disabled:opacity-30 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-30"
             >
               <ChevronLeft className="h-3 w-3" />
               {t("ap.paginationPrev")}
             </button>
-            <div className="flex items-center gap-0.5">
-              {Array.from({ length: totalPages }, (_, i) => i).map(page => {
-                if (totalPages <= 7 || page === 0 || page === totalPages - 1 || Math.abs(page - currentPage) <= 1) {
-                  return (
-                    <button
-                      key={page}
-                      type="button"
-                      onClick={() => setCurrentPage(page)}
-                      className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition ${
-                        page === currentPage
-                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                          : "text-gray-500 dark:text-[#B0B0B0] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e]"
-                      }`}
-                    >
-                      {page + 1}
-                    </button>
-                  )
-                }
-                if (page === 1 && currentPage > 3) return <span key="start-dots" className="px-1 text-xs text-gray-400">…</span>
-                if (page === totalPages - 2 && currentPage < totalPages - 4) return <span key="end-dots" className="px-1 text-xs text-gray-400">…</span>
-                return null
-              })}
-            </div>
+            <span className="px-2 text-xs tabular-nums text-[var(--color-text-secondary)]">
+              {currentPage + 1} / {totalPages}
+            </span>
             <button
               type="button"
               onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={currentPage >= totalPages - 1}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-[#B0B0B0] border border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-white/[0.03] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e] transition disabled:opacity-30 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition disabled:opacity-30"
             >
               {t("ap.paginationNext")}
               <ChevronRight className="h-3 w-3" />
@@ -437,6 +316,6 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
           </div>
         </div>
       )}
-    </div>
+    </SectionCard>
   )
 }

@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
-import { ChevronDown, ChevronUp, TrendingDown, TrendingUp, Minus, Layers } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
+import SectionCard from "./section-card"
 
 interface CategoryStats {
   categorie: string
@@ -36,259 +36,119 @@ const categoryLabels: Record<string, string> = {
   autre: "Autre",
 }
 
-function DetailTooltip({ active, payload }: any) {
-  const { t } = useLanguage()
-  if (!active || !payload?.[0]) return null
-  const d = payload[0].payload
-  return (
-    <div className="bg-[#1c1e20] border border-[#343638] rounded-xl px-4 py-3 shadow-2xl">
-      <p className="text-sm font-medium text-white mb-1.5">{d.fullSite}</p>
-      <div className="space-y-1 text-xs">
-        <div className="flex justify-between gap-6">
-          <span className="text-gray-400">{t("ap.avgPrice")}</span>
-          <span className="font-semibold text-white">
-            {d.prixMoyen.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$
-          </span>
-        </div>
-        <div className="flex justify-between gap-6">
-          <span className="text-gray-400">{t("ap.gap")}</span>
-          <span className={`font-bold ${d.ecart > 2 ? 'text-[#3B6D11]' : d.ecart < -2 ? 'text-[#A32D2D]' : 'text-gray-400'}`}>
-            {d.ecart > 0 ? '+' : ''}{d.ecart.toFixed(1)}%
-          </span>
-        </div>
-        <div className="flex justify-between gap-6">
-          <span className="text-gray-400">{t("ap.products")}</span>
-          <span className="text-white">{d.nombreProduits}</span>
-        </div>
-      </div>
-    </div>
-  )
-}
+const fmtPrice = (v: number) =>
+  v.toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "$"
 
 export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) {
   const { t } = useLanguage()
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
 
-  if (categories.length === 0) {
-    return (
-      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Layers className="h-5 w-5 text-[#3B6D11]" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            {t("ap.categoryAnalysis")}
-          </h3>
-        </div>
-        <div className="text-center py-8 text-gray-500 dark:text-[#B0B0B0]">
-          {t("ap.noCategoryData")}
-        </div>
-      </div>
-    )
-  }
-
-  const getEcartColor = (ecart: number) => {
-    if (ecart < -2) return 'text-[#3B6D11] dark:text-[#3B6D11]'
-    if (ecart > 2) return 'text-[#A32D2D] dark:text-[#A32D2D]'
-    return 'text-gray-500'
-  }
-
-  const getEcartIcon = (ecart: number) => {
-    if (ecart < -2) return <TrendingDown className="h-4 w-4 text-[#3B6D11]" />
-    if (ecart > 2) return <TrendingUp className="h-4 w-4 text-[#A32D2D]" />
-    return <Minus className="h-4 w-4 text-gray-400" />
+  const ecartColor = (ecart: number) => {
+    if (ecart < -2) return 'text-emerald-600 dark:text-emerald-400'
+    if (ecart > 2) return 'text-red-600 dark:text-red-400'
+    return 'text-[var(--color-text-secondary)]'
   }
 
   return (
-    <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <Layers className="h-5 w-5 text-[#3B6D11]" />
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          {t("ap.categoryAnalysis")}
-        </h3>
-      </div>
-      <p className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-5">
-        {t("ap.categoryDesc")}
-      </p>
-
-      {/* Category cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-        {categories.map(cat => {
-          const isExpanded = expandedCategory === cat.categorie
-          const ecart = cat.ecartMoyenPourcentage
-          const isGood = ecart < -2
-          const isBad = ecart > 2
-
-          return (
-            <button
-              key={cat.categorie}
-              onClick={() => setExpandedCategory(isExpanded ? null : cat.categorie)}
-              className={`text-left rounded-xl p-4 border transition-all hover:shadow-sm ${
-                isExpanded
-                  ? 'ring-2 ring-[#3B6D11]/40 border-[#3B6D11]/40 dark:border-[#3B6D11]/50'
-                  : isGood
-                  ? 'border-[#3B6D11]/20 dark:border-[#3B6D11]/30 bg-[#EAF3DE]/50 dark:bg-[#3B6D11]/10'
-                  : isBad
-                  ? 'border-[#A32D2D]/20 dark:border-[#A32D2D]/30 bg-[#FCEBEB]/50 dark:bg-[#A32D2D]/15'
-                  : 'border-gray-200 dark:border-[#2a2c2e] bg-gray-50 dark:bg-[#242628]'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                  {categoryLabels[cat.categorie] || cat.categorie}
-                </span>
-                {getEcartIcon(ecart)}
-              </div>
-
-              <div className={`text-2xl font-bold tabular-nums ${getEcartColor(ecart)}`}>
-                {ecart >= 0 ? '+' : ''}{ecart.toFixed(1)}%
-              </div>
-
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-[11px] text-gray-500">{cat.nombreProduits} produit(s)</span>
-                <div className="flex items-center gap-0.5">
-                  {isExpanded
-                    ? <ChevronUp className="h-3.5 w-3.5 text-gray-400" />
-                    : <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
-                  }
-                </div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Expanded detail */}
-      {expandedCategory && (() => {
-        const cat = categories.find(c => c.categorie === expandedCategory)
-        if (!cat) return null
-
-        const chartData = cat.detailParDetaillant
-          .sort((a, b) => a.ecartPourcentage - b.ecartPourcentage)
-          .map(d => ({
-            site: d.site.length > 22 ? d.site.substring(0, 22) + '...' : d.site,
-            fullSite: d.site,
-            ecart: Number(d.ecartPourcentage.toFixed(1)),
-            prixMoyen: d.prixMoyen,
-            nombreProduits: d.nombreProduits,
-            fill: d.ecartPourcentage > 2 ? '#3B6D11' : d.ecartPourcentage < -2 ? '#A32D2D' : '#6B7280',
-          }))
-
-        return (
-          <div className="border border-gray-200 dark:border-[#2a2c2e] rounded-xl overflow-hidden">
-            {/* Header */}
-            <div className="bg-gray-50 dark:bg-[#242628] px-5 py-3 border-b border-gray-200 dark:border-[#2a2c2e]">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                {categoryLabels[cat.categorie] || cat.categorie}
-              </h4>
-              <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
-                <span>{t("ap.yourAvgPrice")} <strong className="text-[#3B6D11]">{cat.prixMoyenReference > 0 ? `${cat.prixMoyenReference.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
-                <span>{t("ap.compAvgPrice")} <strong className="text-gray-900 dark:text-white">{cat.prixMoyenConcurrents > 0 ? `${cat.prixMoyenConcurrents.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$` : 'N/A'}</strong></span>
-              </div>
-            </div>
-
-            {/* Chart */}
-            {chartData.length > 0 && (
-              <div className="px-5 py-4">
-                <ResponsiveContainer width="100%" height={Math.max(160, chartData.length * 44)}>
-                  <BarChart
-                    data={chartData}
-                    layout="vertical"
-                    margin={{ top: 0, right: 30, bottom: 0, left: 8 }}
-                  >
-                    <XAxis
-                      type="number"
-                      stroke="transparent"
-                      tick={{ fill: '#6B7280', fontSize: 11 }}
-                      tickFormatter={(v: number) => `${v > 0 ? '+' : ''}${v}%`}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="site"
-                      stroke="transparent"
-                      tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                      width={160}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      content={<DetailTooltip />}
-                      cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                    />
-                    <ReferenceLine x={0} stroke="#374151" strokeWidth={1} />
-                    <Bar dataKey="ecart" radius={[4, 4, 4, 4]} barSize={18}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={index} fill={entry.fill} fillOpacity={0.85} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-
-                <div className="mt-2 flex items-center justify-center gap-5 text-[11px] text-gray-500">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-sm bg-[#3B6D11]" />
-                    <span>{t("ap.expensiveLegend")}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-sm bg-[#A32D2D]" />
-                    <span>{t("ap.cheaperLegend")}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Compact table */}
-            {cat.detailParDetaillant.length > 0 && (
-              <div className="border-t border-gray-200 dark:border-[#2a2c2e]">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-[#242628]">
-                      <th className="text-left py-2 px-5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        {t("ap.competitor")}
-                      </th>
-                      <th className="text-right py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        {t("ap.avgPrice")}
-                      </th>
-                      <th className="text-right py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        {t("ap.gap")}
-                      </th>
-                      <th className="text-right py-2 px-5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        {t("ap.prod")}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cat.detailParDetaillant.map((det, i) => (
-                      <tr
-                        key={i}
-                        className="border-t border-gray-100 dark:border-[#2a2c2e] hover:hover:bg-gray-50 dark:hover:bg-[#2a2c2e]"
-                      >
-                        <td className="py-2 px-5 text-sm text-gray-900 dark:text-white">
-                          {det.site}
-                        </td>
-                        <td className="py-2 px-4 text-sm text-right font-medium text-gray-900 dark:text-white tabular-nums">
-                          {det.prixMoyen.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}$
-                        </td>
-                        <td className={`py-2 px-4 text-sm text-right font-semibold tabular-nums ${
-                          det.ecartPourcentage > 2 ? 'text-[#3B6D11] dark:text-[#3B6D11]'
-                            : det.ecartPourcentage < -2 ? 'text-[#A32D2D] dark:text-[#A32D2D]'
-                            : 'text-gray-500'
-                        }`}>
-                          {det.ecartPourcentage >= 0 ? '+' : ''}
-                          {det.ecartPourcentage.toFixed(1)}%
-                        </td>
-                        <td className="py-2 px-5 text-sm text-right text-gray-500 tabular-nums">
-                          {det.nombreProduits}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+    <SectionCard
+      title={t("ap.categoryAnalysis")}
+      subtitle={t("ap.categoryDesc")}
+      bodyClassName="px-0 py-0"
+    >
+      {categories.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-[var(--color-text-secondary)] text-center">
+          {t("ap.noCategoryData")}
+        </p>
+      ) : (
+        <>
+          <div className="px-5 py-2 grid grid-cols-[1fr_5rem_5rem_2rem] gap-3 items-center text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)]/40">
+            <span>{t("ap.headerCategory")}</span>
+            <span className="text-right">{t("ap.products").toLowerCase()}</span>
+            <span className="text-right">{t("ap.gap")}</span>
+            <span />
           </div>
-        )
-      })()}
-    </div>
+          <ul>
+            {categories.map(cat => {
+              const isExpanded = expandedCategory === cat.categorie
+              return (
+                <li key={cat.categorie} className="border-b last:border-b-0 border-[var(--color-border-tertiary)]/30">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCategory(isExpanded ? null : cat.categorie)}
+                    className="w-full grid grid-cols-[1fr_5rem_5rem_2rem] gap-3 items-center px-5 py-2.5 text-sm hover:bg-[var(--color-background-hover)]/40 transition-colors"
+                  >
+                    <span className="text-[var(--color-text-primary)] text-left truncate">
+                      {categoryLabels[cat.categorie] || cat.categorie}
+                    </span>
+                    <span className="text-right tabular-nums text-[var(--color-text-secondary)]">
+                      {cat.nombreProduits}
+                    </span>
+                    <span className={`text-right tabular-nums font-semibold ${ecartColor(cat.ecartMoyenPourcentage)}`}>
+                      {cat.ecartMoyenPourcentage >= 0 ? '+' : ''}{cat.ecartMoyenPourcentage.toFixed(1)}%
+                    </span>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-[var(--color-text-secondary)] transition-transform ${
+                        isExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {isExpanded && (
+                    <div className="px-5 py-3 bg-[var(--color-background-secondary)]/30 border-t border-[var(--color-border-tertiary)]/30">
+                      <div className="flex gap-5 mb-3 text-xs text-[var(--color-text-secondary)] flex-wrap">
+                        <span>
+                          {t("ap.yourAvgPrice")}{" "}
+                          <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
+                            {cat.prixMoyenReference > 0 ? fmtPrice(cat.prixMoyenReference) : 'N/A'}
+                          </span>
+                        </span>
+                        <span>
+                          {t("ap.compAvgPrice")}{" "}
+                          <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
+                            {cat.prixMoyenConcurrents > 0 ? fmtPrice(cat.prixMoyenConcurrents) : 'N/A'}
+                          </span>
+                        </span>
+                      </div>
+
+                      {cat.detailParDetaillant.length > 0 ? (
+                        <ul className="divide-y divide-[var(--color-border-tertiary)]/40">
+                          <li className="grid grid-cols-[1fr_6rem_4rem_3rem] gap-3 items-center py-1.5 text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
+                            <span>{t("ap.competitor")}</span>
+                            <span className="text-right">{t("ap.avgPrice")}</span>
+                            <span className="text-right">{t("ap.gap")}</span>
+                            <span className="text-right">{t("ap.prod")}</span>
+                          </li>
+                          {cat.detailParDetaillant
+                            .sort((a, b) => a.ecartPourcentage - b.ecartPourcentage)
+                            .map((det, i) => (
+                              <li
+                                key={i}
+                                className="grid grid-cols-[1fr_6rem_4rem_3rem] gap-3 items-center py-2 text-sm"
+                              >
+                                <span className="text-[var(--color-text-primary)] truncate">{det.site}</span>
+                                <span className="text-right tabular-nums text-[var(--color-text-primary)]">
+                                  {fmtPrice(det.prixMoyen)}
+                                </span>
+                                <span className={`text-right tabular-nums font-semibold ${ecartColor(det.ecartPourcentage)}`}>
+                                  {det.ecartPourcentage >= 0 ? '+' : ''}{det.ecartPourcentage.toFixed(1)}%
+                                </span>
+                                <span className="text-right tabular-nums text-[var(--color-text-secondary)]">
+                                  {det.nombreProduits}
+                                </span>
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-[var(--color-text-secondary)]">—</p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </>
+      )}
+    </SectionCard>
   )
 }

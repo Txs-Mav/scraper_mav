@@ -1,7 +1,7 @@
 "use client"
 
-import { AlertCircle, Bell, Info } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
+import SectionCard from "./section-card"
 
 interface Alert {
   type: 'concurrent' | 'ecart' | 'nouveau'
@@ -20,129 +20,137 @@ interface AlertsInsightsProps {
   }
 }
 
-export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProps) {
-  const { t, locale } = useLanguage()
-
-  const getSeverityColor = (severite: string) => {
-    switch (severite) {
-      case 'high':
-        return 'bg-[#FCEBEB] dark:bg-[#A32D2D]/15 border-[#A32D2D]/20 dark:border-[#A32D2D]/30'
-      case 'medium':
-        return 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-900'
-      default:
-        return 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30'
-    }
-  }
-
-  const getSeverityIcon = (severite: string) => {
-    switch (severite) {
-      case 'high':
-        return <AlertCircle className="h-5 w-5 text-[#A32D2D] dark:text-[#A32D2D]" />
-      case 'medium':
-        return <Bell className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-      default:
-        return <Info className="h-5 w-5 text-[#3B6D11]" />
-    }
-  }
-
-  const insights: Array<{ message: string; type: 'info' | 'warning' | 'success' }> = []
-
+// Sparkline ultra-compact, sans dépendance Recharts (vectoriel pur).
+function Sparkline({ data, className = "" }: { data: number[]; className?: string }) {
+  if (!data.length) return null
+  const w = 80
+  const h = 24
+  const max = Math.max(1, ...data)
+  const min = Math.min(...data)
+  const range = max - min || 1
+  const stepX = data.length > 1 ? w / (data.length - 1) : w
+  const points = data
+    .map((v, i) => {
+      const x = i * stepX
+      const y = h - ((v - min) / range) * h
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(" ")
+  const areaPoints = `0,${h} ${points} ${w},${h}`
   return (
-    <div className="space-y-6">
-      {/* Insights automatiques */}
-      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          {t("ap.insights")}
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
-            <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
-              {t("ap.avgPriceStat")}
-            </div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {stats.prixMoyen.toFixed(2)}$
-            </div>
-          </div>
-          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
-            <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
-              {t("ap.hoursSaved")}
-            </div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {stats.heuresEconomisees.toFixed(1)}h
-            </div>
-            <div className="text-xs text-gray-500 dark:text-[#B0B0B0] mt-1">
-              {t("ap.perVehicle")}
-            </div>
-          </div>
-          <div className="bg-gray-50 dark:bg-[#242628] rounded-lg p-4">
-            <div className="text-sm text-gray-500 dark:text-[#B0B0B0] mb-1">
-              {t("ap.scrapesDone")}
-            </div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {stats.nombreScrapes}
-            </div>
-          </div>
-        </div>
-        {insights.length > 0 && (
-          <div className="mt-4 space-y-2">
-            {insights.map((insight, index) => (
-              <div
-                key={index}
-                className={`p-3 rounded-lg border ${
-                  insight.type === 'warning'
-                    ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-900'
-                    : insight.type === 'success'
-                    ? 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30'
-                    : 'bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20 dark:border-[#3B6D11]/30'
-                }`}
-              >
-                <div className="text-sm text-gray-900 dark:text-white">
-                  {insight.message}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Alertes */}
-      <div className="bg-white dark:bg-[#1c1e20] rounded-2xl border border-gray-200 dark:border-[#2a2c2e] p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          {t("ap.alertsNotif")}
-        </h3>
-        {alertes.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-[#B0B0B0]">
-            {t("ap.noAlerts")}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {alertes.map((alerte, index) => (
-              <div
-                key={index}
-                className={`flex items-start gap-3 p-4 rounded-lg border ${getSeverityColor(alerte.severite)}`}
-              >
-                {getSeverityIcon(alerte.severite)}
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                    {alerte.message}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-[#B0B0B0]">
-                    {new Date(alerte.date).toLocaleDateString(locale === 'en' ? 'en-CA' : 'fr-CA', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className={`text-[var(--color-text-primary)] ${className}`}
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <polygon points={areaPoints} fill="currentColor" fillOpacity="0.1" />
+      <polyline points={points} fill="none" stroke="currentColor" strokeOpacity="0.7" strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   )
 }
 
+export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProps) {
+  const { t, locale } = useLanguage()
+  const lc = locale === 'en' ? 'en-CA' : 'fr-CA'
 
+  const scrapeCounts = stats.scrapesParJour.map(d => d.count)
+  const totalScrapes = stats.nombreScrapes
+
+  // 3 KPI principaux — chiffres XL, hiérarchie claire
+  const kpis: Array<{ label: string; value: string; hint?: string; sparkline?: number[] }> = [
+    {
+      label: t("ap.avgPriceStat"),
+      value: stats.prixMoyen > 0
+        ? `${stats.prixMoyen.toLocaleString(lc, { maximumFractionDigits: 0 })}$`
+        : '—',
+    },
+    {
+      label: t("ap.hoursSaved"),
+      value: `${stats.heuresEconomisees.toFixed(1)}h`,
+      hint: t("ap.perVehicle"),
+    },
+    {
+      label: t("ap.scrapesDone"),
+      value: totalScrapes.toLocaleString(lc),
+      sparkline: scrapeCounts.length > 1 ? scrapeCounts : undefined,
+    },
+  ]
+
+  return (
+    <SectionCard
+      title={t("ap.insights")}
+      meta={
+        alertes.length > 0 ? (
+          <span className="text-xs text-[var(--color-text-secondary)] tabular-nums">
+            <span className="font-semibold text-[var(--color-text-primary)]">{alertes.length}</span>{" "}
+            {t("ap.alertsNotif").toLowerCase()}
+          </span>
+        ) : undefined
+      }
+      details={
+        alertes.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-secondary)] text-center py-2">
+            {t("ap.noAlerts")}
+          </p>
+        ) : (
+          <ul className="divide-y divide-[var(--color-border-tertiary)]/40">
+            {alertes.slice(0, 8).map((alerte, index) => (
+              <li key={index} className="py-2.5 flex items-start gap-3">
+                <span
+                  className={`mt-1 h-1.5 w-1.5 rounded-full shrink-0 ${
+                    alerte.severite === 'high'
+                      ? 'bg-red-500'
+                      : alerte.severite === 'medium'
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-[var(--color-text-primary)] leading-snug">
+                    {alerte.message}
+                  </p>
+                  <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5 tabular-nums">
+                    {new Date(alerte.date).toLocaleDateString(lc, {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+      detailsLabel={
+        alertes.length > 0 ? `${t("ap.alertsNotif")} (${alertes.length})` : t("ap.alertsNotif")
+      }
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-5 gap-y-4">
+        {kpis.map((k, i) => (
+          <div
+            key={i}
+            className={`flex flex-col ${i > 0 ? 'sm:pl-5 sm:border-l border-[var(--color-border-tertiary)]/40' : ''}`}
+          >
+            <span className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
+              {k.label}
+            </span>
+            <span className="text-3xl font-extrabold tabular-nums leading-none mt-1.5 text-[var(--color-text-primary)] tracking-tight">
+              {k.value}
+            </span>
+            {k.hint && (
+              <span className="text-[11px] text-[var(--color-text-secondary)] mt-1 opacity-75">
+                {k.hint}
+              </span>
+            )}
+            {k.sparkline && (
+              <Sparkline data={k.sparkline} className="mt-2 h-6 w-full" />
+            )}
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  )
+}

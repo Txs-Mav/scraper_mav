@@ -712,6 +712,12 @@ const translations = {
     "ap.granularityWeek": "Semaine",
     "ap.granularityMonth": "Mois",
 
+    "ap.peakDay": "Pic",
+    "ap.detailsToggle": "Décortiquer",
+    "ap.detailsCollapse": "Replier",
+    "ap.factorSource": "Catégorie",
+    "ap.factorCount": "Produits",
+
     // ── Alerts / Activity page ──
     "alerts.title": "Activité récente",
     "alerts.now": "À l'instant",
@@ -1577,6 +1583,12 @@ const translations = {
     "ap.granularityDay": "Day",
     "ap.granularityWeek": "Week",
     "ap.granularityMonth": "Month",
+
+    "ap.peakDay": "Peak",
+    "ap.detailsToggle": "Break down",
+    "ap.detailsCollapse": "Collapse",
+    "ap.factorSource": "Category",
+    "ap.factorCount": "Products",
 
     // ── Alerts / Activity page ──
     "alerts.title": "Recent Activity",
