@@ -380,6 +380,53 @@ def _process_url(
         )
         published = publish_result is not None
 
+    # Garde défensive : détection des scrapers "orphelins"
+    # Cas problématique : le fichier Python a été généré sur disque +
+    # référencé dans `_generated_registry.py`, mais la ligne `shared_scrapers`
+    # n'a PAS été créée. Symptôme aval : `scrape_single_site.py --slug X` plante
+    # avec "Slug introuvable dans shared_scrapers" et le workflow GitHub Action
+    # horaire échoue silencieusement à chaque tick. Cf. cas excelmoto (commits
+    # 7b8ba6d + a1b0cc9 pour le rattrapage SQL manuel).
+    if publish and not published and generated and generated.file_path:
+        scraper_exists = Path(generated.file_path).exists()
+        if scraper_exists:
+            score = report.score
+            below_threshold = score < publish_threshold
+            supabase_env_set = bool(
+                (os.environ.get("SUPABASE_URL")
+                 or os.environ.get("NEXT_PUBLIC_SUPABASE_URL"))
+                and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+            )
+
+            print()
+            print(f"  {'!' * 68}")
+            print(f"  !! SCRAPER ORPHELIN DÉTECTÉ — slug='{generated.slug}'")
+            print(f"  {'!' * 68}")
+            print(f"  !  Le fichier Python existe ({generated.file_path})")
+            print(f"  !  mais aucune ligne 'shared_scrapers' n'a été créée en Supabase.")
+            print(f"  !")
+            print(f"  !  Conséquence : tout cron qui appelle")
+            print(f"  !    scripts/scrape_single_site.py --slug {generated.slug}")
+            print(f"  !  va échouer avec 'Slug introuvable dans shared_scrapers'.")
+            print(f"  !")
+            print(f"  !  Cause probable :")
+            if final_verdict_status == "fail":
+                print(f"  !    • Claude (supervisor) a rejeté la publication (verdict final fail).")
+            if below_threshold:
+                print(f"  !    • Score {score}/100 < seuil {publish_threshold} "
+                      f"→ relance avec --publish-threshold {max(50, score - 5)} "
+                      f"ou corrige les bugs détectés puis re-génère.")
+            if not supabase_env_set:
+                print(f"  !    • SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY absents de l'env "
+                      f"→ exporte-les puis relance.")
+            if not below_threshold and supabase_env_set and final_verdict_status != "fail":
+                print(f"  !    • Erreur réseau Supabase ou conflit RLS (voir logs publisher ci-dessus).")
+            print(f"  !")
+            print(f"  !  Solution rapide : crée une migration SQL de rattrapage")
+            print(f"  !    dashboard_web/supabase/migration_shared_scrapers_{generated.slug}.sql")
+            print(f"  !  (cf. migration_shared_scrapers_morin_sports.sql comme modèle).")
+            print(f"  {'!' * 68}")
+
     # --- Phase 6 : Génération du workflow GitHub Action dédié ---
     # On crée un workflow YAML par scraper qui le scrape toutes les heures via
     # `scripts/scrape_single_site.py`. Couche de redondance vis-à-vis du cron
@@ -467,8 +514,13 @@ def _process_url(
             print(f"    - {w}")
     if final_verdict_status == "fail":
         print(f"  Statut     : REJETÉ par Claude (verdict final fail) — review manuelle requise")
-    elif publish and report.score >= publish_threshold:
+    elif publish and published:
         print(f"  Statut     : PENDING (à valider sur /admin/scrapers)")
+    elif publish and not published and generated and generated.file_path \
+            and Path(generated.file_path).exists():
+        print(f"  Statut     : ⚠️ ORPHELIN — Python sur disque mais PAS dans shared_scrapers")
+        print(f"               → crée migration_shared_scrapers_{generated.slug}.sql "
+              f"(voir warning ci-dessus)")
     elif publish:
         print(f"  Statut     : score < seuil ({publish_threshold}) — non publié")
     if supervisor.enabled:
