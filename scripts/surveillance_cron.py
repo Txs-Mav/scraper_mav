@@ -68,9 +68,19 @@ def main():
         logger=print,
     )
 
+    # Soft-fail sur les pannes d'infra (Supabase/Cloudflare injoignable ou 5xx) :
+    # une run cron ne doit pas virer au rouge pour un hoquet transitoire — la
+    # prochaine run (toutes les heures) reprendra le relais. On sort en code 0.
     if resp is None:
-        print("❌ Supabase injoignable après plusieurs tentatives — abandon")
-        sys.exit(1)
+        print("⚠️  Supabase injoignable après plusieurs tentatives "
+              "(panne réseau/timeout) — run ignorée, reprise à la prochaine heure")
+        sys.exit(0)
+
+    if resp.status_code >= 500:
+        print(f"⚠️  Supabase indisponible: HTTP {resp.status_code} "
+              f"(erreur côté serveur/Cloudflare) — run ignorée, "
+              f"reprise à la prochaine heure")
+        sys.exit(0)
 
     if resp.status_code != 200:
         print(f"❌ Erreur lecture scraper_config: {resp.status_code} — {resp.text[:300]}")
