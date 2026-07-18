@@ -3,14 +3,17 @@
 import { useState, useEffect, Suspense, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Bricolage_Grotesque } from "next/font/google"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage, LanguageToggle } from "@/contexts/language-context"
 import {
-  Loader2, Eye, EyeOff, ArrowRight, Check, Sparkles, Zap, Crown,
+  Loader2, Eye, EyeOff, ArrowRight, Check, ChevronDown, Sparkles, Zap, Crown,
   Shield, Mail, Lock, Store, Car, Anchor, Bike, Shirt, Cpu, MoreHorizontal,
 } from "lucide-react"
 import Image from "next/image"
 import type { TranslationKey } from "@/lib/translations"
+
+const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["600", "700"] })
 
 function getPasswordStrength(pw: string, t: (key: TranslationKey) => string) {
   if (!pw) return { score: 0, label: "", color: "" }
@@ -36,6 +39,7 @@ function CreateAccountContent() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [businessType, setBusinessType] = useState<string>("recreational_vehicles")
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false)
+  const [plansOpen, setPlansOpen] = useState(false)
   const [promoCode, setPromoCode] = useState("")
   const [promoCodeValid, setPromoCodeValid] = useState<boolean | null>(null)
   const [validatingPromo, setValidatingPromo] = useState(false)
@@ -79,6 +83,8 @@ function CreateAccountContent() {
       description: t("plan.freeDesc"),
       features: [t("plan.freeF1"), t("plan.freeF2"), t("plan.freeF3"), t("plan.freeF4")],
       cta: t("plan.freeCta"),
+      contactOnly: false,
+      highlighted: false,
     },
     {
       id: "pro",
@@ -99,6 +105,7 @@ function CreateAccountContent() {
       period: t("plan.perMonth"),
       icon: Crown,
       contactOnly: true,
+      highlighted: false,
       description: t("plan.ultimateDesc"),
       features: [t("plan.ultimateF1"), t("plan.ultimateF2"), t("plan.ultimateF3"), t("plan.ultimateF4"), t("plan.ultimateF5"), t("plan.ultimateF6")],
       cta: t("plan.ultimateCta"),
@@ -159,165 +166,219 @@ function CreateAccountContent() {
     } catch (err: any) { setError(err.message || t("register.unknownError")); setLoading(false) }
   }
 
-  const inputClass = "w-full h-10 px-3 text-[14px] border border-gray-200 dark:border-white/[0.08] rounded-[8px] bg-white dark:bg-white/[0.03] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
+  const inputClass = "w-full h-10 px-3 text-[14px] border border-gray-200 dark:border-white/[0.08] rounded-lg bg-white dark:bg-white/[0.03] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 transition-all"
+  const labelClass = "block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+
+  const activePlan = PLANS.find((p) => p.id === effectivePlan) ?? PLANS[0]
+  const ActivePlanIcon = activePlan.icon
 
   return (
-    <div className="min-h-screen bg-[#fafbfc] dark:bg-[#111314]">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0b0c0d]">
       {/* ── Header ── */}
-      <header className="px-6 py-4 border-b border-gray-100 dark:border-[#2a2c2e] bg-white/80 dark:bg-[#111314]/80 backdrop-blur-sm sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="relative h-8 w-8 flex-shrink-0 rounded-[8px] bg-white dark:bg-[#1c1e20] shadow-sm border border-gray-100 dark:border-[#2a2c2e] overflow-hidden">
-              <Image src="/Go-Data.svg" alt="GO-DATA" fill sizes="32px" className="object-contain" />
-            </div>
-            <span className="text-[15px] font-semibold text-gray-900 dark:text-white tracking-tight">GO-DATA</span>
+      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/80 backdrop-blur-md dark:border-white/10 dark:bg-[#0b0c0d]/80">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span className="relative h-7 w-7 overflow-hidden rounded-md ring-1 ring-gray-200 dark:ring-white/10">
+              <Image src="/Go-Data.svg" alt="Go-Data" fill sizes="28px" className="object-contain" />
+            </span>
+            <span className="text-[15px] font-semibold tracking-tight text-gray-900 dark:text-white">Go-Data</span>
           </Link>
           <div className="flex items-center gap-4">
             <LanguageToggle />
-            <span className="text-[13px] text-gray-400 hidden sm:block">{t("register.alreadyAccount")}</span>
-            <Link href="/login"
-              className="h-8 px-3.5 flex items-center text-[13px] font-medium text-gray-700 dark:text-gray-300 rounded-[8px] border border-gray-200 dark:border-white/[0.08] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all">
+            <span className="hidden text-[13px] text-gray-400 sm:block">{t("register.alreadyAccount")}</span>
+            <Link
+              href="/login"
+              className="flex h-9 items-center rounded-lg border border-gray-200 px-3.5 text-[13px] font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/[0.04]"
+            >
               {t("register.signIn")}
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="px-6 py-12 md:py-16">
-        {/* ── Hero ── */}
-        <div className="text-center max-w-2xl mx-auto mb-12">
-          <h1 className="text-[28px] md:text-[36px] font-bold text-gray-900 dark:text-white tracking-tight leading-[1.15]">
-            {t("register.title")}
-          </h1>
-          <p className="mt-3 text-[15px] text-gray-500 dark:text-gray-400">
-            {t("register.subtitle")}
-          </p>
-        </div>
-
-        {/* ── Plan cards ── */}
-        {/* Seul le plan gratuit se crée en ligne. Les plans payants s'activent
-            par l'équipe (contact) ou instantanément via un code magique. */}
-        <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-4 mb-16">
-          {PLANS.map((plan) => {
-            const Icon = plan.icon
-            const isPro = plan.highlighted
-            const isActive = plan.id === effectivePlan
-
-            return (
-              <div key={plan.id} className="relative flex flex-col">
-                {isPro && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1 text-[11px] font-semibold tracking-wide uppercase rounded-full bg-emerald-600 text-white whitespace-nowrap">
-                    {t("register.mostPopular")}
-                  </span>
-                )}
-
-                <div
-                  className={`flex-1 flex flex-col text-left p-6 rounded-[12px] border transition-all duration-200 ${
-                    isActive
-                      ? "border-emerald-500 bg-white dark:bg-[#1c1e20] shadow-lg shadow-emerald-500/[0.08] ring-1 ring-emerald-500/20"
-                      : "border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20] shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-[10px] ${
-                      isActive || isPro ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-gray-50 dark:bg-[#1c1e20]"
-                    }`}>
-                      <Icon className={`h-5 w-5 ${
-                        isActive || isPro ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"
-                      }`} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-[15px] text-gray-900 dark:text-white">{plan.name}</h3>
-                      <p className="text-[12px] text-gray-400 dark:text-gray-500">{plan.description}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-baseline gap-1 mb-6">
-                    <span className="text-[32px] leading-none font-bold tabular-nums text-gray-900 dark:text-white">
-                      {plan.price}$
-                    </span>
-                    <span className="text-[13px] text-gray-400 dark:text-gray-500">{plan.period}</span>
-                  </div>
-
-                  <ul className="space-y-2.5 mb-6 flex-1">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5">
-                        <Check className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                          isActive || isPro ? "text-emerald-500 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"
-                        }`} />
-                        <span className="text-[13px] text-gray-600 dark:text-gray-400 leading-snug">{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  {plan.contactOnly ? (
-                    isActive ? (
-                      <div className="w-full h-10 flex items-center justify-center gap-1.5 rounded-[8px] text-[13px] font-semibold bg-emerald-600 text-white shadow-sm shadow-emerald-600/20">
-                        <Sparkles className="h-4 w-4" />
-                        {t("register.activatedByCode")}
-                      </div>
-                    ) : (
-                      <>
-                        <Link
-                          href="/contact?topic=sales"
-                          className="w-full h-10 flex items-center justify-center gap-1.5 rounded-[8px] text-[13px] font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 transition-all"
-                        >
-                          {plan.cta}
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </Link>
-                        <p className="mt-2 text-center text-[11px] text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1">
-                          <Sparkles className="h-3 w-3" />
-                          {t("register.paidPlanHint")}
-                        </p>
-                      </>
-                    )
-                  ) : (
-                    <div className={`w-full h-10 flex items-center justify-center rounded-[8px] text-[13px] font-semibold ${
-                      isActive
-                        ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
-                        : "bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-gray-300"
-                    }`}>
-                      {isActive
-                        ? <span className="flex items-center gap-1.5"><Check className="h-4 w-4" /> {t("register.selected")}</span>
-                        : plan.cta}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* ── Form ── */}
-        <div className="max-w-md mx-auto">
-          <div className="text-center mb-8">
-            <h2 className="text-[20px] font-semibold text-gray-900 dark:text-white">{t("register.yourInfo")}</h2>
-            <p className="mt-1 text-[13px] text-gray-400 dark:text-gray-500">
-              {t("register.startWith")}{" "}
-              <span className="font-medium text-gray-600 dark:text-gray-300">{PLANS.find((p) => p.id === effectivePlan)?.name}</span>
+      <main className="px-6 py-10 md:py-14">
+        <div className="mx-auto max-w-lg">
+          {/* ── Titre ── */}
+          <div className="text-center">
+            <h1 className={`${display.className} text-3xl font-bold tracking-tight text-gray-900 md:text-4xl dark:text-white`}>
+              {t("register.title")}
+            </h1>
+            <p className="mt-2.5 text-[15px] text-gray-500 dark:text-gray-400">
+              {t("register.subtitle")}
             </p>
           </div>
 
-          <div className="rounded-[12px] border border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20] shadow-sm p-6 sm:p-8">
-            <form className="space-y-4" onSubmit={handleSubmit}>
+          {/* ── Carte plan (accordéon) ── */}
+          <section className="mt-8 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#131517]">
+            <button
+              type="button"
+              onClick={() => setPlansOpen((v) => !v)}
+              aria-expanded={plansOpen}
+              className="flex w-full items-center gap-4 p-5 text-left transition-colors hover:bg-gray-50/60 dark:hover:bg-white/[0.02]"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-600 text-white dark:bg-orange-500 dark:text-black">
+                <ActivePlanIcon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-medium uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500">
+                  {t("register.yourPlan")}
+                </span>
+                <span className={`${display.className} block text-lg font-bold text-gray-900 dark:text-white`}>
+                  {activePlan.name}
+                </span>
+                <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                  {effectivePlan === "ultime" ? t("register.activatedByCode") : t("register.freeSummary")}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-semibold text-orange-600 dark:text-orange-400">
+                <span className="hidden sm:inline">{t("register.comparePlans")}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${plansOpen ? "rotate-180" : ""}`} />
+              </span>
+            </button>
+
+            {/* Déroulement animé des 3 plans */}
+            <div
+              className={`grid transition-all duration-500 ease-in-out ${
+                plansOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div className="overflow-hidden">
+                <div className="space-y-3 px-5 pb-5">
+                  {PLANS.map((plan) => {
+                    const Icon = plan.icon
+                    const isActive = plan.id === effectivePlan
+                    return (
+                      <div
+                        key={plan.id}
+                        className={`rounded-xl border p-4 transition-colors ${
+                          isActive
+                            ? "border-orange-600/50 bg-orange-50/50 dark:border-orange-400/40 dark:bg-orange-400/[0.06]"
+                            : "border-gray-200 dark:border-white/10"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                              isActive
+                                ? "bg-orange-600 text-white dark:bg-orange-500 dark:text-black"
+                                : "bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400"
+                            }`}>
+                              <Icon className="h-4 w-4" />
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[15px] font-semibold text-gray-900 dark:text-white">{plan.name}</span>
+                                {plan.highlighted && (
+                                  <span className="rounded-full bg-orange-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white dark:bg-orange-500 dark:text-black">
+                                    {t("register.mostPopular")}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">{plan.description}</div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="text-xl font-bold tabular-nums text-gray-900 dark:text-white">{plan.price}$</span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500"> {plan.period}</span>
+                          </div>
+                        </div>
+
+                        <ul className="mt-3 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+                          {plan.features.map((f) => (
+                            <li key={f} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400" />
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+
+                        {plan.contactOnly && (
+                          isActive ? (
+                            <div className="mt-3 flex h-9 items-center justify-center gap-1.5 rounded-lg bg-orange-600 text-[13px] font-semibold text-white dark:bg-orange-500 dark:text-black">
+                              <Sparkles className="h-4 w-4" />
+                              {t("register.activatedByCode")}
+                            </div>
+                          ) : (
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <p className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
+                                <Sparkles className="h-3 w-3" />
+                                {t("register.paidPlanHint")}
+                              </p>
+                              <Link
+                                href="/contact?topic=sales"
+                                className="group inline-flex shrink-0 items-center gap-1.5 text-[13px] font-semibold text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
+                              >
+                                {plan.cta}
+                                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                              </Link>
+                            </div>
+                          )
+                        )}
+                        {!plan.contactOnly && isActive && (
+                          <div className="mt-3 flex h-9 items-center justify-center gap-1.5 rounded-lg bg-orange-600 text-[13px] font-semibold text-white dark:bg-orange-500 dark:text-black">
+                            <Check className="h-4 w-4" />
+                            {t("register.selected")}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Code magique */}
+            <div className="border-t border-gray-100 bg-orange-50/50 px-5 py-4 dark:border-white/[0.06] dark:bg-orange-400/[0.04]">
+              <label className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-800 dark:text-gray-200">
+                <Sparkles className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
+                {t("register.magicCodeQuestion")}
+              </label>
+              <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{t("register.magicCodeHint")}</p>
+              <div className="mt-2.5 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoCodeValid(null) }}
+                  onBlur={validatePromoCode}
+                  className={inputClass}
+                  placeholder={t("register.promoPlaceholder")}
+                />
+                {validatingPromo && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gray-400" />}
+                {promoCodeValid === true && <Check className="h-4 w-4 shrink-0 text-emerald-500" />}
+              </div>
+              {promoCodeValid === true && (
+                <p className="mt-1.5 text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
+                  {t("register.promoActivated")}
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* ── Carte informations ── */}
+          <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-7 dark:border-white/10 dark:bg-[#131517]">
+            <h2 className={`${display.className} text-lg font-bold text-gray-900 dark:text-white`}>
+              {t("register.yourInfo")}
+            </h2>
+
+            <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
               {successMessage && (
-                <div className="rounded-[8px] p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
                   <p className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">{successMessage}</p>
-                  <p className="text-[12px] mt-1 text-emerald-600/70">{t("register.openEmail")}</p>
+                  <p className="mt-1 text-[12px] text-emerald-600/70">{t("register.openEmail")}</p>
                 </div>
               )}
               {error && (
-                <div className={`rounded-[8px] p-3 ${
+                <div className={`rounded-lg p-3 ${
                   accountExists
-                    ? "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40"
-                    : "bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40"
+                    ? "border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+                    : "border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20"
                 }`}>
                   <p className={`text-[13px] ${accountExists ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{error}</p>
                 </div>
               )}
 
               <div>
-                <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("register.businessType")}</label>
+                <label className={labelClass}>{t("register.businessType")}</label>
                 <div className="relative">
                   <button
                     type="button"
@@ -327,17 +388,17 @@ function CreateAccountContent() {
                     className={`${inputClass} flex items-center justify-between text-left`}
                   >
                     <span className="flex items-center gap-2">
-                      <SelectedBusinessIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      <span className="text-[14px] text-gray-900 dark:text-white truncate">
+                      <SelectedBusinessIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                      <span className="truncate text-[14px] text-gray-900 dark:text-white">
                         {t(selectedBusiness.labelKey)}
                       </span>
                     </span>
-                    <ArrowRight className={`h-3.5 w-3.5 text-gray-400 transition-transform ${businessTypeOpen ? "rotate-90" : ""}`} />
+                    <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${businessTypeOpen ? "rotate-180" : ""}`} />
                   </button>
                   {businessTypeOpen && (
                     <div
                       role="listbox"
-                      className="absolute z-30 mt-1 w-full rounded-[8px] border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-[#1c1e20] shadow-lg overflow-hidden"
+                      className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-white/10 dark:bg-[#1a1c1e]"
                     >
                       {BUSINESS_TYPES.map((bt) => {
                         const Icon = bt.icon
@@ -354,25 +415,25 @@ function CreateAccountContent() {
                               setBusinessType(bt.id)
                               setBusinessTypeOpen(false)
                             }}
-                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] transition-colors ${
+                            className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] transition-colors ${
                               bt.locked
-                                ? "opacity-60 cursor-not-allowed bg-gray-50/60 dark:bg-white/[0.02]"
+                                ? "cursor-not-allowed bg-gray-50/60 opacity-60 dark:bg-white/[0.02]"
                                 : isSelected
-                                  ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"
-                                  : "hover:bg-gray-50 dark:hover:bg-white/[0.04] text-gray-700 dark:text-gray-200"
+                                  ? "bg-orange-50 text-orange-700 dark:bg-orange-400/[0.08] dark:text-orange-300"
+                                  : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]"
                             }`}
                           >
-                            <span className="flex items-center gap-2 min-w-0">
-                              <Icon className={`h-4 w-4 flex-shrink-0 ${bt.locked ? "text-gray-400 dark:text-gray-500" : "text-emerald-600 dark:text-emerald-400"}`} />
+                            <span className="flex min-w-0 items-center gap-2">
+                              <Icon className={`h-4 w-4 shrink-0 ${bt.locked ? "text-gray-400 dark:text-gray-500" : "text-orange-600 dark:text-orange-400"}`} />
                               <span className="truncate">{t(bt.labelKey)}</span>
                             </span>
                             {bt.locked ? (
-                              <span className="flex items-center gap-1 flex-shrink-0 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                              <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
                                 <Lock className="h-3 w-3" />
                                 {t("register.businessTypeComingSoon")}
                               </span>
                             ) : isSelected ? (
-                              <Check className="h-4 w-4 flex-shrink-0 text-emerald-500" />
+                              <Check className="h-4 w-4 shrink-0 text-orange-600 dark:text-orange-400" />
                             ) : null}
                           </button>
                         )
@@ -380,27 +441,28 @@ function CreateAccountContent() {
                     </div>
                   )}
                 </div>
-                <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                <p className="mt-1.5 flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
                   <Lock className="h-3 w-3" />
                   {t("register.businessTypeHint")}
                 </p>
               </div>
 
-              <div>
-                <label htmlFor="name" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("register.fullName")}</label>
-                <input id="name" type="text" required value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="Jean Dupont" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="name" className={labelClass}>{t("register.fullName")}</label>
+                  <input id="name" type="text" required value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="Jean Dupont" />
+                </div>
+                <div>
+                  <label htmlFor="email" className={labelClass}>{t("email")}</label>
+                  <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} placeholder="vous@entreprise.com" />
+                </div>
               </div>
 
               <div>
-                <label htmlFor="email" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("email")}</label>
-                <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} placeholder="vous@entreprise.com" />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("password")}</label>
+                <label htmlFor="password" className={labelClass}>{t("password")}</label>
                 <div className="relative">
                   <input id="password" type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputClass} pr-10`} placeholder={t("register.minChars")} />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-300">
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -419,56 +481,49 @@ function CreateAccountContent() {
               </div>
 
               <div>
-                <label htmlFor="confirmPassword" className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t("register.confirmPassword")}</label>
+                <label htmlFor="confirmPassword" className={labelClass}>{t("register.confirmPassword")}</label>
                 <div className="relative">
                   <input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                     className={`${inputClass} pr-10 ${
                       confirmPassword && !passwordsMatch ? "!border-red-300 dark:!border-red-500/30" : passwordsMatch ? "!border-emerald-300 dark:!border-emerald-500/30" : ""
                     }`}
                     placeholder="••••••••" />
-                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-300">
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 {confirmPassword && !passwordsMatch && <p className="mt-1 text-[12px] text-red-500">{t("register.passwordMismatch")}</p>}
               </div>
 
-              <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5 text-gray-300 dark:text-gray-600" />
-                  <input type="text" value={promoCode}
-                    onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoCodeValid(null) }}
-                    onBlur={validatePromoCode}
-                    className="flex-1 h-8 px-2.5 text-[13px] border border-gray-200 dark:border-white/[0.08] rounded-[6px] bg-gray-50/50 dark:bg-white/[0.02] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 focus:bg-white dark:focus:bg-white/[0.04] transition-all"
-                    placeholder={t("register.promoPlaceholder")} />
-                  {validatingPromo && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
-                  {promoCodeValid === true && <Check className="h-4 w-4 text-emerald-500" />}
-                </div>
-                {promoCodeValid === true && <p className="mt-1.5 ml-6 text-[12px] font-medium text-emerald-600 dark:text-emerald-400">{t("register.promoActivated")}</p>}
-              </div>
-
-              <label className="flex items-start gap-2.5 cursor-pointer">
+              <label className="flex cursor-pointer items-start gap-2.5 pt-1">
                 <div className="relative mt-0.5">
-                  <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="sr-only peer" />
-                  <div className="w-4 h-4 rounded-[4px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#1c1e20] peer-checked:bg-emerald-600 peer-checked:border-emerald-600 transition-all flex items-center justify-center">
-                    {acceptTerms && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                  <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="peer sr-only" />
+                  <div className="flex h-4 w-4 items-center justify-center rounded border border-gray-300 bg-white transition-all peer-checked:border-orange-600 peer-checked:bg-orange-600 dark:border-gray-600 dark:bg-white/[0.04] dark:peer-checked:border-orange-500 dark:peer-checked:bg-orange-500">
+                    {acceptTerms && <Check className="h-3 w-3 text-white dark:text-black" strokeWidth={3} />}
                   </div>
                 </div>
-                <span className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                  {t("register.acceptTerms")} <Link href="#" className="text-emerald-600 dark:text-emerald-400 hover:underline">{t("register.terms")}</Link> {t("register.and")} <Link href="#" className="text-emerald-600 dark:text-emerald-400 hover:underline">{t("register.privacyPolicy")}</Link>.
+                <span className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  {t("register.acceptTerms")}{" "}
+                  <Link href="/legal/terms" className="font-medium text-orange-600 hover:underline dark:text-orange-400">{t("register.terms")}</Link>{" "}
+                  {t("register.and")}{" "}
+                  <Link href="/legal/privacy" className="font-medium text-orange-600 hover:underline dark:text-orange-400">{t("register.privacyPolicy")}</Link>.
                 </span>
               </label>
 
-              <button type="submit" disabled={loading || !acceptTerms}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-[8px] text-[14px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-emerald-600/20 hover:shadow-md active:scale-[0.98]">
+              <button
+                type="submit"
+                disabled={loading || !acceptTerms}
+                className="group flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 text-[14px] font-semibold text-white transition-all hover:bg-orange-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 dark:bg-orange-500 dark:text-black dark:hover:bg-orange-400"
+              >
                 {loading
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> {t("register.creating")}</>
-                  : <>{t("register.submit")} <ArrowRight className="h-4 w-4" /></>}
+                  : <>{t("register.submit")} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></>}
               </button>
             </form>
-          </div>
+          </section>
 
-          <div className="flex items-center justify-center gap-6 mt-8">
+          {/* ── Réassurance ── */}
+          <div className="mt-7 flex items-center justify-center gap-6">
             {[
               { icon: Shield, textKey: "register.sslEncryption" as const },
               { icon: Mail, textKey: "register.responsiveSupport" as const },
@@ -488,7 +543,7 @@ function CreateAccountContent() {
 export default function CreateAccountPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] dark:bg-[#111314]">
+      <div className="flex min-h-screen items-center justify-center bg-[#fafafa] dark:bg-[#0b0c0d]">
         <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
       </div>
     }>

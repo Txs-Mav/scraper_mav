@@ -4,11 +4,14 @@ import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
-import { useLanguage, LanguageToggle } from "@/contexts/language-context"
+import { useLanguage } from "@/contexts/language-context"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2, Eye, EyeOff, Mail, ArrowRight, BarChart3, Shield, Zap } from "lucide-react"
 import Image from "next/image"
+import { Bricolage_Grotesque } from "next/font/google"
 import { isDevAdminUserPublic } from "@/lib/auth/admin"
+
+const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["600", "700"] })
 
 function LoginContent() {
   const [email, setEmail] = useState("")
@@ -87,20 +90,25 @@ function LoginContent() {
     finally { setResendingEmail(false) }
   }
 
-  const inputClass = "w-full h-10 px-3 text-[14px] border border-gray-200 dark:border-white/[0.08] rounded-[8px] bg-white dark:bg-white/[0.03] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
+  const inputClass = "w-full h-10 px-3 text-[14px] border border-gray-200 dark:border-white/[0.08] rounded-[8px] bg-white dark:bg-white/[0.03] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 transition-all"
 
   return (
     <div className="min-h-screen flex bg-[#fafbfc] dark:bg-[#111314]">
       {/* Left — branding */}
-      <div className="hidden lg:flex lg:w-[44%] relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-900 to-emerald-950 dark:from-[#0f1112] dark:via-[#111314] dark:to-[#141617]">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:48px_48px]" />
-        <div className="absolute top-16 left-[10%] w-14 h-14 border border-white/[0.06] rounded-[8px] animate-float-slow" />
-        <div className="absolute top-[35%] right-[12%] w-20 h-20 border border-emerald-400/[0.08] rounded-[10px] animate-float-medium" />
-        <div className="absolute bottom-[25%] left-[8%] w-10 h-10 bg-emerald-500/[0.06] rounded-[6px] animate-float-fast" />
+      <div className="hidden lg:flex lg:w-[44%] relative overflow-hidden bg-[#0b0c0d]">
+        <Image
+          src="/landing/showroom.jpg"
+          alt=""
+          fill
+          priority
+          sizes="44vw"
+          className="scale-105 object-cover blur-[4px]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/70 to-black/60" />
 
         <div className="relative z-10 flex flex-col justify-between w-full p-10 xl:p-14">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="relative h-9 w-9 flex-shrink-0 rounded-[8px] bg-white/10 backdrop-blur-sm overflow-hidden">
+            <div className="relative h-9 w-9 flex-shrink-0 rounded-[8px] bg-white/10 backdrop-blur-sm overflow-hidden ring-1 ring-white/15">
               <Image src="/Go-Data.svg" alt="GO-DATA" fill sizes="36px" className="object-contain" />
             </div>
             <span className="text-[15px] font-semibold text-white tracking-tight">GO-DATA</span>
@@ -108,14 +116,12 @@ function LoginContent() {
 
           <div className="space-y-8">
             <div>
-              <h1 className="text-[28px] xl:text-[32px] font-bold text-white tracking-tight leading-[1.2]">
+              <h1 className={`${display.className} text-[30px] xl:text-[34px] font-bold text-white tracking-tight leading-[1.15]`}>
                 {t("login.heroTitle1")}
                 <br />
-                <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
-                  {t("login.heroTitle2")}
-                </span>
+                <span className="text-orange-400">{t("login.heroTitle2")}</span>
               </h1>
-              <p className="mt-4 text-[14px] text-gray-400 leading-relaxed max-w-sm">
+              <p className="mt-4 text-[14px] text-gray-300 leading-relaxed max-w-sm">
                 {t("login.heroSubtitle")}
               </p>
             </div>
@@ -126,26 +132,21 @@ function LoginContent() {
                 { icon: Shield, textKey: "login.feature3" as const },
               ].map((item) => (
                 <div key={item.textKey} className="flex items-center gap-3">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-[8px] bg-white/[0.06]">
-                    <item.icon className="h-4 w-4 text-emerald-400" />
+                  <div className="flex items-center justify-center w-8 h-8 rounded-[8px] bg-white/[0.08] backdrop-blur-sm">
+                    <item.icon className="h-4 w-4 text-orange-400" />
                   </div>
-                  <span className="text-[13px] text-gray-300">{t(item.textKey)}</span>
+                  <span className="text-[13px] text-gray-200">{t(item.textKey)}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <p className="text-[11px] text-gray-600">&copy; {new Date().getFullYear()} Go-Data</p>
+          <p className="text-[11px] text-gray-500">&copy; {new Date().getFullYear()} Go-Data</p>
         </div>
       </div>
 
       {/* Right — form */}
       <div className="flex-1 flex flex-col">
-        {/* Language toggle top-right */}
-        <div className="flex justify-end px-6 pt-4">
-          <LanguageToggle />
-        </div>
-
         <div className="flex-1 flex items-center justify-center px-6 py-12 lg:px-16">
           <div className="w-full max-w-[380px]">
             <div className="flex items-center gap-2.5 mb-10 lg:hidden">
@@ -158,7 +159,7 @@ function LoginContent() {
             </div>
 
             <div className="mb-8">
-              <h2 className="text-[22px] font-bold text-gray-900 dark:text-white tracking-tight">{t("login.title")}</h2>
+              <h2 className={`${display.className} text-[26px] font-bold text-gray-900 dark:text-white tracking-tight`}>{t("login.title")}</h2>
               <p className="mt-1 text-[13px] text-gray-500 dark:text-gray-400">{t("login.subtitle")}</p>
             </div>
 
@@ -174,7 +175,7 @@ function LoginContent() {
                   <p className="text-[13px] text-red-700 dark:text-red-300">{error}</p>
                   {showResendButton && (
                     <button type="button" onClick={handleResendConfirmation} disabled={resendingEmail}
-                      className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 disabled:opacity-50 transition-colors">
+                      className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-orange-600 dark:text-orange-400 hover:text-orange-700 disabled:opacity-50 transition-colors">
                       {resendingEmail ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("login.resending")}</> : <><Mail className="h-3.5 w-3.5" /> {t("login.resend")}</>}
                     </button>
                   )}
@@ -189,7 +190,7 @@ function LoginContent() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label htmlFor="password" className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t("password")}</label>
-                    <Link href="/forgot-password" className="text-[12px] text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">{t("login.forgot")}</Link>
+                    <Link href="/forgot-password" className="text-[12px] text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">{t("login.forgot")}</Link>
                   </div>
                   <div className="relative">
                     <input id="password" type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputClass} pr-10`} placeholder="••••••••" />
@@ -201,7 +202,7 @@ function LoginContent() {
               </div>
 
               <button type="submit" disabled={loading}
-                className="w-full h-10 flex items-center justify-center gap-2 rounded-[8px] text-[14px] font-semibold text-white bg-gray-900 dark:bg-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
+                className="w-full h-10 flex items-center justify-center gap-2 rounded-[8px] text-[14px] font-semibold text-white bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:text-black dark:hover:bg-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
                 {loading || loginSuccess
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> {loginSuccess ? t("login.redirecting") : t("login.signingIn")}</>
                   : <>{t("login.submit")} <ArrowRight className="h-4 w-4" /></>}
