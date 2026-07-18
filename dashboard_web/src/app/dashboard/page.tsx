@@ -87,16 +87,13 @@ function DashboardContent() {
           sessionStorage.removeItem("pending_promo_plan")
         }
 
-        // ÉTAPE 2 : Pas de code promo → vérifier le pending_plan (paiement Stripe)
-        const syncResponse = await fetch("/api/users/sync-pending-plan", {
-          method: "POST",
-        })
-        const syncData = await syncResponse.json()
-
-        // Si un pending_plan a été synchronisé ou existe déjà, rediriger vers le paiement
-        if (syncData.has_pending_plan || user.pending_plan) {
-          router.push("/dashboard/pending-payment")
-          return
+        // ÉTAPE 2 : Plus de paiement en ligne — un pending_plan hérité de
+        // l'ancien flux Stripe est simplement nettoyé (le compte reste gratuit,
+        // les plans payants s'activent par l'équipe ou via code magique).
+        if (user.pending_plan) {
+          try {
+            await fetch("/api/users/clear-pending-plan", { method: "POST" })
+          } catch { /* non critique */ }
         }
       } catch (err) {
         console.error("Error checking pending plan:", err)

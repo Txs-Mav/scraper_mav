@@ -166,16 +166,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleStripePortal = async () => {
-    try {
-      const response = await fetch("/api/stripe/portal", { method: "POST" })
-      const data = await response.json()
-      if (response.ok && data.url) window.location.href = data.url
-    } catch (error) {
-      console.error("Error opening Stripe portal:", error)
-    }
-  }
-
   const handleExportData = async () => {
     setExportLoading(true)
     setExportDone(false)
@@ -461,7 +451,7 @@ export default function SettingsPage() {
 
           <button
             type="button"
-            onClick={handleStripePortal}
+            onClick={() => router.push("/contact?topic=support")}
             className="inline-flex items-center gap-2 text-sm text-[var(--color-text-secondary)] hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />

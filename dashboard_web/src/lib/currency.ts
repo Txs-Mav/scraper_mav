@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useCallback } from "react"
 
 export type CurrencyCode = "CAD" | "USD" | "EUR" | "GBP" | "MXN" | "BRL"
 
@@ -40,27 +40,9 @@ export function formatCurrency(amountCAD: number, target: CurrencyCode): string 
 
 const STORAGE_KEY = "go-data-currency"
 
-function detectInitialCurrency(): CurrencyCode {
-  if (typeof window === "undefined") return "CAD"
-  const stored = localStorage.getItem(STORAGE_KEY) as CurrencyCode | null
-  if (stored && stored in CURRENCIES) return stored
-  const lang = (navigator.language || "en").toLowerCase()
-  if (lang.startsWith("fr-ca") || lang.startsWith("en-ca")) return "CAD"
-  if (lang.startsWith("en-gb")) return "GBP"
-  if (lang.startsWith("es-mx") || lang.startsWith("es")) return "MXN"
-  if (lang.startsWith("pt-br") || lang.startsWith("pt")) return "BRL"
-  if (lang.startsWith("de") || lang.startsWith("fr") || lang.startsWith("it") || lang.startsWith("nl")) return "EUR"
-  return "USD"
-}
-
+// Go-Data est un produit canadien : la devise est verrouillée sur le CAD.
 export function useCurrency() {
   const [currency, setCurrencyState] = useState<CurrencyCode>("CAD")
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setCurrencyState(detectInitialCurrency())
-    setMounted(true)
-  }, [])
 
   const setCurrency = useCallback((code: CurrencyCode) => {
     setCurrencyState(code)
@@ -71,5 +53,5 @@ export function useCurrency() {
 
   const format = useCallback((amountCAD: number) => formatCurrency(amountCAD, currency), [currency])
 
-  return { currency, setCurrency, format, mounted }
+  return { currency, setCurrency, format, mounted: true }
 }

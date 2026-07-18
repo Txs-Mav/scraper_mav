@@ -12,21 +12,22 @@ export type FeatureItem = {
 export default function FeatureGrid({ items, title, subtitle }: { items: FeatureItem[]; title?: string; subtitle?: string }) {
   const { t } = useLanguage()
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 py-20">
-      <div className="text-center mb-12 max-w-2xl mx-auto">
-        <h2 className="text-3xl md:text-4xl font-bold tracking-tight">{title ?? t("mkt.features.title")}</h2>
-        <p className="mt-3 text-lg text-gray-600 dark:text-gray-400">{subtitle ?? t("mkt.features.subtitle")}</p>
+    <section className="mx-auto max-w-6xl px-6 py-20">
+      <div className="max-w-2xl">
+        <h2 className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl dark:text-white">
+          {title ?? t("mkt.features.title")}
+        </h2>
+        <p className="mt-3 text-gray-600 dark:text-gray-400">{subtitle ?? t("mkt.features.subtitle")}</p>
       </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+
+      <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-gray-200 bg-gray-200 sm:grid-cols-2 lg:grid-cols-3 dark:border-white/10 dark:bg-white/10">
         {items.map((it, i) => {
           const Icon = it.icon
           return (
-            <div key={i} className="p-6 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1c1e] hover:border-emerald-300 dark:hover:border-emerald-800 transition-colors">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/30 mb-4">
-                <Icon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{it.title}</h3>
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{it.description}</p>
+            <div key={i} className="bg-white p-6 dark:bg-[#0b0c0d]">
+              <Icon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="mt-4 text-base font-semibold text-gray-900 dark:text-white">{it.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{it.description}</p>
             </div>
           )
         })}

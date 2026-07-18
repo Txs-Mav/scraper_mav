@@ -1,115 +1,300 @@
-"use client"
-
+import type { Metadata } from "next"
 import Link from "next/link"
-import { Check, Clock } from "lucide-react"
-import { useLanguage } from "@/contexts/language-context"
-import { useCurrency } from "@/lib/currency"
-import FAQ from "@/components/marketing/faq"
+import { ArrowRight, Check, Minus, Sparkles } from "lucide-react"
+import Reveal from "@/components/marketing/reveal"
+
+export const metadata: Metadata = {
+  title: "Tarifs",
+  description:
+    "Trois plans simples. Le gratuit se crée en ligne, sans carte de crédit. Les plans payants s'activent en parlant à l'équipe Go-Data — ou avec un code magique.",
+}
 
 const PLANS = [
   {
-    name: "Standard / Démo",
-    priceCAD: 0,
-    description: "Pour découvrir Go-Data sans engagement.",
-    href: "/create-account?plan=standard",
-    cta: "Commencer gratuitement",
-    features: ["6 scrapings maximum", "2 scrapers en cache", "Support communautaire"],
+    id: "gratuit",
+    name: "Gratuit",
+    price: "0 $",
+    tagline: "Pour évaluer l'outil. Sans limite de temps.",
+    cta: { label: "Créer un compte gratuit", href: "/create-account" },
+    included: [
+      "6 scrapings d'essai",
+      "Comparaison de prix et tableau de bord",
+      "Export CSV",
+      "Sans carte de crédit",
+    ],
+    excluded: ["Pas d'analytics", "Pas de sites surveillés ni d'alertes"],
   },
   {
+    id: "pro",
     name: "Pro",
-    priceCAD: 199.99,
-    description: "Plan actuel pour les équipes qui utilisent Go-Data régulièrement.",
-    href: "/create-account?plan=pro",
-    cta: "Choisir Pro",
+    price: "200 $",
+    tagline: "Pour surveiller votre marché au quotidien.",
     highlighted: true,
-    features: ["Scrapings illimités", "8 scrapers en cache", "Accès aux alertes", "Support prioritaire"],
+    cta: { label: "Nous contacter", href: "/contact?topic=sales" },
+    included: [
+      "Scrapings illimités",
+      "Analytics complet : positionnement, opportunités",
+      "3 sites surveillés en continu",
+      "Alertes courriel quand un prix bouge",
+      "Support prioritaire",
+    ],
+    excluded: [],
   },
   {
+    id: "ultime",
     name: "Ultime",
-    priceCAD: 274.99,
-    description: "Plan actuel pour les besoins avancés.",
-    href: "/create-account?plan=ultime",
-    cta: "Choisir Ultime",
-    features: ["Scrapings illimités", "Scrapers en cache illimités", "Accès aux alertes", "Support 24/7", "SLA garanti si contractuellement validé"],
+    price: "275 $",
+    tagline: "Pour couvrir tout votre marché, sans plafond.",
+    cta: { label: "Nous contacter", href: "/contact?topic=sales" },
+    included: [
+      "Tout du plan Pro",
+      "Sites surveillés illimités",
+      "Alertes illimitées",
+      "Accompagnement dédié et onboarding",
+      "Accès direct à l'équipe",
+    ],
+    excluded: [],
+  },
+]
+
+const STEPS = [
+  {
+    n: "01",
+    title: "Créez un compte gratuit.",
+    text: "En ligne, en deux minutes. 6 scrapings pour vous faire une idée avec vos vrais concurrents.",
+  },
+  {
+    n: "02",
+    title: "Parlez-nous.",
+    text: "Un courriel ou un appel. On configure votre plan Pro ou Ultime et la facturation, directement avec vous.",
+  },
+  {
+    n: "03",
+    title: "Ou entrez un code magique.",
+    text: "Un code en main ? Entrez-le à la création de compte : le plan s'active instantanément. Aucun paiement en ligne.",
+  },
+]
+
+const FAQ = [
+  {
+    q: "Comment payer un plan Pro ou Ultime ?",
+    a: "Il n'y a pas de paiement en ligne. Vous nous écrivez, on active votre compte et on convient de la facturation directement avec vous. Simple, sans intermédiaire.",
+  },
+  {
+    q: "C'est quoi, un code magique ?",
+    a: "Un code remis par l'équipe Go-Data — partenaires, clients pilotes, ententes particulières. Entré à la création de compte, il active le plan associé instantanément, sans paiement.",
+  },
+  {
+    q: "Le plan gratuit expire-t-il ?",
+    a: "Non. 6 scrapings pour évaluer l'outil, sans limite de temps et sans carte de crédit.",
+  },
+  {
+    q: "Puis-je changer de plan ou annuler ?",
+    a: "Oui, en tout temps. Un courriel suffit — pas de contrat à long terme imposé.",
   },
 ]
 
 export default function PricingPage() {
-  const { t } = useLanguage()
-  const { format } = useCurrency()
-
   return (
     <>
-      <section className="max-w-5xl mx-auto px-4 sm:px-6 pt-20 pb-10 text-center">
-        <h1 className="text-5xl md:text-6xl font-black tracking-tight">{t("pricing.title")}</h1>
-        <p className="mt-4 text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">{t("pricing.subtitle")}</p>
+      {/* ── En-tête ─────────────────────────────────────── */}
+      <section className="mx-auto max-w-6xl px-6 pt-20 sm:pt-28">
+        <Reveal>
+          <p className="flex items-center gap-2 text-[13px] font-medium text-gray-500 dark:text-gray-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+            Tarifs
+          </p>
+          <h1 className="mt-5 max-w-2xl text-4xl font-bold leading-[1.06] tracking-tight text-gray-900 sm:text-5xl md:text-6xl dark:text-white [font-family:var(--font-display)]">
+            Trois plans.
+            <br />
+            <span className="text-orange-600 dark:text-orange-400">Zéro carte de crédit.</span>
+          </h1>
+          <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-600 dark:text-gray-400">
+            Le gratuit se crée en ligne. Les plans payants s&apos;activent en parlant à un
+            humain — ou avec un code magique.
+          </p>
+        </Reveal>
       </section>
 
-      <section className="max-w-5xl mx-auto px-4 sm:px-6 pb-16">
-        <div className="grid md:grid-cols-3 gap-5">
-          {PLANS.map((plan) => (
-            <div
-              key={plan.name}
-              className={`relative p-7 rounded-2xl border bg-white dark:bg-[#1a1c1e] flex flex-col ${
-                plan.highlighted ? "border-emerald-500 shadow-2xl shadow-emerald-600/10" : "border-gray-200 dark:border-white/10"
-              }`}
-            >
-              {plan.highlighted && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-bold">
-                  Plan actuel
-                </div>
-              )}
-              <h3 className="text-xl font-bold">{plan.name}</h3>
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 min-h-[48px]">{plan.description}</p>
-              <div className="mt-6 text-4xl font-black">
-                {format(plan.priceCAD)}
-                <span className="text-sm font-medium text-gray-500"> / mois</span>
-              </div>
-              <Link
-                href={plan.href}
-                className={`mt-6 block w-full text-center py-3 rounded-xl text-sm font-semibold transition-all ${
+      {/* ── Plans ───────────────────────────────────────── */}
+      <section className="mx-auto max-w-6xl px-6 py-14">
+        <div className="grid gap-5 lg:grid-cols-3">
+          {PLANS.map((plan, i) => (
+            <Reveal key={plan.id} delay={i * 100} className="h-full">
+              <div
+                className={`relative flex h-full flex-col rounded-2xl border p-7 ${
                   plan.highlighted
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100"
+                    ? "border-orange-500/60 bg-white shadow-2xl shadow-orange-600/10 dark:border-orange-400/40 dark:bg-white/[0.03]"
+                    : "border-gray-200 bg-white dark:border-white/10 dark:bg-white/[0.02]"
                 }`}
               >
-                {plan.cta}
+                {plan.highlighted && (
+                  <span className="absolute -top-3 left-6 rounded-full bg-orange-600 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white dark:bg-orange-500 dark:text-black">
+                    Le plus populaire
+                  </span>
+                )}
+
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white [font-family:var(--font-display)]">
+                  {plan.name}
+                </h2>
+                <p className="mt-1.5 min-h-10 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  {plan.tagline}
+                </p>
+
+                <div className="mt-5 flex items-baseline gap-1.5">
+                  <span className="text-5xl font-bold tracking-tight tabular-nums text-gray-900 dark:text-white [font-family:var(--font-display)]">
+                    {plan.price}
+                  </span>
+                  <span className="text-sm text-gray-400 dark:text-gray-500">CAD / mois</span>
+                </div>
+
+                <Link
+                  href={plan.cta.href}
+                  className={`group mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold transition-colors ${
+                    plan.highlighted
+                      ? "bg-orange-600 text-white hover:bg-orange-700 dark:bg-orange-500 dark:text-black dark:hover:bg-orange-400"
+                      : "border border-gray-300 bg-white text-gray-900 hover:bg-gray-50 dark:border-white/15 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.04]"
+                  }`}
+                >
+                  {plan.cta.label}
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+
+                <ul className="mt-7 flex-1 space-y-2.5">
+                  {plan.included.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-[14px] text-gray-700 dark:text-gray-300">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-orange-600 dark:text-orange-400" />
+                      {f}
+                    </li>
+                  ))}
+                  {plan.excluded.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-[14px] text-gray-400 dark:text-gray-500">
+                      <Minus className="mt-0.5 h-4 w-4 shrink-0" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+        <Reveal delay={150}>
+          <p className="mt-5 text-center text-[13px] text-gray-400 dark:text-gray-500">
+            Prix en dollars canadiens. Annulable en tout temps — un courriel suffit.
+          </p>
+        </Reveal>
+      </section>
+
+      {/* ── Comment ça marche ───────────────────────────── */}
+      <section className="border-y border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/[0.02]">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <Reveal>
+            <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl dark:text-white [font-family:var(--font-display)]">
+              Pas de paiement en ligne. Volontairement.
+            </h2>
+            <p className="mt-4 max-w-2xl text-[17px] leading-relaxed text-gray-600 dark:text-gray-400">
+              Un plan payant, c&apos;est une relation de travail. On préfère la commencer par
+              une conversation plutôt que par un formulaire de carte de crédit.
+            </p>
+          </Reveal>
+          <div className="mt-12 grid gap-10 sm:grid-cols-3">
+            {STEPS.map((step, i) => (
+              <Reveal key={step.n} delay={i * 100}>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm font-semibold text-orange-600 dark:text-orange-400">
+                    {step.n}
+                  </span>
+                  <span className="h-px w-8 bg-orange-600/40 dark:bg-orange-400/40" />
+                </div>
+                <h3 className="mt-4 text-lg font-bold text-gray-900 dark:text-white [font-family:var(--font-display)]">
+                  {step.title}
+                </h3>
+                <p className="mt-2 text-[15px] leading-relaxed text-gray-600 dark:text-gray-400">
+                  {step.text}
+                </p>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal delay={200}>
+            <div className="mt-12 flex flex-col items-start gap-4 rounded-2xl border border-orange-600/25 bg-orange-50 p-6 sm:flex-row sm:items-center dark:border-orange-400/20 dark:bg-orange-400/[0.06]">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-600 text-white dark:bg-orange-500 dark:text-black">
+                <Sparkles className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className="text-[15px] font-semibold text-gray-900 dark:text-white">
+                  Vous avez un code magique ?
+                </p>
+                <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
+                  Entrez-le à la création de compte : votre plan s&apos;active
+                  instantanément, sans paiement.
+                </p>
+              </div>
+              <Link
+                href="/create-account"
+                className="group inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-orange-700 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300"
+              >
+                Créer mon compte
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
-              <ul className="mt-6 space-y-3 flex-1">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
-                    <Check className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── FAQ ─────────────────────────────────────────── */}
+      <section className="mx-auto max-w-3xl px-6 py-20">
+        <Reveal>
+          <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl dark:text-white [font-family:var(--font-display)]">
+            Questions fréquentes
+          </h2>
+        </Reveal>
+        <div className="mt-8 divide-y divide-gray-200 border-y border-gray-200 dark:divide-white/10 dark:border-white/10">
+          {FAQ.map((item, i) => (
+            <Reveal key={item.q} delay={i * 60}>
+              <details className="group py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-semibold text-gray-900 dark:text-white">
+                  {item.q}
+                  <span className="text-orange-600 transition-transform group-open:rotate-45 dark:text-orange-400">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-gray-600 dark:text-gray-400">
+                  {item.a}
+                </p>
+              </details>
+            </Reveal>
           ))}
         </div>
       </section>
 
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 pb-16">
-        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-white/15 bg-white dark:bg-[#1a1c1e] p-8">
-          <div className="flex items-start gap-3">
-            <Clock className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-1" />
-            <div>
-              <h2 className="text-2xl font-bold">Évolution pricing à cadrer</h2>
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-                La tarification à l'usage, le plan Startup et le plan Enterprise peuvent être préparés côté UI, mais ne doivent pas être présentés comme offres actives tant que les limites, la facturation et les contrats ne sont pas prêts.
-              </p>
+      {/* ── CTA final ───────────────────────────────────── */}
+      <section className="border-t border-gray-200 dark:border-white/10">
+        <div className="mx-auto max-w-6xl px-6 py-20 text-center">
+          <Reveal>
+            <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl dark:text-white [font-family:var(--font-display)]">
+              Commencez gratuitement.
+              <br />
+              <span className="text-orange-600 dark:text-orange-400">Le reste, on en parle.</span>
+            </h2>
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="/create-account"
+                className="group inline-flex items-center gap-2 rounded-lg bg-orange-600 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-orange-700 dark:bg-orange-500 dark:text-black dark:hover:bg-orange-400"
+              >
+                Créer un compte gratuit
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+              <Link
+                href="/contact?topic=sales"
+                className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-6 py-3.5 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-50 dark:border-white/15 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.04]"
+              >
+                Parler à Go-Data
+              </Link>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
-
-      <FAQ
-        title={t("pricing.faq.title")}
-        items={[
-          { q: "Quels plans sont réels aujourd'hui ?", a: "Standard / Démo, Pro et Ultime, selon les informations déjà présentes dans le produit." },
-          { q: "Pourquoi ne pas afficher Enterprise tout de suite ?", a: "Parce qu'il faut d'abord préparer les contrats, le DPA, les rôles, l'audit log, le SSO et la sécurité avant de vendre une offre enterprise crédible." },
-          { q: "Peut-on préparer l'usage-based ?", a: "Oui, mais comme roadmap. Les prix par requête doivent venir de coûts réels et d'une logique de marge validée." },
-        ]}
-      />
     </>
   )
 }

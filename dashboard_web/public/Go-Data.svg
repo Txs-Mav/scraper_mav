@@ -1,11 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <rect width="512" height="512" rx="108" fill="#1F2937"/>
-  <text x="256" y="148" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="180" fill="white" letter-spacing="-6">GO</text>
-  <rect x="122" y="348" width="52" height="62" rx="8" fill="white" opacity="0.25"/>
-  <rect x="194" y="310" width="52" height="100" rx="8" fill="white" opacity="0.35"/>
-  <rect x="266" y="270" width="52" height="140" rx="8" fill="white" opacity="0.50"/>
-  <rect x="338" y="224" width="52" height="186" rx="8" fill="white" opacity="0.70"/>
-  <path d="M148 348 L220 310 L292 270 L364 224" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.30"/>
-  <circle cx="364" cy="224" r="5" fill="white" opacity="0.75"/>
-  <text x="256" y="445" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="40" fill="white" opacity="0.65" letter-spacing="12">DATA</text>
+  <rect x="124" y="258" width="64" height="130" rx="32" fill="#FFFFFF"/>
+  <rect x="224" y="188" width="64" height="200" rx="32" fill="#FFFFFF"/>
+  <rect x="324" y="118" width="64" height="270" rx="32" fill="#FFFFFF"/>
 </svg>

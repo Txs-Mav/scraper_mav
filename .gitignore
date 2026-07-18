@@ -31,3 +31,4 @@ tools/.password_backups/
 *.swp
 *.swo
 .vercel
+.gstack/

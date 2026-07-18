@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect, Suspense, useMemo } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage, LanguageToggle } from "@/contexts/language-context"
 import {
   Loader2, Eye, EyeOff, ArrowRight, Check, Sparkles, Zap, Crown,
-  Tag, Shield, Mail, Lock, Store, Car, Anchor, Bike, Shirt, Cpu, MoreHorizontal,
+  Shield, Mail, Lock, Store, Car, Anchor, Bike, Shirt, Cpu, MoreHorizontal,
 } from "lucide-react"
 import Image from "next/image"
 import type { TranslationKey } from "@/lib/translations"
@@ -34,7 +34,6 @@ function CreateAccountContent() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState("standard")
   const [businessType, setBusinessType] = useState<string>("recreational_vehicles")
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false)
   const [promoCode, setPromoCode] = useState("")
@@ -49,7 +48,10 @@ function CreateAccountContent() {
   const { register } = useAuth()
   const { t } = useLanguage()
   const router = useRouter()
-  const searchParams = useSearchParams()
+
+  // Seul le plan gratuit peut être créé en ligne. Un code magique valide
+  // active le plan Ultime; les autres plans passent par un contact humain.
+  const effectivePlan = promoCodeValid === true ? "ultime" : "standard"
 
   const pwStrength = useMemo(() => getPasswordStrength(password, t), [password, t])
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword
@@ -81,10 +83,11 @@ function CreateAccountContent() {
     {
       id: "pro",
       name: t("plan.pro"),
-      price: "199,99",
+      price: "200",
       period: t("plan.perMonth"),
       icon: Zap,
       highlighted: true,
+      contactOnly: true,
       description: t("plan.proDesc"),
       features: [t("plan.proF1"), t("plan.proF2"), t("plan.proF3"), t("plan.proF4"), t("plan.proF5")],
       cta: t("plan.proCta"),
@@ -92,9 +95,10 @@ function CreateAccountContent() {
     {
       id: "ultime",
       name: t("plan.ultimate"),
-      price: "274,99",
+      price: "275",
       period: t("plan.perMonth"),
       icon: Crown,
+      contactOnly: true,
       description: t("plan.ultimateDesc"),
       features: [t("plan.ultimateF1"), t("plan.ultimateF2"), t("plan.ultimateF3"), t("plan.ultimateF4"), t("plan.ultimateF5"), t("plan.ultimateF6")],
       cta: t("plan.ultimateCta"),
@@ -102,19 +106,11 @@ function CreateAccountContent() {
   ], [t])
 
   useEffect(() => {
-    const plan = searchParams.get("plan")
-    if (plan && ["standard", "pro", "ultime"].includes(plan)) setSelectedPlan(plan)
-  }, [searchParams])
-
-  useEffect(() => { if (promoCodeValid === true) setSelectedPlan("ultime") }, [promoCodeValid])
-
-  useEffect(() => {
     if (registrationSuccess) {
       if (promoCodeValid) router.push("/login?message=check_email_promo")
-      else if (selectedPlan !== "standard") router.push("/login?message=confirm_email_then_pay")
       else router.push("/login?message=check_email")
     }
-  }, [registrationSuccess, router, selectedPlan, promoCodeValid])
+  }, [registrationSuccess, router, promoCodeValid])
 
   useEffect(() => {
     if (accountExists) { const tm = setTimeout(() => router.push("/login"), 3000); return () => clearTimeout(tm) }
@@ -140,10 +136,10 @@ function CreateAccountContent() {
 
     setLoading(true); setSuccessMessage(null)
     const hasValidPromo = !!(promoCode.trim() && promoCodeValid)
-    if (hasValidPromo) { sessionStorage.setItem("pending_promo_code", promoCode.trim()); sessionStorage.setItem("pending_promo_plan", selectedPlan) }
+    if (hasValidPromo) { sessionStorage.setItem("pending_promo_code", promoCode.trim()); sessionStorage.setItem("pending_promo_plan", "ultime") }
 
     try {
-      const planForRegister = hasValidPromo ? "ultime" : selectedPlan
+      const planForRegister = hasValidPromo ? "ultime" : "standard"
       const { error } = await register({ name, email, password, plan: planForRegister, promoCode: hasValidPromo ? promoCode.trim() : undefined, businessType })
 
       if (error) {
@@ -158,7 +154,6 @@ function CreateAccountContent() {
       }
 
       if (hasValidPromo) setSuccessMessage(t("register.successPromo"))
-      else if (selectedPlan !== "standard") setSuccessMessage(t("register.successPaid"))
       else setSuccessMessage(t("register.successFree"))
       setRegistrationSuccess(true); setLoading(false)
     } catch (err: any) { setError(err.message || t("register.unknownError")); setLoading(false) }
@@ -200,11 +195,13 @@ function CreateAccountContent() {
         </div>
 
         {/* ── Plan cards ── */}
+        {/* Seul le plan gratuit se crée en ligne. Les plans payants s'activent
+            par l'équipe (contact) ou instantanément via un code magique. */}
         <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-4 mb-16">
           {PLANS.map((plan) => {
             const Icon = plan.icon
-            const isSelected = selectedPlan === plan.id
             const isPro = plan.highlighted
+            const isActive = plan.id === effectivePlan
 
             return (
               <div key={plan.id} className="relative flex flex-col">
@@ -214,23 +211,19 @@ function CreateAccountContent() {
                   </span>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedPlan(plan.id)}
-                  className={`flex-1 text-left p-6 rounded-[12px] border transition-all duration-200 group ${
-                    isSelected
+                <div
+                  className={`flex-1 flex flex-col text-left p-6 rounded-[12px] border transition-all duration-200 ${
+                    isActive
                       ? "border-emerald-500 bg-white dark:bg-[#1c1e20] shadow-lg shadow-emerald-500/[0.08] ring-1 ring-emerald-500/20"
-                      : isPro
-                        ? "border-emerald-200 dark:border-emerald-500/20 bg-white dark:bg-[#1c1e20] shadow-md hover:shadow-lg hover:border-emerald-300 dark:hover:border-emerald-500/30"
-                        : "border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20] shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-white/[0.1]"
+                      : "border-gray-200 dark:border-[#2a2c2e] bg-white dark:bg-[#1c1e20] shadow-sm"
                   }`}
                 >
                   <div className="flex items-center gap-3 mb-4">
                     <div className={`flex items-center justify-center w-10 h-10 rounded-[10px] ${
-                      isSelected || isPro ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-gray-50 dark:bg-[#1c1e20]"
+                      isActive || isPro ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-gray-50 dark:bg-[#1c1e20]"
                     }`}>
                       <Icon className={`h-5 w-5 ${
-                        isSelected || isPro ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"
+                        isActive || isPro ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"
                       }`} />
                     </div>
                     <div>
@@ -246,29 +239,50 @@ function CreateAccountContent() {
                     <span className="text-[13px] text-gray-400 dark:text-gray-500">{plan.period}</span>
                   </div>
 
-                  <ul className="space-y-2.5 mb-6">
+                  <ul className="space-y-2.5 mb-6 flex-1">
                     {plan.features.map((f) => (
                       <li key={f} className="flex items-start gap-2.5">
                         <Check className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                          isSelected || isPro ? "text-emerald-500 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"
+                          isActive || isPro ? "text-emerald-500 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"
                         }`} />
                         <span className="text-[13px] text-gray-600 dark:text-gray-400 leading-snug">{f}</span>
                       </li>
                     ))}
                   </ul>
 
-                  <div className={`w-full h-10 flex items-center justify-center rounded-[8px] text-[13px] font-semibold transition-all ${
-                    isSelected
-                      ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
-                      : isPro
-                        ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 group-hover:bg-gray-800 dark:group-hover:bg-gray-100"
-                        : "bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-gray-300 group-hover:bg-gray-200 dark:group-hover:bg-white/[0.08]"
-                  }`}>
-                    {isSelected
-                      ? <span className="flex items-center gap-1.5"><Check className="h-4 w-4" /> {t("register.selected")}</span>
-                      : plan.cta}
-                  </div>
-                </button>
+                  {plan.contactOnly ? (
+                    isActive ? (
+                      <div className="w-full h-10 flex items-center justify-center gap-1.5 rounded-[8px] text-[13px] font-semibold bg-emerald-600 text-white shadow-sm shadow-emerald-600/20">
+                        <Sparkles className="h-4 w-4" />
+                        {t("register.activatedByCode")}
+                      </div>
+                    ) : (
+                      <>
+                        <Link
+                          href="/contact?topic=sales"
+                          className="w-full h-10 flex items-center justify-center gap-1.5 rounded-[8px] text-[13px] font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 transition-all"
+                        >
+                          {plan.cta}
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                        <p className="mt-2 text-center text-[11px] text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1">
+                          <Sparkles className="h-3 w-3" />
+                          {t("register.paidPlanHint")}
+                        </p>
+                      </>
+                    )
+                  ) : (
+                    <div className={`w-full h-10 flex items-center justify-center rounded-[8px] text-[13px] font-semibold ${
+                      isActive
+                        ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
+                        : "bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-gray-300"
+                    }`}>
+                      {isActive
+                        ? <span className="flex items-center gap-1.5"><Check className="h-4 w-4" /> {t("register.selected")}</span>
+                        : plan.cta}
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })}
@@ -280,7 +294,7 @@ function CreateAccountContent() {
             <h2 className="text-[20px] font-semibold text-gray-900 dark:text-white">{t("register.yourInfo")}</h2>
             <p className="mt-1 text-[13px] text-gray-400 dark:text-gray-500">
               {t("register.startWith")}{" "}
-              <span className="font-medium text-gray-600 dark:text-gray-300">{PLANS.find((p) => p.id === selectedPlan)?.name}</span>
+              <span className="font-medium text-gray-600 dark:text-gray-300">{PLANS.find((p) => p.id === effectivePlan)?.name}</span>
             </p>
           </div>
 
@@ -421,7 +435,7 @@ function CreateAccountContent() {
 
               <div>
                 <div className="flex items-center gap-2">
-                  <Tag className="h-3.5 w-3.5 text-gray-300 dark:text-gray-600" />
+                  <Sparkles className="h-3.5 w-3.5 text-gray-300 dark:text-gray-600" />
                   <input type="text" value={promoCode}
                     onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoCodeValid(null) }}
                     onBlur={validatePromoCode}

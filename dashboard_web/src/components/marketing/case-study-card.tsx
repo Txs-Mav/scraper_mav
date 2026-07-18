@@ -12,34 +12,32 @@ export default function CaseStudiesGrid({ limit, vertical }: { limit?: number; v
   if (limit) list = list.slice(0, limit)
 
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 py-20">
-      <div className="text-center mb-12 max-w-2xl mx-auto">
-        <h2 className="text-3xl md:text-4xl font-bold tracking-tight">{t("mkt.cases.title")}</h2>
-      </div>
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <section className="mx-auto max-w-6xl px-6 py-20">
+      <h2 className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl dark:text-white">
+        {t("mkt.cases.title")}
+      </h2>
+      <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-gray-200 bg-gray-200 md:grid-cols-2 lg:grid-cols-3 dark:border-white/10 dark:bg-white/10">
         {list.map((c) => (
           <Link
             key={c.slug}
             href={`/customers/${c.slug}`}
-            className="group p-6 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1c1e] hover:border-emerald-300 dark:hover:border-emerald-800 transition-all hover:-translate-y-0.5 flex flex-col"
+            className="group flex flex-col bg-white p-6 transition-colors hover:bg-gray-50 dark:bg-[#0b0c0d] dark:hover:bg-white/[0.02]"
           >
-            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              {c.industry}
-            </div>
-            <h3 className="mt-3 text-xl font-bold text-gray-900 dark:text-white leading-snug">{c.title}</h3>
-            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 leading-relaxed flex-1">{c.excerpt}</p>
+            <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{c.industry}</div>
+            <h3 className="mt-2 text-lg font-semibold leading-snug text-gray-900 dark:text-white">{c.title}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{c.excerpt}</p>
             {c.metrics.length > 0 && (
-              <div className="mt-5 grid grid-cols-3 gap-2">
+              <div className="mt-5 grid grid-cols-3 gap-4 border-t border-gray-100 pt-4 dark:border-white/10">
                 {c.metrics.map((m, i) => (
-                  <div key={i} className="rounded-lg bg-gray-50 dark:bg-white/[0.04] p-2 text-center">
-                    <div className="text-sm font-bold text-gray-900 dark:text-white">{m.value}</div>
-                    <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mt-0.5">{m.label}</div>
+                  <div key={i}>
+                    <div className="text-base font-semibold tabular-nums text-gray-900 dark:text-white">{m.value}</div>
+                    <div className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{m.label}</div>
                   </div>
                 ))}
               </div>
             )}
-            <div className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400 group-hover:gap-2 transition-all">
-              {t("mkt.cases.read")} <ArrowRight className="h-4 w-4" />
+            <div className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+              {t("mkt.cases.read")} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </div>
           </Link>
         ))}

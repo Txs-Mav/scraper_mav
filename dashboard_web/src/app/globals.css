@@ -392,3 +392,20 @@
 .animate-confetti {
   animation: confetti-fall 2.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
+/* Marketing : flottement doux des cartes du hero */
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* Marketing : flux animé le long des flèches du schéma hero */
+@keyframes dash-flow {
+  to { stroke-dashoffset: -12; }
+}
+.flow-dash {
+  stroke-dasharray: 6 6;
+  animation: dash-flow 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-dash { animation: none; }
+}

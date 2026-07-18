@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
 import { Loader2, Check, Sparkles, Zap, Crown, ArrowRight } from "lucide-react"
@@ -16,48 +17,47 @@ const PLANS = [
     icon: Sparkles,
     color: "from-gray-500 to-gray-600",
     features: [
-      "6 scrapings par mois",
-      "2 scrapers en cache",
-      "Dashboard de base",
+      "6 scrapings d'essai",
+      "Tableau de bord et comparaisons",
       "Export CSV",
     ],
-    limitations: [
-      "Scrapings limités à 6 par mois",
-    ],
+    limitations: ["Pas d'analytics ni d'alertes"],
+    contactOnly: false,
   },
   {
     id: "pro",
     name: "Pro",
-    price: "199,99",
+    price: "200",
     period: " $ / mois",
-    description: "Pour les professionnels qui veulent automatiser leur veille prix",
+    description: "Pour surveiller votre marché au quotidien",
     icon: Zap,
     color: "from-emerald-500 to-emerald-600",
     features: [
       "Scrapings illimités",
-      "8 scrapers en cache",
-      "Analytics avancés",
-      "Alertes de prix",
+      "Analytics complet",
+      "3 sites surveillés en continu",
+      "Alertes courriel de prix",
       "Support prioritaire",
     ],
     highlighted: true,
+    contactOnly: true,
   },
   {
     id: "ultime",
     name: "Ultime",
-    price: "274,99",
+    price: "275",
     period: " $ / mois",
-    description: "Solution complète pour les équipes et entreprises exigeantes",
+    description: "Pour couvrir tout votre marché, sans plafond",
     icon: Crown,
     color: "from-teal-500 to-teal-600",
     features: [
       "Tout du plan Pro",
-      "Scrapers en cache illimités",
-      "API access",
-      "Support 24/7 dédié",
-      "SLA garanti 99.9%",
-      "Gestion d'équipe",
+      "Sites surveillés illimités",
+      "Alertes illimitées",
+      "Accompagnement dédié et onboarding",
+      "Accès direct à l'équipe",
     ],
+    contactOnly: true,
   },
 ]
 
@@ -85,21 +85,6 @@ export default function PaymentsPage() {
     }
   }, [isLoading, user, router])
 
-  // Vérifier les paramètres de l'URL pour les messages de retour
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get("success") === "true") {
-      setSuccessMessage("Paiement réussi ! Votre abonnement a été mis à jour.")
-      refreshUser()
-      // Nettoyer l'URL
-      router.replace("/dashboard/payments")
-    } else if (params.get("canceled") === "true") {
-      setError("Le paiement a été annulé. Vous pouvez réessayer à tout moment.")
-      // Nettoyer l'URL
-      router.replace("/dashboard/payments")
-    }
-  }, [router, refreshUser])
-
   if (isLoading) {
     return (
       <Layout>
@@ -112,107 +97,63 @@ export default function PaymentsPage() {
 
   if (!user) return null
 
-  const handlePlanSelect = async (planId: string) => {
-    // Réinitialiser les messages
+  const applyMagicCode = async () => {
     setError(null)
     setSuccessMessage(null)
+    if (!promoCode.trim() || !promoCodeValid || user.promo_code_id) return
 
-    // Si code promo valide, l'appliquer
-    if (promoCode.trim() && promoCodeValid && !user.promo_code_id) {
-      try {
-        const applyResponse = await fetch("/api/promo-codes/apply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: promoCode.trim(), plan: planId }),
-        })
-
-        if (applyResponse.ok) {
-          await refreshUser()
-          setSuccessMessage("Code promo appliqué ! Votre plan est maintenant gratuit à vie.")
-          setTimeout(() => {
-            router.push("/dashboard?plan=updated")
-          }, 2000)
-          return
-        } else {
-          const data = await applyResponse.json()
-          setError(data.error || "Erreur lors de l'application du code promo")
-          return
-        }
-      } catch (err) {
-        console.error("Error applying promo code:", err)
-        setError("Erreur lors de l'application du code promo")
-        return
-      }
-    }
-
-    if (planId === "standard") {
-      // Plan gratuit - pas de paiement nécessaire
-      setProcessingPlan(planId)
-      try {
-        const response = await fetch("/api/users/settings", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subscription_plan: "standard" }),
-        })
-
-        if (response.ok) {
-          await refreshUser()
-          setSuccessMessage("Plan mis à jour avec succès !")
-          setProcessingPlan(null)
-          setTimeout(() => {
-            router.push("/dashboard?plan=updated")
-          }, 1500)
-        } else {
-          const data = await response.json()
-          setError(data.error || "Erreur lors de la mise à jour du plan")
-          setProcessingPlan(null)
-        }
-      } catch (error) {
-        console.error("Error updating plan:", error)
-        setError("Une erreur est survenue. Veuillez réessayer.")
-        setProcessingPlan(null)
-      }
-      return
-    }
-
-    // Plans payants - utiliser Stripe
-    setProcessingPlan(planId)
+    setProcessingPlan("magic")
     try {
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
-      const response = await fetch("/api/stripe/checkout", {
+      const applyResponse = await fetch("/api/promo-codes/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan: planId,
-          promo_code: promoCode.trim() && promoCodeValid ? promoCode.trim() : undefined,
-          cancel_url: `${baseUrl}/dashboard/payments?payment=canceled`,
-          success_url: `${baseUrl}/dashboard?payment=success`,
-        }),
+        body: JSON.stringify({ code: promoCode.trim(), plan: "ultime" }),
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        // Erreur de l'API
-        setError(data.error || "Erreur lors de la création de la session de paiement")
-        setProcessingPlan(null)
-        return
-      }
-
-      if (data.url) {
-        if (data.promo_applied) {
-          await refreshUser()
-        }
-        window.location.href = data.url
-        // Note: setProcessingPlan ne sera pas réinitialisé ici car
-        // l'utilisateur sera redirigé vers Stripe
+      if (applyResponse.ok) {
+        await refreshUser()
+        setSuccessMessage("Code magique appliqué ! Votre plan est maintenant actif.")
+        setTimeout(() => {
+          router.push("/dashboard?plan=updated")
+        }, 2000)
       } else {
-        setError("Aucune URL de paiement n'a été retournée. Veuillez réessayer.")
+        const data = await applyResponse.json()
+        setError(data.error || "Erreur lors de l'application du code magique")
+      }
+    } catch (err) {
+      console.error("Error applying magic code:", err)
+      setError("Erreur lors de l'application du code magique")
+    } finally {
+      setProcessingPlan(null)
+    }
+  }
+
+  const selectFreePlan = async () => {
+    setError(null)
+    setSuccessMessage(null)
+    setProcessingPlan("standard")
+    try {
+      const response = await fetch("/api/users/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription_plan: "standard" }),
+      })
+
+      if (response.ok) {
+        await refreshUser()
+        setSuccessMessage("Plan mis à jour avec succès !")
+        setProcessingPlan(null)
+        setTimeout(() => {
+          router.push("/dashboard?plan=updated")
+        }, 1500)
+      } else {
+        const data = await response.json()
+        setError(data.error || "Erreur lors de la mise à jour du plan")
         setProcessingPlan(null)
       }
     } catch (error) {
-      console.error("Error creating checkout session:", error)
-      setError("Erreur de connexion. Veuillez vérifier votre connexion internet et réessayer.")
+      console.error("Error updating plan:", error)
+      setError("Une erreur est survenue. Veuillez réessayer.")
       setProcessingPlan(null)
     }
   }
@@ -222,7 +163,6 @@ export default function PaymentsPage() {
   const hasConfirmedPaidPlan =
     user.subscription_source === "stripe" || user.subscription_source === "promo"
 
-  // Si l'utilisateur a un plan payant confirmé, rediriger vers settings
   if (hasConfirmedPaidPlan) {
     return null
   }
@@ -235,7 +175,8 @@ export default function PaymentsPage() {
             Choisissez votre plan
           </h1>
           <p className="text-lg text-[var(--color-text-secondary)] max-w-2xl mx-auto">
-            Sélectionnez le plan qui correspond le mieux à vos besoins
+            Les plans payants s&apos;activent en nous contactant — ou instantanément avec un
+            code magique.
           </p>
         </div>
 
@@ -252,11 +193,12 @@ export default function PaymentsPage() {
           </div>
         )}
 
-        {/* Code promo */}
+        {/* Code magique */}
         {!user.promo_code_id && (
           <div className="mb-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-900 rounded-xl">
-            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-2">
-              Code promo (optionnel)
+            <label className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-primary)] mb-2">
+              <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              Code magique
             </label>
             <div className="flex gap-2">
               <input
@@ -278,26 +220,36 @@ export default function PaymentsPage() {
                       const data = await response.json()
                       setPromoCodeValid(data.valid)
                       if (!data.valid) {
-                        setError(data.error || "Code promo invalide")
+                        setError(data.error || "Code magique invalide")
                       } else {
                         setError(null)
                       }
-                    } catch (err) {
+                    } catch {
                       setPromoCodeValid(false)
-                      setError("Erreur lors de la validation du code promo")
+                      setError("Erreur lors de la validation du code magique")
                     } finally {
                       setValidatingPromo(false)
                     }
                   }
                 }}
                 className="flex-1 px-4 py-2 border border-[var(--color-border-secondary)] rounded-lg bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="PROMO2024-XXXXXX"
+                placeholder="Entrez votre code magique"
               />
               {validatingPromo && (
                 <Loader2 className="h-5 w-5 animate-spin text-gray-400 self-center" />
               )}
               {promoCodeValid === true && (
-                <span className="text-green-500 self-center text-xl">✓</span>
+                <button
+                  onClick={applyMagicCode}
+                  disabled={processingPlan === "magic"}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                >
+                  {processingPlan === "magic" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Activer"
+                  )}
+                </button>
               )}
               {promoCodeValid === false && promoCode.trim() && (
                 <span className="text-red-500 self-center text-xl">✗</span>
@@ -305,7 +257,7 @@ export default function PaymentsPage() {
             </div>
             {promoCodeValid === true && (
               <p className="text-xs text-green-600 dark:text-green-400 mt-2">
-                Code promo valide ! Votre plan sera gratuit à vie.
+                Code magique valide ! Cliquez sur « Activer » pour débloquer votre plan.
               </p>
             )}
           </div>
@@ -314,7 +266,7 @@ export default function PaymentsPage() {
         {user.promo_code_id && (
           <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-900 rounded-lg">
             <p className="text-sm text-green-800 dark:text-green-300">
-              ✓ Vous avez un code promo actif. Votre plan est gratuit à vie.
+              ✓ Vous avez un code magique actif. Votre plan est activé.
             </p>
           </div>
         )}
@@ -324,10 +276,8 @@ export default function PaymentsPage() {
             const Icon = plan.icon
             const isCurrent = isCurrentPlan(plan.id)
             const isProcessing = processingPlan === plan.id
-            // Désactiver le plan standard si l'utilisateur a un plan payant
             const isStandardDisabled = plan.id === "standard" && hasConfirmedPaidPlan
 
-            // Définir la couleur de bordure pour chaque plan
             const getBorderColor = () => {
               if (isCurrent) {
                 return plan.id === "standard"
@@ -343,21 +293,12 @@ export default function PaymentsPage() {
                   : "border-teal-300 dark:border-teal-700"
             }
 
-            const getHoverBorderColor = () => {
-              return plan.id === "standard"
-                ? "hover:border-gray-500 dark:hover:border-gray-500"
-                : plan.id === "pro"
-                  ? "hover:border-emerald-500 dark:hover:border-emerald-500"
-                  : "hover:border-teal-500 dark:hover:border-teal-500"
-            }
-
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-2xl border-2 transition-all duration-300 ${getBorderColor()} ${getHoverBorderColor()} ${isCurrent
-                    ? "shadow-xl scale-105"
-                    : "shadow-lg hover:shadow-xl hover:scale-[1.02]"
-                  } bg-[var(--color-background-primary)] overflow-hidden h-full flex flex-col`}
+                className={`relative rounded-2xl border-2 transition-all duration-300 ${getBorderColor()} ${
+                  isCurrent ? "shadow-xl scale-105" : "shadow-lg hover:shadow-xl"
+                } bg-[var(--color-background-primary)] overflow-hidden h-full flex flex-col`}
               >
                 {isCurrent && (
                   <div className="absolute top-4 right-4 z-10">
@@ -377,9 +318,7 @@ export default function PaymentsPage() {
 
                 <div className="p-8 flex flex-col flex-1">
                   <div className="flex items-center gap-3 mb-4">
-                    <div
-                      className={`p-3 rounded-xl bg-gradient-to-br ${plan.color} text-white`}
-                    >
+                    <div className={`p-3 rounded-xl bg-gradient-to-br ${plan.color} text-white`}>
                       <Icon className="h-6 w-6" />
                     </div>
                     <div>
@@ -412,50 +351,55 @@ export default function PaymentsPage() {
                         </span>
                       </li>
                     ))}
-                    {plan.limitations && (
-                      <>
-                        {plan.limitations.map((limitation, idx) => (
-                          <li key={`lim-${idx}`} className="flex items-start gap-2">
-                            <span className="h-5 w-5 flex-shrink-0 mt-0.5 flex items-center justify-center text-orange-500">
-                              ⚠️
-                            </span>
-                            <span className="text-sm text-orange-600 dark:text-orange-400">
-                              {limitation}
-                            </span>
-                          </li>
-                        ))}
-                      </>
-                    )}
+                    {plan.limitations?.map((limitation, idx) => (
+                      <li key={`lim-${idx}`} className="flex items-start gap-2">
+                        <span className="h-5 w-5 flex-shrink-0 mt-0.5 flex items-center justify-center text-orange-500">
+                          ⚠️
+                        </span>
+                        <span className="text-sm text-orange-600 dark:text-orange-400">
+                          {limitation}
+                        </span>
+                      </li>
+                    ))}
                   </ul>
 
-                  <button
-                    onClick={() => handlePlanSelect(plan.id)}
-                    disabled={isCurrent || isProcessing || isStandardDisabled}
-                    className={`w-full py-3 px-4 rounded-xl font-semibold transition-all duration-200 ${isCurrent || isStandardDisabled
-                        ? "bg-gray-100 dark:bg-gray-800 text-[var(--color-text-secondary)] cursor-not-allowed"
-                        : plan.highlighted
-                          ? "bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                  {plan.contactOnly ? (
+                    <div>
+                      <Link
+                        href="/contact?topic=sales"
+                        className="w-full py-3 px-4 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100"
+                      >
+                        Nous contacter
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                      <p className="mt-2 text-center text-[11px] text-[var(--color-text-tertiary)]">
+                        Activation par l&apos;équipe Go-Data — ou via code magique
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={selectFreePlan}
+                      disabled={isCurrent || isProcessing || isStandardDisabled}
+                      className={`w-full py-3 px-4 rounded-xl font-semibold transition-all duration-200 ${
+                        isCurrent || isStandardDisabled
+                          ? "bg-gray-100 dark:bg-gray-800 text-[var(--color-text-secondary)] cursor-not-allowed"
                           : "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100"
                       }`}
-                  >
-                    {isProcessing ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Traitement...
-                      </span>
-                    ) : isCurrent ? (
-                      "Plan actuel"
-                    ) : isStandardDisabled ? (
-                      "Annuler dans les paramètres"
-                    ) : plan.id === "standard" ? (
-                      "Sélectionner"
-                    ) : (
-                      <span className="flex items-center justify-center gap-2">
-                        Choisir ce plan
-                        <ArrowRight className="h-4 w-4" />
-                      </span>
-                    )}
-                  </button>
+                    >
+                      {isProcessing ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Traitement...
+                        </span>
+                      ) : isCurrent ? (
+                        "Plan actuel"
+                      ) : isStandardDisabled ? (
+                        "Annuler dans les paramètres"
+                      ) : (
+                        "Sélectionner"
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -464,8 +408,12 @@ export default function PaymentsPage() {
 
         <div className="text-center text-sm text-[var(--color-text-secondary)]">
           <p>
-            Tous les plans incluent un support par email. Les paiements sont sécurisés via{" "}
-            <span className="font-semibold">Stripe</span>.
+            Aucun paiement en ligne. Les plans payants sont activés directement par
+            l&apos;équipe Go-Data —{" "}
+            <Link href="/contact?topic=sales" className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
+              écrivez-nous
+            </Link>
+            .
           </p>
         </div>
       </div>

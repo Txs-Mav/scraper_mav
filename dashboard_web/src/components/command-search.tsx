@@ -74,7 +74,7 @@ export default function CommandSearch() {
     { id: "help", label: "Aide", description: "Centre d'aide", icon: HelpCircle, action: () => router.push("/dashboard/help"), category: "page", keywords: ["support", "documentation"] },
     { id: "scrape", label: "Analyser maintenant", description: "Lancer une analyse immédiate du marché", icon: Zap, action: () => { router.push("/dashboard"); setTimeout(() => window.dispatchEvent(new CustomEvent("open-scraper-config")), 300) }, category: "action", keywords: ["analyser", "scraper", "extraction", "lancer", "démarrer", "marché"] },
     { id: "export", label: "Exporter les données", description: "Télécharger vos données", icon: Download, action: () => router.push("/dashboard/settings"), category: "action", keywords: ["export", "télécharger", "json", "csv"] },
-    { id: "stripe", label: "Portail Stripe", description: "Gérer facturation et abonnement", icon: ExternalLink, action: async () => { try { const r = await fetch("/api/stripe/portal", { method: "POST" }); const d = await r.json(); if (r.ok && d.url) window.location.assign(d.url) } catch {} }, category: "action", keywords: ["stripe", "facture", "paiement"] },
+    { id: "billing-contact", label: "Facturation & abonnement", description: "Contacter Go-Data pour votre abonnement", icon: ExternalLink, action: () => router.push("/contact?topic=support"), category: "action", keywords: ["facture", "paiement", "abonnement", "plan"] },
   ]
 
   const filtered = query.trim()
