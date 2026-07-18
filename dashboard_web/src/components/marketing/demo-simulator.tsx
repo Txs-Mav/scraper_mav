@@ -521,11 +521,6 @@ export default function DemoSimulator() {
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_32px_80px_-32px_rgba(0,0,0,0.4)] dark:border-white/10 dark:bg-[#0f1011]">
       {/* Barre de navigateur */}
       <div className="flex items-center gap-4 border-b border-gray-200 px-4 py-3 dark:border-white/10">
-        <span className="flex gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-gray-200 dark:bg-white/15" />
-          <span className="h-2.5 w-2.5 rounded-full bg-gray-200 dark:bg-white/15" />
-          <span className="h-2.5 w-2.5 rounded-full bg-gray-200 dark:bg-white/15" />
-        </span>
         <span className="hidden flex-1 justify-center sm:flex">
           <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-3 py-1 font-mono text-[12px] text-gray-400 dark:bg-white/[0.04] dark:text-gray-500">
             app.go-data.ca/dashboard

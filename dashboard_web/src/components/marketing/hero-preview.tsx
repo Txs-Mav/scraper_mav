@@ -61,13 +61,8 @@ export default function HeroPreview() {
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_24px_60px_-30px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-[#0f1011]">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-4 border-b border-gray-200 px-4 py-3 dark:border-white/10">
-        <div className="flex items-center gap-2.5">
-          <span className="flex gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-gray-200 dark:bg-white/15" />
-            <span className="h-2.5 w-2.5 rounded-full bg-gray-200 dark:bg-white/15" />
-            <span className="h-2.5 w-2.5 rounded-full bg-gray-200 dark:bg-white/15" />
-          </span>
-          <span className="ml-1 text-[13px] font-medium text-gray-500 dark:text-gray-400">
+        <div className="flex items-center">
+          <span className="text-[13px] font-medium text-gray-500 dark:text-gray-400">
             Surveillance de marché
           </span>
         </div>
