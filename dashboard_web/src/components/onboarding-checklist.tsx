@@ -26,46 +26,59 @@ interface StepDef {
   page: string | null
 }
 
+// Wording volontairement sans jargon : on parle de « sites à surveiller »
+// et d'« analyse », jamais de scraper ou de collecte.
 const STEP_DEFS: StepDef[] = [
   {
-    id: "profile",
-    label: "Complétez votre profil",
-    description: "Photo et informations",
-    hint: "Ajoutez votre photo et vos informations pour personnaliser votre compte.",
-    icon: Settings,
-    target: "[data-onboarding='profile']",
-    page: "/dashboard/settings",
-  },
-  {
     id: "config",
-    label: "Ajoutez vos concurrents",
-    description: "Configurez les sites à surveiller",
-    hint: "Cliquez ici pour ajouter votre site de référence et les sites concurrents à surveiller.",
+    label: "Ajoutez les sites à surveiller",
+    description: "Votre site et ceux de vos concurrents",
+    hint: "Indiquez votre site web et ceux des concurrents à suivre. Trois ou quatre suffisent pour commencer.",
     icon: Globe,
     target: "[data-onboarding='config']",
     page: "/dashboard",
   },
   {
     id: "scrape",
-    label: "Lancez la surveillance",
-    description: "La plateforme analysera vos concurrents",
-    hint: "Lancez la première analyse pour démarrer la surveillance automatique du marché.",
+    label: "Lancez la première analyse",
+    description: "Go-Data relève les prix pour vous",
+    hint: "Cliquez sur « Analyser maintenant » : Go-Data visite chaque site et relève les prix automatiquement.",
     icon: Rocket,
     target: "[data-onboarding='scrape']",
     page: "/dashboard",
   },
   {
     id: "analyze",
-    label: "Explorez le marché",
-    description: "Comparez les prix et trouvez les opportunités",
-    hint: "Recherchez des produits, comparez les prix et identifiez votre positionnement.",
+    label: "Comparez vos prix",
+    description: "Qui est moins cher, où, et de combien",
+    hint: "Recherchez un produit pour voir votre prix face à ceux du marché, produit par produit.",
     icon: BarChart2,
     target: "[data-onboarding='analyze']",
     page: "/dashboard",
   },
+  {
+    id: "profile",
+    label: "Complétez votre profil",
+    description: "Photo et informations du commerce",
+    hint: "Ajoutez votre photo et les informations de votre commerce dans les réglages.",
+    icon: Settings,
+    target: "[data-onboarding='profile']",
+    page: "/dashboard/settings",
+  },
 ]
 
 const TUTORIAL_KEY = "go_data_tutorial"
+
+// L'onboarding ne s'adresse qu'aux comptes fraîchement créés. Un utilisateur
+// existant qui se connecte (nouveau navigateur, cache vidé…) ne doit rien voir.
+const NEW_ACCOUNT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000
+
+function isNewAccount(createdAt?: string) {
+  if (!createdAt) return false
+  const t = new Date(createdAt).getTime()
+  if (Number.isNaN(t)) return false
+  return Date.now() - t < NEW_ACCOUNT_WINDOW_MS
+}
 
 interface SpotlightState {
   stepId: string
@@ -78,6 +91,7 @@ interface SpotlightState {
 export default function OnboardingChecklist() {
   const [dismissed, setDismissed] = useState(true)
   const [minimized, setMinimized] = useState(false)
+  const [welcomeOpen, setWelcomeOpen] = useState(false)
   const { user } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
@@ -103,9 +117,13 @@ export default function OnboardingChecklist() {
     } catch { /* ignore */ }
   }, [])
 
-  // Normal onboarding init
+  // Normal onboarding init — réservé aux comptes récents (post-inscription).
   useEffect(() => {
     if (!user) return
+    if (!isNewAccount(user.created_at)) {
+      setDismissed(true)
+      return
+    }
     const stored = localStorage.getItem(`onboarding_${user.id}`)
     if (stored === "dismissed") {
       setDismissed(true)
@@ -138,20 +156,43 @@ export default function OnboardingChecklist() {
     }
 
     setDismissed(false)
+    if (!localStorage.getItem(`onboarding_welcome_${user.id}`)) {
+      setWelcomeOpen(true)
+    }
   }, [user])
 
-  // Listen for restart-onboarding event
+  const startTutorial = useCallback(() => {
+    sessionStorage.setItem(TUTORIAL_KEY, JSON.stringify({ stepIndex: 0 }))
+    setTutorialMode(true)
+    setTutorialStepIndex(0)
+    setSpotlight(null)
+    setMinimized(false)
+  }, [])
+
+  // Listen for restart-onboarding event (menu d'aide)
   useEffect(() => {
     const handleRestart = () => {
-      sessionStorage.setItem(TUTORIAL_KEY, JSON.stringify({ stepIndex: 0 }))
-      setTutorialMode(true)
-      setTutorialStepIndex(0)
-      setSpotlight(null)
-      setMinimized(false)
+      setWelcomeOpen(false)
+      startTutorial()
     }
     window.addEventListener("restart-onboarding", handleRestart)
     return () => window.removeEventListener("restart-onboarding", handleRestart)
-  }, [])
+  }, [startTutorial])
+
+  const markWelcomeSeen = useCallback(() => {
+    if (user) localStorage.setItem(`onboarding_welcome_${user.id}`, "true")
+  }, [user])
+
+  const handleWelcomeStart = () => {
+    markWelcomeSeen()
+    setWelcomeOpen(false)
+    startTutorial()
+  }
+
+  const handleWelcomeSkip = () => {
+    markWelcomeSeen()
+    setWelcomeOpen(false)
+  }
 
   // Show spotlight for a tutorial step
   const showTutorialSpotlight = useCallback((stepDef: StepDef, index: number) => {
@@ -337,6 +378,82 @@ export default function OnboardingChecklist() {
 
   const pad = 8
 
+  // --- Render: modal de bienvenue (une seule fois, après la création du compte) ---
+  const renderWelcome = () => {
+    if (!mounted || !welcomeOpen || dismissed || tutorialMode) return null
+
+    const firstName = user?.name?.split(" ")[0]
+
+    return createPortal(
+      <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center animate-in fade-in duration-200">
+        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] shadow-2xl shadow-black/30 animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className="relative p-6 sm:p-7">
+            <button
+              type="button"
+              onClick={handleWelcomeSkip}
+              aria-label="Fermer"
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-gray-400 transition hover:bg-[var(--color-background-hover)] hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-600/25">
+              <Rocket className="h-5 w-5 text-white" />
+            </div>
+
+            <h2 className="mt-4 text-xl font-bold text-[var(--color-text-primary)]">
+              {firstName ? `Bienvenue, ${firstName} !` : "Bienvenue dans Go-Data !"}
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+              Votre compte est prêt. En trois étapes, vous verrez les prix de vos
+              concurrents à côté des vôtres.
+            </p>
+
+            <ol className="mt-5 space-y-3">
+              {STEP_DEFS.slice(0, 3).map((step, index) => {
+                const Icon = step.icon
+                return (
+                  <li key={step.id} className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+                      <Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold text-[var(--color-text-primary)]">
+                        {index + 1}. {step.label}
+                      </span>
+                      <span className="block text-xs text-[var(--color-text-secondary)]">
+                        {step.description}
+                      </span>
+                    </span>
+                  </li>
+                )
+              })}
+            </ol>
+
+            <div className="mt-6 space-y-2">
+              <button
+                type="button"
+                onClick={handleWelcomeStart}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/25 transition-all hover:bg-emerald-700 active:scale-[0.98]"
+              >
+                Démarrer la visite guidée
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleWelcomeSkip}
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-background-hover)]"
+              >
+                Explorer par moi-même
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )
+  }
+
   // --- Render: tutorial mode (overlay visuel + widget bas-gauche) ---
   const renderTutorialOverlay = () => {
     if (!mounted || !tutorialMode || !spotlight) return null
@@ -356,13 +473,13 @@ export default function OnboardingChecklist() {
                 className="absolute inset-0 bg-black/60 backdrop-blur-[3px] transition-all duration-300"
                 style={{
                   clipPath: `polygon(
-                    0% 0%, 0% 100%, 
-                    ${spotlight.rect.left - pad}px 100%, 
-                    ${spotlight.rect.left - pad}px ${spotlight.rect.top - pad}px, 
-                    ${spotlight.rect.right + pad}px ${spotlight.rect.top - pad}px, 
-                    ${spotlight.rect.right + pad}px ${spotlight.rect.bottom + pad}px, 
-                    ${spotlight.rect.left - pad}px ${spotlight.rect.bottom + pad}px, 
-                    ${spotlight.rect.left - pad}px 100%, 
+                    0% 0%, 0% 100%,
+                    ${spotlight.rect.left - pad}px 100%,
+                    ${spotlight.rect.left - pad}px ${spotlight.rect.top - pad}px,
+                    ${spotlight.rect.right + pad}px ${spotlight.rect.top - pad}px,
+                    ${spotlight.rect.right + pad}px ${spotlight.rect.bottom + pad}px,
+                    ${spotlight.rect.left - pad}px ${spotlight.rect.bottom + pad}px,
+                    ${spotlight.rect.left - pad}px 100%,
                     100% 100%, 100% 0%
                   )`,
                 }}
@@ -392,7 +509,7 @@ export default function OnboardingChecklist() {
                   <div className="p-1.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600">
                     <Rocket className="h-3.5 w-3.5 text-white" />
                   </div>
-                  <span className="text-xs font-bold text-[var(--color-text-primary)]">Guide de démarrage</span>
+                  <span className="text-xs font-bold text-[var(--color-text-primary)]">Visite guidée</span>
                 </div>
                 <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
                   {spotlight.stepIndex + 1}/{STEP_DEFS.length}
@@ -464,13 +581,13 @@ export default function OnboardingChecklist() {
               className="absolute inset-0 bg-black/60 backdrop-blur-[3px] transition-all duration-300"
               style={{
                 clipPath: `polygon(
-                  0% 0%, 0% 100%, 
-                  ${spotlight.rect.left - pad}px 100%, 
-                  ${spotlight.rect.left - pad}px ${spotlight.rect.top - pad}px, 
-                  ${spotlight.rect.right + pad}px ${spotlight.rect.top - pad}px, 
-                  ${spotlight.rect.right + pad}px ${spotlight.rect.bottom + pad}px, 
-                  ${spotlight.rect.left - pad}px ${spotlight.rect.bottom + pad}px, 
-                  ${spotlight.rect.left - pad}px 100%, 
+                  0% 0%, 0% 100%,
+                  ${spotlight.rect.left - pad}px 100%,
+                  ${spotlight.rect.left - pad}px ${spotlight.rect.top - pad}px,
+                  ${spotlight.rect.right + pad}px ${spotlight.rect.top - pad}px,
+                  ${spotlight.rect.right + pad}px ${spotlight.rect.bottom + pad}px,
+                  ${spotlight.rect.left - pad}px ${spotlight.rect.bottom + pad}px,
+                  ${spotlight.rect.left - pad}px 100%,
                   100% 100%, 100% 0%
                 )`,
               }}
@@ -509,7 +626,7 @@ export default function OnboardingChecklist() {
 
   // --- Render: normal onboarding checklist ---
   const renderChecklist = () => {
-    if (dismissed || tutorialMode) return null
+    if (dismissed || tutorialMode || welcomeOpen) return null
 
     if (minimized) {
       return (
@@ -548,8 +665,8 @@ export default function OnboardingChecklist() {
               <Rocket className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Bienvenue !</h3>
-              <p className="text-xs text-[var(--color-text-secondary)]">{completedCount}/{steps.length} étapes</p>
+              <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Guide de démarrage</h3>
+              <p className="text-xs text-[var(--color-text-secondary)]">{completedCount}/{steps.length} étapes complétées</p>
             </div>
           </div>
           <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
@@ -606,6 +723,7 @@ export default function OnboardingChecklist() {
 
   return (
     <>
+      {renderWelcome()}
       {renderTutorialOverlay()}
       {renderNormalSpotlight()}
       {renderChecklist()}

@@ -236,6 +236,7 @@ export default function MarketingHomePage() {
               {[
                 { src: "/logo_mvm.png", alt: "MVM Motosport", width: 225, height: 225, logoClass: "h-11" },
                 { src: "/logo_moto_db.png", alt: "Moto DB", width: 350, height: 100, logoClass: "h-8" },
+                { src: "/motoplex.jpg", alt: "Motoplex", width: 745, height: 328, logoClass: "h-9" },
               ].map((client) => (
                 <span
                   key={client.alt}
