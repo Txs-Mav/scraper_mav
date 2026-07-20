@@ -397,7 +397,7 @@ export default function OnboardingChecklist() {
               <X className="h-4 w-4" />
             </button>
 
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-600/25">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-600/25">
               <Rocket className="h-5 w-5 text-white" />
             </div>
 
@@ -414,8 +414,8 @@ export default function OnboardingChecklist() {
                 const Icon = step.icon
                 return (
                   <li key={step.id} className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
-                      <Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-50 dark:bg-orange-950/30">
+                      <Icon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                     </span>
                     <span>
                       <span className="block text-sm font-semibold text-[var(--color-text-primary)]">
@@ -434,7 +434,7 @@ export default function OnboardingChecklist() {
               <button
                 type="button"
                 onClick={handleWelcomeStart}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/25 transition-all hover:bg-emerald-700 active:scale-[0.98]"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-600/25 transition-all hover:bg-orange-700 active:scale-[0.98]"
               >
                 Démarrer la visite guidée
                 <ArrowRight className="h-4 w-4" />
@@ -485,7 +485,7 @@ export default function OnboardingChecklist() {
                 }}
               />
               <div
-                className="absolute rounded-2xl ring-2 ring-emerald-500/80 shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all duration-300"
+                className="absolute rounded-2xl ring-2 ring-orange-500/80 shadow-[0_0_40px_rgba(249,115,22,0.45)] transition-all duration-300"
                 style={{
                   left: spotlight.rect.left - pad,
                   top: spotlight.rect.top - pad,
@@ -506,12 +506,12 @@ export default function OnboardingChecklist() {
             <div className="px-5 pt-4 pb-3 border-b border-[var(--color-border-tertiary)]">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600">
+                  <div className="p-1.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600">
                     <Rocket className="h-3.5 w-3.5 text-white" />
                   </div>
                   <span className="text-xs font-bold text-[var(--color-text-primary)]">Visite guidée</span>
                 </div>
-                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="text-[11px] font-semibold text-orange-600 dark:text-orange-400">
                   {spotlight.stepIndex + 1}/{STEP_DEFS.length}
                 </span>
               </div>
@@ -522,9 +522,9 @@ export default function OnboardingChecklist() {
                     key={_.id}
                     className={`h-1 rounded-full transition-all duration-500 ${
                       i === spotlight.stepIndex
-                        ? "flex-[3] bg-emerald-500"
+                        ? "flex-[3] bg-orange-500"
                         : i < spotlight.stepIndex
-                          ? "flex-1 bg-emerald-300 dark:bg-emerald-700"
+                          ? "flex-1 bg-orange-300 dark:bg-orange-700"
                           : "flex-1 bg-gray-200 dark:bg-gray-700"
                     }`}
                   />
@@ -535,8 +535,8 @@ export default function OnboardingChecklist() {
             {/* Étape courante */}
             <div className="px-5 py-4">
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 flex-shrink-0 mt-0.5">
-                  <Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <div className="p-2 rounded-xl bg-orange-50 dark:bg-orange-950/30 flex-shrink-0 mt-0.5">
+                  <Icon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-[var(--color-text-primary)]">{spotlight.label}</p>
@@ -550,7 +550,7 @@ export default function OnboardingChecklist() {
               <button
                 type="button"
                 onClick={handleTutorialNext}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.98] transition-all"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.98] transition-all"
               >
                 {isLast ? "Terminer" : "Étape suivante"}
                 <ArrowRight className="h-4 w-4" />
@@ -593,7 +593,7 @@ export default function OnboardingChecklist() {
               }}
             />
             <div
-              className="absolute rounded-2xl ring-2 ring-emerald-500/80 shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all duration-300 pointer-events-none"
+              className="absolute rounded-2xl ring-2 ring-orange-500/80 shadow-[0_0_40px_rgba(249,115,22,0.45)] transition-all duration-300 pointer-events-none"
               style={{
                 left: spotlight.rect.left - pad,
                 top: spotlight.rect.top - pad,
@@ -610,7 +610,7 @@ export default function OnboardingChecklist() {
             >
               <div className="bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/20 border border-[var(--color-border-secondary)] p-5 max-w-xs">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <div className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
                   <p className="text-sm font-bold text-[var(--color-text-primary)]">{spotlight.label}</p>
                 </div>
                 <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{spotlight.hint}</p>
@@ -633,7 +633,7 @@ export default function OnboardingChecklist() {
         <button
           type="button"
           onClick={() => setMinimized(false)}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/30 hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/30 hover:bg-orange-700 hover:shadow-xl hover:-translate-y-0.5 transition-all"
         >
           <Sparkles className="h-4 w-4" />
           {completedCount}/{steps.length}
@@ -661,7 +661,7 @@ export default function OnboardingChecklist() {
             </button>
           </div>
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-600/20">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-600/20">
               <Rocket className="h-4 w-4 text-white" />
             </div>
             <div>
@@ -671,7 +671,7 @@ export default function OnboardingChecklist() {
           </div>
           <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-500"
+              className="h-full rounded-full bg-gradient-to-r from-orange-500 to-orange-600 transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -696,12 +696,12 @@ export default function OnboardingChecklist() {
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
                   step.completed
                     ? "bg-emerald-100 dark:bg-emerald-900/30"
-                    : "bg-gray-100 dark:bg-white/[0.06] group-hover:bg-emerald-50 dark:group-hover:bg-emerald-950/30"
+                    : "bg-gray-100 dark:bg-white/[0.06] group-hover:bg-orange-50 dark:group-hover:bg-orange-950/30"
                 }`}>
                   {step.completed ? (
                     <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                   ) : (
-                    <StepIcon className="h-3.5 w-3.5 text-[var(--color-text-secondary)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
+                    <StepIcon className="h-3.5 w-3.5 text-[var(--color-text-secondary)] group-hover:text-orange-600 dark:group-hover:text-orange-400" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -711,7 +711,7 @@ export default function OnboardingChecklist() {
                   <p className="text-xs text-[var(--color-text-secondary)] truncate">{step.description}</p>
                 </div>
                 {!step.completed && (
-                  <ChevronRight className="h-4 w-4 text-gray-300 dark:text-gray-600 group-hover:text-emerald-500 flex-shrink-0 transition" />
+                  <ChevronRight className="h-4 w-4 text-gray-300 dark:text-gray-600 group-hover:text-orange-500 flex-shrink-0 transition" />
                 )}
               </button>
             )
