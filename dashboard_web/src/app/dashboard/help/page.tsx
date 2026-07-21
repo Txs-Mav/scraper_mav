@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
 import {
@@ -12,7 +12,6 @@ import {
   Loader2,
   MessageCircle,
   Send,
-  Sparkles,
 } from "lucide-react"
 
 type SupportType = "question" | "suggestion" | "bug" | "other"
@@ -72,11 +71,6 @@ export default function DashboardHelpPage() {
   const [type, setType] = useState<SupportType>("question")
   const [subject, setSubject] = useState("")
   const [message, setMessage] = useState("")
-
-  const selectedType = useMemo(
-    () => TYPE_OPTIONS.find((option) => option.value === type) ?? TYPE_OPTIONS[0],
-    [type]
-  )
 
   const loadMessages = useCallback(async () => {
     if (!user) return
@@ -141,46 +135,22 @@ export default function DashboardHelpPage() {
     }
   }
 
-  const SelectedIcon = selectedType.icon
-
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
-        <section className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-            <div>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 dark:border-orange-900/40 dark:bg-orange-950/30 dark:text-orange-300">
-                <Sparkles className="h-3.5 w-3.5" />
-                Support Go-Data
-              </span>
-              <h1 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">
-                Centre d'aide
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm text-[var(--color-text-secondary)] leading-relaxed">
-                Envoyez une question, une suggestion ou un problème rencontré dans le dashboard. Les réponses du compte dev apparaîtront dans votre historique.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
-              <p className="font-medium text-[var(--color-text-primary)]">Réponse centralisée</p>
-              <p className="mt-1 text-xs leading-relaxed">
-                Plus besoin d'écrire par courriel : le fil reste attaché à votre compte.
-              </p>
-            </div>
-          </div>
-        </section>
+        {/* En-tête compact : titre + une ligne, rien d'autre */}
+        <header>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">
+            Centre d'aide
+          </h1>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            Écrivez-nous — la réponse arrive dans votre historique, ici.
+          </p>
+        </header>
 
         <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-6">
           <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600 dark:bg-orange-950/30 dark:text-orange-300">
-                <SelectedIcon className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Envoyer un message</h2>
-                <p className="text-sm text-[var(--color-text-secondary)]">Décrivez clairement ce que vous voulez savoir ou améliorer.</p>
-              </div>
-            </div>
+            <h2 className="mb-5 text-lg font-semibold text-[var(--color-text-primary)]">Envoyer un message</h2>
 
             {error && (
               <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300 flex gap-2">
@@ -200,7 +170,7 @@ export default function DashboardHelpPage() {
                 <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-2">
                   Type de demande
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {TYPE_OPTIONS.map((option) => {
                     const Icon = option.icon
                     const active = type === option.value
@@ -209,17 +179,15 @@ export default function DashboardHelpPage() {
                         key={option.value}
                         type="button"
                         onClick={() => setType(option.value)}
-                        className={`rounded-xl border px-3 py-3 text-left transition ${
+                        title={option.description}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
                           active
-                            ? "border-orange-500 bg-orange-50 text-orange-900 dark:bg-orange-950/25 dark:text-orange-100"
-                            : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]"
+                            ? "border-orange-500 bg-orange-50 text-orange-800 dark:bg-orange-950/25 dark:text-orange-200"
+                            : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
                         }`}
                       >
-                        <span className="flex items-center gap-2 text-sm font-medium">
-                          <Icon className={`h-4 w-4 ${active ? "text-orange-600 dark:text-orange-300" : "text-[var(--color-text-secondary)]"}`} />
-                          {option.label}
-                        </span>
-                        <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">{option.description}</span>
+                        <Icon className={`h-4 w-4 ${active ? "text-orange-600 dark:text-orange-300" : "text-[var(--color-text-secondary)]"}`} />
+                        {option.label}
                       </button>
                     )
                   })}
@@ -269,10 +237,7 @@ export default function DashboardHelpPage() {
 
           <aside className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Mes demandes</h2>
-                <p className="text-sm text-[var(--color-text-secondary)]">Historique et réponses.</p>
-              </div>
+              <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Mes demandes</h2>
               <button
                 type="button"
                 onClick={() => void loadMessages()}

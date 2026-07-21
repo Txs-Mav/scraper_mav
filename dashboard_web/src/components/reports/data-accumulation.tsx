@@ -117,9 +117,6 @@ export default function DataAccumulation({
         <h2 className="text-lg font-bold text-[var(--color-text-primary)]">
           {t("reports.past.title")}
         </h2>
-        <p className="text-sm text-[var(--color-text-secondary)]">
-          {t("reports.past.subtitle")}
-        </p>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -139,9 +136,6 @@ export default function DataAccumulation({
               <p className="text-3xl font-extrabold text-[var(--color-text-primary)] tabular-nums leading-none">
                 {c.value}
               </p>
-              <p className="text-[11px] text-[var(--color-text-secondary)] mt-2 leading-snug">
-                {c.caption}
-              </p>
             </div>
           )
         })}
@@ -153,9 +147,6 @@ export default function DataAccumulation({
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
               {t("reports.past.coverage")}
             </h3>
-            <p className="text-[11px] text-[var(--color-text-secondary)]">
-              {t("reports.past.coverageDesc")}
-            </p>
           </div>
           <div className="flex items-center gap-4 text-xs tabular-nums">
             <span className="text-[var(--color-text-secondary)]">
@@ -187,8 +178,8 @@ export default function DataAccumulation({
             >
               <defs>
                 <linearGradient id="accGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3B6D11" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#3B6D11" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#F97316" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis
@@ -209,12 +200,12 @@ export default function DataAccumulation({
               <Area
                 type="monotone"
                 dataKey="total"
-                stroke="#3B6D11"
+                stroke="#EA580C"
                 strokeWidth={2}
                 fill="url(#accGradient)"
                 dot={false}
                 activeDot={{
-                  fill: "#3B6D11",
+                  fill: "#EA580C",
                   r: 4,
                   strokeWidth: 2,
                   stroke: "var(--color-background-primary)",
@@ -235,9 +226,6 @@ export default function DataAccumulation({
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
               {t("reports.past.timelineTitle")}
             </h3>
-            <p className="text-[11px] text-[var(--color-text-secondary)]">
-              {t("reports.past.timelineDesc")}
-            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">

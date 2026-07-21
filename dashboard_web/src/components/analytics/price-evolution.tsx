@@ -54,7 +54,7 @@ function ScrapesBarStrip({
         className={`grid items-end gap-1 h-24 ${
           items.length <= 7 ? 'grid-flow-col' : 'grid-flow-col'
         }`}
-        style={{ gridAutoColumns: 'minmax(0, 1fr)' }}
+        style={{ gridAutoColumns: 'minmax(0, 56px)' }}
       >
         {items.map((d, i) => {
           const heightPct = (d.count / max) * 100
@@ -62,10 +62,10 @@ function ScrapesBarStrip({
           return (
             <div key={i} className="flex flex-col items-center justify-end h-full group relative">
               <div
-                className={`w-full rounded-sm transition-opacity ${
+                className={`w-full rounded-t-md transition-colors ${
                   isEmpty
                     ? 'bg-[var(--color-background-secondary)]/40'
-                    : 'bg-[var(--color-text-primary)]/55 group-hover:bg-[var(--color-text-primary)]/80'
+                    : 'bg-orange-500/75 group-hover:bg-orange-500'
                 }`}
                 style={{ height: `${Math.max(3, heightPct)}%` }}
               />

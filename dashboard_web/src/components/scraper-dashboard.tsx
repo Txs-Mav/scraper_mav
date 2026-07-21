@@ -214,6 +214,14 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
   const [migrating, setMigrating] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState("")
+
+  // Lien profond depuis l'Analyse : /dashboard?recherche=<produit> pré-remplit
+  // la recherche pour retrouver le produit ciblé dans le tableau.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("recherche")
+    if (q) setSearchQuery(q)
+  }, [])
+
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedMarque, setSelectedMarque] = useState<string>("all")
   const [selectedCompetitivite, setSelectedCompetitivite] = useState<string>("all")

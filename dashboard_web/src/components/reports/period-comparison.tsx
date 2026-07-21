@@ -57,21 +57,16 @@ function CompareCard({
   const isDown = comp.delta < 0
   const Icon = isUp ? ArrowUpRight : isDown ? ArrowDownRight : Minus
   const tone = isUp
-    ? "text-[#A32D2D] bg-[#FCEBEB] dark:bg-[#A32D2D]/15 border-[#A32D2D]/20"
+    ? "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/15 border-red-500/20"
     : isDown
-      ? "text-[#27500A] dark:text-[#3B6D11] bg-[#EAF3DE] dark:bg-[#3B6D11]/15 border-[#3B6D11]/20"
+      ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border-emerald-500/20"
       : "text-[var(--color-text-secondary)] bg-[var(--color-background-secondary)] border-[var(--color-border-tertiary)]"
 
   return (
     <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-5 space-y-3">
-      <div>
-        <p className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-          {label}
-        </p>
-        <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">
-          {helper}
-        </p>
-      </div>
+      <p className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+        {label}
+      </p>
 
       {comp.available ? (
         <>
@@ -88,32 +83,17 @@ function CompareCard({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[var(--color-border-tertiary)]">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-secondary)] font-semibold">
-                {currentText}
-              </p>
-              <p className="text-sm font-bold text-[var(--color-text-primary)] tabular-nums mt-0.5">
-                {formatValue(comp.current, unit, locale)}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-secondary)] font-semibold">
-                {previousText}
-              </p>
-              <p className="text-sm font-bold text-[var(--color-text-primary)] tabular-nums mt-0.5">
-                {formatValue(comp.previous, unit, locale)}
-              </p>
-            </div>
-          </div>
-
-          <div className="text-[11px] text-[var(--color-text-secondary)] tabular-nums">
-            Δ ={" "}
-            <span className="font-medium text-[var(--color-text-primary)]">
-              {comp.delta >= 0 ? "+" : ""}
-              {formatValue(Math.abs(comp.delta) * Math.sign(comp.delta || 1), unit, locale)}
+          <p className="pt-2 border-t border-[var(--color-border-tertiary)] text-[11px] text-[var(--color-text-secondary)] tabular-nums">
+            {previousText}{" "}
+            <span className="font-semibold text-[var(--color-text-primary)]">
+              {formatValue(comp.previous, unit, locale)}
+            </span>{" "}
+            · Δ{" "}
+            <span className="font-semibold text-[var(--color-text-primary)]">
+              {comp.delta >= 0 ? "+" : "−"}
+              {formatValue(Math.abs(comp.delta), unit, locale)}
             </span>
-          </div>
+          </p>
         </>
       ) : (
         <p className="text-xs italic text-[var(--color-text-secondary)] pt-2">
@@ -178,9 +158,6 @@ export default function PeriodComparisonSection({
         <h2 className="text-lg font-bold text-[var(--color-text-primary)]">
           {t("reports.trends.title")}
         </h2>
-        <p className="text-sm text-[var(--color-text-secondary)]">
-          {t("reports.trends.subtitle")}
-        </p>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

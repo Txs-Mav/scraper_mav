@@ -40,9 +40,9 @@ function DeltaBadge({ value }: { value: number }) {
   const isDown = value < 0
   const Icon = isUp ? ArrowUpRight : isDown ? ArrowDownRight : Minus
   const tone = isUp
-    ? "text-[#A32D2D] bg-[#FCEBEB] dark:bg-[#A32D2D]/15"
+    ? "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/15"
     : isDown
-      ? "text-[#27500A] dark:text-[#3B6D11] bg-[#EAF3DE] dark:bg-[#3B6D11]/15"
+      ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15"
       : "text-[var(--color-text-secondary)] bg-[var(--color-background-secondary)]"
   return (
     <span
@@ -86,9 +86,6 @@ function TopMovesTable({
         <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
           {title}
         </h3>
-        <p className="text-[11px] text-[var(--color-text-secondary)]">
-          {description}
-        </p>
       </div>
 
       {rows.length === 0 ? (
@@ -163,9 +160,6 @@ export default function PriceChangesTables({
         <h2 className="text-lg font-bold text-[var(--color-text-primary)]">
           {t("reports.changes.title")}
         </h2>
-        <p className="text-sm text-[var(--color-text-secondary)]">
-          {t("reports.changes.subtitle")}
-        </p>
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -203,9 +197,6 @@ export default function PriceChangesTables({
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
               {t("reports.changes.siteTrends")}
             </h3>
-            <p className="text-[11px] text-[var(--color-text-secondary)]">
-              {t("reports.changes.siteTrendsDesc")}
-            </p>
           </div>
           {trends.siteTrends.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm italic text-[var(--color-text-secondary)]">
@@ -242,7 +233,7 @@ export default function PriceChangesTables({
                             {row.site}
                           </span>
                           {row.isReference && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#3B6D11]/15 text-[#27500A] dark:text-[#3B6D11] uppercase tracking-wider">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/15 text-orange-700 dark:text-orange-400 uppercase tracking-wider">
                               {t("reports.changes.referenceBadge")}
                             </span>
                           )}
@@ -275,9 +266,6 @@ export default function PriceChangesTables({
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
               {t("reports.changes.categoryTrends")}
             </h3>
-            <p className="text-[11px] text-[var(--color-text-secondary)]">
-              {t("reports.changes.categoryTrendsDesc")}
-            </p>
           </div>
           {trends.categoryTrends.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm italic text-[var(--color-text-secondary)]">

@@ -46,7 +46,7 @@ export default function PresentSnapshot({
         locale === "en" ? "en-CA" : "fr-CA",
       ),
       icon: Package,
-      dot: "bg-[#3B6D11]",
+      dot: "bg-orange-500",
     },
     {
       label: t("reports.present.sitesCount"),
@@ -103,9 +103,6 @@ export default function PresentSnapshot({
           <h2 className="text-lg font-bold text-[var(--color-text-primary)]">
             {t("reports.present.title")}
           </h2>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            {t("reports.present.subtitle")}
-          </p>
         </div>
         <span className="text-xs text-[var(--color-text-secondary)] tabular-nums">
           {t("reports.present.asOf")}{" "}
@@ -254,7 +251,7 @@ function DistributionCard({
                     {r.label}
                   </span>
                   {r.badge && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#3B6D11]/15 text-[#27500A] dark:text-[#3B6D11] uppercase tracking-wider">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/15 text-orange-700 dark:text-orange-400 uppercase tracking-wider">
                       {r.badge}
                     </span>
                   )}
@@ -284,7 +281,7 @@ function DistributionCard({
               </div>
               <div className="h-1.5 rounded-full bg-[var(--color-background-secondary)] overflow-hidden">
                 <div
-                  className="h-full bg-[#3B6D11]"
+                  className="h-full bg-orange-500"
                   style={{ width: `${pct}%` }}
                 />
               </div>

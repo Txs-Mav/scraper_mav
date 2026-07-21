@@ -16,12 +16,16 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   FileText,
-  Info,
+  HelpCircle,
   Lock,
   Printer,
   RefreshCw,
   RotateCcw,
 } from "lucide-react"
+import PageOnboarding, {
+  replayPageOnboarding,
+  type PageOnboardingStep,
+} from "@/components/page-onboarding"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
@@ -191,34 +195,108 @@ export default function ReportsPage() {
   const data = report ?? emptyReport()
   const isEmpty = data.meta.totalScrapings === 0
 
+  // Guide de première visite : les étapes s'adaptent à l'état de la page
+  // (vide → on pointe le CTA ; données → on fait le tour des sections).
+  const onboardingSteps: PageOnboardingStep[] = isEmpty
+    ? [
+        {
+          targetId: "report-empty-cta",
+          title: "Le rapport se remplit tout seul",
+          description:
+            "Chaque analyse lancée depuis le dashboard ajoute une capture ici : produits, prix, concurrents. Lancez la première pour démarrer l'historique.",
+        },
+        {
+          targetId: "report-actions",
+          title: "Vos actions",
+          description:
+            "Actualisez le rapport après une analyse, imprimez-le, ou réinitialisez l'historique au besoin.",
+        },
+      ]
+    : [
+        {
+          targetId: "report-coverage",
+          title: "Votre couverture de données",
+          description:
+            "Combien d'analyses, sur combien de jours, et le nombre de prix collectés. Plus vous analysez, plus le rapport devient précis.",
+        },
+        {
+          targetId: "report-present",
+          title: "L'état actuel du marché",
+          description:
+            "La photographie du dernier scraping : produits suivis, sites, fourchette de prix et répartitions.",
+        },
+        {
+          targetId: "report-accumulation",
+          title: "L'accumulation dans le temps",
+          description:
+            "La courbe montre les prix collectés qui s'additionnent à chaque analyse — c'est la matière première des tendances.",
+        },
+        data.meta.hasEnoughHistory
+          ? {
+              targetId: "report-trends",
+              title: "Les tendances",
+              description:
+                "Variations 7 et 30 jours, plus fortes baisses et hausses par produit, tendance par site et par catégorie.",
+            }
+          : {
+              targetId: "report-locked",
+              title: "Tendances à débloquer",
+              description:
+                "Les tendances comparent vos analyses entre elles — il en faut au moins deux. Ce panneau vous dit où vous en êtes.",
+            },
+        {
+          targetId: "report-actions",
+          title: "Vos actions",
+          description:
+            "Actualiser après une analyse, imprimer le rapport, ou repartir à zéro.",
+        },
+      ]
+
   return (
     <Layout>
       <div id="analytics-print-area" className="space-y-6">
-        {/* ── En-tête ── */}
+        {/* ── En-tête : le titre + la couverture réelle, rien d'autre ── */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-[#3B6D11]" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#27500A] dark:text-[#3B6D11]">
-                {t("reports.overline")}
-              </span>
-            </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--color-text-primary)] leading-tight mt-1">
+            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--color-text-primary)] leading-tight">
               {t("reports.title")}
             </h1>
-            <p className="text-sm text-[var(--color-text-secondary)] mt-0.5 max-w-2xl">
-              {t("reports.subtitle")}
-            </p>
+            {!isEmpty && (
+              <p id="report-coverage" className="mt-1 text-[13px] text-[var(--color-text-secondary)] tabular-nums">
+                <span className="font-semibold text-[var(--color-text-primary)]">
+                  {data.meta.totalScrapings}
+                </span>{" "}
+                scrapings ·{" "}
+                <span className="font-semibold text-[var(--color-text-primary)]">
+                  {data.meta.daysCovered}
+                </span>{" "}
+                jours d&apos;historique ·{" "}
+                <span className="font-semibold text-[var(--color-text-primary)]">
+                  {data.past.totalDataPoints.toLocaleString(
+                    locale === "en" ? "en-CA" : "fr-CA",
+                  )}
+                </span>{" "}
+                prix collectés
+              </p>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div id="report-actions" className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => replayPageOnboarding("reports")}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Revoir le guide</span>
+            </button>
             {updatedAgoLabel && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#3B6D11]/15 border border-[#3B6D11]/30">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/25">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3B6D11] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B6D11]" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
                 </span>
-                <span className="text-xs font-medium text-[#27500A] dark:text-[#3B6D11]">
+                <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
                   {updatedAgoLabel}
                 </span>
               </div>
@@ -248,7 +326,7 @@ export default function ReportsPage() {
               onClick={handleReset}
               disabled={refreshing || loading}
               title={t("reports.reset.tooltip")}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[#A32D2D]/80 hover:text-[#A32D2D] hover:bg-[#A32D2D]/10 transition disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-red-600/80 hover:text-red-600 hover:bg-red-500/10 transition disabled:opacity-50"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">
@@ -258,30 +336,9 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* ── Bannière contextuelle : rapport vs analyse ── */}
-        <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-4 flex items-start gap-3">
-          <div className="h-8 w-8 rounded-lg bg-[#3B6D11]/15 flex items-center justify-center flex-shrink-0">
-            <Info className="h-4 w-4 text-[#3B6D11]" />
-          </div>
-          <div className="text-xs leading-relaxed text-[var(--color-text-secondary)]">
-            <p>
-              <span className="font-semibold text-[var(--color-text-primary)]">
-                {t("reports.banner.factTitle")}
-              </span>{" "}
-              {t("reports.banner.factBody")}
-            </p>
-            <p className="mt-1">
-              <span className="font-semibold text-[var(--color-text-primary)]">
-                {t("reports.banner.whyTitle")}
-              </span>{" "}
-              {t("reports.banner.whyBody")}
-            </p>
-          </div>
-        </div>
-
         {error && (
-          <div className="rounded-xl border border-[#A32D2D]/30 bg-[#FCEBEB]/80 dark:bg-[#A32D2D]/15 dark:border-[#A32D2D]/40 px-4 py-3">
-            <p className="text-[#791F1F] dark:text-[#A32D2D] text-sm font-medium">
+          <div className="rounded-xl border border-red-300 bg-red-50 dark:bg-red-500/10 dark:border-red-500/30 px-4 py-3">
+            <p className="text-red-700 dark:text-red-400 text-sm font-medium">
               {error}
             </p>
           </div>
@@ -290,69 +347,107 @@ export default function ReportsPage() {
         {isEmpty ? (
           <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-10 text-center">
             <div className="max-w-md mx-auto">
-              <div className="mx-auto w-16 h-16 rounded-2xl bg-[#EAF3DE] dark:bg-[#3B6D11]/15 flex items-center justify-center mb-5">
-                <FileText className="h-7 w-7 text-[#3B6D11]" />
+              <div className="mx-auto w-16 h-16 rounded-2xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center mb-5">
+                <FileText className="h-7 w-7 text-orange-600 dark:text-orange-400" />
               </div>
               <h3 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">
                 {t("reports.empty.title")}
               </h3>
-              <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
-                {t("reports.empty.body")}
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                {t("reports.empty.short")}
               </p>
+              <button
+                id="report-empty-cta"
+                onClick={() => router.push("/dashboard")}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700 dark:bg-orange-500 dark:text-black dark:hover:bg-orange-400"
+              >
+                {t("reports.empty.cta")}
+              </button>
             </div>
           </div>
         ) : (
           <>
-            <PresentSnapshot
-              present={data.present}
-              asOf={data.meta.lastScrapingDate}
-            />
+            <div id="report-present">
+              <PresentSnapshot
+                present={data.present}
+                asOf={data.meta.lastScrapingDate}
+              />
+            </div>
 
-            <DataAccumulation past={data.past} meta={data.meta} />
+            <div id="report-accumulation">
+              <DataAccumulation past={data.past} meta={data.meta} />
+            </div>
 
             {data.meta.hasEnoughHistory ? (
-              <>
+              <div id="report-trends" className="space-y-6">
                 <PeriodComparisonSection trends={data.trends} />
                 <PriceChangesTables trends={data.trends} />
-              </>
+              </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 text-center">
-                <p className="text-sm text-[var(--color-text-secondary)] max-w-xl mx-auto">
-                  <span className="font-semibold text-[var(--color-text-primary)]">
-                    {t("reports.trendsLocked.title")}
-                  </span>{" "}
-                  {t("reports.trendsLocked.body")}
-                </p>
+              /* Pourquoi les tendances sont vides : il faut ≥ 2 analyses
+                 pour comparer. On montre où en est l'utilisateur. */
+              <div
+                id="report-locked"
+                className="rounded-2xl border border-dashed border-orange-500/40 bg-orange-50/50 dark:bg-orange-500/[0.06] p-6"
+              >
+                <div className="mx-auto flex max-w-xl flex-col items-center gap-3 text-center">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-600 text-white dark:bg-orange-500 dark:text-black">
+                      <Lock className="h-3.5 w-3.5" />
+                    </span>
+                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                      Tendances disponibles à la 2<sup>e</sup> analyse
+                    </p>
+                  </div>
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    Les tendances comparent vos analyses entre elles.
+                    Vous en avez{" "}
+                    <span className="font-bold tabular-nums text-[var(--color-text-primary)]">
+                      {data.meta.totalScrapings}
+                    </span>{" "}
+                    — il en faut{" "}
+                    <span className="font-bold tabular-nums text-[var(--color-text-primary)]">2</span>.
+                  </p>
+                  <div className="flex w-full max-w-[200px] items-center gap-1.5">
+                    <span className="h-1.5 flex-1 rounded-full bg-orange-500" />
+                    <span className="h-1.5 flex-1 rounded-full bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)]" />
+                  </div>
+                  <button
+                    onClick={() => router.push("/dashboard")}
+                    className="mt-1 inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-orange-700 dark:bg-orange-500 dark:text-black dark:hover:bg-orange-400"
+                  >
+                    Lancer une nouvelle analyse
+                  </button>
+                </div>
               </div>
             )}
 
-            <footer className="rounded-2xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-secondary)]/40 px-5 py-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--color-text-secondary)]">
-              <span>
-                {t("reports.footer.coverage")
-                  .replace("{n}", String(data.meta.totalScrapings))
-                  .replace("{days}", String(data.meta.daysCovered))}
-              </span>
-              <span className="tabular-nums">
-                {t("reports.footer.generated")}{" "}
-                <span className="font-medium text-[var(--color-text-primary)]">
-                  {lastUpdated
-                    ? lastUpdated.toLocaleString(
-                        locale === "en" ? "en-CA" : "fr-CA",
-                        {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        },
-                      )
-                    : "—"}
-                </span>
+            <footer className="px-1 text-right text-[11px] text-[var(--color-text-secondary)] tabular-nums">
+              {t("reports.footer.generated")}{" "}
+              <span className="font-medium text-[var(--color-text-primary)]">
+                {lastUpdated
+                  ? lastUpdated.toLocaleString(
+                      locale === "en" ? "en-CA" : "fr-CA",
+                      {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      },
+                    )
+                  : "—"}
               </span>
             </footer>
           </>
         )}
       </div>
+
+      <PageOnboarding
+        pageKey="reports"
+        ready={!authLoading && !loading && report !== null}
+        steps={onboardingSteps}
+      />
     </Layout>
   )
 }

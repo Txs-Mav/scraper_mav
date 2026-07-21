@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { ArrowUpRight } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import SectionCard from "./section-card"
 
@@ -18,6 +20,7 @@ interface OpportunitiesProps {
 
 export default function OpportunitiesDetection({ opportunites }: OpportunitiesProps) {
   const { t, locale } = useLanguage()
+  const router = useRouter()
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   const lc = locale === 'en' ? 'en-CA' : 'fr-CA'
 
@@ -161,6 +164,16 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                       <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed">
                         {opp.recommandation}
                       </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/dashboard?recherche=${encodeURIComponent(opp.produit)}`)
+                        }
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 transition-colors"
+                      >
+                        {t("ap.viewInSurveillance")}
+                        <ArrowUpRight className="h-3 w-3" />
+                      </button>
                     </div>
                   )}
                 </li>

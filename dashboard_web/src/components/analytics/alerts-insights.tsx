@@ -54,28 +54,10 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
   const { t, locale } = useLanguage()
   const lc = locale === 'en' ? 'en-CA' : 'fr-CA'
 
+  // Un seul KPI propre à cette carte : les heures économisées. Le prix
+  // moyen et le nombre de scrapes vivent déjà dans le bandeau du haut —
+  // les répéter ici diluait l'information.
   const scrapeCounts = stats.scrapesParJour.map(d => d.count)
-  const totalScrapes = stats.nombreScrapes
-
-  // 3 KPI principaux — chiffres XL, hiérarchie claire
-  const kpis: Array<{ label: string; value: string; hint?: string; sparkline?: number[] }> = [
-    {
-      label: t("ap.avgPriceStat"),
-      value: stats.prixMoyen > 0
-        ? `${stats.prixMoyen.toLocaleString(lc, { maximumFractionDigits: 0 })}$`
-        : '—',
-    },
-    {
-      label: t("ap.hoursSaved"),
-      value: `${stats.heuresEconomisees.toFixed(1)}h`,
-      hint: t("ap.perVehicle"),
-    },
-    {
-      label: t("ap.scrapesDone"),
-      value: totalScrapes.toLocaleString(lc),
-      sparkline: scrapeCounts.length > 1 ? scrapeCounts : undefined,
-    },
-  ]
 
   return (
     <SectionCard
@@ -88,69 +70,67 @@ export default function AlertsAndInsights({ alertes, stats }: AlertsInsightsProp
           </span>
         ) : undefined
       }
-      details={
-        alertes.length === 0 ? (
-          <p className="text-sm text-[var(--color-text-secondary)] text-center py-2">
-            {t("ap.noAlerts")}
-          </p>
-        ) : (
-          <ul className="divide-y divide-[var(--color-border-tertiary)]/40">
-            {alertes.slice(0, 8).map((alerte, index) => (
-              <li key={index} className="py-2.5 flex items-start gap-3">
-                <span
-                  className={`mt-1 h-1.5 w-1.5 rounded-full shrink-0 ${
-                    alerte.severite === 'high'
-                      ? 'bg-red-500'
-                      : alerte.severite === 'medium'
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
-                  }`}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-[var(--color-text-primary)] leading-snug">
-                    {alerte.message}
-                  </p>
-                  <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5 tabular-nums">
-                    {new Date(alerte.date).toLocaleDateString(lc, {
-                      day: 'numeric',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )
-      }
-      detailsLabel={
-        alertes.length > 0 ? `${t("ap.alertsNotif")} (${alertes.length})` : t("ap.alertsNotif")
-      }
+      bodyClassName="px-0 py-0"
     >
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-5 gap-y-4">
-        {kpis.map((k, i) => (
-          <div
-            key={i}
-            className={`flex flex-col ${i > 0 ? 'sm:pl-5 sm:border-l border-[var(--color-border-tertiary)]/40' : ''}`}
-          >
-            <span className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
-              {k.label}
-            </span>
-            <span className="text-3xl font-extrabold tabular-nums leading-none mt-1.5 text-[var(--color-text-primary)] tracking-tight">
-              {k.value}
-            </span>
-            {k.hint && (
-              <span className="text-[11px] text-[var(--color-text-secondary)] mt-1 opacity-75">
-                {k.hint}
-              </span>
-            )}
-            {k.sparkline && (
-              <Sparkline data={k.sparkline} className="mt-2 h-6 w-full" />
-            )}
+      <div className="px-5 py-4 flex items-end justify-between gap-4 border-b border-[var(--color-border-tertiary)]/40">
+        <div>
+          <span className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
+            {t("ap.hoursSaved")}
+          </span>
+          <p className="text-3xl font-extrabold tabular-nums leading-none mt-1.5 text-[var(--color-text-primary)] tracking-tight">
+            {stats.heuresEconomisees.toFixed(1)}h
+          </p>
+          <p className="text-[11px] text-[var(--color-text-secondary)] mt-1 opacity-75">
+            {t("ap.perVehicle")}
+          </p>
+        </div>
+        {/* Rythme de scraping : seulement si assez de points pour dire
+            quelque chose (sinon la courbe ment). */}
+        {scrapeCounts.length >= 4 && (
+          <div className="w-28 shrink-0">
+            <Sparkline data={scrapeCounts} className="h-8 w-full text-orange-500" />
+            <p className="mt-1 text-right text-[10px] text-[var(--color-text-secondary)]">
+              {t("ap.scrapesDone").toLowerCase()}
+            </p>
           </div>
-        ))}
+        )}
       </div>
+
+      {/* Alertes visibles directement : c'est le contenu de la carte. */}
+      {alertes.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-[var(--color-text-secondary)] text-center">
+          {t("ap.noAlerts")}
+        </p>
+      ) : (
+        <ul className="divide-y divide-[var(--color-border-tertiary)]/40">
+          {alertes.slice(0, 6).map((alerte, index) => (
+            <li key={index} className="px-5 py-2.5 flex items-start gap-3">
+              <span
+                className={`mt-1 h-1.5 w-1.5 rounded-full shrink-0 ${
+                  alerte.severite === 'high'
+                    ? 'bg-red-500'
+                    : alerte.severite === 'medium'
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500'
+                }`}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-[var(--color-text-primary)] leading-snug">
+                  {alerte.message}
+                </p>
+                <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5 tabular-nums">
+                  {new Date(alerte.date).toLocaleDateString(lc, {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </SectionCard>
   )
 }
