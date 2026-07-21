@@ -350,6 +350,18 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
         setLoading(true)
         setError(null)
         if (initialData) { setProducts(initialData.products || []); setLoading(false); return }
+        // Config et stratégie de prix ne dépendent pas de /api/products :
+        // elles partent en parallèle. Seule /api/pricing/updates attend les
+        // produits (elle a besoin du scrapingId). Chaque route API paie sa
+        // propre validation Supabase (~200-500 ms) — en série, ça faisait
+        // 4 allers-retours cumulés avant d'afficher le tableau.
+        const configPromise = fetch('/api/scraper/config')
+          .then(r => (r.ok ? r.json() : null))
+          .catch(() => null)
+        const pricingPromise = fetch('/api/pricing/strategy', { cache: 'no-store' })
+          .then(r => (r.ok ? r.json() : null))
+          .catch(() => null)
+
         const response = await fetchProducts()
         if (cancelled) return
         if (!response.ok) throw new Error('Failed to load products')
@@ -368,35 +380,36 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
           const refProduct = data.products?.find((p: Product) => p.siteReference)
           if (refProduct) setReferenceSite(refProduct.siteReference)
         }
-        try {
-          const configRes = await fetch('/api/scraper/config')
-          if (configRes.ok) {
-            const configData = await configRes.json()
-            if (typeof configData.ignoreColors === 'boolean') setIgnoreColors(configData.ignoreColors)
-            if (configData.matchMode) setMatchMode(configData.matchMode as MatchMode)
-            if (configData.alertLastRunAt) setAlertLastRunAt(new Date(configData.alertLastRunAt))
-            if (configData.alertIntervalMinutes) setAlertIntervalMinutes(configData.alertIntervalMinutes)
-          }
-        } catch { /* non critique */ }
-        try {
-          const pricingRes = await fetch('/api/pricing/strategy', { cache: 'no-store' })
-          if (pricingRes.ok) {
-            const pricingData = await pricingRes.json()
-            const normalized = normalizePricingSettings(pricingData?.settings)
-            setPricingSettings(normalized)
-            setPricingEnabled(normalized.apply_enabled)
-          }
-        } catch { /* non critique */ }
-        try {
-          const updatesUrl = data.scrapingId
-            ? `/api/pricing/updates?scrapingId=${encodeURIComponent(data.scrapingId)}`
-            : '/api/pricing/updates'
-          const updatesRes = await fetch(updatesUrl, { cache: 'no-store' })
-          if (updatesRes.ok) {
-            const updatesData = await updatesRes.json()
-            setPricingUpdates(Array.isArray(updatesData?.updates) ? updatesData.updates : [])
-          }
-        } catch { /* non critique */ }
+
+        const configData = await configPromise
+        if (cancelled) return
+        if (configData) {
+          if (typeof configData.ignoreColors === 'boolean') setIgnoreColors(configData.ignoreColors)
+          if (configData.matchMode) setMatchMode(configData.matchMode as MatchMode)
+          if (configData.alertLastRunAt) setAlertLastRunAt(new Date(configData.alertLastRunAt))
+          if (configData.alertIntervalMinutes) setAlertIntervalMinutes(configData.alertIntervalMinutes)
+        }
+
+        const pricingData = await pricingPromise
+        if (cancelled) return
+        if (pricingData) {
+          const normalized = normalizePricingSettings(pricingData?.settings)
+          setPricingSettings(normalized)
+          setPricingEnabled(normalized.apply_enabled)
+        }
+
+        // Les marqueurs de mise à jour n'empêchent pas d'afficher le
+        // tableau : cette requête ne bloque pas la fin du loading.
+        const updatesUrl = data.scrapingId
+          ? `/api/pricing/updates?scrapingId=${encodeURIComponent(data.scrapingId)}`
+          : '/api/pricing/updates'
+        fetch(updatesUrl, { cache: 'no-store' })
+          .then(r => (r.ok ? r.json() : null))
+          .then(updatesData => {
+            if (cancelled || !updatesData) return
+            setPricingUpdates(Array.isArray(updatesData.updates) ? updatesData.updates : [])
+          })
+          .catch(() => { /* non critique */ })
       } catch (err: unknown) {
         if (!cancelled) { setError(getErrorMessage(err, 'Erreur lors du chargement')); console.error(err) }
       } finally {
@@ -779,13 +792,13 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
 
       {/* Migration */}
       {showMigrationPrompt && user && (
-        <div className="flex items-center gap-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 px-5 py-4 text-sm">
+        <div className="flex items-center gap-4 rounded-2xl bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-900/50 px-5 py-4 text-sm">
           <div className="flex-1">
-            <p className="font-medium text-emerald-900 dark:text-emerald-200">{t("dash.localScrapings")}</p>
-            <p className="text-emerald-700/80 dark:text-emerald-300/80 text-xs mt-0.5">{getLocalScrapingsCount()} scraping{getLocalScrapingsCount() > 1 ? "s" : ""} sauvegardé{getLocalScrapingsCount() > 1 ? "s" : ""} localement</p>
+            <p className="font-medium text-orange-900 dark:text-orange-200">{t("dash.localScrapings")}</p>
+            <p className="text-orange-700/80 dark:text-orange-300/80 text-xs mt-0.5">{getLocalScrapingsCount()} scraping{getLocalScrapingsCount() > 1 ? "s" : ""} sauvegardé{getLocalScrapingsCount() > 1 ? "s" : ""} localement</p>
           </div>
-          <button onClick={handleMigrateScrapings} disabled={migrating} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition disabled:opacity-50">{migrating ? t("dash.migrating") : t("dash.migrate")}</button>
-          <button onClick={() => setShowMigrationPrompt(false)} className="text-emerald-400 hover:text-emerald-600 transition"><X className="h-4 w-4" /></button>
+          <button onClick={handleMigrateScrapings} disabled={migrating} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-semibold hover:bg-orange-700 transition disabled:opacity-50">{migrating ? t("dash.migrating") : t("dash.migrate")}</button>
+          <button onClick={() => setShowMigrationPrompt(false)} className="text-orange-400 hover:text-orange-600 transition"><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -992,8 +1005,8 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
       {products.length === 0 && !isScrapingActive && (
         <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-10 text-center">
           <div className="max-w-md mx-auto">
-            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 flex items-center justify-center mb-5">
-              <Radar className="h-7 w-7 text-emerald-500 dark:text-emerald-400" />
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/30 dark:to-orange-950/20 flex items-center justify-center mb-5">
+              <Radar className="h-7 w-7 text-orange-500 dark:text-orange-400" />
             </div>
             <h3 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">{t("dash.noData")}</h3>
             <p className="text-sm text-[var(--color-text-secondary)] mb-6 leading-relaxed">
@@ -1002,7 +1015,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
             <button
               type="button"
               onClick={() => setShowScraperConfig(true)}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-orange-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
             >
               <Settings2 className="h-4 w-4" />
               {t("dash.launchFirst")}
@@ -1059,7 +1072,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                     <select
                       value={f.value}
                       onChange={e => f.onChange(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition"
+                      className="w-full rounded-lg border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/40 transition"
                     >
                       <option value="all" style={{ backgroundColor: "#ffffff", color: "#111827" }}>
                         {f.all}
@@ -1281,7 +1294,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
           className={showScraperConfig ? "fixed inset-0 bg-black/50 backdrop-blur-sm z-[9998] flex items-center justify-center px-4" : "hidden"}
           onClick={async e => { if (e.target === e.currentTarget) { await scraperRef.current?.saveConfig(); setShowScraperConfig(false) } }}
         >
-          <div className="bg-[var(--color-background-primary)] rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col border border-[var(--color-border-secondary)] shadow-2xl">
+          <div className="bg-[var(--color-background-primary)] rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col border border-[var(--color-border-secondary)] shadow-2xl">
             <div className="flex items-center justify-between p-5 pb-4 border-b border-[var(--color-border-tertiary)]">
               <h4 className="text-lg font-bold text-[var(--color-text-primary)]">{t("dash.configuration")}</h4>
 

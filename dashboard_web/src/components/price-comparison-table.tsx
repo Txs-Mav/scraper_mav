@@ -829,8 +829,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         {/* Wrapper du tableau — totalement transparent (pas de fond, pas
             de bordure). Le tableau "vit" sur le background beams sans
             créer de container visible. Les cellules sticky gauche
-            conservent un bg-primary semi-transparent + backdrop-blur
-            (voir plus bas) pour rester lisibles au scroll horizontal. */}
+            prennent un bg-primary quasi opaque (voir plus bas) pour
+            rester lisibles au scroll horizontal. */}
         <div ref={tableScrollRef} className="overflow-x-auto">
           <div style={{ minWidth: Math.max(900, dynamicMinWidth) }}>
             <table className="w-full border-collapse">
@@ -870,23 +870,23 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                   </tr>
                 )}
                 <tr className="sticky top-0">
-                  {/* Colonnes sticky : aucune couleur de fond. Au scroll
-                      horizontal, on applique un `backdrop-blur` pour flouter
-                      ce qui passe en dessous (les prix concurrents) → ils
-                      deviennent illisibles, donc visuellement "disparus",
-                      sans qu'aucun bloc opaque ne soit ajouté. */}
-                  <th className={`sticky left-0 z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] bg-transparent transition-all duration-150 ${
-                    hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                  {/* Colonnes sticky : transparentes au repos. Au scroll
+                      horizontal, un fond quasi opaque masque ce qui passe
+                      en dessous (les prix concurrents). Un backdrop-blur
+                      ferait le même travail mais coûte un recalcul GPU par
+                      cellule et par frame → jank au défilement vertical. */}
+                  <th className={`sticky left-0 z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] transition-colors duration-150 ${
+                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
                   }`}>
                     {t("table.image")}
                   </th>
-                  <th className={`sticky left-[80px] z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] min-w-[280px] bg-transparent transition-all duration-150 ${
-                    hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                  <th className={`sticky left-[80px] z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] min-w-[280px] transition-colors duration-150 ${
+                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
                   }`}>
                     {t("table.product")}
                   </th>
-                  <th className={`sticky left-[360px] z-30 px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] whitespace-nowrap min-w-[120px] bg-transparent transition-all duration-150 ${
-                    hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                  <th className={`sticky left-[360px] z-30 px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] whitespace-nowrap min-w-[120px] transition-colors duration-150 ${
+                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
                   }`}>
                     {t("table.refPrice")}
                   </th>
@@ -901,10 +901,10 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                               className={cn(
                                 "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 bg-white shadow-sm transition",
                                 allVisiblePricingSelected
-                                  ? "border-emerald-500 bg-emerald-500 text-white"
+                                  ? "border-orange-500 bg-orange-500 text-white"
                                   : selectedVisiblePricingKeys.length > 0
-                                    ? "border-emerald-500 bg-emerald-500 text-white"
-                                    : "border-slate-400 text-transparent hover:border-emerald-500 dark:border-slate-500 dark:bg-slate-950/60",
+                                    ? "border-orange-500 bg-orange-500 text-white"
+                                    : "border-slate-400 text-transparent hover:border-orange-500 dark:border-slate-500 dark:bg-slate-950/60",
                               )}
                               title={allVisiblePricingSelected ? "Tout décocher" : "Tout cocher"}
                               aria-label={allVisiblePricingSelected ? "Tout décocher" : "Tout cocher"}
@@ -971,10 +971,10 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                         // Hover défini, mais neutre : le vert donnait une
                         // impression de statut/validation sur toute la ligne.
                         // Ici on garde seulement une légère lecture active.
-                        className="group border-b border-[var(--color-border-tertiary)] hover:bg-slate-900/[0.035] dark:hover:bg-white/[0.04] hover:shadow-[inset_3px_0_0_0_rgb(15_23_42/0.22)] transition-all duration-150"
+                        className="group border-b border-[var(--color-border-tertiary)] hover:bg-slate-900/[0.035] dark:hover:bg-white/[0.04] hover:shadow-[inset_3px_0_0_0_rgb(15_23_42/0.22)] transition-colors duration-150"
                       >
-                        <td className={`sticky left-0 z-20 bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-all duration-150 px-3 py-2 align-middle ${
-                          hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                        <td className={`sticky left-0 z-20 group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-colors duration-150 px-3 py-2 align-middle ${
+                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
                         }`}>
                           <div className="flex items-center gap-1">
                             <button
@@ -995,6 +995,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                                     height={48}
                                     className="object-cover w-full h-full"
                                     loading="lazy"
+                                    decoding="async"
                                     referrerPolicy="no-referrer"
                                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
                                   />
@@ -1006,8 +1007,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                             </div>
                           </div>
                         </td>
-                        <td className={`sticky left-[80px] z-20 bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-all duration-150 px-3 py-2 min-w-[280px] ${
-                          hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                        <td className={`sticky left-[80px] z-20 group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-colors duration-150 px-3 py-2 min-w-[280px] ${
+                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
                         }`}>
                           <div className="flex flex-col gap-0.5">
                             {/* Nom du produit = info principale (font-semibold) */}
@@ -1016,7 +1017,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                                 const rawName = p.displayName || p.name
                                 const displayedName = stripColorsFromDisplay ? stripColorWords(rawName) : rawName
                                 return p.referenceUrl ? (
-                                  <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-[var(--color-text-primary)] whitespace-normal hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline transition-colors">
+                                  <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-[var(--color-text-primary)] whitespace-normal hover:text-orange-600 dark:hover:text-orange-400 hover:underline transition-colors">
                                     {displayedName}
                                   </a>
                                 ) : (
@@ -1028,7 +1029,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                               {p.quantity != null && p.quantity > 1 && (
                                 <button
                                   onClick={() => toggleRowExpand(idx)}
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-800/50 transition-colors cursor-pointer"
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800/50 transition-colors cursor-pointer"
                                   title={expandedRows.has(idx) ? "Masquer les URLs" : "Voir les URLs individuelles"}
                                 >
                                   x{p.quantity} {expandedRows.has(idx) ? '▲' : '▼'}
@@ -1080,8 +1081,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                             })()}
                           </div>
                         </td>
-                        <td className={`sticky left-[360px] z-20 bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-all duration-150 px-3 py-2 min-w-[120px] ${
-                          hasScrolledTableLeft ? "backdrop-blur-xl" : ""
+                        <td className={`sticky left-[360px] z-20 group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-colors duration-150 px-3 py-2 min-w-[120px] ${
+                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
                         }`}>
                           {/* Le prix est seul dans sa cellule. Plus de badge
                               état accolé qui écrasait l'œil. tabular-nums pour
@@ -1090,7 +1091,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                           <span className="block text-right text-sm font-semibold text-[var(--color-text-primary)] tabular-nums whitespace-nowrap">
                             {p.reference !== null ? (
                               p.referenceUrl ? (
-                                <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                                <a href={p.referenceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
                                   {p.reference.toFixed(0)} $
                                 </a>
                               ) : (
@@ -1108,10 +1109,10 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                                   onClick={() => onTogglePricingSelection(recommendation.productKey)}
                                   className={cn(
                                     "mx-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 bg-white shadow-sm transition",
-                                    "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1",
+                                    "focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-1",
                                     selectedPricingKeys?.has(recommendation.productKey)
-                                      ? "border-emerald-500 bg-emerald-500 text-white"
-                                      : "border-slate-400 text-transparent hover:border-emerald-500 hover:bg-emerald-50 dark:border-slate-500 dark:bg-slate-950/60 dark:hover:border-emerald-400 dark:hover:bg-emerald-500/10",
+                                      ? "border-orange-500 bg-orange-500 text-white"
+                                      : "border-slate-400 text-transparent hover:border-orange-500 hover:bg-orange-50 dark:border-slate-500 dark:bg-slate-950/60 dark:hover:border-orange-400 dark:hover:bg-orange-500/10",
                                   )}
                                   title={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
                                   aria-label={selectedPricingKeys?.has(recommendation.productKey) ? "Retirer de la fiche" : "Inclure dans la fiche"}
@@ -1143,7 +1144,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                                           className={cn(
                                             "h-8 w-[112px] rounded-lg border bg-[var(--color-background-primary)] pr-6 pl-2 text-center text-sm font-semibold tabular-nums",
                                             "border-[var(--color-border-secondary)] text-[var(--color-text-primary)] shadow-sm",
-                                            "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent",
+                                            "focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent",
                                           )}
                                         />
                                         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--color-text-tertiary)]">
@@ -1180,7 +1181,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                             <td key={priceEntry.dealer} className="px-3 py-2 text-right text-sm text-[var(--color-text-primary)] min-w-[130px]">
                               <div className="flex flex-col items-end gap-0.5">
                                 {priceEntry.url && priceEntry.price !== null ? (
-                                  <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                                  <a href={priceEntry.url} target="_blank" rel="noopener noreferrer" className="hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
                                     <PriceCell price={priceEntry.price} delta={priceEntry.delta} />
                                   </a>
                                 ) : (
@@ -1215,7 +1216,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                         </tr>
                       )}
                       {expandedRows.has(idx) && p.groupedUrls && p.groupedUrls.length > 0 && (
-                        <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-[var(--color-border-tertiary)]">
+                        <tr className="bg-orange-50/50 dark:bg-orange-950/20 border-b border-[var(--color-border-tertiary)]">
                           <td colSpan={3 + dynamicColumnCount} className="px-4 py-2">
                             <div className="flex flex-wrap gap-2 items-center">
                               <span className="text-xs font-medium text-[var(--color-text-secondary)]">URLs regroupées :</span>
@@ -1225,7 +1226,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                                   href={url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline truncate max-w-[300px]"
+                                  className="text-xs text-orange-600 dark:text-orange-400 hover:underline truncate max-w-[300px]"
                                   title={url}
                                 >
                                   {urlIdx + 1}. {url.split('/').filter(Boolean).pop() || url}
@@ -1285,7 +1286,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
               value={searchQuery || ""}
               onChange={e => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder || t("dash.searchPlaceholder")}
-              className="w-full h-9 pl-9 pr-8 rounded-lg border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition shadow-sm"
+              className="w-full h-9 pl-9 pr-8 rounded-lg border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/40 transition shadow-sm"
             />
             {searchQuery && (
               <button type="button" onClick={() => onSearchChange("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition">
@@ -1364,7 +1365,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
               onClick={() => onPricingEnabledChange(!pricingEnabled)}
               className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium transition ${
                 pricingEnabled
-                  ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/40"
+                  ? "text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-500/15 border border-orange-200 dark:border-orange-500/40"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] border border-transparent"
               }`}
             >
@@ -1407,7 +1408,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                       <Palette className="h-4 w-4" />
                       {stripColorsFromDisplay ? (showColorsLabel || t("table.showColorsShort")) : (hideColorsLabel || t("table.hideColorsShort"))}
                     </span>
-                    {stripColorsFromDisplay && <Check className="h-3.5 w-3.5 text-emerald-500" />}
+                    {stripColorsFromDisplay && <Check className="h-3.5 w-3.5 text-orange-500" />}
                   </button>
                 )}
                 {groupByFamily && onMatchModeChange && (
@@ -1420,7 +1421,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                       <select
                         value={matchMode}
                         onChange={(e) => onMatchModeChange(e.target.value)}
-                        className="h-7 text-xs pl-2 pr-7 rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40"
+                        className="h-7 text-xs pl-2 pr-7 rounded-md border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/40"
                       >
                         <option value="exact">{t("config.matchMode.exact")}</option>
                         <option value="base">{t("config.matchMode.base")}</option>
@@ -1650,7 +1651,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                     type="button"
                     onClick={handleShareEmail}
                     disabled={shareSending || !shareEmails.trim()}
-                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {shareSending ? (
                       <><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("table.sending")}</>
