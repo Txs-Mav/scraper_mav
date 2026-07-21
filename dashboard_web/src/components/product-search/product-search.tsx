@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react"
 import {
   Search, Loader2, AlertCircle, CheckCircle2, Info, X, ChevronDown,
-  Briefcase, Eye, Check, Lock,
+  Briefcase, Eye, Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import CategoryPicker from "./category-picker"
@@ -418,6 +418,11 @@ export default function ProductSearch() {
     return n
   }, [state.adapters])
 
+  const selectableSourceCount = useMemo(
+    () => SOURCES.filter((s) => !s.disabled).length,
+    [],
+  )
+
   const isVehicleCat = useMemo(
     () => isVehicleCategory(state.category),
     [state.category],
@@ -606,7 +611,7 @@ export default function ProductSearch() {
         targetId: "recherche-evaluateur",
         title: "Évaluez un véhicule",
         description:
-          "Activez l'évaluateur pour estimer la valeur d'un véhicule (état, kilométrage, options) à partir des comparables trouvés.",
+          "Activez cet interrupteur pour estimer la valeur d'un véhicule : les champs (état, kilométrage, options) apparaissent juste en dessous.",
       })
     }
     return steps
@@ -741,12 +746,55 @@ export default function ProductSearch() {
           </button>
         </div>
 
-        {/* Footer discret : texte d'aide contextuel. */}
-        <div className="px-4 py-2.5 border-t border-[var(--color-border-tertiary)]/40">
-          <p className="text-[11px] text-[var(--color-text-tertiary)]">
+        {/* Footer : texte d'aide à gauche, interrupteur de l'évaluateur à
+            droite — juste au-dessus des champs qu'il fait apparaître, pour
+            que le contrôle et son effet restent au même endroit. */}
+        <div className="px-4 py-2.5 border-t border-[var(--color-border-tertiary)]/40 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-[11px] text-[var(--color-text-tertiary)] min-w-0 flex-1">
             {helperText}
           </p>
+          {isVehicleCat && (
+            <div id="recherche-evaluateur" className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
+                Évaluateur véhicule
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={state.evaluatorEnabled}
+                onClick={toggleEvaluator}
+                title="Estimer la valeur du véhicule à partir des comparables"
+                className={cn(
+                  "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                  state.evaluatorEnabled
+                    ? "bg-orange-600"
+                    : "bg-[var(--color-border-secondary)]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
+                    state.evaluatorEnabled ? "translate-x-[18px]" : "translate-x-[3px]",
+                  )}
+                />
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Champs de l'évaluateur : ils s'ouvrent directement sous leur
+            interrupteur, en pleine largeur. */}
+        {evaluatorActive && (
+          <div className="px-4 pb-4 pt-1 border-t border-[var(--color-border-tertiary)]/40">
+            <VehicleSpecsBox
+              specs={state.vehicleSpecs}
+              disabled={loading}
+              categoryPath={state.category}
+              queryText={state.query}
+              onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
+            />
+          </div>
+        )}
       </form>
 
       {/* ── Panneau latéral : toute la configuration, toujours visible.
@@ -772,58 +820,21 @@ export default function ProductSearch() {
             id="recherche-sources"
             title="Sources"
             badge={`${activeCount} active${activeCount > 1 ? "s" : ""}`}
+            action={
+              <button
+                type="button"
+                onClick={() => toggleAll(activeCount < selectableSourceCount)}
+                className="text-[11px] font-medium text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+              >
+                {activeCount < selectableSourceCount ? "Tout activer" : "Tout désactiver"}
+              </button>
+            }
           >
             <SourcesPanel
               adapters={state.adapters}
               onToggle={updateAdapter}
-              onToggleAll={toggleAll}
             />
           </SidebarSection>
-
-          {isVehicleCat && (
-            <SidebarSection
-              id="recherche-evaluateur"
-              title="Évaluateur véhicule"
-              action={
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={state.evaluatorEnabled}
-                  onClick={toggleEvaluator}
-                  title="Estimer la valeur du véhicule à partir des comparables"
-                  className={cn(
-                    "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
-                    state.evaluatorEnabled
-                      ? "bg-orange-600"
-                      : "bg-[var(--color-border-secondary)]",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
-                      state.evaluatorEnabled ? "translate-x-[18px]" : "translate-x-[3px]",
-                    )}
-                  />
-                </button>
-              }
-            >
-              {evaluatorActive ? (
-                <VehicleSpecsBox
-                  compact
-                  specs={state.vehicleSpecs}
-                  disabled={loading}
-                  categoryPath={state.category}
-                  queryText={state.query}
-                  onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
-                />
-              ) : (
-                <p className="text-xs text-[var(--color-text-tertiary)]">
-                  Estimez la valeur du véhicule recherché (état, kilométrage,
-                  options) à partir des comparables trouvés.
-                </p>
-              )}
-            </SidebarSection>
-          )}
 
           {isAdmin ? (
             <SidebarSection title="Vue admin">
@@ -920,7 +931,7 @@ function SidebarSection({
 }) {
   return (
     <section id={id} className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
-      <div className="flex items-center justify-between gap-2 px-4 pt-3.5 pb-2">
+      <div className="flex items-center justify-between gap-2 px-3.5 pt-3 pb-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
             {title}
@@ -933,7 +944,7 @@ function SidebarSection({
         </div>
         {action}
       </div>
-      <div className="px-4 pb-4">{children}</div>
+      <div className="px-3.5 pb-3.5">{children}</div>
     </section>
   )
 }
@@ -1055,85 +1066,81 @@ function AdminViewAsPicker({
 function SourcesPanel({
   adapters,
   onToggle,
-  onToggleAll,
 }: {
   adapters: AdapterToggles
   onToggle: <K extends keyof AdapterToggles>(key: K, value: AdapterToggles[K]) => void
-  onToggleAll: (value: boolean) => void
 }) {
   const [showUpcoming, setShowUpcoming] = useState(false)
 
-  const groups: Array<{ id: SourceMeta["group"]; title: string; subtitle?: string }> = [
-    { id: "instant", title: "Sources rapides", subtitle: "≤ 3s" },
-    { id: "marketplace", title: "Marketplaces e-commerce", subtitle: "5-15s" },
-    { id: "vehicle", title: "Marketplaces véhicules", subtitle: "10-15s" },
-    { id: "api", title: "Sources avec authentification" },
-  ]
+  // Vitesse indicative par groupe, affichée en note à droite de chaque
+  // ligne — remplace les anciens titres de groupe qui prenaient plus de
+  // place que leur contenu.
+  const SPEED_BY_GROUP: Record<SourceMeta["group"], string> = {
+    instant: "≤ 3 s",
+    marketplace: "5-15 s",
+    vehicle: "10-15 s",
+    api: "",
+  }
 
-  // Les sources verrouillées (pas encore branchées) ne polluent plus les
-  // groupes actifs : elles sont regroupées dans « Sources à venir »,
-  // replié par défaut.
+  const selectable = SOURCES.filter((s) => !s.disabled)
   const upcoming = SOURCES.filter((s) => s.disabled)
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => onToggleAll(true)}
-          className="text-xs font-medium px-2 py-1 rounded-md text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
-        >
-          Tout activer
-        </button>
-        <span className="text-[var(--color-text-tertiary)]">·</span>
-        <button
-          type="button"
-          onClick={() => onToggleAll(false)}
-          className="text-xs font-medium px-2 py-1 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-background-hover)]"
-        >
-          Tout désactiver
-        </button>
-      </div>
-
-      {groups.map((group) => {
-        const items = SOURCES.filter((s) => s.group === group.id && !s.disabled)
-        if (items.length === 0) return null
-        return (
-          <div key={group.id}>
-            <div className="flex items-baseline gap-2 mb-2">
-              <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide">
-                {group.title}
+    <div>
+      {/* Liste verticale alignée : une ligne par source, case à cocher à
+          gauche, vitesse à droite. Uniforme et scannable, contrairement
+          au nuage de pastilles de largeurs variées. */}
+      <div className="-mx-1.5">
+        {selectable.map((src) => {
+          const checked = adapters[src.key] as boolean
+          return (
+            <button
+              key={src.key}
+              type="button"
+              onClick={() => onToggle(src.key, !checked as AdapterToggles[typeof src.key])}
+              title={src.hint}
+              aria-pressed={checked}
+              className="w-full flex items-center gap-2.5 px-1.5 py-[7px] rounded-lg text-left hover:bg-[var(--color-background-hover)] transition-colors"
+            >
+              <span
+                className={cn(
+                  "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                  checked
+                    ? "bg-orange-600 border-orange-600 text-white"
+                    : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
+                )}
+              >
+                {checked && <Check className="h-3 w-3" strokeWidth={3} />}
               </span>
-              {group.subtitle && (
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">
-                  {group.subtitle}
+              <span
+                className={cn(
+                  "flex-1 min-w-0 truncate text-[13px]",
+                  checked
+                    ? "font-medium text-[var(--color-text-primary)]"
+                    : "text-[var(--color-text-secondary)]",
+                )}
+              >
+                {src.label}
+              </span>
+              {SPEED_BY_GROUP[src.group] && (
+                <span className="text-[10px] tabular-nums text-[var(--color-text-tertiary)] shrink-0">
+                  {SPEED_BY_GROUP[src.group]}
                 </span>
               )}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {items.map((src) => (
-                <SourceChip
-                  key={src.key}
-                  label={src.label}
-                  hint={src.hint}
-                  checked={adapters[src.key] as boolean}
-                  onChange={(v) => onToggle(src.key, v as AdapterToggles[typeof src.key])}
-                />
-              ))}
-            </div>
-          </div>
-        )
-      })}
+            </button>
+          )
+        })}
+      </div>
 
       {upcoming.length > 0 && (
-        <div className="border-t border-[var(--color-border-tertiary)]/60 pt-3">
+        <div className="mt-2 border-t border-[var(--color-border-tertiary)]/60 pt-2.5">
           <button
             type="button"
             onClick={() => setShowUpcoming((v) => !v)}
             className="w-full flex items-center justify-between gap-2 text-left group"
             aria-expanded={showUpcoming}
           >
-            <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide group-hover:text-[var(--color-text-primary)] transition-colors">
+            <span className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider group-hover:text-[var(--color-text-primary)] transition-colors">
               Sources à venir
             </span>
             <span className="flex items-center gap-1.5 text-[10px] tabular-nums text-[var(--color-text-tertiary)]">
@@ -1144,76 +1151,27 @@ function SourcesPanel({
             </span>
           </button>
           {showUpcoming && (
-            <>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {upcoming.map((src) => (
-                  <span
-                    key={src.key}
-                    title={src.hint}
-                    className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border border-dashed border-[var(--color-border-secondary)] text-[var(--color-text-tertiary)]"
-                  >
+            <div className="mt-1.5">
+              {upcoming.map((src) => (
+                <div
+                  key={src.key}
+                  title={src.hint}
+                  className="flex items-center gap-2.5 px-1.5 py-[5px]"
+                >
+                  <span className="h-4 w-4 shrink-0 rounded border border-dashed border-[var(--color-border-secondary)]" />
+                  <span className="flex-1 min-w-0 truncate text-[13px] text-[var(--color-text-tertiary)]">
                     {src.label}
                   </span>
-                ))}
-              </div>
-              <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
-                Ces sources seront activables une fois connectées.
-              </p>
-            </>
+                  <span className="text-[10px] text-[var(--color-text-tertiary)] shrink-0">
+                    bientôt
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
     </div>
-  )
-}
-
-function SourceChip({
-  label,
-  checked,
-  onChange,
-  hint,
-  disabled,
-  badge,
-}: {
-  label: string
-  checked: boolean
-  onChange: (v: boolean) => void
-  hint?: string
-  disabled?: boolean
-  badge?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!disabled) onChange(!checked)
-      }}
-      title={hint}
-      disabled={disabled}
-      aria-disabled={disabled}
-      className={cn(
-        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
-        checked
-          ? "bg-[var(--color-text-primary)] border-[var(--color-text-primary)] text-[var(--color-background-primary)]"
-          : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]",
-        disabled && "cursor-not-allowed opacity-70 hover:border-[var(--color-border-secondary)] hover:text-[var(--color-text-secondary)]"
-      )}
-    >
-      {label}
-      {disabled && <Lock className="h-3 w-3" aria-hidden="true" />}
-      {badge && (
-        <span
-          className={cn(
-            "ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-            checked
-              ? "bg-[var(--color-background-primary)]/15 text-[var(--color-background-primary)]/80"
-              : "bg-[var(--color-background-secondary)] text-[var(--color-text-tertiary)]",
-          )}
-        >
-          {badge}
-        </span>
-      )}
-    </button>
   )
 }
 
@@ -1525,7 +1483,7 @@ function EmptyState({
   )
 
   return (
-    <div className="bg-[var(--color-background-primary)]/40 border border-dashed border-[var(--color-border-secondary)] rounded-2xl py-10 px-6 text-center backdrop-blur-sm">
+    <div className="bg-[var(--color-background-primary)]/40 border border-dashed border-[var(--color-border-secondary)] rounded-2xl py-8 px-6 text-center backdrop-blur-sm">
       <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
         Cherchez un produit
       </h3>
@@ -1535,7 +1493,7 @@ function EmptyState({
       </p>
 
       {recent.length > 0 && (
-        <div className="mt-6">
+        <div className="mt-5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
             Reprendre une recherche
           </div>
