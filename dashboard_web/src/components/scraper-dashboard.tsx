@@ -1264,7 +1264,6 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
         <PriceComparisonTable
           products={filteredProducts}
           competitorsUrls={competitorEntries.flatMap(([, list]) => list.map(p => p.sourceSite || ""))}
-          ignoreColors={ignoreColors}
           stripColorsFromDisplay={!showColorsInNames || ignoreColors}
           matchMode={matchMode}
           onMatchModeChange={(mode) => setMatchMode(mode as MatchMode)}

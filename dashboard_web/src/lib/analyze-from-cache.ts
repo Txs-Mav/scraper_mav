@@ -78,7 +78,7 @@ function removeColors(text: string): string {
   return text.split(' ').filter((w) => !COLOR_WORDS.has(w)).join(' ').replace(/\s+/g, ' ').trim() || text
 }
 
-function buildMatchKey(product: any): string {
+export function buildMatchKey(product: any, ignoreColors: boolean = true): string {
   let rawMarque = String(product.marque || '').replace(/^(?:manufacturier|fabricant|marque)\s*:\s*/i, '').trim()
   const rawModele = String(product.modele || '').replace(/^(?:modèle|modele|model)\s*:\s*/i, '').trim()
   let annee = product.annee || 0
@@ -139,7 +139,7 @@ function buildMatchKey(product: any): string {
   for (const rx of CATEGORY_PREFIXES) modele = modele.replace(rx, '').trim()
   modele = modele.replace(/\b(?:neuf|new|usage|usagee?|occasion|used|demo|demonstrateur|preowned|pre\s*owned|certifie|certified)\b/gi, '').trim()
   modele = modele.replace(/\bpre\s*commande\b/gi, '').replace(/\bpre\s*order\b/gi, '').trim()
-  modele = removeColors(modele)
+  if (ignoreColors) modele = removeColors(modele)
   modele = modele.replace(/\s+/g, ' ').trim()
 
   return `${marque}|${modele}|${annee}`
@@ -164,6 +164,9 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
   const referenceUrl = config.reference_url
   const competitorUrls: string[] = config.competitor_urls || []
   const refDomain = extractDomain(referenceUrl)
+  // Options utilisateur (mêmes défauts que /api/scraper/config)
+  const ignoreColors = config.ignore_colors === true
+  const filterCatalogue = config.filter_catalogue_reference !== false
 
   const allDomains = new Map<string, string>()
   allDomains.set(refDomain, referenceUrl)
@@ -186,12 +189,28 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
     }
   }
 
-  const referenceProducts = siteProducts.get(refDomain)
+  let referenceProducts = siteProducts.get(refDomain)
   if (!referenceProducts || referenceProducts.length === 0) {
     return {
       ok: false,
       error: 'no_reference_cache',
       message: `Aucun produit pré-scrapé pour le site de référence (${refDomain}).`,
+    }
+  }
+
+  // « Filtrer catalogue (site de ref.) » : la référence ne garde que son
+  // inventaire réel (pas le catalogue fabricant) ; les concurrents gardent
+  // tout. Même logique que filterCatalogueFromReference (alerts/check).
+  if (filterCatalogue) {
+    const filtered = referenceProducts.filter(
+      (p: any) => (p.sourceCategorie || '').toLowerCase() !== 'catalogue'
+    )
+    if (filtered.length > 0) {
+      referenceProducts = filtered
+    } else {
+      console.warn(
+        `[analyze-from-cache] filter_catalogue_reference actif mais la référence (${refDomain}) n'a que des produits catalogue — filtre ignoré pour ne pas vider l'analyse`
+      )
     }
   }
 
@@ -202,7 +221,7 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
 
   const refIndex = new Map<string, any[]>()
   for (const rp of referenceProducts) {
-    const key = buildMatchKey(rp)
+    const key = buildMatchKey(rp, ignoreColors)
     const modele = key.split('|')[1]
     if (!modele) continue
     if (!refIndex.has(key)) refIndex.set(key, [])
@@ -220,7 +239,7 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
     for (const product of products) {
       if (!product.sourceSite) product.sourceSite = compUrl
 
-      const key = buildMatchKey(product)
+      const key = buildMatchKey(product, ignoreColors)
       const modele = key.split('|')[1]
       if (!modele) {
         const sourceUrl = product.sourceUrl
@@ -285,6 +304,8 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
       mode: 'from_cache',
       source: 'direct_supabase_with_comparison',
       cache_hits: siteProducts.size,
+      ignore_colors: ignoreColors,
+      filter_catalogue_reference: filterCatalogue,
     },
     scraping_time_seconds: Math.round(elapsed * 10) / 10,
     mode: 'from_cache',

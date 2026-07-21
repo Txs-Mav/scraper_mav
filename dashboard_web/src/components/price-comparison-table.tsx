@@ -45,7 +45,6 @@ type Product = {
 type PriceComparisonTableProps = {
   products: Product[]
   competitorsUrls?: string[]
-  ignoreColors?: boolean
   stripColorsFromDisplay?: boolean
   matchMode?: MatchMode
   onMatchModeChange?: (mode: string) => void

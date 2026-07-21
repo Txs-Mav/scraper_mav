@@ -512,7 +512,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     onScrapeComplete?.()
   }
 
-  const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[]; skipAutoScrape?: boolean }) => {
+  const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[]; skipAutoScrape?: boolean; ignoreColors?: boolean; inventoryOnly?: boolean }) => {
     try {
       const refUrl = overrides?.referenceUrl ?? referenceUrl.trim()
       const competitorUrls = overrides?.urls
@@ -520,8 +520,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       const configData = {
         referenceUrl: refUrl,
         urls: competitorUrls,
-        ignoreColors: ignoreColors,
-        inventoryOnly: inventoryOnly,
+        ignoreColors: overrides?.ignoreColors ?? ignoreColors,
+        inventoryOnly: overrides?.inventoryOnly ?? inventoryOnly,
         matchMode: matchMode,
         skipAutoScrape: overrides?.skipAutoScrape || false,
       }
@@ -951,7 +951,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   type="checkbox"
                   id="ignoreColors"
                   checked={ignoreColors}
-                  onChange={(e) => setIgnoreColors(e.target.checked)}
+                  onChange={(e) => { setIgnoreColors(e.target.checked); saveConfig({ ignoreColors: e.target.checked, skipAutoScrape: true }) }}
                   className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[var(--color-text-primary)] focus:ring-[var(--color-border-primary)]/10 focus:ring-offset-0"
                 />
                 <span className="text-sm text-[var(--color-text-secondary)]">
@@ -965,7 +965,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   type="checkbox"
                   id="inventoryOnly"
                   checked={inventoryOnly}
-                  onChange={(e) => setInventoryOnly(e.target.checked)}
+                  onChange={(e) => { setInventoryOnly(e.target.checked); saveConfig({ inventoryOnly: e.target.checked, skipAutoScrape: true }) }}
                   className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[var(--color-text-primary)] focus:ring-[var(--color-border-primary)]/10 focus:ring-offset-0"
                 />
                 <span className="text-sm text-[var(--color-text-secondary)]">

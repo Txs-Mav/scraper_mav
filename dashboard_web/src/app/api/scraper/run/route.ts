@@ -96,9 +96,11 @@ export async function POST(request: Request) {
       args.push('--force-refresh')
     }
 
-    // Ajouter l'option --ignore-colors si demandé (permet plus de matchs)
-    if (ignoreColors) {
-      args.push('--ignore-colors')
+    // Couleurs dans le matching : côté Python, --ignore-colors est déprécié
+    // (comportement par défaut). C'est --strict-colors qui garde les couleurs.
+    // On le passe donc quand la case « Ignorer les couleurs » est décochée.
+    if (!ignoreColors) {
+      args.push('--strict-colors')
     }
 
     // Mode de matching (exact par défaut)
