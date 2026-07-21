@@ -95,7 +95,7 @@ export default function BusinessTypeOnboardingModal({
         body: JSON.stringify({ business_types: arr }),
       })
       if (res.status === 401) {
-        toast.error("Session expirée — reconnecte-toi pour sauvegarder")
+        toast.error("Session expirée — reconnectez-vous pour sauvegarder")
         if (typeof window !== "undefined") {
           setTimeout(() => {
             window.location.href = `/login?next=${encodeURIComponent("/dashboard/recherche")}`
@@ -142,12 +142,12 @@ export default function BusinessTypeOnboardingModal({
               id="bt-modal-title"
               className="text-xl font-bold text-[var(--color-text-primary)] leading-snug"
             >
-              Dans quels domaines recherches-tu des produits&nbsp;?
+              Dans quels domaines recherchez-vous des produits&nbsp;?
             </h2>
             <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] leading-relaxed">
-              Coche tous ceux qui s&apos;appliquent. On utilise ta réponse pour pré-sélectionner
-              la catégorie la plus pertinente. Tu pourras toujours en choisir une autre au cas
-              par cas, et changer ce réglage plus tard depuis ton profil.
+              Cochez tous ceux qui s&apos;appliquent. Votre réponse sert à pré-sélectionner
+              la catégorie la plus pertinente. Vous pourrez toujours en choisir une autre au
+              cas par cas, et changer ce réglage plus tard depuis votre profil.
             </p>
           </div>
           {!required && onDismiss && (

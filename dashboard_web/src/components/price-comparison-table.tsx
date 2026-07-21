@@ -875,17 +875,17 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                       ferait le même travail mais coûte un recalcul GPU par
                       cellule et par frame → jank au défilement vertical. */}
                   <th className={`sticky left-0 z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] transition-colors duration-150 ${
-                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
+                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)] group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96.5%,rgb(15,23,42))] dark:group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96%,white)]" : "bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04]"
                   }`}>
                     {t("table.image")}
                   </th>
                   <th className={`sticky left-[80px] z-30 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] min-w-[280px] transition-colors duration-150 ${
-                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
+                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)] group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96.5%,rgb(15,23,42))] dark:group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96%,white)]" : "bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04]"
                   }`}>
                     {t("table.product")}
                   </th>
                   <th className={`sticky left-[360px] z-30 px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] border-b border-[var(--color-border-tertiary)] whitespace-nowrap min-w-[120px] transition-colors duration-150 ${
-                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
+                    hasScrolledTableLeft ? "bg-[var(--color-background-primary)] group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96.5%,rgb(15,23,42))] dark:group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96%,white)]" : "bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04]"
                   }`}>
                     {t("table.refPrice")}
                   </th>
@@ -972,8 +972,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                         // Ici on garde seulement une légère lecture active.
                         className="group border-b border-[var(--color-border-tertiary)] hover:bg-slate-900/[0.035] dark:hover:bg-white/[0.04] hover:shadow-[inset_3px_0_0_0_rgb(15_23_42/0.22)] transition-colors duration-150"
                       >
-                        <td className={`sticky left-0 z-20 group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-colors duration-150 px-3 py-2 align-middle ${
-                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
+                        <td className={`sticky left-0 z-20 transition-colors duration-150 px-3 py-2 align-middle ${
+                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)] group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96.5%,rgb(15,23,42))] dark:group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96%,white)]" : "bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04]"
                         }`}>
                           <div className="flex items-center gap-1">
                             <button
@@ -1006,8 +1006,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                             </div>
                           </div>
                         </td>
-                        <td className={`sticky left-[80px] z-20 group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-colors duration-150 px-3 py-2 min-w-[280px] ${
-                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
+                        <td className={`sticky left-[80px] z-20 transition-colors duration-150 px-3 py-2 min-w-[280px] ${
+                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)] group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96.5%,rgb(15,23,42))] dark:group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96%,white)]" : "bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04]"
                         }`}>
                           <div className="flex flex-col gap-0.5">
                             {/* Nom du produit = info principale (font-semibold) */}
@@ -1080,8 +1080,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                             })()}
                           </div>
                         </td>
-                        <td className={`sticky left-[360px] z-20 group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04] transition-colors duration-150 px-3 py-2 min-w-[120px] ${
-                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)]/95" : "bg-transparent"
+                        <td className={`sticky left-[360px] z-20 transition-colors duration-150 px-3 py-2 min-w-[120px] ${
+                          hasScrolledTableLeft ? "bg-[var(--color-background-primary)] group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96.5%,rgb(15,23,42))] dark:group-hover:bg-[color-mix(in_srgb,var(--color-background-primary)_96%,white)]" : "bg-transparent group-hover:bg-slate-900/[0.035] dark:group-hover:bg-white/[0.04]"
                         }`}>
                           {/* Le prix est seul dans sa cellule. Plus de badge
                               état accolé qui écrasait l'œil. tabular-nums pour

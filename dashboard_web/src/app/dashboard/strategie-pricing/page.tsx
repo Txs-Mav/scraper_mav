@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Cog,
   Hammer,
+  HelpCircle,
   Loader2,
   Sailboat,
   Scale,
@@ -34,6 +35,10 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
+import PageOnboarding, {
+  replayPageOnboarding,
+  type PageOnboardingStep,
+} from "@/components/page-onboarding"
 
 type StrategyMeta = {
   label: string
@@ -99,6 +104,16 @@ function formatRule(rule: PricingStrategyRule): string {
     return `${meta.label} · −${rule.amount ?? 0} $`
   }
   return meta.label
+}
+
+/** Puce numérotée devant les titres de section : rend l'ordre du flux
+    explicite (1 règle → 2 dashboard → 3 exceptions). */
+function StepChip({ n }: { n: number }) {
+  return (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-[11px] font-bold text-white">
+      {n}
+    </span>
+  )
 }
 
 function StrategyCard({
@@ -195,11 +210,55 @@ export default function PricingStrategyPage() {
   const [error, setError] = useState<string | null>(null)
   const [setupWarning, setSetupWarning] = useState<string | null>(null)
   const [expandedVehicle, setExpandedVehicle] = useState<VehicleType | null>(null)
+  const [showCustom, setShowCustom] = useState(false)
 
   const overrideCount = useMemo(
     () => Object.keys(settings.vehicle_type_strategies).length,
     [settings.vehicle_type_strategies]
   )
+
+  // La personnalisation par type est repliée par défaut (c'est un réglage
+  // avancé) — sauf si l'utilisateur a déjà des exceptions actives.
+  useEffect(() => {
+    if (!loading && overrideCount > 0) setShowCustom(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
+
+  // Étapes du guide de première visite. L'étape « écart » n'existe que si
+  // la règle active est « Sous le plus bas ».
+  const onboardingSteps = useMemo<PageOnboardingStep[]>(() => {
+    const steps: PageOnboardingStep[] = [
+      {
+        targetId: "pricing-rule",
+        title: "Choisissez votre règle",
+        description:
+          "Trois façons de vous positionner face aux prix de vos concurrents. Un clic suffit — la sauvegarde est automatique, et vous gardez toujours le dernier mot avant qu'un prix change.",
+      },
+    ]
+    if (settings.default_strategy.key === "lowest_minus_amount") {
+      steps.push({
+        targetId: "pricing-amount",
+        title: "Réglez l'écart",
+        description:
+          "De combien voulez-vous passer sous le prix le plus bas ? Un petit écart (1 $) suffit à être premier tout en protégeant votre marge.",
+      })
+    }
+    steps.push(
+      {
+        targetId: "pricing-apply",
+        title: "Affichez les recommandations",
+        description:
+          "Activez ce commutateur pour voir la colonne « prix recommandé » directement dans votre tableau de surveillance, à chaque ouverture.",
+      },
+      {
+        targetId: "pricing-custom",
+        title: "Personnalisez par type (optionnel)",
+        description:
+          "Besoin d'une règle différente pour vos motoneiges et vos motos ? Ouvrez cette section pour définir des exceptions — tout le reste suit la règle principale.",
+      },
+    )
+    return steps
+  }, [settings.default_strategy.key])
 
   const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestSettingsRef = useRef<PricingStrategySettings>(settings)
@@ -360,24 +419,40 @@ export default function PricingStrategyPage() {
           )}
         </div>
         {!loading && (
-          <div
-            aria-live="polite"
-            className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-[var(--color-text-secondary)]"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Sauvegarde…
-              </>
-            ) : savedAt ? (
-              <>
-                <Check className="h-3.5 w-3.5 text-orange-600" />
-                Modifications enregistrées
-              </>
-            ) : null}
+          <div className="flex items-center gap-2">
+            <div
+              aria-live="polite"
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-[var(--color-text-secondary)]"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Sauvegarde…
+                </>
+              ) : savedAt ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-orange-600" />
+                  Modifications enregistrées
+                </>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => replayPageOnboarding("strategie-pricing")}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[var(--color-border-tertiary)] text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition-colors"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              Revoir le guide
+            </button>
           </div>
         )}
       </section>
+
+      <PageOnboarding
+        pageKey="strategie-pricing"
+        ready={!loading}
+        steps={onboardingSteps}
+      />
 
       {error && (
         <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
@@ -397,20 +472,29 @@ export default function PricingStrategyPage() {
           Chargement…
         </div>
       ) : (
-        <div className="space-y-5">
-          <section className="grid gap-3 md:grid-cols-3">
-            {STRATEGY_ORDER.map(key => (
-              <StrategyCard
-                key={key}
-                strategyKey={key}
-                selected={settings.default_strategy.key === key}
-                onSelect={() => updateDefaultStrategy(key)}
-              />
-            ))}
-          </section>
+        <div className="space-y-7">
+          {/* ── Étape 1 : la règle principale (+ son écart, qui en fait
+              partie visuellement — ce n'est pas une étape séparée). ── */}
+          <section id="pricing-rule" className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <StepChip n={1} />
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                Choisissez votre règle
+              </h2>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {STRATEGY_ORDER.map(key => (
+                <StrategyCard
+                  key={key}
+                  strategyKey={key}
+                  selected={settings.default_strategy.key === key}
+                  onSelect={() => updateDefaultStrategy(key)}
+                />
+              ))}
+            </div>
 
           {settings.default_strategy.key === "lowest_minus_amount" && (
-            <section className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-5 py-4">
+            <div id="pricing-amount" className="flex flex-wrap items-center gap-3 rounded-xl border border-orange-500/25 bg-orange-50/40 dark:bg-orange-500/[0.06] px-5 py-4">
               <div className="flex items-center gap-3 flex-1 min-w-[200px]">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-500/10 text-orange-700 dark:text-orange-300">
                   <TrendingDown className="h-4 w-4" />
@@ -454,38 +538,66 @@ export default function PricingStrategyPage() {
                   <span className="text-sm text-[var(--color-text-secondary)]">$</span>
                 </div>
               </div>
-            </section>
-          )}
-
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-background-secondary)] text-[var(--color-text-primary)]">
-                <Sliders className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  Afficher les recommandations dans le dashboard
-                </p>
-                <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
-                  Active automatiquement la colonne « prix recommandé » à l'ouverture.
-                </p>
-              </div>
             </div>
-            <Switch
-              checked={settings.apply_enabled}
-              onChange={setApplyEnabled}
-              ariaLabel="Afficher les recommandations dans le dashboard"
-            />
-          </div>
+          )}
+          </section>
 
-          <section className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
-            <header className="flex items-center gap-3 px-5 py-4 border-b border-[var(--color-border-tertiary)]">
+          {/* ── Étape 2 : affichage dans le dashboard ── */}
+          <section id="pricing-apply" className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <StepChip n={2} />
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                Affichez les recommandations
+              </h2>
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-background-secondary)] text-[var(--color-text-primary)]">
+                  <Sliders className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                    Afficher les recommandations dans le dashboard
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
+                    Active automatiquement la colonne « prix recommandé » à l'ouverture.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={settings.apply_enabled}
+                onChange={setApplyEnabled}
+                ariaLabel="Afficher les recommandations dans le dashboard"
+              />
+            </div>
+          </section>
+
+          {/* ── Étape 3 (optionnelle) : exceptions par type de véhicule.
+              Repliée par défaut — c'est un réglage avancé qui noyait la
+              page quand ses 12 lignes étaient toujours visibles. ── */}
+          <section id="pricing-custom" className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <StepChip n={3} />
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                Personnalisez par type de véhicule
+              </h2>
+              <span className="text-xs text-[var(--color-text-tertiary)]">optionnel</span>
+            </div>
+            <div className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowCustom(v => !v)}
+              aria-expanded={showCustom}
+              className={`flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-[var(--color-background-hover)] ${
+                showCustom ? "border-b border-[var(--color-border-tertiary)]" : ""
+              }`}
+            >
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-background-secondary)] text-[var(--color-text-primary)]">
                 <Cog className="h-4 w-4" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  Personnaliser par type de véhicule
+                  Règles par type de véhicule
                 </p>
                 <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
                   {overrideCount === 0
@@ -493,8 +605,14 @@ export default function PricingStrategyPage() {
                     : `${overrideCount} type${overrideCount > 1 ? "s" : ""} avec règle personnalisée.`}
                 </p>
               </div>
-            </header>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-[var(--color-text-secondary)] transition-transform ${
+                  showCustom ? "rotate-180" : ""
+                }`}
+              />
+            </button>
 
+            {showCustom && (
             <div className="divide-y divide-[var(--color-border-tertiary)]">
               {VEHICLE_TYPES.filter(type => type !== "autre").map(vehicleType => {
                 const override = settings.vehicle_type_strategies[vehicleType]
@@ -619,6 +737,8 @@ export default function PricingStrategyPage() {
                   </div>
                 )
               })}
+            </div>
+            )}
             </div>
           </section>
         </div>

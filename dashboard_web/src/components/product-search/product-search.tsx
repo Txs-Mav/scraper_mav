@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react"
 import {
   Search, Loader2, AlertCircle, CheckCircle2, Info, X, ChevronDown,
-  Briefcase, Eye, Check, SlidersHorizontal, Gauge, Lock,
+  Briefcase, Eye, Check, Lock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import CategoryPicker from "./category-picker"
@@ -27,6 +27,7 @@ import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { isDevAdminUserPublic } from "@/lib/auth/admin"
+import PageOnboarding, { type PageOnboardingStep } from "@/components/page-onboarding"
 import {
   BUSINESS_TYPES,
   BUSINESS_TYPE_DEFAULT_CATEGORY,
@@ -251,7 +252,6 @@ export default function ProductSearch() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<SearchResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showSources, setShowSources] = useState(false)
   const [hasHydrated, setHasHydrated] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   /**
@@ -450,26 +450,8 @@ export default function ProductSearch() {
     setState((s) => ({ ...s, query: prediction }))
   }, [prediction])
 
-  // Les panneaux « Sources » et « Évaluer un véhicule » sont mutuellement
-  // exclusifs : ouvrir l'un ferme automatiquement l'autre. Évite que les
-  // deux panels s'empilent sous la barre de recherche et grossisse la
-  // surface au point de pousser les résultats hors vue.
-  const toggleSourcesPanel = useCallback(() => {
-    setShowSources((prev) => {
-      const next = !prev
-      if (next) {
-        setState((s) => (s.evaluatorEnabled ? { ...s, evaluatorEnabled: false } : s))
-      }
-      return next
-    })
-  }, [])
-
   const toggleEvaluator = useCallback(() => {
-    setState((s) => {
-      const next = !s.evaluatorEnabled
-      if (next) setShowSources(false)
-      return { ...s, evaluatorEnabled: next }
-    })
+    setState((s) => ({ ...s, evaluatorEnabled: !s.evaluatorEnabled }))
   }, [])
 
   const updateAdapter = useCallback(<K extends keyof AdapterToggles>(
@@ -490,15 +472,13 @@ export default function ProductSearch() {
     })
   }, [])
 
-  const onSubmit = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault()
-    if (!state.query.trim()) {
-      toast.error("Tape ce que tu cherches d'abord")
+  const runSearch = useCallback(async (rawQuery: string) => {
+    if (!rawQuery.trim()) {
+      toast.error("Tapez d'abord ce que vous cherchez")
       return
     }
     if (activeCount === 0) {
-      toast.error("Active au moins une source de recherche")
-      setShowSources(true)
+      toast.error("Activez au moins une source dans le panneau de droite")
       return
     }
 
@@ -522,7 +502,7 @@ export default function ProductSearch() {
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
         body: JSON.stringify({
-          query: state.query,
+          query: rawQuery,
           category: state.category,
           adapters: {
             ...safeAdapters,
@@ -540,7 +520,7 @@ export default function ProductSearch() {
       if (res.status === 401) {
         // Session expirée ou cookies absents — on redirige vers /login
         setError(
-          "Ta session a expiré. Reconnecte-toi pour relancer ta recherche.",
+          "Votre session a expiré. Reconnectez-vous pour relancer votre recherche.",
         )
         toast.error("Session expirée — redirection vers la connexion…")
         setTimeout(() => {
@@ -554,15 +534,15 @@ export default function ProductSearch() {
         throw new Error(data?.message || data?.error || `HTTP ${res.status}`)
       }
       setResult(data as SearchResult)
-      rememberQuerySuggestions(state.query, (data as SearchResult)?.hits || [])
+      rememberQuerySuggestions(rawQuery, (data as SearchResult)?.hits || [])
       const total = data?.total ?? 0
       const isApprox = !!(data as SearchResult)?.is_approximate
       if (total === 0) {
         const scanned = (data as SearchResult)?.products_scanned ?? 0
         toast.warning(
           scanned > 0
-            ? `Aucun résultat — ${scanned} produit${scanned > 1 ? "s" : ""} scanné${scanned > 1 ? "s" : ""}, retire l'année ou simplifie le modèle`
-            : "Aucun résultat — élargis la requête ou ajoute des sources",
+            ? `Aucun résultat — ${scanned} produit${scanned > 1 ? "s" : ""} scanné${scanned > 1 ? "s" : ""}, retirez l'année ou simplifiez le modèle`
+            : "Aucun résultat — élargissez la requête ou ajoutez des sources",
         )
       } else if (isApprox) {
         toast.warning(
@@ -580,21 +560,57 @@ export default function ProductSearch() {
     }
   }, [state, activeCount])
 
-  // ── Helper d'affichage : libellé court de la catégorie sélectionnée pour
-  // l'afficher inline dans la barre de metadata (pas le breadcrumb complet,
-  // juste le dernier segment pour rester compact).
-  const categoryShortLabel = useMemo(() => {
-    if (!state.category) return null
-    const segments = state.category.split(".")
-    const last = segments[segments.length - 1]
-    return last.charAt(0).toUpperCase() + last.slice(1).replace(/-/g, " ")
-  }, [state.category])
+  const onSubmit = useCallback((e?: React.FormEvent) => {
+    e?.preventDefault()
+    void runSearch(state.query)
+  }, [runSearch, state.query])
+
+  // Suggestion cliquée (état vide) : remplit la barre ET lance la recherche.
+  const handleSuggestion = useCallback((query: string) => {
+    setState((s) => ({ ...s, query }))
+    void runSearch(query)
+  }, [runSearch])
 
   const helperText = state.query.trim()
     ? activeCount === 0
-      ? "Active au moins une source pour lancer la recherche."
+      ? "Activez au moins une source pour lancer la recherche."
       : `Prêt à interroger ${activeCount} source${activeCount > 1 ? "s" : ""} en parallèle.`
-    : "Tape ta requête puis clique sur Rechercher."
+    : "Tapez votre requête puis cliquez sur Rechercher."
+
+  // Guide de première visite : barre → catégorie → sources (→ évaluateur si
+  // catégorie véhicule). Attend la fermeture de l'onboarding business_type
+  // pour ne jamais empiler deux overlays.
+  const onboardingSteps = useMemo<PageOnboardingStep[]>(() => {
+    const steps: PageOnboardingStep[] = [
+      {
+        targetId: "recherche-bar",
+        title: "Cherchez un produit",
+        description:
+          "Tapez un modèle, un accessoire ou un numéro de pièce, puis cliquez sur Rechercher : toutes vos sources actives sont interrogées en parallèle.",
+      },
+      {
+        targetId: "recherche-categorie",
+        title: "Ciblez la bonne catégorie",
+        description:
+          "La catégorie oriente la recherche vers les bonnes sources et améliore la précision des résultats.",
+      },
+      {
+        targetId: "recherche-sources",
+        title: "Choisissez vos sources",
+        description:
+          "Activez ou désactivez chaque marketplace d'un clic. Les sources verrouillées sont regroupées dans « Sources à venir ».",
+      },
+    ]
+    if (isVehicleCat) {
+      steps.push({
+        targetId: "recherche-evaluateur",
+        title: "Évaluez un véhicule",
+        description:
+          "Activez l'évaluateur pour estimer la valeur d'un véhicule (état, kilométrage, options) à partir des comparables trouvés.",
+      })
+    }
+    return steps
+  }, [isVehicleCat])
 
   return (
     <div className="relative z-10 space-y-5 max-w-[1400px] mx-auto">
@@ -610,147 +626,45 @@ export default function ProductSearch() {
         onDismiss={() => setShowOnboarding(false)}
       />
 
-      {/* ── Header unifié (style Surveillance) ──
-          Une seule surface translucide, pas de card pleine. Hiérarchie :
-          status pill → H1 (titre de la vue) → metadata inline → actions
-          secondaires groupées en segmented control. Le background ambient
-          (SurveillanceBackground) gère la séparation avec le reste de la
-          page. */}
-      <header className="relative z-30 rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
-        <div className="flex items-center justify-between gap-5 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-              </span>
-              <span className="font-medium uppercase tracking-wider">
-                Recherche multi-sources
-              </span>
-            </div>
+      <PageOnboarding
+        pageKey="recherche"
+        ready={hasHydrated && !showOnboarding}
+        steps={onboardingSteps}
+      />
 
-            <h1 className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight">
-              Recherche par produit
-            </h1>
-
-            <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] flex items-center gap-2 flex-wrap">
-              <span className="min-w-0">
-                Compare en parallèle eBay, Kijiji, AutoTrader et tes concessionnaires.
-              </span>
-              <span className="opacity-40">·</span>
-              <span>
-                <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">
-                  {activeCount}
-                </span>{" "}
-                source{activeCount > 1 ? "s" : ""}
-              </span>
-              {categoryShortLabel && (
-                <>
-                  <span className="opacity-40">·</span>
-                  <span className="truncate">
-                    <span className="font-semibold text-[var(--color-text-primary)]">
-                      {categoryShortLabel}
-                    </span>
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
-
-          {/* Actions header — catégorie + segmented control unifié pour
-              Sources + Évaluateur (si véhicule) + admin/business types.
-              La catégorie est désormais ici (et non plus dans la barre
-              de recherche) pour libérer l'input et donner plus de poids
-              au CTA primaire. */}
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            <CategoryPicker
-              value={state.category}
-              onChange={(path) => setState((s) => ({ ...s, category: path }))}
-              allowedPaths={allowedCategoryPaths}
-              triggerClassName={cn(
-                "inline-flex items-center gap-2 h-10 px-3.5 rounded-lg border text-sm font-medium transition-colors",
-                "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 backdrop-blur-sm shadow-sm",
-                "hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]",
-              )}
-              labelMaxWidthClassName="max-w-[160px] lg:max-w-[220px]"
-            />
-
-            <div className="inline-flex items-stretch h-10 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 shadow-sm overflow-hidden divide-x divide-[var(--color-border-tertiary)] backdrop-blur-sm">
-              <button
-                type="button"
-                onClick={toggleSourcesPanel}
-                className={cn(
-                  "inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors",
-                  showSources
-                    ? "text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]"
-                    : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]",
-                )}
-                title="Configurer les sources interrogées"
-              >
-                <SlidersHorizontal className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                <span className="hidden sm:inline">Sources</span>
-                {activeCount > 0 && (
-                  <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-[var(--color-background-secondary)] text-[var(--color-text-primary)]">
-                    {activeCount}
-                  </span>
-                )}
-              </button>
-
-              {isVehicleCat && (
-                <button
-                  type="button"
-                  onClick={toggleEvaluator}
-                  className={cn(
-                    "inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors",
-                    state.evaluatorEnabled
-                      ? "text-[var(--color-text-primary)] bg-[var(--color-background-secondary)]"
-                      : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]",
-                  )}
-                  title="Estimer la valeur du véhicule à partir des comparables"
-                  aria-pressed={state.evaluatorEnabled}
-                >
-                  <Gauge className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                  <span className="hidden sm:inline">Évaluer</span>
-                </button>
-              )}
-            </div>
-
-            {isAdmin ? (
-              <AdminViewAsPicker value={adminViewAs} onChange={setAdminViewAs} />
-            ) : user ? (
-              <button
-                type="button"
-                onClick={handleReopenOnboarding}
-                className={cn(
-                  "inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-lg border text-sm font-medium transition-colors",
-                  "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 backdrop-blur-sm",
-                  "hover:bg-[var(--color-background-hover)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
-                )}
-                title="Changer mes domaines d'activité"
-              >
-                <Briefcase className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                <span className="hidden md:inline truncate max-w-[180px]">
-                  {effectiveBusinessTypes.length === 0
-                    ? "Domaine"
-                    : effectiveBusinessTypes.length === 1
-                      ? t(BT_LABEL_KEYS[effectiveBusinessTypes[0]])
-                      : `${effectiveBusinessTypes.length} domaines`}
-                </span>
-              </button>
-            ) : null}
-          </div>
+      {/* ── En-tête compact ──
+          Toute la configuration (catégorie, sources, évaluateur, domaines)
+          vit dans le panneau latéral : l'en-tête ne porte plus que
+          l'identité de la vue, sans répéter les compteurs. */}
+      <header>
+        <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+          <span className="relative flex h-1.5 w-1.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500" />
+          </span>
+          <span className="font-medium uppercase tracking-wider">
+            Recherche multi-sources
+          </span>
         </div>
+        <h1 className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight">
+          Recherche par produit
+        </h1>
       </header>
 
-      {/* ── Panneau de commande unifié ──
-          La catégorie est désormais dans le header : cette surface ne
-          contient plus que l'input dominant + le CTA primaire pour
-          maximiser l'amplitude visuelle de la requête. Texte d'aide +
-          chips contextuelles en footer discret. Les panels (sources,
-          évaluateur véhicule) s'inscrivent sous cette même surface. */}
+      {/* ── Grille : recherche + résultats à gauche, panneau de
+          configuration fixe à droite. Ordre DOM = formulaire → panneau →
+          résultats pour qu'en mobile la config reste accessible entre la
+          barre et les résultats. */}
+      {/* grid-rows-[auto_1fr] est crucial : sans lui, le panneau latéral
+          (row-span-2) répartit sa hauteur sur les deux rangées et crée un
+          énorme vide entre la barre de recherche et les résultats. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] lg:grid-rows-[auto_1fr] gap-5 items-start">
+
+      {/* ── Barre de recherche : input dominant + CTA primaire ── */}
       <form
+        id="recherche-bar"
         onSubmit={onSubmit}
-        className="relative z-0 rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md"
+        className="lg:col-start-1 lg:row-start-1 relative z-0 rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md"
       >
         <div className="p-3 flex items-stretch gap-2.5 flex-wrap md:flex-nowrap">
           <div
@@ -782,7 +696,11 @@ export default function ProductSearch() {
                   acceptPrediction()
                 }
               }}
-              placeholder='Ex: "iPhone 15 Pro 256GB", "casque Bell", "Ski-Doo Summit 850"'
+              placeholder={
+                isVehicleCat
+                  ? "Ex : « Ski-Doo Summit 850 », « Yamaha MT-07 2022 »"
+                  : "Ex : « iPhone 15 Pro 256GB », « casque Bell », « Ski-Doo Summit 850 »"
+              }
               className={cn(
                 "relative z-10 w-full h-full pl-11 pr-20 rounded-xl text-[15px] bg-transparent",
                 "text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]",
@@ -813,9 +731,8 @@ export default function ProductSearch() {
             disabled={loading || !state.query.trim()}
             className={cn(
               "inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-sm font-semibold transition-all shrink-0 w-full md:w-auto md:min-w-[160px]",
-              "bg-gradient-to-b from-[var(--color-text-primary)] to-[var(--color-text-primary)]/90 text-[var(--color-background-primary)]",
-              "hover:from-[var(--color-text-primary)]/95 hover:to-[var(--color-text-primary)]/85 hover:-translate-y-0.5",
-              "shadow-md shadow-black/10 dark:shadow-black/40 hover:shadow-lg hover:shadow-black/15",
+              "bg-orange-600 text-white hover:bg-orange-500 hover:-translate-y-0.5",
+              "shadow-md shadow-orange-600/25 hover:shadow-lg hover:shadow-orange-600/30",
               "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0",
             )}
           >
@@ -824,96 +741,200 @@ export default function ProductSearch() {
           </button>
         </div>
 
-        {/* Footer discret : texte d'aide contextuel + raccourci d'évaluateur
-            quand on est en catégorie véhicule (pratique pour les gens qui
-            ne regardent pas la barre d'actions du header). */}
-        <div className="px-4 py-2.5 border-t border-[var(--color-border-tertiary)]/40 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-[11px] text-[var(--color-text-tertiary)] min-w-0 flex-1">
+        {/* Footer discret : texte d'aide contextuel. */}
+        <div className="px-4 py-2.5 border-t border-[var(--color-border-tertiary)]/40">
+          <p className="text-[11px] text-[var(--color-text-tertiary)]">
             {helperText}
           </p>
-          {isVehicleCat && (
-            <button
-              type="button"
-              onClick={toggleEvaluator}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors shrink-0",
-                state.evaluatorEnabled
-                  ? "bg-[var(--color-text-primary)] border-[var(--color-text-primary)] text-[var(--color-background-primary)]"
-                  : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-tertiary)]",
-              )}
-              aria-pressed={state.evaluatorEnabled}
-            >
-              <span>
-                {state.evaluatorEnabled
-                  ? "Évaluation activée"
-                  : "Activer l'évaluation véhicule"}
-              </span>
-            </button>
-          )}
         </div>
+      </form>
 
-        {/* Panel "Évaluateur véhicule" — s'inscrit naturellement sous la
-            barre de recherche quand activé. Pas de header dédié, pas de
-            numéro d'étape : c'est juste une extension contextuelle de la
-            requête principale. */}
-        {evaluatorActive && (
-          <div className="px-4 pb-4 pt-1">
-            <VehicleSpecsBox
-              specs={state.vehicleSpecs}
-              disabled={loading}
-              categoryPath={state.category}
-              queryText={state.query}
-              onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
+      {/* ── Panneau latéral : toute la configuration, toujours visible.
+          Catégorie, sources et évaluateur ne sont plus cachés derrière
+          des toggles — on voit d'un coup d'œil ce qui sera interrogé. ── */}
+      <aside className="min-w-0 lg:col-start-2 lg:row-start-1 lg:row-span-2">
+        <div className="lg:sticky lg:top-5 space-y-4">
+          <SidebarSection id="recherche-categorie" title="Catégorie">
+            <CategoryPicker
+              value={state.category}
+              onChange={(path) => setState((s) => ({ ...s, category: path }))}
+              allowedPaths={allowedCategoryPaths}
+              triggerClassName={cn(
+                "w-full inline-flex items-center justify-between gap-2 h-10 px-3 rounded-lg border text-sm font-medium transition-colors",
+                "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",
+                "hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]",
+              )}
+              labelMaxWidthClassName="max-w-[200px]"
             />
-          </div>
-        )}
+          </SidebarSection>
 
-        {/* Panel "Sources" — même logique d'extension contextuelle. Reste
-            replié par défaut ; s'ouvre via le segmented control du header
-            ou via tout autre déclencheur. */}
-        {showSources && (
-          <div className="px-4 pb-4 pt-1 border-t border-[var(--color-border-tertiary)]/40">
+          <SidebarSection
+            id="recherche-sources"
+            title="Sources"
+            badge={`${activeCount} active${activeCount > 1 ? "s" : ""}`}
+          >
             <SourcesPanel
               adapters={state.adapters}
               onToggle={updateAdapter}
               onToggleAll={toggleAll}
             />
+          </SidebarSection>
+
+          {isVehicleCat && (
+            <SidebarSection
+              id="recherche-evaluateur"
+              title="Évaluateur véhicule"
+              action={
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={state.evaluatorEnabled}
+                  onClick={toggleEvaluator}
+                  title="Estimer la valeur du véhicule à partir des comparables"
+                  className={cn(
+                    "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                    state.evaluatorEnabled
+                      ? "bg-orange-600"
+                      : "bg-[var(--color-border-secondary)]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
+                      state.evaluatorEnabled ? "translate-x-[18px]" : "translate-x-[3px]",
+                    )}
+                  />
+                </button>
+              }
+            >
+              {evaluatorActive ? (
+                <VehicleSpecsBox
+                  compact
+                  specs={state.vehicleSpecs}
+                  disabled={loading}
+                  categoryPath={state.category}
+                  queryText={state.query}
+                  onChange={(vehicleSpecs) => setState((s) => ({ ...s, vehicleSpecs }))}
+                />
+              ) : (
+                <p className="text-xs text-[var(--color-text-tertiary)]">
+                  Estimez la valeur du véhicule recherché (état, kilométrage,
+                  options) à partir des comparables trouvés.
+                </p>
+              )}
+            </SidebarSection>
+          )}
+
+          {isAdmin ? (
+            <SidebarSection title="Vue admin">
+              <AdminViewAsPicker value={adminViewAs} onChange={setAdminViewAs} />
+            </SidebarSection>
+          ) : user ? (
+            <button
+              type="button"
+              onClick={handleReopenOnboarding}
+              className={cn(
+                "w-full inline-flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-left transition-colors",
+                "border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 backdrop-blur-md",
+                "hover:bg-[var(--color-background-hover)]",
+              )}
+              title="Changer mes domaines d'activité"
+            >
+              <Briefcase
+                className="h-4 w-4 shrink-0 text-[var(--color-text-tertiary)]"
+                strokeWidth={1.75}
+              />
+              <span className="min-w-0 flex-1 truncate text-sm text-[var(--color-text-secondary)]">
+                {effectiveBusinessTypes.length === 0
+                  ? "Choisir mes domaines d'activité"
+                  : effectiveBusinessTypes.length === 1
+                    ? t(BT_LABEL_KEYS[effectiveBusinessTypes[0]])
+                    : `${effectiveBusinessTypes.length} domaines`}
+              </span>
+              <span className="text-xs font-medium text-[var(--color-text-tertiary)] shrink-0">
+                Modifier
+              </span>
+            </button>
+          ) : null}
+        </div>
+      </aside>
+
+      {/* ── États & résultats (col gauche, sous la barre) ── */}
+      <div className="min-w-0 space-y-5 lg:col-start-1 lg:row-start-2">
+        {error && !loading && (
+          <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-red-800 dark:text-red-300">Recherche échouée</div>
+              <div className="text-sm text-red-700 dark:text-red-400 mt-0.5 break-words">{error}</div>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 shrink-0"
+              aria-label="Fermer"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
-      </form>
 
-      {/* Erreur globale */}
-      {error && !loading && (
-        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-red-800 dark:text-red-300">Recherche échouée</div>
-            <div className="text-sm text-red-700 dark:text-red-400 mt-0.5 break-words">{error}</div>
-          </div>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 shrink-0"
-            aria-label="Fermer"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+        {loading && <LoadingSkeleton />}
 
-      {loading && <LoadingSkeleton />}
+        {result && !loading && (
+          <ResultsView
+            result={result}
+            queryText={state.query}
+            valuationQueryText={valuationQueryText}
+            categoryPath={state.category}
+            showValuation={evaluatorActive}
+          />
+        )}
 
-      {result && !loading && (
-        <ResultsView
-          result={result}
-          queryText={state.query}
-          valuationQueryText={valuationQueryText}
-          categoryPath={state.category}
-          showValuation={evaluatorActive}
-        />
-      )}
+        {!result && !loading && !error && (
+          <EmptyState isVehicle={isVehicleCat} onPick={handleSuggestion} />
+        )}
+      </div>
 
-      {!result && !loading && !error && <EmptyState />}
+      </div>
     </div>
+  )
+}
+
+/**
+ * Bloc du panneau latéral : carte légère avec titre en petites capitales,
+ * badge optionnel (ex. compteur de sources) et action optionnelle (ex.
+ * switch de l'évaluateur).
+ */
+function SidebarSection({
+  id,
+  title,
+  badge,
+  action,
+  children,
+}: {
+  id?: string
+  title: string
+  badge?: string
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <section id={id} className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
+      <div className="flex items-center justify-between gap-2 px-4 pt-3.5 pb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
+            {title}
+          </span>
+          {badge && (
+            <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-[var(--color-background-secondary)] text-[var(--color-text-primary)]">
+              {badge}
+            </span>
+          )}
+        </div>
+        {action}
+      </div>
+      <div className="px-4 pb-4">{children}</div>
+    </section>
   )
 }
 
@@ -1040,6 +1061,8 @@ function SourcesPanel({
   onToggle: <K extends keyof AdapterToggles>(key: K, value: AdapterToggles[K]) => void
   onToggleAll: (value: boolean) => void
 }) {
+  const [showUpcoming, setShowUpcoming] = useState(false)
+
   const groups: Array<{ id: SourceMeta["group"]; title: string; subtitle?: string }> = [
     { id: "instant", title: "Sources rapides", subtitle: "≤ 3s" },
     { id: "marketplace", title: "Marketplaces e-commerce", subtitle: "5-15s" },
@@ -1047,33 +1070,33 @@ function SourcesPanel({
     { id: "api", title: "Sources avec authentification" },
   ]
 
+  // Les sources verrouillées (pas encore branchées) ne polluent plus les
+  // groupes actifs : elles sont regroupées dans « Sources à venir »,
+  // replié par défaut.
+  const upcoming = SOURCES.filter((s) => s.disabled)
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-xs text-[var(--color-text-secondary)] min-w-0 flex-1">
-          Active uniquement les sources pertinentes pour ton produit.
-        </p>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onToggleAll(true)}
-            className="text-xs font-medium px-2 py-1 rounded-md text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
-          >
-            Tout activer
-          </button>
-          <span className="text-[var(--color-text-tertiary)]">·</span>
-          <button
-            type="button"
-            onClick={() => onToggleAll(false)}
-            className="text-xs font-medium px-2 py-1 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-background-hover)]"
-          >
-            Tout désactiver
-          </button>
-        </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onToggleAll(true)}
+          className="text-xs font-medium px-2 py-1 rounded-md text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
+        >
+          Tout activer
+        </button>
+        <span className="text-[var(--color-text-tertiary)]">·</span>
+        <button
+          type="button"
+          onClick={() => onToggleAll(false)}
+          className="text-xs font-medium px-2 py-1 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-background-hover)]"
+        >
+          Tout désactiver
+        </button>
       </div>
 
       {groups.map((group) => {
-        const items = SOURCES.filter((s) => s.group === group.id)
+        const items = SOURCES.filter((s) => s.group === group.id && !s.disabled)
         if (items.length === 0) return null
         return (
           <div key={group.id}>
@@ -1093,9 +1116,7 @@ function SourcesPanel({
                   key={src.key}
                   label={src.label}
                   hint={src.hint}
-                  checked={!src.disabled && (adapters[src.key] as boolean)}
-                  disabled={src.disabled}
-                  badge={src.badge}
+                  checked={adapters[src.key] as boolean}
                   onChange={(v) => onToggle(src.key, v as AdapterToggles[typeof src.key])}
                 />
               ))}
@@ -1104,10 +1125,44 @@ function SourcesPanel({
         )
       })}
 
-      <p className="text-[11px] text-[var(--color-text-tertiary)] border-t border-[var(--color-border-secondary)] pt-3">
-        Les sources marquées d&apos;un cadenas seront activables une fois
-        connectées dans le dashboard admin.
-      </p>
+      {upcoming.length > 0 && (
+        <div className="border-t border-[var(--color-border-tertiary)]/60 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowUpcoming((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 text-left group"
+            aria-expanded={showUpcoming}
+          >
+            <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide group-hover:text-[var(--color-text-primary)] transition-colors">
+              Sources à venir
+            </span>
+            <span className="flex items-center gap-1.5 text-[10px] tabular-nums text-[var(--color-text-tertiary)]">
+              {upcoming.length}
+              <ChevronDown
+                className={cn("h-3.5 w-3.5 transition-transform", showUpcoming && "rotate-180")}
+              />
+            </span>
+          </button>
+          {showUpcoming && (
+            <>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {upcoming.map((src) => (
+                  <span
+                    key={src.key}
+                    title={src.hint}
+                    className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border border-dashed border-[var(--color-border-secondary)] text-[var(--color-text-tertiary)]"
+                  >
+                    {src.label}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
+                Ces sources seront activables une fois connectées.
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1168,12 +1223,15 @@ function VehicleSpecsBox({
   categoryPath,
   queryText,
   onChange,
+  compact = false,
 }: {
   specs: VehicleSpecs
   disabled: boolean
   categoryPath: string | null
   queryText: string
   onChange: (specs: VehicleSpecs) => void
+  /** Empile les champs sur une colonne (panneau latéral étroit). */
+  compact?: boolean
 }) {
   const update = (patch: Partial<VehicleSpecs>) => onChange({ ...specs, ...patch })
 
@@ -1253,7 +1311,7 @@ function VehicleSpecsBox({
 
   return (
     <div className="rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)]/60 p-3">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
             État
@@ -1331,8 +1389,8 @@ function VehicleSpecsBox({
               <span className="text-[10px] text-[var(--color-text-tertiary)]">
                 {specs.options.length === 0
                   ? detectedMake
-                    ? "Coche ce qui s'applique à ton véhicule"
-                    : "Tape une marque pour voir les options spécifiques (ex: Ford → packages 502A, FX4…)"
+                    ? "Cochez ce qui s'applique à votre véhicule"
+                    : "Tapez une marque pour voir les options spécifiques (ex: Ford → packages 502A, FX4…)"
                   : `${specs.options.length} sélectionnée${specs.options.length > 1 ? "s" : ""} (≈ +${totalOptionsPremium.toLocaleString("fr-CA")} $)`}
               </span>
             </div>
@@ -1428,16 +1486,83 @@ function LoadingSkeleton() {
   )
 }
 
-function EmptyState() {
+/**
+ * État vide utile : au lieu d'une carte morte, on propose de reprendre une
+ * recherche récente (historique local) ou de partir d'un exemple adapté à
+ * la catégorie. Un clic remplit la barre ET lance la recherche.
+ */
+function EmptyState({
+  isVehicle,
+  onPick,
+}: {
+  isVehicle: boolean
+  onPick: (query: string) => void
+}) {
+  const [recent, setRecent] = useState<string[]>([])
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(QUERY_COMPLETION_HISTORY_KEY)
+      const parsed = raw ? JSON.parse(raw) : []
+      if (Array.isArray(parsed)) {
+        setRecent(
+          parsed.filter((v): v is string => typeof v === "string").slice(0, 6),
+        )
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const examples = (
+    isVehicle
+      ? ["Ski-Doo Summit 850", "Yamaha MT-07 2022", "Can-Am Outlander 850", "KTM 300 XC-W"]
+      : ["iPhone 15 Pro 256GB", "casque Bell moto", "Ski-Doo Summit 850"]
+  ).filter((e) => !recent.includes(e))
+
+  const chipClass = cn(
+    "inline-flex items-center max-w-full px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
+    "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)]",
+    "hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-tertiary)]",
+  )
+
   return (
-    <div className="bg-[var(--color-background-primary)]/40 border border-dashed border-[var(--color-border-secondary)] rounded-2xl py-14 px-6 text-center backdrop-blur-sm">
+    <div className="bg-[var(--color-background-primary)]/40 border border-dashed border-[var(--color-border-secondary)] rounded-2xl py-10 px-6 text-center backdrop-blur-sm">
       <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
-        Cherche un produit
+        Cherchez un produit
       </h3>
       <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] max-w-md mx-auto">
-        Tape un nom de produit ci-dessus, puis clique sur Rechercher. Sélectionne une
-        catégorie pour cibler les bonnes sources.
+        Tapez un nom de produit ci-dessus — la catégorie et les sources se
+        règlent dans le panneau de droite.
       </p>
+
+      {recent.length > 0 && (
+        <div className="mt-6">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+            Reprendre une recherche
+          </div>
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+            {recent.map((q) => (
+              <button key={q} type="button" onClick={() => onPick(q)} className={chipClass}>
+                <span className="truncate">{q}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {examples.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+            Exemples
+          </div>
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+            {examples.map((q) => (
+              <button key={q} type="button" onClick={() => onPick(q)} className={chipClass}>
+                <span className="truncate">{q}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
