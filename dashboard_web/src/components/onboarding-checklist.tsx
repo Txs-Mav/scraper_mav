@@ -695,11 +695,11 @@ export default function OnboardingChecklist() {
               >
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
                   step.completed
-                    ? "bg-emerald-100 dark:bg-emerald-900/30"
+                    ? "bg-orange-100 dark:bg-orange-900/30"
                     : "bg-gray-100 dark:bg-white/[0.06] group-hover:bg-orange-50 dark:group-hover:bg-orange-950/30"
                 }`}>
                   {step.completed ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <Check className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
                   ) : (
                     <StepIcon className="h-3.5 w-3.5 text-[var(--color-text-secondary)] group-hover:text-orange-600 dark:group-hover:text-orange-400" />
                   )}

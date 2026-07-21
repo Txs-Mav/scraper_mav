@@ -33,7 +33,7 @@ export default function DashboardScaffold({
             </ul>
           )}
           {actionLabel && (
-            <button className="mt-5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+            <button className="mt-5 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white">
               {actionLabel}
             </button>
           )}

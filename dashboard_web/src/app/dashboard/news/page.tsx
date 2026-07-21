@@ -187,7 +187,7 @@ function NewsPageContent() {
 
           <header className="mb-8">
             <div className="flex items-center gap-2 mb-3">
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300">
                 <Sparkles className="h-3 w-3" />
                 Nouveauté
               </span>
@@ -234,13 +234,13 @@ function NewsPageContent() {
           </div>
 
           <footer className="mt-12 pt-8 border-t border-[var(--color-border-tertiary)]">
-            <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 border border-emerald-100 dark:border-emerald-900/30 px-6 py-5 flex items-center gap-4">
-              <Mail className="h-6 w-6 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <div className="rounded-2xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/30 dark:to-orange-950/20 border border-orange-100 dark:border-orange-900/30 px-6 py-5 flex items-center gap-4">
+              <Mail className="h-6 w-6 text-orange-600 dark:text-orange-400 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-semibold text-[var(--color-text-primary)]">Une question sur cette nouveauté ?</p>
                 <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
                   Écrivez-moi à{" "}
-                  <a href="mailto:gestion@go-data.co" className="text-emerald-600 dark:text-emerald-400 underline hover:no-underline">
+                  <a href="mailto:gestion@go-data.co" className="text-orange-600 dark:text-orange-400 underline hover:no-underline">
                     gestion@go-data.co
                   </a>
                 </p>
@@ -296,7 +296,7 @@ function NewsPageContent() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Rechercher..."
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
                 />
               </div>
             )}
@@ -333,12 +333,12 @@ function NewsPageContent() {
           <button
             type="button"
             onClick={() => openDetail(featured)}
-            className="w-full text-left mb-8 group rounded-2xl overflow-hidden border border-[var(--color-border-secondary)] bg-gradient-to-br from-[var(--color-background-primary)] to-[var(--color-background-secondary)]/40 hover:shadow-xl hover:-translate-y-0.5 hover:border-emerald-200 dark:hover:border-emerald-900/40 transition-all"
+            className="w-full text-left mb-8 group rounded-2xl overflow-hidden border border-[var(--color-border-secondary)] bg-gradient-to-br from-[var(--color-background-primary)] to-[var(--color-background-secondary)]/40 hover:shadow-xl hover:-translate-y-0.5 hover:border-orange-200 dark:hover:border-orange-900/40 transition-all"
           >
-            <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
+            <div className="h-1.5 bg-gradient-to-r from-orange-500 via-orange-400 to-orange-600" />
             <div className="p-6 sm:p-8">
               <div className="flex items-center gap-2 flex-wrap mb-3">
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-600 text-white">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-orange-600 text-white">
                   <Sparkles className="h-3 w-3" />
                   À la une
                 </span>
@@ -358,7 +358,7 @@ function NewsPageContent() {
                   {formatDateLong(featured.published_at)}
                 </span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-[var(--color-text-primary)] leading-tight group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition">
+              <h2 className="text-2xl sm:text-3xl font-bold text-[var(--color-text-primary)] leading-tight group-hover:text-orange-700 dark:group-hover:text-orange-400 transition">
                 {featured.title}
               </h2>
               {featured.summary && (
@@ -386,7 +386,7 @@ function NewsPageContent() {
                     <p className="text-[10px] text-[var(--color-text-tertiary)]">Fondateur Go-Data</p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-600 dark:text-emerald-400 group-hover:gap-2.5 transition-all">
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-600 dark:text-orange-400 group-hover:gap-2.5 transition-all">
                   Lire
                   <ArrowRight className="h-4 w-4" />
                 </span>
@@ -407,7 +407,7 @@ function NewsPageContent() {
                   <button
                     type="button"
                     onClick={() => openDetail(item)}
-                    className="w-full h-full text-left p-5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:shadow-lg hover:-translate-y-0.5 hover:border-emerald-200 dark:hover:border-emerald-900/40 transition-all group"
+                    className="w-full h-full text-left p-5 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:shadow-lg hover:-translate-y-0.5 hover:border-orange-200 dark:hover:border-orange-900/40 transition-all group"
                   >
                     <div className="flex items-start gap-3">
                       <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 flex-shrink-0 relative">
@@ -426,7 +426,7 @@ function NewsPageContent() {
                             </span>
                           )}
                         </div>
-                        <h4 className={`text-base leading-snug ${item.is_read ? "font-medium text-[var(--color-text-secondary)]" : "font-semibold text-[var(--color-text-primary)]"} group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition`}>
+                        <h4 className={`text-base leading-snug ${item.is_read ? "font-medium text-[var(--color-text-secondary)]" : "font-semibold text-[var(--color-text-primary)]"} group-hover:text-orange-700 dark:group-hover:text-orange-400 transition`}>
                           {item.title}
                         </h4>
                         {item.summary && (
@@ -434,7 +434,7 @@ function NewsPageContent() {
                             {item.summary}
                           </p>
                         )}
-                        <span className="inline-flex items-center gap-1 mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400 group-hover:gap-2 transition-all">
+                        <span className="inline-flex items-center gap-1 mt-3 text-xs font-semibold text-orange-600 dark:text-orange-400 group-hover:gap-2 transition-all">
                           Lire l&apos;article
                           <ArrowRight className="h-3 w-3" />
                         </span>
@@ -449,14 +449,14 @@ function NewsPageContent() {
 
         {/* Footer newsletter */}
         {items && items.length > 0 && (
-          <footer className="mt-12 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 border border-emerald-100 dark:border-emerald-900/30 px-6 py-6 text-center">
+          <footer className="mt-12 rounded-2xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/30 dark:to-orange-950/20 border border-orange-100 dark:border-orange-900/30 px-6 py-6 text-center">
             <h3 className="text-base font-semibold text-[var(--color-text-primary)]">Une suggestion ou question ?</h3>
             <p className="text-sm text-[var(--color-text-secondary)] mt-1 max-w-md mx-auto">
               Je lis tous les messages personnellement. N&apos;hésitez pas à m&apos;écrire pour toute question ou idée.
             </p>
             <a
               href="mailto:gestion@go-data.co"
-              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 transition"
+              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 transition"
             >
               <Mail className="h-4 w-4" />
               gestion@go-data.co

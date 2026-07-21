@@ -40,7 +40,7 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
           href={linkUrl}
           target={isExternal ? '_blank' : undefined}
           rel={isExternal ? 'noreferrer' : undefined}
-          className="text-emerald-600 dark:text-emerald-400 underline hover:no-underline"
+          className="text-orange-600 dark:text-orange-400 underline hover:no-underline"
         >
           {linkText}
         </a>

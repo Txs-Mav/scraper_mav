@@ -57,7 +57,7 @@ function statusLabel(status: SupportMessage["status"]) {
 }
 
 function statusClass(status: SupportMessage["status"]) {
-  if (status === "answered") return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/40"
+  if (status === "answered") return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40"
   if (status === "closed") return "bg-gray-100 text-gray-600 border-gray-200 dark:bg-white/[0.05] dark:text-gray-300 dark:border-white/[0.08]"
   return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/40"
 }
@@ -149,7 +149,7 @@ export default function DashboardHelpPage() {
         <section className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8">
           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
             <div>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 dark:border-orange-900/40 dark:bg-orange-950/30 dark:text-orange-300">
                 <Sparkles className="h-3.5 w-3.5" />
                 Support Go-Data
               </span>
@@ -173,7 +173,7 @@ export default function DashboardHelpPage() {
         <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-6">
           <div className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6">
             <div className="flex items-center gap-3 mb-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600 dark:bg-orange-950/30 dark:text-orange-300">
                 <SelectedIcon className="h-5 w-5" />
               </div>
               <div>
@@ -189,7 +189,7 @@ export default function DashboardHelpPage() {
               </div>
             )}
             {success && (
-              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300 flex gap-2">
+              <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-300 flex gap-2">
                 <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <span>{success}</span>
               </div>
@@ -211,12 +211,12 @@ export default function DashboardHelpPage() {
                         onClick={() => setType(option.value)}
                         className={`rounded-xl border px-3 py-3 text-left transition ${
                           active
-                            ? "border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100"
+                            ? "border-orange-500 bg-orange-50 text-orange-900 dark:bg-orange-950/25 dark:text-orange-100"
                             : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:bg-[var(--color-background-hover)] text-[var(--color-text-primary)]"
                         }`}
                       >
                         <span className="flex items-center gap-2 text-sm font-medium">
-                          <Icon className={`h-4 w-4 ${active ? "text-emerald-600 dark:text-emerald-300" : "text-[var(--color-text-secondary)]"}`} />
+                          <Icon className={`h-4 w-4 ${active ? "text-orange-600 dark:text-orange-300" : "text-[var(--color-text-secondary)]"}`} />
                           {option.label}
                         </span>
                         <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">{option.description}</span>
@@ -236,7 +236,7 @@ export default function DashboardHelpPage() {
                   onChange={(event) => setSubject(event.target.value)}
                   maxLength={140}
                   placeholder="Ex. Comment modifier mes concurrents ?"
-                  className="w-full rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] px-4 py-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] px-4 py-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                 />
               </div>
 
@@ -251,7 +251,7 @@ export default function DashboardHelpPage() {
                   rows={7}
                   maxLength={5000}
                   placeholder="Ajoutez le contexte, la page concernée, ce que vous avez essayé et le résultat attendu."
-                  className="w-full resize-none rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] px-4 py-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full resize-none rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] px-4 py-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                 />
                 <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">{message.length}/5000 caractères</p>
               </div>
@@ -259,7 +259,7 @@ export default function DashboardHelpPage() {
               <button
                 type="submit"
                 disabled={sending}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-orange-600/20 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Envoyer
@@ -276,7 +276,7 @@ export default function DashboardHelpPage() {
               <button
                 type="button"
                 onClick={() => void loadMessages()}
-                className="text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-300"
+                className="text-xs font-medium text-orange-600 hover:text-orange-700 dark:text-orange-300"
               >
                 Actualiser
               </button>
@@ -313,11 +313,11 @@ export default function DashboardHelpPage() {
                       </div>
                       <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-sm text-[var(--color-text-secondary)]">{item.message}</p>
                       {item.admin_reply && (
-                        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-                          <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                        <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3 dark:border-orange-900/40 dark:bg-orange-950/20">
+                          <p className="text-xs font-semibold text-orange-800 dark:text-orange-300">
                             Réponse Go-Data · {formatDate(item.admin_replied_at)}
                           </p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm text-emerald-900 dark:text-emerald-100">{item.admin_reply}</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-orange-900 dark:text-orange-100">{item.admin_reply}</p>
                         </div>
                       )}
                     </article>

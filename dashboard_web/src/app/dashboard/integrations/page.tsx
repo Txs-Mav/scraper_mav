@@ -22,7 +22,7 @@ export default function IntegrationsPage() {
         </div>
         <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
           {INTEGRATIONS.map((item) => (
-            <Link key={item.slug} href={`/dashboard/integrations/${item.slug}`} className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-5 hover:border-emerald-500 transition-colors">
+            <Link key={item.slug} href={`/dashboard/integrations/${item.slug}`} className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-5 hover:border-orange-500 transition-colors">
               <h2 className="font-semibold text-[var(--color-text-primary)]">{item.name}</h2>
               <span className="mt-3 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                 {item.status}

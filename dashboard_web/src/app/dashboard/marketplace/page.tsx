@@ -23,7 +23,7 @@ export default function MarketplacePage() {
             <div key={template} className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-5">
               <h2 className="font-semibold text-[var(--color-text-primary)]">{template}</h2>
               <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Modèle à connecter et valider avant publication.</p>
-              <button className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Installer (UI)</button>
+              <button className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white">Installer (UI)</button>
             </div>
           ))}
         </div>

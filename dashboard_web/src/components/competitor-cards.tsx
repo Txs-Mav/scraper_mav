@@ -178,7 +178,7 @@ export default function CompetitorCards({ competitorsBySite, onSelect, className
               disabled={!interactive}
               className={`relative text-left p-5 rounded-xl bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] transition-all group ${
                 interactive
-                  ? "hover:border-emerald-200 dark:hover:border-emerald-900 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-600/5 cursor-pointer"
+                  ? "hover:border-orange-200 dark:hover:border-orange-900 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-600/5 cursor-pointer"
                   : "cursor-default"
               }`}
             >
@@ -210,7 +210,7 @@ export default function CompetitorCards({ competitorsBySite, onSelect, className
                   <div className="flex items-center gap-2 flex-1 ml-3 max-w-[90px]">
                     <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
+                        className="h-full bg-gradient-to-r from-orange-500 to-orange-500 rounded-full transition-all"
                         style={{ width: `${Math.max(0, Math.min(100, c.aggressivity))}%` }}
                       />
                     </div>

@@ -103,7 +103,7 @@ export default function AdminHome() {
               value={stats.cron.status === "running" ? "En cours" : "Idle"}
               hint={`Dernier succès : ${timeAgo(stats.cron.last_success_run)}`}
               href="/admin/cron"
-              accent={stats.cron.status === "running" ? "emerald" : undefined}
+              accent={stats.cron.status === "running" ? "orange" : undefined}
             />
             <Kpi
               label="Clients"
@@ -202,9 +202,9 @@ function Kpi({
   value: string | number
   hint?: string
   href?: string
-  accent?: "emerald" | "red"
+  accent?: "orange" | "red"
 }) {
-  const accentDot = accent === "emerald" ? "bg-emerald-500" : accent === "red" ? "bg-red-500" : ""
+  const accentDot = accent === "orange" ? "bg-orange-500" : accent === "red" ? "bg-red-500" : ""
   const inner = (
     <div className="bg-white px-5 py-4 hover:bg-gray-50 transition-colors h-full">
       <div className="flex items-center justify-between mb-3">

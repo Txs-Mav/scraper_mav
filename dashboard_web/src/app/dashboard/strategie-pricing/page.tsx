@@ -118,7 +118,7 @@ function StrategyCard({
       onClick={onSelect}
       className={`group relative flex flex-col text-left rounded-2xl border p-5 transition-all duration-150 ${
         selected
-          ? "border-emerald-500/70 bg-emerald-50/60 dark:bg-emerald-500/10 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]"
+          ? "border-orange-500/70 bg-orange-50/60 dark:bg-orange-500/10 shadow-[0_0_0_3px_rgba(249,115,22,0.12)]"
           : "border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] hover:border-[var(--color-border-secondary)] hover:bg-[var(--color-background-hover)]"
       }`}
     >
@@ -126,7 +126,7 @@ function StrategyCard({
         <div
           className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
             selected
-              ? "bg-emerald-500 text-white"
+              ? "bg-orange-500 text-white"
               : "bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] group-hover:bg-[var(--color-background-hover)]"
           }`}
         >
@@ -135,7 +135,7 @@ function StrategyCard({
         <div
           className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition ${
             selected
-              ? "border-emerald-500 bg-emerald-500 text-white"
+              ? "border-orange-500 bg-orange-500 text-white"
               : "border-[var(--color-border-secondary)]"
           }`}
         >
@@ -174,8 +174,8 @@ function Switch({
         event.preventDefault()
         onChange(!checked)
       }}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
-        checked ? "bg-emerald-600" : "bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)]"
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 ${
+        checked ? "bg-orange-600" : "bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)]"
       }`}
     >
       <span
@@ -353,7 +353,7 @@ export default function PricingStrategyPage() {
             Vous gardez toujours le dernier mot avant qu'un prix change.
           </p>
           {!loading && (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700 dark:border-orange-900/50 dark:bg-orange-950/30 dark:text-orange-300">
               <ActiveIcon className="h-3.5 w-3.5" />
               Règle active : {formatRule(settings.default_strategy)}
             </div>
@@ -371,7 +371,7 @@ export default function PricingStrategyPage() {
               </>
             ) : savedAt ? (
               <>
-                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                <Check className="h-3.5 w-3.5 text-orange-600" />
                 Modifications enregistrées
               </>
             ) : null}
@@ -412,7 +412,7 @@ export default function PricingStrategyPage() {
           {settings.default_strategy.key === "lowest_minus_amount" && (
             <section className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] px-5 py-4">
               <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-500/10 text-orange-700 dark:text-orange-300">
                   <TrendingDown className="h-4 w-4" />
                 </div>
                 <div>
@@ -434,7 +434,7 @@ export default function PricingStrategyPage() {
                       onClick={() => updateDefaultAmount(preset)}
                       className={`h-9 px-3 rounded-lg text-sm font-semibold transition ${
                         active
-                          ? "bg-emerald-600 text-white"
+                          ? "bg-orange-600 text-white"
                           : "bg-[var(--color-background-primary)] border border-[var(--color-border-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
                       }`}
                     >
@@ -514,7 +514,7 @@ export default function PricingStrategyPage() {
                         <div
                           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                             override
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                              ? "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300"
                               : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)]"
                           }`}
                         >
@@ -528,7 +528,7 @@ export default function PricingStrategyPage() {
                         <span
                           className={`hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                             override
-                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              ? "bg-orange-500/10 text-orange-700 dark:text-orange-300"
                               : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)]"
                           }`}
                         >
@@ -576,7 +576,7 @@ export default function PricingStrategyPage() {
                                 }
                                 className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium transition ${
                                   active
-                                    ? "bg-emerald-600 text-white"
+                                    ? "bg-orange-600 text-white"
                                     : "bg-[var(--color-background-primary)] border border-[var(--color-border-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
                                 }`}
                               >

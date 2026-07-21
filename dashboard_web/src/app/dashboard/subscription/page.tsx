@@ -93,8 +93,8 @@ export default function SubscriptionPage() {
           Abonnement
         </h1>
 
-        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900 rounded-lg p-4 mb-6">
-          <p className="text-sm text-emerald-800 dark:text-emerald-300">
+        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-900 rounded-lg p-4 mb-6">
+          <p className="text-sm text-orange-800 dark:text-orange-300">
             L'abonnement peut être géré uniquement par le compte principal.
           </p>
         </div>
@@ -105,7 +105,7 @@ export default function SubscriptionPage() {
               key={plan.id}
               className={`bg-[var(--color-background-primary)] rounded-lg border-2 p-6 ${
                 user.subscription_plan === plan.id
-                  ? "border-emerald-500"
+                  ? "border-orange-500"
                   : "border-[var(--color-border-secondary)]"
               }`}
             >
@@ -138,7 +138,7 @@ export default function SubscriptionPage() {
                 className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
                   user.subscription_plan === plan.id
                     ? "bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] cursor-not-allowed"
-                    : "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : "bg-orange-600 text-white hover:bg-orange-700"
                 }`}
                 disabled={user.subscription_plan === plan.id}
               >

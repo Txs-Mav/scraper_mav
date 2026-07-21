@@ -192,18 +192,18 @@ export default function CommandSearch() {
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors ${
                       selectedIndex === globalIdx
-                        ? "bg-emerald-50 dark:bg-emerald-950/30"
+                        ? "bg-orange-50 dark:bg-orange-950/30"
                         : "hover:bg-[var(--color-background-hover)]"
                     }`}
                   >
                     <div className={`p-2 rounded-xl ${
                       selectedIndex === globalIdx
-                        ? "bg-emerald-100 dark:bg-emerald-900/40"
+                        ? "bg-orange-100 dark:bg-orange-900/40"
                         : "bg-gray-100 dark:bg-white/[0.06]"
                     }`}>
                       <Icon className={`h-4 w-4 ${
                         selectedIndex === globalIdx
-                          ? "text-emerald-600 dark:text-emerald-400"
+                          ? "text-orange-600 dark:text-orange-400"
                           : "text-[var(--color-text-secondary)]"
                       }`} />
                     </div>
@@ -214,7 +214,7 @@ export default function CommandSearch() {
                       )}
                     </div>
                     {selectedIndex === globalIdx && (
-                      <ArrowRight className="h-4 w-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
+                      <ArrowRight className="h-4 w-4 text-orange-500 dark:text-orange-400 flex-shrink-0" />
                     )}
                   </button>
                 )
@@ -239,18 +239,18 @@ export default function CommandSearch() {
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors ${
                       selectedIndex === globalIdx
-                        ? "bg-emerald-50 dark:bg-emerald-950/30"
+                        ? "bg-orange-50 dark:bg-orange-950/30"
                         : "hover:bg-[var(--color-background-hover)]"
                     }`}
                   >
                     <div className={`p-2 rounded-xl ${
                       selectedIndex === globalIdx
-                        ? "bg-emerald-100 dark:bg-emerald-900/40"
+                        ? "bg-orange-100 dark:bg-orange-900/40"
                         : "bg-gray-100 dark:bg-white/[0.06]"
                     }`}>
                       <Icon className={`h-4 w-4 ${
                         selectedIndex === globalIdx
-                          ? "text-emerald-600 dark:text-emerald-400"
+                          ? "text-orange-600 dark:text-orange-400"
                           : "text-[var(--color-text-secondary)]"
                       }`} />
                     </div>
@@ -261,7 +261,7 @@ export default function CommandSearch() {
                       )}
                     </div>
                     {selectedIndex === globalIdx && (
-                      <ArrowRight className="h-4 w-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
+                      <ArrowRight className="h-4 w-4 text-orange-500 dark:text-orange-400 flex-shrink-0" />
                     )}
                   </button>
                 )

@@ -337,9 +337,9 @@ export default function AdminUsinePage() {
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 overflow-hidden">
                   <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <FileText className="h-3.5 w-3.5 text-emerald-400" />
+                      <FileText className="h-3.5 w-3.5 text-orange-400" />
                       <p className="text-xs font-mono text-slate-300">{batchSource}</p>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/20">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/20">
                         {batchUrls.length} URL{batchUrls.length > 1 ? "s" : ""}
                       </span>
                     </div>
@@ -446,7 +446,7 @@ export default function AdminUsinePage() {
         <section className="rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden flex flex-col">
           <header className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Terminal className="h-4 w-4 text-emerald-400" />
+              <Terminal className="h-4 w-4 text-orange-400" />
               <p className="text-sm font-semibold text-slate-100">Logs</p>
             </div>
             <div className="flex items-center gap-2">
@@ -471,7 +471,7 @@ export default function AdminUsinePage() {
                 <div key={i} className={
                   line.includes("❌") || line.toLowerCase().includes("error") ? "text-red-300" :
                   line.includes("⚠️") || line.toLowerCase().includes("warning") ? "text-amber-300" :
-                  line.includes("✅") || line.toLowerCase().includes("publié") ? "text-emerald-300" :
+                  line.includes("✅") || line.toLowerCase().includes("publié") ? "text-orange-300" :
                   ""
                 }>
                   {line}
@@ -707,7 +707,7 @@ function LessonsTab() {
                           </span>
                         )}
                         {l.applied_to_template && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30">
                             intégrée
                           </span>
                         )}
@@ -734,7 +734,7 @@ function LessonsTab() {
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
                           l.applied_to_template
                             ? "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                            : "bg-emerald-600 text-white hover:bg-emerald-700"
+                            : "bg-orange-600 text-white hover:bg-orange-700"
                         }`}
                       >
                         {savingId === l.id ? (
@@ -911,7 +911,7 @@ function CostCards() {
         value={`$${data.cost_7d_usd.toFixed(2)}`}
         subtitle={`${data.runs_7d} run${data.runs_7d > 1 ? "s" : ""}`}
         icon={DollarSign}
-        accent="emerald"
+        accent="orange"
       />
       <CostCard
         label="Coût 30j"
@@ -936,7 +936,7 @@ function CostCards() {
         value={`${data.mode_distribution.hybrid_pct}%`}
         subtitle={`${data.mode_distribution.hybrid} hybrid / ${data.mode_distribution.full_claude} full`}
         icon={Zap}
-        accent={data.mode_distribution.hybrid_pct >= 50 ? "emerald" : "amber"}
+        accent={data.mode_distribution.hybrid_pct >= 50 ? "orange" : "amber"}
       />
     </div>
   )
@@ -949,10 +949,10 @@ function CostCard({
   value: string
   subtitle: string
   icon: any
-  accent?: "emerald" | "indigo" | "amber" | "slate"
+  accent?: "orange" | "indigo" | "amber" | "slate"
 }) {
   const accentClasses: Record<string, string> = {
-    emerald: "ring-emerald-500/30 text-emerald-300",
+    orange: "ring-orange-500/30 text-orange-300",
     indigo: "ring-indigo-500/30 text-indigo-300",
     amber: "ring-amber-500/30 text-amber-300",
     slate: "ring-slate-700 text-slate-300",

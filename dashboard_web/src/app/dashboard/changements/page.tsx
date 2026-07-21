@@ -117,7 +117,7 @@ export default function ChangementsListPage() {
     <Layout>
       <section className="mb-8">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-300">
             <ClipboardList className="h-5 w-5" />
           </div>
           <div>

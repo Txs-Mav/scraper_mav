@@ -221,8 +221,8 @@ export default function SettingsPage() {
         {/* ── Profil ── */}
         <section data-onboarding="profile" className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-3 mb-8">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30">
-              <User className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/40 dark:to-orange-950/30">
+              <User className="h-5 w-5 text-orange-600 dark:text-orange-400" />
             </div>
             <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("settings.profile")}</h2>
           </div>
@@ -230,12 +230,12 @@ export default function SettingsPage() {
           {/* Avatar */}
           <div className="flex items-center gap-6 mb-8 pb-8 border-b border-[var(--color-border-tertiary)]">
             <div className="relative group">
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 flex items-center justify-center overflow-hidden ring-2 ring-gray-200/60 dark:ring-white/10 shadow-lg shadow-gray-900/5 dark:shadow-black/20">
+              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/30 dark:to-orange-950/20 flex items-center justify-center overflow-hidden ring-2 ring-gray-200/60 dark:ring-white/10 shadow-lg shadow-gray-900/5 dark:shadow-black/20">
                 {avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <User className="h-10 w-10 text-emerald-300 dark:text-emerald-800" />
+                  <User className="h-10 w-10 text-orange-300 dark:text-orange-800" />
                 )}
               </div>
               <button
@@ -259,7 +259,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+                  className="text-sm font-medium text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 transition-colors"
                 >
                   {t("settings.changePhoto")}
                 </button>
@@ -287,7 +287,7 @@ export default function SettingsPage() {
                 type="text"
                 value={profileName}
                 onChange={(e) => setProfileName(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+                className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
               />
             </div>
             <div>
@@ -296,7 +296,7 @@ export default function SettingsPage() {
                 type="email"
                 value={profileEmail}
                 onChange={(e) => setProfileEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+                className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
               />
             </div>
           </div>
@@ -319,7 +319,7 @@ export default function SettingsPage() {
               type="button"
               onClick={handleSaveProfile}
               disabled={savingProfile || !profileChanged}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-30 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed transition-all"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-30 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed transition-all"
             >
               {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : profileSaved ? <Check className="h-4 w-4" /> : null}
               {profileSaved ? t("saved") : t("save")}
@@ -330,8 +330,8 @@ export default function SettingsPage() {
         {/* ── Préférences (Langue) ── */}
         <section className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30">
-              <Globe className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/40 dark:to-orange-950/30">
+              <Globe className="h-5 w-5 text-orange-600 dark:text-orange-400" />
             </div>
             <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("settings.preferences")}</h2>
           </div>
@@ -401,19 +401,19 @@ export default function SettingsPage() {
         {/* ── Abonnement ── */}
         <section className={`rounded-2xl border p-6 sm:p-8 mb-6 transition-all ${
           isPaid
-            ? "border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/10"
+            ? "border-orange-200 dark:border-orange-900/50 bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/20 dark:to-orange-950/10"
             : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]"
         }`}>
           <div className="flex items-center gap-3 mb-6">
             <div className={`p-2.5 rounded-xl ${
               isPaid
                 ? "bg-white/80 dark:bg-white/10 shadow-sm"
-                : "bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30"
+                : "bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/40 dark:to-orange-950/30"
             }`}>
               {isPaid ? (
-                <Sparkles className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <Sparkles className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               ) : (
-                <CreditCard className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <CreditCard className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               )}
             </div>
             <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("settings.subscription")}</h2>
@@ -426,7 +426,7 @@ export default function SettingsPage() {
                   {planLabel}
                 </p>
                 {isPaid && (
-                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-600 text-white shadow-sm">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-600 text-white shadow-sm">
                     {t("active")}
                   </span>
                 )}
@@ -441,7 +441,7 @@ export default function SettingsPage() {
               className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all hover:-translate-y-0.5 ${
                 isPaid
                   ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--color-border-secondary)] hover:shadow-lg shadow-sm"
-                  : "bg-emerald-600 text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 hover:shadow-xl"
+                  : "bg-orange-600 text-white shadow-lg shadow-orange-600/25 hover:bg-orange-700 hover:shadow-xl"
               }`}
             >
               {isPaid ? t("settings.changePlan") : t("settings.upgradePro")}
@@ -452,7 +452,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => router.push("/contact?topic=support")}
-            className="inline-flex items-center gap-2 text-sm text-[var(--color-text-secondary)] hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+            className="inline-flex items-center gap-2 text-sm text-[var(--color-text-secondary)] hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />
             {t("settings.stripePortal")}
@@ -462,8 +462,8 @@ export default function SettingsPage() {
         {/* ── Sécurité & Données ── */}
         <section className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30">
-              <Shield className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/40 dark:to-orange-950/30">
+              <Shield className="h-5 w-5 text-orange-600 dark:text-orange-400" />
             </div>
             <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("settings.security")}</h2>
           </div>
@@ -486,7 +486,7 @@ export default function SettingsPage() {
                 disabled={exportLoading}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--color-border-secondary)] text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] hover:border-gray-300 dark:hover:border-gray-700 transition-all disabled:opacity-50"
               >
-                {exportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : exportDone ? <Check className="h-4 w-4 text-emerald-500" /> : <Download className="h-4 w-4" />}
+                {exportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : exportDone ? <Check className="h-4 w-4 text-orange-500" /> : <Download className="h-4 w-4" />}
                 {exportDone ? t("exported") : t("export")}
               </button>
             </div>
@@ -532,8 +532,8 @@ export default function SettingsPage() {
           <div className="bg-[var(--color-background-primary)] rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl shadow-gray-900/10 dark:shadow-black/40 border border-[var(--color-border-tertiary)]">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
-                  <Lock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <div className="p-2 rounded-xl bg-orange-50 dark:bg-orange-950/30">
+                  <Lock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("settings.changePassword")}</h3>
               </div>
@@ -549,7 +549,7 @@ export default function SettingsPage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder={t("settings.minChars")}
-                  className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+                  className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
                 />
               </div>
               <div>
@@ -559,7 +559,7 @@ export default function SettingsPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder={t("settings.repeatPassword")}
-                  className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+                  className="w-full px-4 py-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
                 />
               </div>
               {passwordError && <p className="text-sm text-red-500">{passwordError}</p>}
@@ -577,7 +577,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={handleChangePassword}
                   disabled={passwordLoading || !newPassword}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 disabled:opacity-40 disabled:shadow-none transition-all"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 disabled:opacity-40 disabled:shadow-none transition-all"
                 >
                   {passwordLoading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {t("update")}

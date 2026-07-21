@@ -134,7 +134,7 @@ export default function BusinessTypeOnboardingModal({
         {/* Header */}
         <div className="px-6 py-5 border-b border-[var(--color-border-secondary)] flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-semibold uppercase tracking-wide mb-1.5">
+            <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400 text-xs font-semibold uppercase tracking-wide mb-1.5">
               <Sparkles className="h-3.5 w-3.5" />
               <span>Recherche par produit</span>
             </div>
@@ -177,10 +177,10 @@ export default function BusinessTypeOnboardingModal({
                   aria-checked={isSelected}
                   className={cn(
                     "group relative text-left p-3 rounded-xl border transition-all",
-                    "focus:outline-none focus:ring-2 focus:ring-emerald-500/30",
+                    "focus:outline-none focus:ring-2 focus:ring-orange-500/30",
                     isSelected
-                      ? "border-emerald-500 bg-emerald-50/60 dark:bg-emerald-500/[0.08] ring-1 ring-emerald-500/20"
-                      : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:border-emerald-400/40 hover:bg-[var(--color-background-hover)]",
+                      ? "border-orange-500 bg-orange-50/60 dark:bg-orange-500/[0.08] ring-1 ring-orange-500/20"
+                      : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:border-orange-400/40 hover:bg-[var(--color-background-hover)]",
                   )}
                 >
                   <div className="flex items-center gap-3">
@@ -189,8 +189,8 @@ export default function BusinessTypeOnboardingModal({
                       className={cn(
                         "shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors",
                         isSelected
-                          ? "bg-emerald-600 border-emerald-600"
-                          : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] group-hover:border-emerald-400",
+                          ? "bg-orange-600 border-orange-600"
+                          : "bg-[var(--color-background-primary)] border-[var(--color-border-secondary)] group-hover:border-orange-400",
                       )}
                     >
                       {isSelected && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -200,7 +200,7 @@ export default function BusinessTypeOnboardingModal({
                       className={cn(
                         "h-4 w-4 shrink-0 transition-colors",
                         isSelected
-                          ? "text-emerald-700 dark:text-emerald-300"
+                          ? "text-orange-700 dark:text-orange-300"
                           : "text-[var(--color-text-secondary)]",
                       )}
                     />
@@ -230,9 +230,9 @@ export default function BusinessTypeOnboardingModal({
             disabled={selected.size === 0 || saving}
             className={cn(
               "inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm transition-colors shrink-0",
-              "bg-emerald-600 text-white hover:bg-emerald-700",
+              "bg-orange-600 text-white hover:bg-orange-700",
               "disabled:opacity-50 disabled:cursor-not-allowed",
-              "shadow-sm shadow-emerald-600/20",
+              "shadow-sm shadow-orange-600/20",
             )}
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}

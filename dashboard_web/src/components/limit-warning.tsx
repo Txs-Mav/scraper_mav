@@ -93,7 +93,7 @@ export default function LimitWarning({ type, current, limit, plan, isAuthenticat
               {!isAuthenticated ? (
                 <Link
                   href="/login"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
                 >
                   <TrendingUp className="h-4 w-4" />
                   Se connecter
@@ -101,7 +101,7 @@ export default function LimitWarning({ type, current, limit, plan, isAuthenticat
               ) : (
                 <Link
                   href="/dashboard/payments"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
                 >
                   <TrendingUp className="h-4 w-4" />
                   Passer au plan Pro

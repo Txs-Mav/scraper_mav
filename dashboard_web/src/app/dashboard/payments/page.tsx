@@ -31,7 +31,7 @@ const PLANS = [
     period: " $ / mois",
     description: "Pour surveiller votre marché au quotidien",
     icon: Zap,
-    color: "from-emerald-500 to-emerald-600",
+    color: "from-orange-500 to-orange-600",
     features: [
       "Scrapings illimités",
       "Analytics complet",
@@ -49,7 +49,7 @@ const PLANS = [
     period: " $ / mois",
     description: "Pour couvrir tout votre marché, sans plafond",
     icon: Crown,
-    color: "from-teal-500 to-teal-600",
+    color: "from-orange-500 to-orange-600",
     features: [
       "Tout du plan Pro",
       "Sites surveillés illimités",
@@ -195,9 +195,9 @@ export default function PaymentsPage() {
 
         {/* Code magique */}
         {!user.promo_code_id && (
-          <div className="mb-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-900 rounded-xl">
+          <div className="mb-8 p-6 bg-gradient-to-r from-orange-50 to-orange-50 dark:from-orange-900/20 dark:to-orange-900/20 border border-orange-200 dark:border-orange-900 rounded-xl">
             <label className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-primary)] mb-2">
-              <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <Sparkles className="h-4 w-4 text-orange-600 dark:text-orange-400" />
               Code magique
             </label>
             <div className="flex gap-2">
@@ -232,7 +232,7 @@ export default function PaymentsPage() {
                     }
                   }
                 }}
-                className="flex-1 px-4 py-2 border border-[var(--color-border-secondary)] rounded-lg bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="flex-1 px-4 py-2 border border-[var(--color-border-secondary)] rounded-lg bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Entrez votre code magique"
               />
               {validatingPromo && (
@@ -242,7 +242,7 @@ export default function PaymentsPage() {
                 <button
                   onClick={applyMagicCode}
                   disabled={processingPlan === "magic"}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 transition-colors disabled:opacity-50"
                 >
                   {processingPlan === "magic" ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -283,14 +283,14 @@ export default function PaymentsPage() {
                 return plan.id === "standard"
                   ? "border-gray-500"
                   : plan.id === "pro"
-                    ? "border-emerald-500"
-                    : "border-teal-500"
+                    ? "border-orange-500"
+                    : "border-orange-500"
               }
               return plan.id === "standard"
                 ? "border-gray-300 dark:border-gray-700"
                 : plan.id === "pro"
-                  ? "border-emerald-300 dark:border-emerald-700"
-                  : "border-teal-300 dark:border-teal-700"
+                  ? "border-orange-300 dark:border-orange-700"
+                  : "border-orange-300 dark:border-orange-700"
             }
 
             return (
@@ -302,7 +302,7 @@ export default function PaymentsPage() {
               >
                 {isCurrent && (
                   <div className="absolute top-4 right-4 z-10">
-                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500 text-white">
+                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-orange-500 text-white">
                       Plan actuel
                     </span>
                   </div>
@@ -310,7 +310,7 @@ export default function PaymentsPage() {
 
                 {plan.highlighted && !isCurrent && (
                   <div className="absolute top-4 right-4 z-10">
-                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300">
+                    <span className="px-3 py-1 text-xs font-semibold rounded-full bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300">
                       Populaire
                     </span>
                   </div>
@@ -410,7 +410,7 @@ export default function PaymentsPage() {
           <p>
             Aucun paiement en ligne. Les plans payants sont activés directement par
             l&apos;équipe Go-Data —{" "}
-            <Link href="/contact?topic=sales" className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
+            <Link href="/contact?topic=sales" className="font-semibold text-orange-600 dark:text-orange-400 hover:underline">
               écrivez-nous
             </Link>
             .

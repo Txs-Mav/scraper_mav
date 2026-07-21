@@ -167,7 +167,7 @@ export default function AdminCronPage() {
         <div className="space-y-5">
           {/* Verrou */}
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-3.5 flex items-center gap-3">
-            <span className={`h-2 w-2 rounded-full ${data.lock.status === "running" ? "bg-emerald-500 animate-pulse" : "bg-gray-300"}`} />
+            <span className={`h-2 w-2 rounded-full ${data.lock.status === "running" ? "bg-orange-500 animate-pulse" : "bg-gray-300"}`} />
             <div className="flex-1">
               <p className="text-sm text-gray-900">
                 Verrou cron · <span className="font-mono text-gray-700">{data.lock.status}</span>
@@ -289,8 +289,8 @@ function SiteStatusBadge({ status, hidden, error }: { status: string; hidden: bo
   }
   if (status === "success") {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200">
+        <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
         Succès
       </span>
     )

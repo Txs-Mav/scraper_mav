@@ -173,8 +173,8 @@ export default function NotificationChannelsSection({ userEmail }: { userEmail: 
   return (
     <section className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8 mb-6">
       <div className="flex items-center gap-3 mb-6">
-        <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30">
-          <Bell className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        <div className="p-2.5 rounded-xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/40 dark:to-orange-950/30">
+          <Bell className="h-5 w-5 text-orange-600 dark:text-orange-400" />
         </div>
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Canaux d&apos;alertes</h2>
@@ -281,7 +281,7 @@ export default function NotificationChannelsSection({ userEmail }: { userEmail: 
                     href="https://api.slack.com/messaging/webhooks"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-emerald-600 dark:text-emerald-400 underline hover:no-underline"
+                    className="text-orange-600 dark:text-orange-400 underline hover:no-underline"
                   >
                     Incoming Webhook Slack
                   </a>{" "}
@@ -312,7 +312,7 @@ export default function NotificationChannelsSection({ userEmail }: { userEmail: 
               type="button"
               onClick={handleSave}
               disabled={saving || !hasChanges}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-30 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed transition-all"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-30 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed transition-all"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Enregistrer
@@ -356,7 +356,7 @@ function ChannelCard({
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-[var(--color-text-primary)]">{title}</p>
               {enabled && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300">
                   Actif
                 </span>
               )}
@@ -393,7 +393,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${
-        checked ? "bg-emerald-600" : "bg-gray-300 dark:bg-gray-700"
+        checked ? "bg-orange-600" : "bg-gray-300 dark:bg-gray-700"
       }`}
     >
       <span
@@ -428,7 +428,7 @@ function Field({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+        className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
       />
       {hint && <p className="mt-1.5 text-[11px] text-[var(--color-text-tertiary)]">{hint}</p>}
     </div>
@@ -454,7 +454,7 @@ function FeedbackBadge({ feedback }: { feedback: FeedbackState }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-        isOk ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+        isOk ? "text-orange-600 dark:text-orange-400" : "text-red-600 dark:text-red-400"
       }`}
     >
       {isOk ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}

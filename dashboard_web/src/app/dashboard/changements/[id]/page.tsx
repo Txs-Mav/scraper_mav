@@ -393,7 +393,7 @@ export default function ChangementDetailPage({
         {sheet && (
           <div className="mt-3 flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-300">
                 <ClipboardList className="h-5 w-5" />
               </div>
               <div>
@@ -415,7 +415,7 @@ export default function ChangementDetailPage({
                   type="button"
                   onClick={() => updateSheetStatus("completed")}
                   disabled={updatingStatus || stats.total === 0}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 transition disabled:opacity-50"
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   Marquer terminée
@@ -508,7 +508,7 @@ export default function ChangementDetailPage({
                         disabled={isSaving}
                         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition ${
                           item.applied
-                            ? "border-emerald-500 bg-emerald-500 text-white"
+                            ? "border-orange-500 bg-orange-500 text-white"
                             : "border-[var(--color-border-secondary)] hover:border-[var(--color-text-secondary)]"
                         } ${isSaving ? "opacity-60" : ""}`}
                         aria-label={item.applied ? "Marquer comme non appliqué" : "Marquer comme appliqué"}

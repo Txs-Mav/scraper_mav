@@ -42,7 +42,7 @@ export default function Breadcrumbs() {
           ) : (
             <Link
               href={crumb.href}
-              className="text-[var(--color-text-secondary)] hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+              className="text-[var(--color-text-secondary)] hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
             >
               {crumb.label}
             </Link>

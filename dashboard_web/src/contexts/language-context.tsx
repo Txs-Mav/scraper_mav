@@ -157,7 +157,7 @@ export function LanguageToggle({ className = "", variant = "compact" }: { classN
                   setOpen(false)
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-colors text-left ${
-                  locale === l.code ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-semibold" : "text-gray-700 dark:text-gray-200"
+                  locale === l.code ? "bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-300 font-semibold" : "text-gray-700 dark:text-gray-200"
                 }`}
               >
                 <span className="text-base">{l.flag}</span>

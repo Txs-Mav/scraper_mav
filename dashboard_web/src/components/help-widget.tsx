@@ -62,14 +62,14 @@ export default function HelpWidget() {
         setOpen(false)
         window.dispatchEvent(new CustomEvent("restart-onboarding"))
       },
-      color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30",
+      color: "text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30",
     },
     {
       icon: Mail,
       label: "Nous contacter",
       description: "gestion@go-data.co",
       action: () => window.open("mailto:gestion@go-data.co"),
-      color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30",
+      color: "text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30",
     },
   ]
 

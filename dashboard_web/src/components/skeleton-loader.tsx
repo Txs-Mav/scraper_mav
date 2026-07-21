@@ -30,9 +30,9 @@ export function DashboardSkeleton() {
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="col-span-2 md:col-span-1 rounded-2xl bg-emerald-100/50 dark:bg-emerald-950/20 p-5 space-y-3">
-          <Skeleton className="h-3 w-16 !from-emerald-200/60 !to-emerald-200/60 dark:!from-emerald-900/40 dark:!to-emerald-900/40" />
-          <Skeleton className="h-10 w-16 !from-emerald-200/60 !to-emerald-200/60 dark:!from-emerald-900/40 dark:!to-emerald-900/40" />
+        <div className="col-span-2 md:col-span-1 rounded-2xl bg-orange-100/50 dark:bg-orange-950/20 p-5 space-y-3">
+          <Skeleton className="h-3 w-16 !from-orange-200/60 !to-orange-200/60 dark:!from-orange-900/40 dark:!to-orange-900/40" />
+          <Skeleton className="h-10 w-16 !from-orange-200/60 !to-orange-200/60 dark:!from-orange-900/40 dark:!to-orange-900/40" />
         </div>
         {[...Array(3)].map((_, i) => (
           <div key={i} className="rounded-2xl border border-[var(--color-border-tertiary)] bg-white/40 dark:bg-white/[0.015] p-4 space-y-3">

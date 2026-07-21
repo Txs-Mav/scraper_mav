@@ -113,7 +113,7 @@ export default function AnnouncementModal() {
       {/* Carte */}
       <div className="relative w-full max-w-[560px] max-h-[90vh] flex flex-col bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl shadow-2xl shadow-black/25 dark:shadow-black/60 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Bande décorative haute */}
-        <div className="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
+        <div className="h-1 bg-gradient-to-r from-orange-500 via-orange-400 to-orange-600" />
 
         {/* Bouton fermer discret */}
         <button
@@ -142,7 +142,7 @@ export default function AnnouncementModal() {
             />
           </div>
           <div className="flex-1 min-w-0">
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300">
               <Sparkles className="h-3 w-3" />
               Nouveautés
             </span>
@@ -173,7 +173,7 @@ export default function AnnouncementModal() {
             type="button"
             onClick={handleDismiss}
             disabled={dismissing}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 disabled:translate-y-0 transition-all"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-50 disabled:translate-y-0 transition-all"
           >
             {dismissing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Compris

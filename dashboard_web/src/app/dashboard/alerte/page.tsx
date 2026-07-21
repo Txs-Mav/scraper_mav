@@ -146,8 +146,8 @@ function changeTypeIcon(type: string) {
       </div>
     )
     case 'new_product': return (
-      <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-        <Package className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+      <div className="p-1.5 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+        <Package className="h-4 w-4 text-orange-600 dark:text-orange-400" />
       </div>
     )
     case 'removed_product': return (
@@ -795,7 +795,7 @@ export default function AlertePage() {
             <div className="px-5 py-4 border-b border-[var(--color-border-tertiary)] flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="text-base font-extrabold text-[var(--color-text-primary)] tracking-tight flex items-center gap-2">
-                  <Database className="h-4 w-4 text-emerald-500" />
+                  <Database className="h-4 w-4 text-orange-500" />
                   {t("alerts.dataRefresh")}
                 </h2>
                 <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
@@ -817,7 +817,7 @@ export default function AlertePage() {
                 type="button"
                 onClick={refreshProductsFromCache}
                 disabled={refreshingProducts}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:translate-y-0 shrink-0"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:translate-y-0 shrink-0"
               >
                 {refreshingProducts ? (
                   <>
@@ -912,7 +912,7 @@ export default function AlertePage() {
                     <select
                       value={scheduleIntervalMin}
                       onChange={(e) => { setScheduleIntervalMin(parseInt(e.target.value)); setScheduleDirty(true) }}
-                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-orange-500/40"
                     >
                       {[20, 30, 40, 60, 120, 240, 360, 720, 1440].map((min) => (
                         <option key={min} value={min}>
@@ -929,7 +929,7 @@ export default function AlertePage() {
                     <select
                       value={scheduleDailyHour}
                       onChange={(e) => { setScheduleDailyHour(parseInt(e.target.value)); setScheduleDirty(true) }}
-                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-orange-500/40"
                     >
                       {Array.from({ length: 24 }).map((_, h) => (
                         <option key={h} value={h}>{String(h).padStart(2, '0')}</option>
@@ -939,7 +939,7 @@ export default function AlertePage() {
                     <select
                       value={scheduleDailyMinute}
                       onChange={(e) => { setScheduleDailyMinute(parseInt(e.target.value)); setScheduleDirty(true) }}
-                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-orange-500/40"
                     >
                       {[0, 15, 30, 45].map((m) => (
                         <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
@@ -1059,7 +1059,7 @@ export default function AlertePage() {
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="inline-flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-700 font-semibold"
+                className="inline-flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 font-semibold"
               >
                 <CheckCheck className="h-3 w-3" />
                 {t("alerts.markAllRead")}

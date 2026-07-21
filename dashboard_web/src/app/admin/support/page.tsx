@@ -69,7 +69,7 @@ function statusLabel(status: SupportStatus): string {
 }
 
 function statusClass(status: SupportStatus): string {
-  if (status === "answered") return "bg-emerald-50 text-emerald-700 border-emerald-200"
+  if (status === "answered") return "bg-orange-50 text-orange-700 border-orange-200"
   if (status === "closed") return "bg-gray-100 text-gray-600 border-gray-200"
   return "bg-amber-50 text-amber-700 border-amber-200"
 }
@@ -315,12 +315,12 @@ export default function AdminSupportPage() {
                   </div>
 
                   {selected.admin_reply && (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-2">
+                    <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-orange-700 mb-2">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Réponse envoyée · {formatDate(selected.admin_replied_at)}
                       </p>
-                      <p className="whitespace-pre-wrap text-sm text-emerald-950 leading-relaxed">{selected.admin_reply}</p>
+                      <p className="whitespace-pre-wrap text-sm text-orange-950 leading-relaxed">{selected.admin_reply}</p>
                     </div>
                   )}
 

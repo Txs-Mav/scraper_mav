@@ -261,7 +261,7 @@ export default function TopNav() {
                 >
                   <span>{t(category.labelKey)}</span>
                   {categoryPendingBadge !== null && (
-                    <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold tabular-nums">
+                    <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-orange-600 text-white text-[10px] font-bold tabular-nums">
                       {categoryPendingBadge > 99 ? "99+" : categoryPendingBadge}
                     </span>
                   )}
@@ -275,7 +275,7 @@ export default function TopNav() {
                     className={cn(
                       "absolute bottom-0 left-2 right-2 h-[2px] rounded-full transition-all duration-200 pointer-events-none",
                       isActive || isOpen
-                        ? "opacity-100 bg-emerald-600 dark:bg-emerald-400"
+                        ? "opacity-100 bg-orange-600 dark:bg-orange-400"
                         : "opacity-0 group-hover:opacity-30 group-hover:bg-gray-300 dark:group-hover:bg-gray-600"
                     )}
                   />
@@ -313,7 +313,7 @@ export default function TopNav() {
           {pendingChangesCount > 0 && (
             <Link
               href="/dashboard/changements"
-              className="hidden md:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full border border-emerald-200 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold transition hover:bg-emerald-100 dark:hover:bg-emerald-500/20"
+              className="hidden md:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full border border-orange-200 bg-orange-50 dark:bg-orange-500/10 dark:border-orange-500/30 text-orange-700 dark:text-orange-300 text-xs font-semibold transition hover:bg-orange-100 dark:hover:bg-orange-500/20"
               aria-label={t("topnav.badge.changes")}
               title={t("topnav.badge.changes")}
             >
@@ -386,7 +386,7 @@ export default function TopNav() {
                         className={cn(
                           "rounded-xl p-4 transition",
                           isHighlighted
-                            ? "bg-emerald-50/60 dark:bg-emerald-500/5 ring-1 ring-emerald-500/20"
+                            ? "bg-orange-50/60 dark:bg-orange-500/5 ring-1 ring-orange-500/20"
                             : ""
                         )}
                       >
@@ -395,7 +395,7 @@ export default function TopNav() {
                             className={cn(
                               "flex h-7 w-7 items-center justify-center rounded-lg",
                               isHighlighted
-                                ? "bg-emerald-500 text-white"
+                                ? "bg-orange-500 text-white"
                                 : "bg-[var(--color-background-secondary)] text-[var(--color-text-primary)]"
                             )}
                           >
@@ -442,7 +442,7 @@ export default function TopNav() {
                                       {t(item.labelKey)}
                                     </span>
                                     {badge !== null && (
-                                      <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold tabular-nums">
+                                      <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-orange-600 text-white text-[10px] font-bold tabular-nums">
                                         {badge > 99 ? "99+" : badge}
                                       </span>
                                     )}
@@ -453,7 +453,7 @@ export default function TopNav() {
                                       </span>
                                     )}
                                     {restricted && (
-                                      <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                      <span className="inline-flex items-center gap-0.5 rounded-full border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[9px] font-semibold text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300">
                                         <Sparkles className="h-2.5 w-2.5" />
                                         {t("topnav.badge.pro")}
                                       </span>

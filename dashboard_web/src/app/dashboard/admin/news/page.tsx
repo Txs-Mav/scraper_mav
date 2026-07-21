@@ -220,7 +220,7 @@ export default function AdminNewsPage() {
             <button
               type="button"
               onClick={startCreate}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 transition"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 transition"
             >
               <Plus className="h-4 w-4" />
               Nouvelle annonce
@@ -255,7 +255,7 @@ export default function AdminNewsPage() {
                 <button
                   type="button"
                   onClick={startCreate}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition"
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 transition"
                 >
                   <Plus className="h-4 w-4" />
                   Créer la première
@@ -332,7 +332,7 @@ export default function AdminNewsPage() {
                     value={form.title}
                     onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))}
                     placeholder="Ex: Nouveautés Go-Data — Avril"
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
                   />
                 </div>
                 <div>
@@ -342,7 +342,7 @@ export default function AdminNewsPage() {
                     value={form.slug}
                     onChange={(e) => setForm(f => ({ ...f, slug: e.target.value }))}
                     placeholder="auto depuis le titre"
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition font-mono"
                   />
                 </div>
               </div>
@@ -354,7 +354,7 @@ export default function AdminNewsPage() {
                   value={form.summary ?? ""}
                   onChange={(e) => setForm(f => ({ ...f, summary: e.target.value }))}
                   placeholder="Aperçu qui apparaît dans le feed"
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition"
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition"
                 />
               </div>
 
@@ -364,7 +364,7 @@ export default function AdminNewsPage() {
                   <button
                     type="button"
                     onClick={() => setPreview(p => !p)}
-                    className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline"
+                    className="inline-flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 hover:underline"
                   >
                     {preview ? <><EyeOff className="h-3.5 w-3.5" />Masquer l&apos;aperçu</> : <><Eye className="h-3.5 w-3.5" />Aperçu</>}
                   </button>
@@ -375,7 +375,7 @@ export default function AdminNewsPage() {
                     onChange={(e) => setForm(f => ({ ...f, body_md: e.target.value }))}
                     placeholder="### Titre&#10;&#10;Contenu en **markdown**..."
                     rows={14}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition font-mono"
                   />
                   {preview && (
                     <div className="rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)]/40 px-4 py-3 overflow-auto">
@@ -412,7 +412,7 @@ export default function AdminNewsPage() {
                       type="checkbox"
                       checked={resetReads}
                       onChange={(e) => setResetReads(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-[var(--color-border-secondary)] text-emerald-600 focus:ring-emerald-500"
+                      className="mt-0.5 h-4 w-4 rounded border-[var(--color-border-secondary)] text-orange-600 focus:ring-orange-500"
                     />
                     <span className="text-xs text-amber-900 dark:text-amber-200">
                       <strong>Réafficher à tout le monde</strong> — efface les "Compris" précédents pour que tous les utilisateurs revoient cette annonce.
@@ -436,7 +436,7 @@ export default function AdminNewsPage() {
                   type="button"
                   onClick={save}
                   disabled={saving || !form.title.trim() || !form.body_md.trim()}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   {mode === "create" ? "Publier" : "Enregistrer"}
@@ -468,7 +468,7 @@ function ToggleRow({
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors mt-0.5 ${checked ? "bg-emerald-600" : "bg-gray-300 dark:bg-gray-700"}`}
+        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors mt-0.5 ${checked ? "bg-orange-600" : "bg-gray-300 dark:bg-gray-700"}`}
       >
         <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
       </button>

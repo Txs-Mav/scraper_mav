@@ -238,7 +238,7 @@ export default function AdminUsersPage() {
                     {u.last_sign_in_at ? (
                       <span className="inline-flex items-center gap-1">
                         <span className={`h-1.5 w-1.5 rounded-full ${
-                          isRecent(u.last_sign_in_at, 24 * 3600_000) ? "bg-emerald-500" : "bg-gray-300"
+                          isRecent(u.last_sign_in_at, 24 * 3600_000) ? "bg-orange-500" : "bg-gray-300"
                         }`} />
                         il y a {timeAgo(u.last_sign_in_at)}
                       </span>
@@ -250,8 +250,8 @@ export default function AdminUsersPage() {
                     {u.last_activity_at ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <span className={`h-1.5 w-1.5 rounded-full ${
-                          isRecent(u.last_activity_at, 5 * 60_000) ? "bg-emerald-500 animate-pulse" :
-                          isRecent(u.last_activity_at, 24 * 3600_000) ? "bg-emerald-500" :
+                          isRecent(u.last_activity_at, 5 * 60_000) ? "bg-orange-500 animate-pulse" :
+                          isRecent(u.last_activity_at, 24 * 3600_000) ? "bg-orange-500" :
                           isRecent(u.last_activity_at, 7 * 24 * 3600_000) ? "bg-amber-400" :
                           "bg-gray-300"
                         }`} />
@@ -322,7 +322,7 @@ function PlanBadge({ plan, source }: { plan: string | null; source: string | nul
   const p = plan || "free"
   const styles: Record<string, string> = {
     standard: "bg-gray-100 text-gray-700 ring-gray-200",
-    pro: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    pro: "bg-orange-50 text-orange-700 ring-orange-200",
     ultime: "bg-violet-50 text-violet-700 ring-violet-200",
     free: "bg-gray-100 text-gray-600 ring-gray-200",
   }

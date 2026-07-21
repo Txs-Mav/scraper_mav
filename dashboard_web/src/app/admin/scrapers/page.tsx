@@ -68,7 +68,7 @@ function timeAgo(iso: string | null): string {
 
 function gradeStyles(score: number | null): string {
   const s = score ?? 0
-  if (s >= 95) return "bg-emerald-50 text-emerald-700 ring-emerald-200"
+  if (s >= 95) return "bg-orange-50 text-orange-700 ring-orange-200"
   if (s >= 80) return "bg-gray-100 text-gray-800 ring-gray-200"
   if (s >= 60) return "bg-amber-50 text-amber-700 ring-amber-200"
   return "bg-red-50 text-red-700 ring-red-200"
@@ -355,7 +355,7 @@ export default function AdminScrapersPage() {
 
 function StatusBadge({ status, isActive }: { status: ValidationStatus; isActive: boolean }) {
   if (status === "approved" && isActive) {
-    return <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200">En production</span>
+    return <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200">En production</span>
   }
   if (status === "approved") {
     return <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200">Approuvé (inactif)</span>
@@ -395,7 +395,7 @@ function ValidationReportBlock({
             {Object.entries(coverage).map(([f, cov]) => {
               const pct = Math.round((cov as number) * 100)
               const cls = pct >= 90
-                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                ? "bg-orange-50 text-orange-700 ring-orange-200"
                 : pct >= 60
                 ? "bg-amber-50 text-amber-700 ring-amber-200"
                 : "bg-red-50 text-red-700 ring-red-200"
