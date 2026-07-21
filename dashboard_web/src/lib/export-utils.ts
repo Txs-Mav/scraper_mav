@@ -2,7 +2,6 @@
  * Utilitaires d'export : impression, Excel et partage par courriel
  * pour le comparatif de prix et la page analyse.
  */
-import * as XLSX from "xlsx"
 import { getEffectiveStatus } from "@/lib/product-status"
 
 // ── Types ──
@@ -196,11 +195,14 @@ export function printCurrentPage(title: string) {
  * @param competitors  Liste des noms de concurrents (colonnes)
  * @param filename     Nom du fichier (sans extension)
  */
-export function exportComparisonToExcel(
+export async function exportComparisonToExcel(
   rows: ComparisonRow[],
   competitors: string[],
   filename = "comparatif_prix"
 ) {
+  // xlsx (~280 Ko min) n'est chargée qu'au moment de l'export, pas au chargement de la page
+  const XLSX = await import("xlsx")
+
   // Construire les en-têtes
   const headers = ["Produit", "Modèle", "Marque", "État", "Prix référence ($)"]
   competitors.forEach(c => {

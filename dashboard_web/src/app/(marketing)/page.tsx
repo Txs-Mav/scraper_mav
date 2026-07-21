@@ -136,14 +136,9 @@ export default function MarketingHomePage() {
     if (!isLoading && user) router.replace("/dashboard")
   }, [user, isLoading, router])
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-7 w-7 animate-spin rounded-full border-2 border-orange-600 border-t-transparent" />
-      </div>
-    )
-  }
-
+  // On n'attend PAS la résolution de l'auth pour afficher la page : un
+  // visiteur anonyme voit le contenu immédiatement. Un utilisateur connecté
+  // voit brièvement la landing avant d'être redirigé vers /dashboard.
   if (user) return null
 
   return (

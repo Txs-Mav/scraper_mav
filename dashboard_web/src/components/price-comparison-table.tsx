@@ -514,7 +514,9 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
 
   const handleExportExcel = useCallback(() => {
     const competitorLabels = competitors.map(c => c.label)
-    exportComparisonToExcel(tableData as ComparisonRow[], competitorLabels)
+    exportComparisonToExcel(tableData as ComparisonRow[], competitorLabels).catch(err => {
+      console.error("[export] Échec de l'export Excel:", err)
+    })
   }, [tableData, competitors])
 
   const handleShareEmail = useCallback(async () => {
