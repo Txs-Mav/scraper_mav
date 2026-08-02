@@ -144,10 +144,10 @@ function fmtMoney(n: unknown): string {
 }
 
 /**
- * Email d'alerte ponctuelle — même langage visuel que le site et que le
- * récap quotidien : palette stone + accents orange, aucune emoji, badges
- * de type discrets, tableaux propres à en-tête sombre.
- * Exporté pour les aperçus/tests uniquement.
+ * Email d'alerte ponctuelle — même langage visuel que le site : blanc +
+ * bordures grises, gris Tailwind (#111827/#6b7280/#9ca3af), un seul accent
+ * orange (#ea580c), aucune emoji, en-têtes de tableau clairs en petites
+ * capitales. Exporté pour les aperçus/tests uniquement.
  */
 export function buildAlertEmailHtml(payload: AlertNotificationPayload, dashboardUrl: string): string {
   const hostname = hostnameOf(payload.siteUrl)
@@ -176,39 +176,39 @@ export function buildAlertEmailHtml(payload: AlertNotificationPayload, dashboard
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#1c1917;max-width:720px;margin:0 auto;padding:24px 16px;background:#f5f5f4;">
-  <div style="background:white;border-radius:14px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e7e5e4;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#111827;max-width:720px;margin:0 auto;padding:24px 16px;background:#f3f4f6;">
+  <div style="background:white;border-radius:14px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e5e7eb;">
 
-    <div style="border-bottom:2px solid #ea580c;padding-bottom:16px;margin-bottom:20px;">
+    <div style="border-bottom:1px solid #e5e7eb;padding-bottom:16px;margin-bottom:20px;">
       <div style="font-size:13px;font-weight:800;letter-spacing:.08em;color:#ea580c;">GO-DATA</div>
-      <h1 style="margin:6px 0 2px;font-size:21px;color:#1c1917;">Alerte de surveillance — ${esc(hostname)}</h1>
-      <p style="color:#78716c;margin:0;font-size:13px;">Bonjour ${esc(payload.userName)}, des changements viennent d'être détectés.</p>
+      <h1 style="margin:6px 0 2px;font-size:21px;color:#111827;">Alerte de surveillance — <a href="https://${esc(hostname)}" style="color:#111827;text-decoration:none;">${esc(hostname)}</a></h1>
+      <p style="color:#6b7280;margin:0;font-size:13px;">Bonjour ${esc(payload.userName)}, des changements viennent d'être détectés.</p>
     </div>
 
-    <div style="background:#fff7ed;border:1px solid #fed7aa;padding:16px 20px;border-radius:10px;margin-bottom:8px;">
-      <p style="margin:0 0 10px;font-weight:800;font-size:17px;color:#9a3412;">
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;padding:16px 20px;border-radius:10px;margin-bottom:8px;">
+      <p style="margin:0 0 10px;font-weight:700;font-size:17px;color:#111827;">
         ${totalChanges} changement${totalChanges > 1 ? 's' : ''} détecté${totalChanges > 1 ? 's' : ''}${matchedCount > 0 ? ` <span style="font-size:12px;font-weight:700;color:#ea580c;">· ${matchedCount} produit${matchedCount > 1 ? 's' : ''} apparié${matchedCount > 1 ? 's' : ''} à votre référence</span>` : ''}
       </p>
       <div>${chips}</div>
-      <p style="margin:8px 0 0;font-size:12px;color:#a8a29e;">Produits suivis : ${payload.previousCount} &rarr; ${payload.currentCount}</p>
+      <p style="margin:8px 0 0;font-size:12px;color:#9ca3af;">Produits suivis : ${payload.previousCount} &rarr; ${payload.currentCount}</p>
     </div>
 
     ${matchedTableHtml}
 
-    <h2 style="margin:28px 0 10px;font-size:13px;color:#78716c;text-transform:uppercase;letter-spacing:.06em;">Tous les changements${matchedCount > 0 ? ' <span style="font-weight:400;text-transform:none;letter-spacing:0;">(★&#xFE0E; = produit apparié à votre référence)</span>' : ''}</h2>
-    <table style="width:100%;border-collapse:collapse;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;">
+    <h2 style="margin:28px 0 10px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Tous les changements${matchedCount > 0 ? ' <span style="font-weight:400;text-transform:none;letter-spacing:0;">(★&#xFE0E; = produit apparié à votre référence)</span>' : ''}</h2>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
       <thead>
-        <tr style="background:#1c1917;color:#fafaf9;font-size:12px;">
-          <th style="padding:10px;text-align:left;font-weight:600;">Type</th>
-          <th style="padding:10px;text-align:left;font-weight:600;">Produit</th>
-          <th style="padding:10px;text-align:right;font-weight:600;">Avant</th>
-          <th style="padding:10px;text-align:right;font-weight:600;">Après</th>
-          <th style="padding:10px;text-align:right;font-weight:600;">Var.</th>
+        <tr style="background:#f9fafb;">
+          <th style="padding:10px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Type</th>
+          <th style="padding:10px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Produit</th>
+          <th style="padding:10px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Avant</th>
+          <th style="padding:10px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Après</th>
+          <th style="padding:10px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Var.</th>
         </tr>
       </thead>
       <tbody style="background:#ffffff;">${rows}</tbody>
     </table>
-    ${totalChanges > 20 ? `<p style="color:#a8a29e;font-size:12px;margin-top:8px;">Et ${totalChanges - 20} autres changements — consultez le dashboard pour la liste complète.</p>` : ''}
+    ${totalChanges > 20 ? `<p style="color:#9ca3af;font-size:12px;margin-top:8px;">Et ${totalChanges - 20} autres changements — consultez le dashboard pour la liste complète.</p>` : ''}
 
     <div style="margin-top:28px;text-align:center;">
       <a href="${dashboardUrl}/dashboard/alerte" style="display:inline-block;background:#ea580c;color:white;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;font-size:14px;">
@@ -217,9 +217,9 @@ export function buildAlertEmailHtml(payload: AlertNotificationPayload, dashboard
     </div>
   </div>
 
-  <p style="color:#a8a29e;font-size:11px;margin-top:20px;text-align:center;">
+  <p style="color:#9ca3af;font-size:11px;margin-top:20px;text-align:center;">
     Alerte envoyée automatiquement par Go-Data.
-    <a href="${dashboardUrl}/dashboard/settings" style="color:#a8a29e;">Gérer mes canaux de notification</a>
+    <a href="${dashboardUrl}/dashboard/settings" style="color:#9ca3af;">Gérer mes canaux de notification</a>
   </p>
 </body></html>`.trim()
 }
@@ -257,15 +257,35 @@ function typeCellStyle(type: string): string {
   }
 }
 
-/** Puces de synthèse par type (14 hausses, 69 baisses…) — sans emoji,
-    teintes discrètes alignées sur les badges des tableaux. */
+/** Point de couleur par type de changement — seule touche de couleur des
+    puces, comme les indicateurs de statut du dashboard. */
+function typeDotColor(type: string): string {
+  switch (type) {
+    case 'price_increase': return '#dc2626'
+    case 'price_decrease': return '#16a34a'
+    case 'new_product': return '#ea580c'
+    case 'removed_product': return '#9ca3af'
+    case 'stock_change': return '#f59e0b'
+    default: return '#9ca3af'
+  }
+}
+
+/** Puces de synthèse par type (14 hausses, 69 baisses…) — fond neutre
+    uniforme + point coloré, comme les pills du site (pas d'arc-en-ciel). */
 function buildTypeChips(changes: AlertChange[]): string {
   return summarize(changes)
     .filter(s => s.count > 0)
     .map(s =>
-      `<span style="display:inline-block;${typeCellStyle(s.type)}padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;margin:0 6px 6px 0;">${s.count} ${s.label}</span>`
+      `<span style="display:inline-block;background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;margin:0 6px 6px 0;"><span style="display:inline-block;width:6px;height:6px;border-radius:999px;background:${typeDotColor(s.type)};margin-right:6px;vertical-align:1px;"></span>${s.count} ${s.label}</span>`
     )
     .join('')
+}
+
+/** Ancre neutralisée : Gmail transforme les domaines nus en liens bleus
+    soulignés — on force notre style en les enveloppant nous-mêmes. */
+function domainLink(domain: string): string {
+  const d = esc(domain)
+  return `<a href="https://${d}" style="color:#9ca3af;text-decoration:none;">${d}</a>`
 }
 
 /** Tableau des changements sur des produits appariés à la référence (écart de prix). */
@@ -295,7 +315,7 @@ function buildDigestMatchedTable(changes: AlertChange[]): { html: string; count:
     return `<tr>
       <td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;">
         <div style="font-weight:600;color:#111827;word-break:break-word;">${esc(c.product_name) || 'N/A'}</div>
-        ${c.source_site ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px;">${esc(c.source_site)}</div>` : ''}
+        ${c.source_site ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px;">${domainLink(c.source_site)}</div>` : ''}
       </td>
       <td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;white-space:nowrap;color:#6b7280;text-align:right;font-size:13px;">${refPrice !== null ? fmtMoney(refPrice) : '—'}</td>
       <td style="padding:9px 12px;border-bottom:1px solid #f1f5f9;white-space:nowrap;font-weight:600;color:#111827;text-align:right;font-size:13px;">${currPrice !== null ? fmtMoney(currPrice) : '—'}</td>
@@ -304,20 +324,20 @@ function buildDigestMatchedTable(changes: AlertChange[]): { html: string; count:
   }).join('')
 
   const html = `
-    <h2 style="margin:28px 0 4px;font-size:13px;color:#78716c;text-transform:uppercase;letter-spacing:.06em;">Écarts vs votre site de référence (${matched.length})</h2>
-    <p style="color:#a8a29e;font-size:12px;margin:0 0 10px;">Changements sur des produits que vous vendez aussi.</p>
-    <table style="width:100%;border-collapse:collapse;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;">
+    <h2 style="margin:28px 0 4px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Écarts vs votre site de référence (${matched.length})</h2>
+    <p style="color:#9ca3af;font-size:12px;margin:0 0 10px;">Changements sur des produits que vous vendez aussi.</p>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
       <thead>
-        <tr style="background:#1c1917;color:#fafaf9;font-size:12px;">
-          <th style="padding:10px 12px;text-align:left;font-weight:600;">Produit concurrent</th>
-          <th style="padding:10px 12px;text-align:right;font-weight:600;">Votre prix</th>
-          <th style="padding:10px 12px;text-align:right;font-weight:600;">Prix concurrent</th>
-          <th style="padding:10px 12px;text-align:right;font-weight:600;">Écart</th>
+        <tr style="background:#f9fafb;">
+          <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Produit concurrent</th>
+          <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Votre prix</th>
+          <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Prix concurrent</th>
+          <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Écart</th>
         </tr>
       </thead>
       <tbody style="background:#ffffff;">${rows}</tbody>
     </table>
-    ${matched.length > 25 ? `<p style="color:#a8a29e;font-size:12px;margin-top:6px;">Et ${matched.length - 25} autres produits appariés…</p>` : ''}
+    ${matched.length > 25 ? `<p style="color:#9ca3af;font-size:12px;margin-top:6px;">Et ${matched.length - 25} autres produits appariés…</p>` : ''}
   `
   return { html, count: matched.length }
 }
@@ -352,7 +372,7 @@ export function buildDailyDigestHtml(payload: DailyDigestPayload, dashboardUrl: 
         <span style="display:inline-block;${typeCellStyle(c.change_type)}padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;">${groupLabel(c.change_type)}</span>
       </td>
       <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-weight:500;font-size:13px;color:#111827;word-break:break-word;">${esc(c.product_name) || 'N/A'}${matchedStar}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#6b7280;white-space:nowrap;">${esc(c.source_site) || '—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#6b7280;white-space:nowrap;">${c.source_site ? domainLink(c.source_site) : '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#9ca3af;white-space:nowrap;text-align:right;">${esc(c.old_value) || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:600;color:#111827;white-space:nowrap;text-align:right;">${esc(c.new_value) || '—'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;white-space:nowrap;text-align:right;">${pct}</td>
@@ -370,19 +390,19 @@ export function buildDailyDigestHtml(payload: DailyDigestPayload, dashboardUrl: 
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#1c1917;max-width:720px;margin:0 auto;padding:24px 16px;background:#f5f5f4;">
-  <div style="background:white;border-radius:14px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e7e5e4;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#111827;max-width:720px;margin:0 auto;padding:24px 16px;background:#f3f4f6;">
+  <div style="background:white;border-radius:14px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e5e7eb;">
 
-    <div style="border-bottom:2px solid #ea580c;padding-bottom:16px;margin-bottom:20px;">
+    <div style="border-bottom:1px solid #e5e7eb;padding-bottom:16px;margin-bottom:20px;">
       <div style="font-size:13px;font-weight:800;letter-spacing:.08em;color:#ea580c;">GO-DATA</div>
-      <h1 style="margin:6px 0 2px;font-size:21px;color:#1c1917;">Récap quotidien du marché</h1>
-      <p style="color:#78716c;margin:0;font-size:13px;text-transform:capitalize;">${dateLabel}</p>
+      <h1 style="margin:6px 0 2px;font-size:21px;color:#111827;">Récap quotidien du marché</h1>
+      <p style="color:#6b7280;margin:0;font-size:13px;">${dateLabel}</p>
     </div>
 
-    <p style="color:#57534e;margin:0 0 16px;font-size:14px;">Bonjour ${esc(payload.userName)}, voici les changements détectés sur les ${payload.periodHours === 24 ? 'dernières 24 heures' : `${payload.periodHours} dernières heures`} :</p>
+    <p style="color:#4b5563;margin:0 0 16px;font-size:14px;">Bonjour ${esc(payload.userName)}, voici les changements détectés sur les ${payload.periodHours === 24 ? 'dernières 24 heures' : `${payload.periodHours} dernières heures`} :</p>
 
-    <div style="background:#fff7ed;border:1px solid #fed7aa;padding:16px 20px;border-radius:10px;margin-bottom:8px;">
-      <p style="margin:0 0 10px;font-weight:800;font-size:17px;color:#9a3412;">
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;padding:16px 20px;border-radius:10px;margin-bottom:8px;">
+      <p style="margin:0 0 10px;font-weight:700;font-size:17px;color:#111827;">
         ${totalChanges} changement${totalChanges > 1 ? 's' : ''} sur ${sites.size} site${sites.size > 1 ? 's' : ''} surveillé${sites.size > 1 ? 's' : ''}
       </p>
       <div>${chips}</div>
@@ -390,21 +410,21 @@ export function buildDailyDigestHtml(payload: DailyDigestPayload, dashboardUrl: 
 
     ${matchedTableHtml}
 
-    <h2 style="margin:28px 0 10px;font-size:13px;color:#78716c;text-transform:uppercase;letter-spacing:.06em;">Tous les changements${matchedCount > 0 ? ' <span style="font-weight:400;text-transform:none;letter-spacing:0;">(★&#xFE0E; = produit apparié à votre référence)</span>' : ''}</h2>
-    <table style="width:100%;border-collapse:collapse;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;">
+    <h2 style="margin:28px 0 10px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Tous les changements${matchedCount > 0 ? ' <span style="font-weight:400;text-transform:none;letter-spacing:0;">(★&#xFE0E; = produit apparié à votre référence)</span>' : ''}</h2>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
       <thead>
-        <tr style="background:#1c1917;color:#fafaf9;font-size:12px;">
-          <th style="padding:10px;text-align:left;font-weight:600;">Type</th>
-          <th style="padding:10px;text-align:left;font-weight:600;">Produit</th>
-          <th style="padding:10px;text-align:left;font-weight:600;">Site</th>
-          <th style="padding:10px;text-align:right;font-weight:600;">Avant</th>
-          <th style="padding:10px;text-align:right;font-weight:600;">Après</th>
-          <th style="padding:10px;text-align:right;font-weight:600;">Var.</th>
+        <tr style="background:#f9fafb;">
+          <th style="padding:10px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Type</th>
+          <th style="padding:10px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Produit</th>
+          <th style="padding:10px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Site</th>
+          <th style="padding:10px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Avant</th>
+          <th style="padding:10px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Après</th>
+          <th style="padding:10px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Var.</th>
         </tr>
       </thead>
       <tbody style="background:#ffffff;">${rows}</tbody>
     </table>
-    ${totalChanges > MAX_DIGEST_ROWS ? `<p style="color:#a8a29e;font-size:12px;margin-top:8px;">Et ${totalChanges - MAX_DIGEST_ROWS} autres changements — consultez le dashboard pour la liste complète.</p>` : ''}
+    ${totalChanges > MAX_DIGEST_ROWS ? `<p style="color:#9ca3af;font-size:12px;margin-top:8px;">Et ${totalChanges - MAX_DIGEST_ROWS} autres changements — consultez le dashboard pour la liste complète.</p>` : ''}
 
     <div style="margin-top:28px;text-align:center;">
       <a href="${dashboardUrl}/dashboard/alerte" style="display:inline-block;background:#ea580c;color:white;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;font-size:14px;">
@@ -413,10 +433,10 @@ export function buildDailyDigestHtml(payload: DailyDigestPayload, dashboardUrl: 
     </div>
   </div>
 
-  <p style="color:#a8a29e;font-size:11px;margin-top:20px;text-align:center;">
+  <p style="color:#9ca3af;font-size:11px;margin-top:20px;text-align:center;">
     Récap envoyé automatiquement par Go-Data ${footerHourNote}.<br>
-    <a href="${dashboardUrl}/dashboard/alerte" style="color:#a8a29e;">Modifier l'heure d'envoi</a> ·
-    <a href="${dashboardUrl}/dashboard/settings" style="color:#a8a29e;">Gérer mes canaux de notification</a>
+    <a href="${dashboardUrl}/dashboard/alerte" style="color:#9ca3af;">Modifier l'heure d'envoi</a> ·
+    <a href="${dashboardUrl}/dashboard/settings" style="color:#9ca3af;">Gérer mes canaux de notification</a>
   </p>
 </body></html>`.trim()
 }
@@ -565,12 +585,12 @@ export async function sendTestEmail(to: string, userName: string): Promise<void>
   await sendEmail({
     to,
     subject: 'Go-Data — Test de notification email',
-    html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c1917;max-width:560px;margin:0 auto;padding:24px 16px;background:#f5f5f4;">
-      <div style="background:white;border-radius:14px;padding:28px;border:1px solid #e7e5e4;">
+    html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111827;max-width:560px;margin:0 auto;padding:24px 16px;background:#f3f4f6;">
+      <div style="background:white;border-radius:14px;padding:28px;border:1px solid #e5e7eb;">
         <div style="font-size:13px;font-weight:800;letter-spacing:.08em;color:#ea580c;">GO-DATA</div>
-        <h2 style="margin:8px 0 4px;font-size:19px;color:#1c1917;">Email de test reçu</h2>
-        <p style="color:#57534e;font-size:14px;margin:0 0 4px;">Bonjour ${esc(userName)},</p>
-        <p style="color:#57534e;font-size:14px;margin:0;">Votre canal <strong>email</strong> est bien configuré pour recevoir les alertes Go-Data.</p>
+        <h2 style="margin:8px 0 4px;font-size:19px;color:#111827;">Email de test reçu</h2>
+        <p style="color:#4b5563;font-size:14px;margin:0 0 4px;">Bonjour ${esc(userName)},</p>
+        <p style="color:#4b5563;font-size:14px;margin:0;">Votre canal <strong>email</strong> est bien configuré pour recevoir les alertes Go-Data.</p>
         <p style="margin-top:20px;"><a href="${dashboardUrl}/dashboard/settings" style="color:#ea580c;font-weight:600;">Gérer mes canaux</a></p>
       </div>
     </body></html>`,
