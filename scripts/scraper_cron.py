@@ -76,6 +76,15 @@ MAX_CONCURRENT_SITES = 8
 LARGE_SITE_TIMEOUT = 1200   # 20 min
 SMALL_SITE_TIMEOUT = 600    # 10 min
 MAX_RETRY_ROUNDS = 2
+# ── Détection de scrape partiel ──
+# Un scrape qui rapporte moins de PARTIAL_SCRAPE_RATIO × le nombre de
+# produits connus d'un site (pagination cassée, timeout silencieux d'une
+# catégorie…) est traité comme un ÉCHEC : retry immédiat, et l'ancien
+# cache complet est conservé au lieu d'être écrasé par des données
+# incomplètes. Si la baisse persiste sur deux crons consécutifs, on
+# l'accepte comme le nouvel inventaire réel (vraie liquidation).
+PARTIAL_SCRAPE_RATIO = 0.6
+PARTIAL_MIN_KNOWN = 10
 print_lock = Lock()
 
 
@@ -126,8 +135,19 @@ def _set_cron_lock(supabase_url: str, supabase_key: str, status: str):
         _log(f"⚠️  Cron lock ({status}): PostgREST {resp.status_code}")
 
 
-def _scrape_single_site(slug: str, site_url: str, site_domain: str) -> dict:
-    """Scrape un site via son scraper dédié. Thread-safe."""
+def _scrape_single_site(
+    slug: str,
+    site_url: str,
+    site_domain: str,
+    known_count: int = 0,
+    prev_status: str | None = None,
+) -> dict:
+    """Scrape un site via son scraper dédié. Thread-safe.
+
+    `known_count` = nombre de produits du dernier scrape complet (cache) ;
+    sert à détecter un scrape partiel. `prev_status` = statut du dernier
+    passage ("partial" signifie que la baisse a déjà été observée une fois).
+    """
     try:
         scraper = DedicatedScraperRegistry.get_by_slug(slug)
         if not scraper:
@@ -145,6 +165,31 @@ def _scrape_single_site(slug: str, site_url: str, site_domain: str) -> dict:
         if not products:
             _log(f"   ⚠️  {site_domain}: 0 produits en {elapsed:.0f}s")
             return {"success": False, "error": "0 produits extraits", "elapsed": elapsed}
+
+        # ── Validation de complétude ──
+        if (
+            known_count >= PARTIAL_MIN_KNOWN
+            and len(products) < known_count * PARTIAL_SCRAPE_RATIO
+        ):
+            if prev_status == "partial":
+                # Deuxième cron consécutif avec la même baisse : ce n'est
+                # plus une anomalie de scraping, c'est le nouvel inventaire.
+                _log(
+                    f"   ⚠️  {site_domain}: baisse confirmée sur 2 passages "
+                    f"({known_count} → {len(products)} produits) — acceptée comme nouvelle référence"
+                )
+            else:
+                _log(
+                    f"   ⚠️  {site_domain}: scrape PARTIEL suspect — {len(products)} produits "
+                    f"vs {known_count} connus (<{int(PARTIAL_SCRAPE_RATIO * 100)} %). "
+                    f"Ancien cache conservé, retry."
+                )
+                return {
+                    "success": False,
+                    "partial": True,
+                    "error": f"Scrape partiel: {len(products)} produits vs {known_count} attendus",
+                    "elapsed": elapsed,
+                }
 
         _log(f"   ✅ {site_domain}: {len(products)} produits en {elapsed:.0f}s")
         return {
@@ -193,7 +238,9 @@ def _save_site_data(supabase_url: str, supabase_key: str, site: dict, scrape_res
             "site_url": site["site_url"],
             "site_domain": site["site_domain"],
             "shared_scraper_id": site["id"],
-            "status": "error",
+            # "partial" = données incomplètes détectées (cache conservé) ;
+            # au prochain cron, une baisse identique sera acceptée.
+            "status": "partial" if scrape_result.get("partial") else "error",
             "error_message": scrape_result.get("error", "Unknown error")[:500],
             "updated_at": now,
         }
@@ -428,13 +475,15 @@ def _enrich_with_product_count(supabase, sites: list) -> None:
         domains = [s["site_domain"] for s in sites]
         cached = (
             supabase.table("scraped_site_data")
-            .select("site_domain, product_count")
+            .select("site_domain, product_count, status")
             .in_("site_domain", domains)
             .execute()
         )
-        pc_map = {r["site_domain"]: r.get("product_count", 0) or 0 for r in (cached.data or [])}
+        rows = {r["site_domain"]: r for r in (cached.data or [])}
         for site in sites:
-            site["_known_product_count"] = pc_map.get(site["site_domain"], 0)
+            row = rows.get(site["site_domain"], {})
+            site["_known_product_count"] = row.get("product_count", 0) or 0
+            site["_prev_status"] = row.get("status")
     except Exception as e:
         _log(f"⚠️  Erreur lecture product_count: {e}")
 
@@ -637,6 +686,8 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
                 site["site_slug"],
                 site["site_url"],
                 site["site_domain"],
+                site.get("_known_product_count", 0),
+                site.get("_prev_status"),
             ): site
             for site in sites
         }
@@ -654,6 +705,7 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
                     if result["success"]:
                         total_success += 1
                     else:
+                        site["_last_partial"] = bool(result.get("partial"))
                         total_failed += 1
                         failed_sites.append(site)
                 except Exception as e:
@@ -706,6 +758,8 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
                         site["site_slug"],
                         site["site_url"],
                         site["site_domain"],
+                        site.get("_known_product_count", 0),
+                        site.get("_prev_status"),
                     ): site
                     for site in still_failed
                 }
@@ -720,6 +774,7 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
                                 total_success += 1
                                 total_failed -= 1
                             else:
+                                site["_last_partial"] = bool(result.get("partial"))
                                 next_failed.append(site)
                         except Exception:
                             next_failed.append(site)
@@ -733,8 +788,11 @@ def _run_scraping(supabase_url: str, supabase_key: str, sites: list) -> bool:
             still_failed = next_failed
 
         still_failed.extend(skipped)
-        if still_failed:
-            _hide_failing_sites(supabase_url, supabase_key, still_failed)
+        # Les échecs « partiels » gardent un cache complet valide : on ne les
+        # cache pas de la recherche, on retentera simplement au prochain cron.
+        hard_failed = [s for s in still_failed if not s.get("_last_partial")]
+        if hard_failed:
+            _hide_failing_sites(supabase_url, supabase_key, hard_failed)
 
         failed_sites = still_failed
 
