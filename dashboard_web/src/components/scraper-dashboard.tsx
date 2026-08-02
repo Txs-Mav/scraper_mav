@@ -828,7 +828,9 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
           data-onboarding="scrape"
           className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md"
         >
-          <div className="flex items-center justify-between gap-5 flex-wrap">
+          {/* Mobile : pile verticale (statut → titre → stats en grille →
+              actions pleine largeur). Desktop : disposition d'origine. */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:flex-wrap">
             <div className="min-w-0 flex-1">
               {/* Status pill (point pulsant + dernière analyse) */}
               <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
@@ -844,16 +846,30 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                 )}
               </div>
 
-              {/* H1 = site de référence (l'ancre contextuelle) */}
+              {/* H1 = site de référence (l'ancre contextuelle). Sur mobile le
+                  domaine passe à la ligne plutôt que d'être tronqué. */}
               <h1
-                className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight truncate"
+                className="mt-1.5 text-xl break-words sm:truncate sm:text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight"
                 title={refSiteDisplay || "—"}
               >
                 {refSiteDisplay || <span className="text-[var(--color-text-secondary)]">Aucun site de référence</span>}
               </h1>
 
-              {/* Metadata inline — descripteurs de l'ancre, pas KPIs à poids égal */}
-              <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] flex items-center gap-2 flex-wrap">
+              {/* Metadata — grille de 3 mini-stats lisible au pouce sur
+                  mobile ; phrase inline compacte dès sm. */}
+              <div className="mt-3 grid grid-cols-3 divide-x divide-[var(--color-border-tertiary)] rounded-xl border border-[var(--color-border-tertiary)] overflow-hidden sm:hidden">
+                {[
+                  { value: displayResultCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA'), label: t("dash.products") },
+                  { value: String(competitorsCount), label: t("dash.competitors") },
+                  { value: comparedUniqueCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA'), label: t("dash.compared") },
+                ].map(s => (
+                  <div key={s.label} className="min-w-0 px-2 py-2.5 text-center">
+                    <p className="text-lg font-bold tabular-nums leading-none text-[var(--color-text-primary)]">{s.value}</p>
+                    <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--color-text-secondary)] truncate">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1.5 hidden sm:flex text-sm text-[var(--color-text-secondary)] items-center gap-2 flex-wrap">
                 <span>
                   <span className="tabular-nums font-semibold text-[var(--color-text-primary)]">
                     {displayResultCount.toLocaleString(locale === 'en' ? 'en-CA' : 'fr-CA')}
@@ -881,7 +897,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                 un SEGMENTED CONTROL unifié pour éviter qu'ils paraissent
                 flotter dans le vide isolément. Le bouton primaire reste
                 à part (sa propre identité visuelle). */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
               {/* Segmented control : 2 boutons ghost dans une coque
                   unifiée (1 border, 1 fond opaque, 1 séparateur interne).
                   Icônes h-5 (au lieu de h-4) bien centrées verticalement
@@ -927,7 +943,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                 onClick={async () => {
                   setRefreshingFromCron(true)
                   try {
-                    const res = await fetch('/api/products/analyze', { method: 'POST' })
+                    const res = await fetch(`/api/products/analyze?locale=${locale === 'fr' ? 'fr' : 'en'}`, { method: 'POST' })
                     const data = await res.json()
                     if (data.success) {
                       toast.success(t("dash.dataRefreshed"), { duration: 3000 })
@@ -942,7 +958,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                     setTimeout(() => setRefreshingFromCron(false), 2000)
                   }
                 }}
-                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold bg-gradient-to-b from-[var(--color-text-primary)] to-[var(--color-text-primary)]/90 text-[var(--color-background-primary)] hover:from-[var(--color-text-primary)]/95 hover:to-[var(--color-text-primary)]/85 transition-all disabled:opacity-50 shadow-md shadow-black/10 dark:shadow-black/40 hover:shadow-lg hover:shadow-black/15 hover:-translate-y-0.5"
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold bg-gradient-to-b from-[var(--color-text-primary)] to-[var(--color-text-primary)]/90 text-[var(--color-background-primary)] hover:from-[var(--color-text-primary)]/95 hover:to-[var(--color-text-primary)]/85 transition-all disabled:opacity-50 shadow-md shadow-black/10 dark:shadow-black/40 hover:shadow-lg hover:shadow-black/15 hover:-translate-y-0.5"
               >
                 {refreshingFromCron ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" strokeWidth={1.75} /> : <Eye className="h-5 w-5 shrink-0" strokeWidth={1.75} />}
                 {t("dash.analyzeNow")}
