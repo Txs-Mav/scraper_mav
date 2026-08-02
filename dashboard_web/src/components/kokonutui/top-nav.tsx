@@ -235,8 +235,11 @@ export default function TopNav() {
           <span className="text-lg font-semibold tracking-tight text-[var(--color-text-primary)]">GO-DATA</span>
         </Link>
 
-        <div className="flex-1 flex justify-center">
-          <div className="flex items-center gap-1 sm:gap-1.5">
+        {/* Sur mobile la barre déborde de l'écran : on la rend glissable
+            (scrollbar masquée) et alignée à gauche pour que le début reste
+            atteignable ; centrée comme avant dès sm. */}
+        <div className="flex-1 flex justify-start sm:justify-center min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
             {displayedCategories.map(category => {
               const isOpen = openCategory === category.id
               const isActive = activeCategoryFromPath === category.id

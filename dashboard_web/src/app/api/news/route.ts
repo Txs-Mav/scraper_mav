@@ -73,9 +73,15 @@ export async function GET(request: Request) {
       readIds = new Set((reads || []).map(r => r.news_id))
     }
 
+    // Les annonces publiées avant la création du compte restent consultables
+    // dans le centre de nouvelles, mais ne comptent pas comme « non lues »
+    // (pas de badge ni de modal pour un nouvel inscrit).
+    const accountCreatedAt = user.created_at ? new Date(user.created_at).getTime() : 0
     const items = (data || []).map(n => ({
       ...n,
-      is_read: readIds.has(n.id),
+      is_read:
+        readIds.has(n.id) ||
+        new Date(n.published_at || n.created_at).getTime() <= accountCreatedAt,
     }))
 
     return NextResponse.json({ items, unread_count: items.filter(i => !i.is_read && i.is_published).length })

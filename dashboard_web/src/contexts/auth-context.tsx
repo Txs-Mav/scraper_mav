@@ -404,6 +404,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: { message: 'Échec de la création du compte. Veuillez réessayer.' } }
       }
 
+      // Anti-énumération Supabase : quand l'email existe déjà, signUp renvoie
+      // un FAUX succès avec identities vide et n'envoie AUCUN email. Sans ce
+      // test, l'UI affiche « vérifiez votre email » et l'utilisateur attend
+      // un message qui n'arrivera jamais.
+      if (Array.isArray(authData.user.identities) && authData.user.identities.length === 0) {
+        return {
+          error: {
+            message: "Un compte existe déjà avec cet email. Veuillez vous connecter.",
+            code: 'ACCOUNT_EXISTS',
+          }
+        }
+      }
+
       // Laisser le trigger créer les lignes; petit délai pour la propagation
       await new Promise(resolve => setTimeout(resolve, 800))
 

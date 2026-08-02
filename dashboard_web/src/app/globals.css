@@ -409,3 +409,15 @@
 @media (prefers-reduced-motion: reduce) {
   .flow-dash { animation: none; }
 }
+
+/* iOS Safari zoome la page quand un champ focusé a une police < 16px, ce qui
+   décale la mise en page et donne une impression d'instabilité sur mobile.
+   On force 16px sur les champs en dessous de sm — le seul correctif propre
+   (maximum-scale casserait l'accessibilité). */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

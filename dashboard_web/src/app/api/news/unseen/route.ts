@@ -36,7 +36,18 @@ export async function GET() {
       return NextResponse.json({ news: null })
     }
 
-    const ids = candidates.map(n => n.id)
+    // Une annonce ne concerne que les comptes qui existaient au moment de sa
+    // publication : un nouvel inscrit ne doit pas se prendre la pile des
+    // « Nouveautés » passées en modal à sa première connexion.
+    const accountCreatedAt = user.created_at ? new Date(user.created_at).getTime() : 0
+    const relevant = candidates.filter(n =>
+      new Date(n.published_at || n.created_at).getTime() > accountCreatedAt
+    )
+    if (relevant.length === 0) {
+      return NextResponse.json({ news: null })
+    }
+
+    const ids = relevant.map(n => n.id)
     const { data: reads } = await supabase
       .from('user_news_reads')
       .select('news_id')
@@ -44,7 +55,7 @@ export async function GET() {
       .in('news_id', ids)
 
     const dismissed = new Set((reads || []).map(r => r.news_id))
-    const unseen = candidates.find(n => !dismissed.has(n.id))
+    const unseen = relevant.find(n => !dismissed.has(n.id))
 
     return NextResponse.json({ news: unseen || null })
   } catch (error: any) {

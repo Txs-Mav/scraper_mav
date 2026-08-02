@@ -48,11 +48,12 @@ function formatDate(iso: string | null): string {
   } catch { return iso }
 }
 
-// URL d'inscription encodée dans le QR. En prod NEXT_PUBLIC_APP_URL pointe
-// vers le domaine public ; en local on retombe sur l'origin courant.
+// URL d'inscription encodée dans le QR : la page campagne /c/[code]
+// (inscription 1 écran, accès instantané). En prod NEXT_PUBLIC_APP_URL
+// pointe vers le domaine public ; en local on retombe sur l'origin courant.
 function signupUrl(code: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "")
-  return `${base.replace(/\/$/, "")}/create-account?code=${encodeURIComponent(code)}`
+  return `${base.replace(/\/$/, "")}/c/${encodeURIComponent(code.toLowerCase())}`
 }
 
 export default function AdminCampagnesPage() {
