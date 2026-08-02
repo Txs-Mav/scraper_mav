@@ -827,7 +827,9 @@ export default function AlertePage() {
     <Layout>
       <div className="space-y-4">
         {/* ── KPI ── */}
-        <div className="grid grid-cols-4 gap-3">
+        {/* 2 colonnes sous lg : 4 tuiles forcées sur un écran de téléphone
+            font déborder les libellés. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             { label: t("alerts.activeAlerts"), value: monitoredSources, icon: Radar },
             { label: t("alerts.unread"), value: unreadCount, icon: Activity },
@@ -836,10 +838,10 @@ export default function AlertePage() {
           ].map((s, i) => {
             const Icon = s.icon
             return (
-              <div key={i} className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] backdrop-blur-sm p-5 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-medium text-[var(--color-text-secondary)] tracking-wide">{s.label}</p>
-                  <Icon className="h-3.5 w-3.5 text-[var(--color-text-secondary)] opacity-50" />
+              <div key={i} className="min-w-0 rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] backdrop-blur-sm p-4 sm:p-5 flex flex-col justify-between">
+                <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
+                  <p className="text-xs font-medium text-[var(--color-text-secondary)] tracking-wide truncate">{s.label}</p>
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-secondary)] opacity-50" />
                 </div>
                 <p className="text-3xl font-extrabold leading-none tabular-nums tracking-tight text-[var(--color-text-primary)]">{s.value}</p>
               </div>

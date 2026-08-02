@@ -159,7 +159,10 @@ function DashboardContent() {
       router.replace("/admin")
       return
     }
-    router.replace("/dashboard/surveillance")
+    // Conserver la query string : les liens profonds (?recherche=<produit>
+    // depuis les recommandations d'Analyse) doivent survivre à la redirection.
+    const qs = window.location.search
+    router.replace(`/dashboard/surveillance${qs}`)
   }, [isLoading, checkingPendingPlan, user, restricted, router])
 
   if (isLoading || checkingPendingPlan || (user && !restricted)) {

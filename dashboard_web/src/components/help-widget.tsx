@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   HelpCircle,
@@ -20,10 +20,80 @@ interface HelpItem {
   badge?: number | null
 }
 
+// Le bouton est déplaçable (drag) : position = centre du bouton, mémorisée
+// par appareil. null = position CSS par défaut (bas-gauche).
+const POS_STORAGE_KEY = "help-widget-pos"
+const BTN_HALF = 26 // ~moitié du bouton (p-3.5 + icône h-5 ≈ 52px)
+
+function clampToViewport(p: { x: number; y: number }) {
+  return {
+    x: Math.min(Math.max(p.x, BTN_HALF + 4), window.innerWidth - BTN_HALF - 4),
+    y: Math.min(Math.max(p.y, BTN_HALF + 4), window.innerHeight - BTN_HALF - 4),
+  }
+}
+
 export default function HelpWidget() {
   const [open, setOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const router = useRouter()
+
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const dragRef = useRef<{
+    startX: number
+    startY: number
+    origin: { x: number; y: number }
+    moved: boolean
+  } | null>(null)
+  const suppressClickRef = useRef(false)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(POS_STORAGE_KEY)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (typeof p?.x === "number" && typeof p?.y === "number") setPos(clampToViewport(p))
+      }
+    } catch { /* position par défaut */ }
+  }, [])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    const rect = btnRef.current?.getBoundingClientRect()
+    if (!rect) return
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origin: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      moved: false,
+    }
+    btnRef.current?.setPointerCapture(e.pointerId)
+  }, [])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current
+    if (!drag) return
+    const dx = e.clientX - drag.startX
+    const dy = e.clientY - drag.startY
+    if (!drag.moved && dx * dx + dy * dy < 36) return
+    drag.moved = true
+    setPos(clampToViewport({ x: drag.origin.x + dx, y: drag.origin.y + dy }))
+  }, [])
+
+  const handlePointerUp = useCallback(() => {
+    const drag = dragRef.current
+    dragRef.current = null
+    if (drag?.moved) {
+      // Le click qui suit un drag ne doit pas ouvrir le panneau.
+      suppressClickRef.current = true
+      setTimeout(() => { suppressClickRef.current = false }, 0)
+      setPos(current => {
+        if (current) {
+          try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(current)) } catch { /* plein */ }
+        }
+        return current
+      })
+    }
+  }, [])
 
   // Chargement léger pour afficher le badge (non-lues)
   useEffect(() => {
@@ -75,14 +145,23 @@ export default function HelpWidget() {
 
   return (
     <>
-      {/* Bouton flottant */}
+      {/* Bouton flottant — déplaçable (drag) ; un simple clic ouvre le panneau */}
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen(!open)}
-        className={`fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 sm:bottom-6 sm:left-6 z-50 p-3.5 rounded-full shadow-lg transition-all duration-200 ${
+        onClick={() => { if (!suppressClickRef.current) setOpen(!open) }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        title="Aide — glissez pour déplacer"
+        style={pos ? { left: pos.x - BTN_HALF, top: pos.y - BTN_HALF, right: "auto", bottom: "auto" } : undefined}
+        className={`fixed z-50 p-3.5 rounded-full shadow-lg transition-colors duration-200 touch-none cursor-grab active:cursor-grabbing ${
+          pos ? "" : "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 sm:bottom-6 sm:left-6"
+        } ${
           open
             ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 shadow-gray-900/20 rotate-90"
-            : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border-secondary)] hover:shadow-xl hover:-translate-y-0.5 hover:border-gray-300 dark:hover:border-gray-700"
+            : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border-secondary)] hover:shadow-xl hover:border-gray-300 dark:hover:border-gray-700"
         }`}
       >
         {open ? <X className="h-5 w-5" /> : <HelpCircle className="h-5 w-5" />}
@@ -93,9 +172,20 @@ export default function HelpWidget() {
         )}
       </button>
 
-      {/* Panneau */}
+      {/* Panneau — suit le bouton quand il a été déplacé */}
       {open && (
-        <div className="fixed bottom-[calc(8rem+env(safe-area-inset-bottom))] left-4 right-4 w-auto sm:bottom-20 sm:left-6 sm:right-auto sm:w-72 z-50 bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-[var(--color-border-secondary)] overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
+        <div
+          style={pos ? (() => {
+            const isDesktop = window.innerWidth >= 640
+            const bottom = Math.max(16, window.innerHeight - pos.y + BTN_HALF + 12)
+            if (!isDesktop) return { bottom, left: 16, right: 16 }
+            return pos.x > window.innerWidth / 2
+              ? { bottom, right: Math.max(16, window.innerWidth - pos.x - BTN_HALF), left: "auto" }
+              : { bottom, left: Math.max(16, pos.x - BTN_HALF), right: "auto" }
+          })() : undefined}
+          className={`fixed z-50 w-auto sm:w-72 bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-[var(--color-border-secondary)] overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200 ${
+            pos ? "" : "bottom-[calc(8rem+env(safe-area-inset-bottom))] left-4 right-4 sm:bottom-20 sm:left-6 sm:right-auto"
+          }`}>
           <div className="px-5 pt-5 pb-3">
             <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Aide & Support</h3>
             <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">Comment pouvons-nous vous aider ?</p>

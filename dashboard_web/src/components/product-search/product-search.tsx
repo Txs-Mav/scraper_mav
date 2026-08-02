@@ -127,18 +127,21 @@ interface SourceMeta {
 // dashboard admin. Elles seront automatiquement réactivées dès que
 // l'admin aura branché le scraper correspondant — pour l'instant on
 // montre seulement le placeholder verrouillé pour donner la liste cible.
+// `label`, `hint` et `badge` sont des clés de traduction (ou des noms de
+// marque littéraux — `t()` renvoie les clés inconnues telles quelles) ;
+// ils sont résolus via `t()` au moment du rendu.
 const SOURCES: SourceMeta[] = [
-  { key: "dedicated", label: "Concessionnaires", hint: "Tes 20 scrapers dédiés (motoplex, moto-ducharme, db-moto…)", group: "instant" },
-  { key: "amazon", label: "Amazon.ca", hint: "À connecter dans le dashboard admin", group: "instant", disabled: true, badge: "À connecter" },
-  { key: "ebay", label: "eBay", hint: "API officielle (EBAY_CLIENT_ID/SECRET requis)", group: "instant" },
-  { key: "bestbuy", label: "Best Buy", hint: "À connecter dans le dashboard admin", group: "marketplace", disabled: true, badge: "À connecter" },
-  { key: "walmart", label: "Walmart", hint: "À connecter dans le dashboard admin", group: "marketplace", disabled: true, badge: "À connecter" },
-  { key: "costco", label: "Costco", hint: "À connecter dans le dashboard admin", group: "marketplace", disabled: true, badge: "À connecter" },
-  { key: "kijiji", label: "Kijiji", hint: "Petites annonces (~8s)", group: "marketplace" },
-  { key: "lespac", label: "LesPAC", hint: "Petites annonces QC (~8s)", group: "marketplace" },
-  { key: "autotrader", label: "AutoTrader", hint: "Voitures occasion + neuves (~12s)", group: "vehicle" },
-  { key: "cycletrader", label: "CycleTrader", hint: "À connecter dans le dashboard admin", group: "vehicle", disabled: true, badge: "À connecter" },
-  { key: "facebook", label: "Facebook Marketplace", hint: "Disponible bientôt", group: "api", disabled: true, badge: "Bientôt" },
+  { key: "dedicated", label: "ps.src.dealers", hint: "ps.src.dedicatedHint", group: "instant" },
+  { key: "amazon", label: "Amazon.ca", hint: "ps.src.connectHint", group: "instant", disabled: true, badge: "ps.src.badgeConnect" },
+  { key: "ebay", label: "eBay", hint: "ps.src.ebayHint", group: "instant" },
+  { key: "bestbuy", label: "Best Buy", hint: "ps.src.connectHint", group: "marketplace", disabled: true, badge: "ps.src.badgeConnect" },
+  { key: "walmart", label: "Walmart", hint: "ps.src.connectHint", group: "marketplace", disabled: true, badge: "ps.src.badgeConnect" },
+  { key: "costco", label: "Costco", hint: "ps.src.connectHint", group: "marketplace", disabled: true, badge: "ps.src.badgeConnect" },
+  { key: "kijiji", label: "Kijiji", hint: "ps.src.kijijiHint", group: "marketplace" },
+  { key: "lespac", label: "LesPAC", hint: "ps.src.lespacHint", group: "marketplace" },
+  { key: "autotrader", label: "AutoTrader", hint: "ps.src.autotraderHint", group: "vehicle" },
+  { key: "cycletrader", label: "CycleTrader", hint: "ps.src.connectHint", group: "vehicle", disabled: true, badge: "ps.src.badgeConnect" },
+  { key: "facebook", label: "Facebook Marketplace", hint: "ps.src.comingSoonHint", group: "api", disabled: true, badge: "ps.src.badgeSoon" },
 ]
 
 const QUERY_COMPLETIONS = [
@@ -401,10 +404,10 @@ export default function ProductSearch() {
     setShowOnboarding(false)
     toast.success(
       bts.length === 1
-        ? "Domaine enregistré — catégorie pré-sélectionnée"
-        : `${bts.length} domaines enregistrés`,
+        ? t("ps.domainSaved")
+        : t("ps.domainsSaved").replace("{n}", String(bts.length)),
     )
-  }, [])
+  }, [t])
 
   const handleReopenOnboarding = useCallback(() => {
     setShowOnboarding(true)
@@ -479,11 +482,11 @@ export default function ProductSearch() {
 
   const runSearch = useCallback(async (rawQuery: string) => {
     if (!rawQuery.trim()) {
-      toast.error("Tapez d'abord ce que vous cherchez")
+      toast.error(t("ps.typeQueryFirst"))
       return
     }
     if (activeCount === 0) {
-      toast.error("Activez au moins une source dans le panneau de droite")
+      toast.error(t("ps.enableOneSourceToast"))
       return
     }
 
@@ -524,10 +527,8 @@ export default function ProductSearch() {
       const data = await res.json()
       if (res.status === 401) {
         // Session expirée ou cookies absents — on redirige vers /login
-        setError(
-          "Votre session a expiré. Reconnectez-vous pour relancer votre recherche.",
-        )
-        toast.error("Session expirée — redirection vers la connexion…")
+        setError(t("ps.sessionExpired"))
+        toast.error(t("ps.sessionExpiredRedirect"))
         setTimeout(() => {
           if (typeof window !== "undefined") {
             window.location.href = `/login?next=${encodeURIComponent("/dashboard/recherche")}`
@@ -546,24 +547,28 @@ export default function ProductSearch() {
         const scanned = (data as SearchResult)?.products_scanned ?? 0
         toast.warning(
           scanned > 0
-            ? `Aucun résultat — ${scanned} produit${scanned > 1 ? "s" : ""} scanné${scanned > 1 ? "s" : ""}, retirez l'année ou simplifiez le modèle`
-            : "Aucun résultat — élargissez la requête ou ajoutez des sources",
+            ? (scanned > 1 ? t("ps.noResultsScannedPlural") : t("ps.noResultsScannedOne")).replace("{n}", String(scanned))
+            : t("ps.noResultsBroaden"),
         )
       } else if (isApprox) {
         toast.warning(
-          `Aucun match exact — voici ${total} comparable${total > 1 ? "s" : ""} approchant${total > 1 ? "s" : ""}`,
+          (total > 1 ? t("ps.approxToastPlural") : t("ps.approxToastOne")).replace("{n}", String(total)),
         )
       } else {
-        toast.success(`${total} résultat${total > 1 ? "s" : ""} en ${data?.elapsed_seconds?.toFixed?.(1) ?? "?"}s`)
+        toast.success(
+          (total > 1 ? t("ps.resultsInPlural") : t("ps.resultsInOne"))
+            .replace("{n}", String(total))
+            .replace("{s}", String(data?.elapsed_seconds?.toFixed?.(1) ?? "?")),
+        )
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg)
-      toast.error(`Erreur : ${msg}`)
+      toast.error(t("ps.errorPrefix").replace("{msg}", msg))
     } finally {
       setLoading(false)
     }
-  }, [state, activeCount])
+  }, [state, activeCount, t])
 
   const onSubmit = useCallback((e?: React.FormEvent) => {
     e?.preventDefault()
@@ -578,9 +583,9 @@ export default function ProductSearch() {
 
   const helperText = state.query.trim()
     ? activeCount === 0
-      ? "Activez au moins une source pour lancer la recherche."
-      : `Prêt à interroger ${activeCount} source${activeCount > 1 ? "s" : ""} en parallèle.`
-    : "Tapez votre requête puis cliquez sur Rechercher."
+      ? t("ps.enableOneSource")
+      : (activeCount > 1 ? t("ps.readyToQueryPlural") : t("ps.readyToQueryOne")).replace("{n}", String(activeCount))
+    : t("ps.typeQueryHint")
 
   // Guide de première visite : barre → catégorie → sources (→ évaluateur si
   // catégorie véhicule). Attend la fermeture de l'onboarding business_type
@@ -589,33 +594,29 @@ export default function ProductSearch() {
     const steps: PageOnboardingStep[] = [
       {
         targetId: "recherche-bar",
-        title: "Cherchez un produit",
-        description:
-          "Tapez un modèle, un accessoire ou un numéro de pièce, puis cliquez sur Rechercher : toutes vos sources actives sont interrogées en parallèle.",
+        title: t("ps.searchProductTitle"),
+        description: t("ps.onbSearchDesc"),
       },
       {
         targetId: "recherche-categorie",
-        title: "Ciblez la bonne catégorie",
-        description:
-          "La catégorie oriente la recherche vers les bonnes sources et améliore la précision des résultats.",
+        title: t("ps.onbCategoryTitle"),
+        description: t("ps.onbCategoryDesc"),
       },
       {
         targetId: "recherche-sources",
-        title: "Choisissez vos sources",
-        description:
-          "Activez ou désactivez chaque marketplace d'un clic. Les sources verrouillées sont regroupées dans « Sources à venir ».",
+        title: t("ps.onbSourcesTitle"),
+        description: t("ps.onbSourcesDesc"),
       },
     ]
     if (isVehicleCat) {
       steps.push({
         targetId: "recherche-evaluateur",
-        title: "Évaluez un véhicule",
-        description:
-          "Activez cet interrupteur pour estimer la valeur d'un véhicule : les champs (état, kilométrage, options) apparaissent juste en dessous.",
+        title: t("ps.onbEvaluatorTitle"),
+        description: t("ps.onbEvaluatorDesc"),
       })
     }
     return steps
-  }, [isVehicleCat])
+  }, [isVehicleCat, t])
 
   return (
     <div className="relative z-10 space-y-5 max-w-[1400px] mx-auto">
@@ -648,11 +649,11 @@ export default function ProductSearch() {
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500" />
           </span>
           <span className="font-medium uppercase tracking-wider">
-            Recherche multi-sources
+            {t("ps.multiSourceSearch")}
           </span>
         </div>
         <h1 className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight">
-          Recherche par produit
+          {t("nav.productSearch")}
         </h1>
       </header>
 
@@ -703,8 +704,8 @@ export default function ProductSearch() {
               }}
               placeholder={
                 isVehicleCat
-                  ? "Ex : « Ski-Doo Summit 850 », « Yamaha MT-07 2022 »"
-                  : "Ex : « iPhone 15 Pro 256GB », « casque Bell », « Ski-Doo Summit 850 »"
+                  ? t("ps.searchPlaceholderVehicle")
+                  : t("ps.searchPlaceholder")
               }
               className={cn(
                 "relative z-10 w-full h-full pl-11 pr-20 rounded-xl text-[15px] bg-transparent",
@@ -724,7 +725,7 @@ export default function ProductSearch() {
                 type="button"
                 onClick={() => setState((s) => ({ ...s, query: "" }))}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
-                aria-label="Effacer la recherche"
+                aria-label={t("ps.clearSearch")}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -742,7 +743,7 @@ export default function ProductSearch() {
             )}
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            <span>{loading ? "Recherche…" : "Rechercher"}</span>
+            <span>{loading ? t("ps.searching") : t("search")}</span>
           </button>
         </div>
 
@@ -756,14 +757,14 @@ export default function ProductSearch() {
           {isVehicleCat && (
             <div id="recherche-evaluateur" className="flex items-center gap-2 shrink-0">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
-                Évaluateur véhicule
+                {t("ps.vehicleEvaluator")}
               </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={state.evaluatorEnabled}
                 onClick={toggleEvaluator}
-                title="Estimer la valeur du véhicule à partir des comparables"
+                title={t("ps.vehicleEvaluatorTooltip")}
                 className={cn(
                   "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
                   state.evaluatorEnabled
@@ -802,7 +803,10 @@ export default function ProductSearch() {
           des toggles — on voit d'un coup d'œil ce qui sera interrogé. ── */}
       <aside className="min-w-0 lg:col-start-2 lg:row-start-1 lg:row-span-2">
         <div className="lg:sticky lg:top-5 space-y-4">
-          <SidebarSection id="recherche-categorie" title="Catégorie">
+          {/* relative z-30 : le backdrop-blur des sections crée un contexte
+              d'empilement par carte — sans élévation, le menu déroulant de
+              la catégorie passe SOUS la carte Sources qui suit. */}
+          <SidebarSection id="recherche-categorie" title={t("dash.category")} className="relative z-30">
             <CategoryPicker
               value={state.category}
               onChange={(path) => setState((s) => ({ ...s, category: path }))}
@@ -818,15 +822,15 @@ export default function ProductSearch() {
 
           <SidebarSection
             id="recherche-sources"
-            title="Sources"
-            badge={`${activeCount} active${activeCount > 1 ? "s" : ""}`}
+            title={t("ps.sources")}
+            badge={(activeCount > 1 ? t("ps.activeCountPlural") : t("ps.activeCountOne")).replace("{n}", String(activeCount))}
             action={
               <button
                 type="button"
                 onClick={() => toggleAll(activeCount < selectableSourceCount)}
                 className="text-[11px] font-medium text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
               >
-                {activeCount < selectableSourceCount ? "Tout activer" : "Tout désactiver"}
+                {activeCount < selectableSourceCount ? t("ps.enableAll") : t("ps.disableAll")}
               </button>
             }
           >
@@ -837,7 +841,7 @@ export default function ProductSearch() {
           </SidebarSection>
 
           {isAdmin ? (
-            <SidebarSection title="Vue admin">
+            <SidebarSection title={t("ps.adminView")}>
               <AdminViewAsPicker value={adminViewAs} onChange={setAdminViewAs} />
             </SidebarSection>
           ) : user ? (
@@ -849,7 +853,7 @@ export default function ProductSearch() {
                 "border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 backdrop-blur-md",
                 "hover:bg-[var(--color-background-hover)]",
               )}
-              title="Changer mes domaines d'activité"
+              title={t("ps.changeDomains")}
             >
               <Briefcase
                 className="h-4 w-4 shrink-0 text-[var(--color-text-tertiary)]"
@@ -857,13 +861,13 @@ export default function ProductSearch() {
               />
               <span className="min-w-0 flex-1 truncate text-sm text-[var(--color-text-secondary)]">
                 {effectiveBusinessTypes.length === 0
-                  ? "Choisir mes domaines d'activité"
+                  ? t("ps.chooseDomains")
                   : effectiveBusinessTypes.length === 1
                     ? t(BT_LABEL_KEYS[effectiveBusinessTypes[0]])
-                    : `${effectiveBusinessTypes.length} domaines`}
+                    : t("ps.nDomains").replace("{n}", String(effectiveBusinessTypes.length))}
               </span>
               <span className="text-xs font-medium text-[var(--color-text-tertiary)] shrink-0">
-                Modifier
+                {t("ps.edit")}
               </span>
             </button>
           ) : null}
@@ -876,13 +880,13 @@ export default function ProductSearch() {
           <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-4 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-red-800 dark:text-red-300">Recherche échouée</div>
+              <div className="text-sm font-semibold text-red-800 dark:text-red-300">{t("ps.searchFailed")}</div>
               <div className="text-sm text-red-700 dark:text-red-400 mt-0.5 break-words">{error}</div>
             </div>
             <button
               onClick={() => setError(null)}
               className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 shrink-0"
-              aria-label="Fermer"
+              aria-label={t("close")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -922,15 +926,17 @@ function SidebarSection({
   badge,
   action,
   children,
+  className,
 }: {
   id?: string
   title: string
   badge?: string
   action?: React.ReactNode
   children: React.ReactNode
+  className?: string
 }) {
   return (
-    <section id={id} className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
+    <section id={id} className={cn("rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/45 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md", className)}>
       <div className="flex items-center justify-between gap-2 px-3.5 pt-3 pb-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">
@@ -973,10 +979,10 @@ function AdminViewAsPicker({
 
   const label =
     value.length === 0
-      ? "Vue : toutes"
+      ? t("ps.viewAll")
       : value.length === 1
-        ? `Vue : ${t(BT_LABEL_KEYS[value[0]])}`
-        : `Vue : ${value.length} domaines`
+        ? t("ps.viewOne").replace("{name}", t(BT_LABEL_KEYS[value[0]]))
+        : t("ps.viewNDomains").replace("{n}", String(value.length))
 
   return (
     <div className="relative">
@@ -989,7 +995,7 @@ function AdminViewAsPicker({
             ? "border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/[0.08] text-amber-800 dark:text-amber-300"
             : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-hover)]",
         )}
-        title="Admin only — simuler un ou plusieurs domaines"
+        title={t("ps.adminSimulateTooltip")}
       >
         <Eye className="h-3.5 w-3.5" />
         <span className="hidden sm:inline truncate max-w-[200px]">{label}</span>
@@ -1008,7 +1014,7 @@ function AdminViewAsPicker({
             <div className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-500/[0.06] border-b border-[var(--color-border-secondary)] flex items-center justify-between gap-1.5">
               <span className="flex items-center gap-1.5">
                 <Eye className="h-3 w-3" />
-                Admin — simuler une vue
+                {t("ps.adminSimulateView")}
               </span>
               {value.length > 0 && (
                 <button
@@ -1070,6 +1076,7 @@ function SourcesPanel({
   adapters: AdapterToggles
   onToggle: <K extends keyof AdapterToggles>(key: K, value: AdapterToggles[K]) => void
 }) {
+  const { t } = useLanguage()
   const [showUpcoming, setShowUpcoming] = useState(false)
 
   // Vitesse indicative par groupe, affichée en note à droite de chaque
@@ -1098,7 +1105,7 @@ function SourcesPanel({
               key={src.key}
               type="button"
               onClick={() => onToggle(src.key, !checked as AdapterToggles[typeof src.key])}
-              title={src.hint}
+              title={t(src.hint)}
               aria-pressed={checked}
               className="w-full flex items-center gap-2.5 px-1.5 py-[7px] rounded-lg text-left hover:bg-[var(--color-background-hover)] transition-colors"
             >
@@ -1120,7 +1127,7 @@ function SourcesPanel({
                     : "text-[var(--color-text-secondary)]",
                 )}
               >
-                {src.label}
+                {t(src.label)}
               </span>
               {SPEED_BY_GROUP[src.group] && (
                 <span className="text-[10px] tabular-nums text-[var(--color-text-tertiary)] shrink-0">
@@ -1141,7 +1148,7 @@ function SourcesPanel({
             aria-expanded={showUpcoming}
           >
             <span className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider group-hover:text-[var(--color-text-primary)] transition-colors">
-              Sources à venir
+              {t("ps.upcomingSources")}
             </span>
             <span className="flex items-center gap-1.5 text-[10px] tabular-nums text-[var(--color-text-tertiary)]">
               {upcoming.length}
@@ -1155,15 +1162,15 @@ function SourcesPanel({
               {upcoming.map((src) => (
                 <div
                   key={src.key}
-                  title={src.hint}
+                  title={t(src.hint)}
                   className="flex items-center gap-2.5 px-1.5 py-[5px]"
                 >
                   <span className="h-4 w-4 shrink-0 rounded border border-dashed border-[var(--color-border-secondary)]" />
                   <span className="flex-1 min-w-0 truncate text-[13px] text-[var(--color-text-tertiary)]">
-                    {src.label}
+                    {t(src.label)}
                   </span>
                   <span className="text-[10px] text-[var(--color-text-tertiary)] shrink-0">
-                    bientôt
+                    {t("ps.soon")}
                   </span>
                 </div>
               ))}
@@ -1191,6 +1198,8 @@ function VehicleSpecsBox({
   /** Empile les champs sur une colonne (panneau latéral étroit). */
   compact?: boolean
 }) {
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
   const update = (patch: Partial<VehicleSpecs>) => onChange({ ...specs, ...patch })
 
   const detectedMake = useMemo(() => detectMakeFromQuery(queryText), [queryText])
@@ -1212,8 +1221,8 @@ function VehicleSpecsBox({
     () => mileageUnitForCategory(categoryPath),
     [categoryPath],
   )
-  const mileageLabel = mileageUnit === "h" ? "Heures moteur" : "Kilométrage"
-  const mileagePlaceholder = mileageUnit === "h" ? "ex: 250" : "ex: 12 500"
+  const mileageLabel = mileageUnit === "h" ? t("ps.engineHours") : t("table.mileage")
+  const mileagePlaceholder = mileageUnit === "h" ? t("ps.mileagePlaceholderHours") : t("ps.mileagePlaceholderKm")
 
   // Quand l'utilisateur change de marque (ex: passe de "Ford F-150" à
   // "Honda Civic"), on désélectionne les options propres à l'ancienne marque
@@ -1272,7 +1281,7 @@ function VehicleSpecsBox({
       <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-            État
+            {t("ps.condition")}
           </span>
           <select
             value={specs.condition}
@@ -1284,9 +1293,9 @@ function VehicleSpecsBox({
               "text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-text-primary)]/20 focus:border-[var(--color-text-tertiary)]",
             )}
           >
-            <option value="">Non précisé</option>
-            <option value="new">Neuf</option>
-            <option value="used">Usagé</option>
+            <option value="">{t("ps.notSpecified")}</option>
+            <option value="new">{t("etat.new")}</option>
+            <option value="used">{t("etat.used")}</option>
           </select>
         </label>
 
@@ -1312,7 +1321,7 @@ function VehicleSpecsBox({
 
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-            Prix demandé
+            {t("ps.askingPrice")}
           </span>
           <input
             type="text"
@@ -1320,7 +1329,7 @@ function VehicleSpecsBox({
             value={specs.askingPrice}
             onChange={(e) => update({ askingPrice: e.target.value.replace(/[^\d\s,]/g, "") })}
             disabled={disabled}
-            placeholder="ex: 6 900"
+            placeholder={t("ps.askingPricePlaceholder")}
             className={cn(
               "w-full px-3 py-2 rounded-lg border text-sm",
               "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]",

@@ -215,11 +215,17 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
 
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Lien profond depuis l'Analyse : /dashboard?recherche=<produit> pré-remplit
-  // la recherche pour retrouver le produit ciblé dans le tableau.
+  // Lien profond depuis l'Analyse : ?recherche=<produit> pré-remplit la
+  // recherche pour retrouver le produit ciblé, puis scrolle jusqu'à la zone
+  // de comparaison une fois la page posée.
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("recherche")
-    if (q) setSearchQuery(q)
+    if (!q) return
+    setSearchQuery(q)
+    const tm = setTimeout(() => {
+      document.getElementById("comparaison-toolbar")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 900)
+    return () => clearTimeout(tm)
   }, [])
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all")

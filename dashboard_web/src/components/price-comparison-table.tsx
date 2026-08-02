@@ -1272,13 +1272,17 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
              - Le menu ⋯ s'élargit (min-w-[280px]), section Affichage allégée
                (juste Couleurs + MatchMode), section Export complète,
                animation fade-in slide-in-from-top-2 à l'ouverture */}
-      <div className="flex items-center gap-2 py-2.5">
+      {/* flex-wrap sous sm : recherche pleine largeur, pills et actions
+          passent à la ligne au lieu de déborder de l'écran. L'id sert de
+          cible de scroll aux liens profonds ?recherche= (visible sur
+          mobile ET desktop, contrairement au tableau). */}
+      <div id="comparaison-toolbar" className="flex flex-wrap sm:flex-nowrap items-center gap-2 py-2.5">
         {/* Recherche — bornée à ~460px pour s'arrêter visuellement à la
             fin de la colonne PRIX RÉFÉRENCE du tableau (Image 80 + Produit
             280 + Prix 120 ≈ 480px, on enlève un peu pour les paddings).
             `flex-1` lui permet quand même de rétrécir si l'écran est petit. */}
         {onSearchChange && (
-          <div className="relative flex-1 max-w-[480px] min-w-[200px]">
+          <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-[480px] sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-text-tertiary)]" />
             <input
               type="text"
@@ -1297,8 +1301,8 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
 
         {/* Spacer flexible — comble l'espace entre la recherche bornée et
             les filtres compétitivité, pour que ces derniers ne collent pas
-            à la recherche. */}
-        <div className="flex-1" />
+            à la recherche. Inutile en mode wrap mobile. */}
+        <div className="hidden sm:block flex-1" />
 
         {/* Filtres compétitivité — pills colorées PLEINES (avec border et
             fond pâle) pour ressortir clairement. C'est l'action de tri la

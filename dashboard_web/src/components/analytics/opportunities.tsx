@@ -61,7 +61,7 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
         opportunites.length > 0 ? (
           <span className="text-xs text-[var(--color-text-secondary)] tabular-nums">
             <span className="font-semibold text-[var(--color-text-primary)]">{opportunites.length}</span>{" "}
-            {opportunites.length > 1 ? "détectées" : "détectée"}
+            {opportunites.length > 1 ? t("ap.opportunities.detectedMany") : t("ap.opportunities.detectedOne")}
           </span>
         ) : undefined
       }
@@ -77,7 +77,7 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
           <div className="px-5 py-4 flex items-end justify-between gap-4 border-b border-[var(--color-border-tertiary)]/40">
             <div>
               <p className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
-                Impact cumulé
+                {t("ap.opportunities.totalImpact")}
               </p>
               <p className="text-3xl font-extrabold tabular-nums leading-none mt-1.5 text-[var(--color-text-primary)] tracking-tight">
                 {totalImpact.toLocaleString(lc, { maximumFractionDigits: 0 })}$
@@ -89,21 +89,21 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                 <span className="inline-flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   <span className="font-semibold text-[var(--color-text-primary)]">{baisseCount}</span>
-                  <span className="opacity-75">baisse{baisseCount > 1 ? 's' : ''}</span>
+                  <span className="opacity-75">{t("ap.opportunities.decrease")}{baisseCount > 1 ? 's' : ''}</span>
                 </span>
               )}
               {hausseCount > 0 && (
                 <span className="inline-flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
                   <span className="font-semibold text-[var(--color-text-primary)]">{hausseCount}</span>
-                  <span className="opacity-75">hausse{hausseCount > 1 ? 's' : ''}</span>
+                  <span className="opacity-75">{t("ap.opportunities.increase")}{hausseCount > 1 ? 's' : ''}</span>
                 </span>
               )}
               {margeCount > 0 && (
                 <span className="inline-flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-text-primary)]/60" />
                   <span className="font-semibold text-[var(--color-text-primary)]">{margeCount}</span>
-                  <span className="opacity-75">marge{margeCount > 1 ? 's' : ''}</span>
+                  <span className="opacity-75">{t("ap.opportunities.margin")}{margeCount > 1 ? 's' : ''}</span>
                 </span>
               )}
             </div>
@@ -169,7 +169,7 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                       <button
                         type="button"
                         onClick={() =>
-                          router.push(`/dashboard?recherche=${encodeURIComponent(opp.produit)}`)
+                          router.push(`/dashboard/surveillance?recherche=${encodeURIComponent(opp.produit)}`)
                         }
                         className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 transition-colors"
                       >

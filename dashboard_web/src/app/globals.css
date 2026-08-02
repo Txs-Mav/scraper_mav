@@ -183,14 +183,16 @@
       linear-gradient(180deg, #f7f8fa 0%, #f4f5f7 60%, #f1f3f5 100%);
   }
 
+  /* Palette actuelle (orange + neutres) — les anciens radials émeraude/sarcelle
+     teintaient tout le fond sombre en vert, skeletons compris. */
   .dark .background-template {
     background:
-      radial-gradient(ellipse 80% 60% at 10% 0%, rgba(16, 185, 129, 0.03), transparent),
-      radial-gradient(ellipse 60% 50% at 90% 10%, rgba(20, 184, 166, 0.02), transparent),
-      radial-gradient(120% 120% at 20% 20%, rgba(80, 90, 85, 0.06), transparent 60%),
-      radial-gradient(120% 120% at 80% 0%, rgba(60, 70, 65, 0.06), transparent 55%),
-      radial-gradient(120% 120% at 50% 100%, rgba(30, 35, 32, 0.15), transparent 55%),
-      linear-gradient(180deg, #141617 0%, #111314 45%, #0f1112 100%);
+      radial-gradient(ellipse 80% 60% at 10% 0%, rgba(249, 115, 22, 0.03), transparent),
+      radial-gradient(ellipse 60% 50% at 90% 10%, rgba(251, 146, 60, 0.02), transparent),
+      radial-gradient(120% 120% at 20% 20%, rgba(88, 86, 84, 0.06), transparent 60%),
+      radial-gradient(120% 120% at 80% 0%, rgba(70, 66, 62, 0.06), transparent 55%),
+      radial-gradient(120% 120% at 50% 100%, rgba(34, 32, 30, 0.15), transparent 55%),
+      linear-gradient(180deg, #161514 0%, #131211 45%, #100f0f 100%);
   }
 
   .bloc-template {
