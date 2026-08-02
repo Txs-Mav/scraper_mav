@@ -1470,15 +1470,25 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         </div>
       </div>
 
-      <div id="price-comparison-table">
+      {/* Desktop : tableau complet. Mobile : cartes empilées (le scroll
+          horizontal d'un tableau à colonnes sticky est impraticable au pouce). */}
+      <div id="price-comparison-table" className="hidden sm:block">
         {renderTable(
           tableData,
           t("table.noProductsYet")
         )}
       </div>
 
+      <MobileComparisonCards
+        rows={filteredTableData}
+        emptyLabel={t("table.noProductsYet")}
+        seeMoreLabel={t("table.mobileSeeMore")}
+        remainingLabel={t("table.mobileRemaining")}
+        noCompetitorLabel={t("table.mobileNoCompetitor")}
+      />
+
       {totalRows > ROWS_PER_PAGE && (
-        <div className="flex items-center justify-between mt-4 px-6">
+        <div className="hidden sm:flex items-center justify-between mt-4 px-6">
           <span className="text-xs text-[var(--color-text-secondary)] tabular-nums">
             {t("table.showing")} {currentPage * ROWS_PER_PAGE + 1} {t("table.to")} {Math.min((currentPage + 1) * ROWS_PER_PAGE, totalRows)} {t("table.of")} {totalRows}
           </span>
@@ -1667,5 +1677,127 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
     </div>
   )
 })
+
+// ── Vue mobile : cartes empilées ─────────────────────────────────────────
+// Mêmes lignes que le tableau (recherche et filtre compétitivité appliqués),
+// sans la pagination desktop : chargement incrémental « Voir plus ».
+
+type MobileCardRow = {
+  productKey: string
+  displayName: string
+  image?: string
+  etat?: string
+  sourceCategorie?: string
+  reference: number | null
+  quantity: number
+  kilometrage?: number
+  referenceUrl?: string
+  prices: Array<{ dealer: string; price: number | null; delta: number | null; etat: string; url: string }>
+}
+
+const CARDS_BATCH = 15
+
+function MobileComparisonCards({
+  rows, emptyLabel, seeMoreLabel, remainingLabel, noCompetitorLabel,
+}: {
+  rows: MobileCardRow[]
+  emptyLabel: string
+  seeMoreLabel: string
+  remainingLabel: string
+  noCompetitorLabel: string
+}) {
+  const [visibleCount, setVisibleCount] = useState(CARDS_BATCH)
+
+  useEffect(() => { setVisibleCount(CARDS_BATCH) }, [rows.length])
+
+  const fmt = useMemo(
+    () => new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }),
+    []
+  )
+
+  if (rows.length === 0) {
+    return <p className="sm:hidden py-10 text-center text-sm text-[var(--color-text-secondary)]">{emptyLabel}</p>
+  }
+
+  return (
+    <div className="sm:hidden space-y-2.5">
+      {rows.slice(0, visibleCount).map(row => {
+        const priced = row.prices.filter(p => p.price !== null)
+        return (
+          <div
+            key={row.productKey}
+            className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] p-3"
+          >
+            <div className="flex items-start gap-3">
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[var(--color-background-secondary)]">
+                {row.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={row.image} alt="" loading="lazy" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-400">Img</div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] line-clamp-2">
+                  {row.displayName}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--color-text-secondary)]">
+                  {row.etat && <span className="rounded bg-[var(--color-background-secondary)] px-1.5 py-0.5 uppercase">{row.etat}</span>}
+                  {row.quantity > 1 && <span className="rounded bg-[var(--color-background-secondary)] px-1.5 py-0.5 tabular-nums">×{row.quantity}</span>}
+                  {typeof row.kilometrage === "number" && row.kilometrage > 0 && (
+                    <span className="tabular-nums">{row.kilometrage.toLocaleString("fr-CA")} km</span>
+                  )}
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-[15px] font-bold tabular-nums text-[var(--color-text-primary)]">
+                  {row.reference !== null ? fmt.format(row.reference) : "—"}
+                </p>
+              </div>
+            </div>
+
+            {priced.length > 0 ? (
+              <div className="mt-2.5 space-y-1 border-t border-[var(--color-border-tertiary)] pt-2">
+                {priced.map(p => (
+                  <div key={p.dealer} className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]">{p.dealer}</span>
+                    <span className="tabular-nums font-medium text-[var(--color-text-primary)]">{fmt.format(p.price!)}</span>
+                    {p.delta !== null && p.delta !== 0 && (
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+                        p.delta > 0
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                          : "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400"
+                      }`}>
+                        {p.delta > 0 ? "+" : "−"}{fmt.format(Math.abs(p.delta))}
+                      </span>
+                    )}
+                    {p.delta === 0 && (
+                      <span className="shrink-0 rounded bg-[var(--color-background-secondary)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-text-secondary)]">=</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2.5 border-t border-[var(--color-border-tertiary)] pt-2 text-[11px] text-[var(--color-text-secondary)]">
+                {noCompetitorLabel}
+              </p>
+            )}
+          </div>
+        )
+      })}
+
+      {rows.length > visibleCount && (
+        <button
+          type="button"
+          onClick={() => setVisibleCount(c => c + CARDS_BATCH)}
+          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] text-[13px] font-medium text-[var(--color-text-primary)] transition hover:bg-[var(--color-background-hover)]"
+        >
+          <ChevronDown className="h-4 w-4" />
+          {seeMoreLabel} ({rows.length - visibleCount} {remainingLabel})
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default PriceComparisonTable

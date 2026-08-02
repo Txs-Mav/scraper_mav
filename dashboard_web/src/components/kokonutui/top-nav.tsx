@@ -42,7 +42,7 @@ import { getDashboardCapabilities } from "@/lib/account-navigation"
 import { cn } from "@/lib/utils"
 import { canAccessAnalytics, canAccessOrganisation } from "@/lib/plan-restrictions"
 
-type NavLink = {
+export type NavLink = {
   id: string
   labelKey: string
   descriptionKey?: string
@@ -53,7 +53,7 @@ type NavLink = {
   badgeKey?: "pendingChanges"
 }
 
-type NavCategory = {
+export type NavCategory = {
   id: string
   labelKey: string
   descriptionKey: string
@@ -61,7 +61,7 @@ type NavCategory = {
   items: NavLink[]
 }
 
-const NAV_CATEGORIES: NavCategory[] = [
+export const NAV_CATEGORIES: NavCategory[] = [
   {
     id: "dashboard",
     labelKey: "topnav.cat.dashboard",
@@ -235,10 +235,9 @@ export default function TopNav() {
           <span className="text-lg font-semibold tracking-tight text-[var(--color-text-primary)]">GO-DATA</span>
         </Link>
 
-        {/* Sur mobile la barre déborde de l'écran : on la rend glissable
-            (scrollbar masquée) et alignée à gauche pour que le début reste
-            atteignable ; centrée comme avant dès sm. */}
-        <div className="flex-1 flex justify-start sm:justify-center min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Les catégories sont masquées sur mobile : la tab bar en bas les
+            remplace. Dès sm, barre centrée comme avant. */}
+        <div className="hidden sm:flex flex-1 justify-center min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
             {displayedCategories.map(category => {
               const isOpen = openCategory === category.id

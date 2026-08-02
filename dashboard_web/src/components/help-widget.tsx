@@ -79,7 +79,7 @@ export default function HelpWidget() {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`fixed bottom-6 left-6 z-50 p-3.5 rounded-full shadow-lg transition-all duration-200 ${
+        className={`fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 sm:bottom-6 sm:left-6 z-50 p-3.5 rounded-full shadow-lg transition-all duration-200 ${
           open
             ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 shadow-gray-900/20 rotate-90"
             : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border-secondary)] hover:shadow-xl hover:-translate-y-0.5 hover:border-gray-300 dark:hover:border-gray-700"
@@ -95,7 +95,7 @@ export default function HelpWidget() {
 
       {/* Panneau */}
       {open && (
-        <div className="fixed bottom-20 left-6 z-50 w-72 bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-[var(--color-border-secondary)] overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
+        <div className="fixed bottom-[calc(8rem+env(safe-area-inset-bottom))] left-4 right-4 w-auto sm:bottom-20 sm:left-6 sm:right-auto sm:w-72 z-50 bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-[var(--color-border-secondary)] overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
           <div className="px-5 pt-5 pb-3">
             <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Aide & Support</h3>
             <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">Comment pouvons-nous vous aider ?</p>

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react"
 import TopNav from "./top-nav"
+import MobileTabBar from "./mobile-tab-bar"
 import CommandSearch from "../command-search"
 import OnboardingChecklist from "../onboarding-checklist"
 import HelpWidget from "../help-widget"
@@ -31,12 +32,13 @@ export default function Layout({ children }: LayoutProps) {
       <header className="h-16 border-b border-[var(--color-border-secondary)]">
         <TopNav />
       </header>
-      <main className="flex-1 overflow-auto p-6 background-template">
+      <main className="flex-1 overflow-auto p-4 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-6 sm:pb-6 background-template">
         <div className="w-full max-w-[1800px] mx-auto">
           <Breadcrumbs />
           {children}
         </div>
       </main>
+      <MobileTabBar />
       <CommandSearch />
       <OnboardingChecklist />
       <HelpWidget />

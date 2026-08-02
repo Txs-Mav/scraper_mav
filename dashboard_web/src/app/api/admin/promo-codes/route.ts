@@ -27,7 +27,7 @@ export async function GET() {
   const [codesRes, usersRes, activityRes, scrapingsRes, authUsersRes] = await Promise.all([
     supabase
       .from('promo_codes')
-      .select('id, code, description, is_active, max_uses, current_uses, created_at')
+      .select('id, code, description, is_active, max_uses, current_uses, created_at, deactivated_at')
       .order('created_at', { ascending: false }),
     supabase
       .from('users')

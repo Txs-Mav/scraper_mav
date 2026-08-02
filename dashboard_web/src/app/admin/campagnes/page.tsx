@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react"
 import QRCode from "qrcode"
 import {
   Loader2, RefreshCw, AlertTriangle, QrCode, Copy, Check, Download,
-  ChevronDown, Users, Activity, LogIn, MailCheck, MailX,
+  ChevronDown, Users, Activity, LogIn, MailCheck, MailX, TrendingUp,
 } from "lucide-react"
 
 interface CampaignUser {
@@ -28,6 +28,7 @@ interface PromoCodeRow {
   max_uses: number | null
   current_uses: number
   created_at: string
+  deactivated_at: string | null
   users: CampaignUser[]
   users_count: number
 }
@@ -144,6 +145,13 @@ export default function AdminCampagnesPage() {
               campaign={c}
               expanded={expanded === c.id}
               onToggle={() => setExpanded(expanded === c.id ? null : c.id)}
+              onActiveChange={(id, next) =>
+                setCodes(prev => (prev || []).map(x =>
+                  x.id === id
+                    ? { ...x, is_active: next, deactivated_at: next ? null : new Date().toISOString() }
+                    : x
+                ))
+              }
             />
           ))}
           {codes && codes.length === 0 && (
@@ -156,51 +164,203 @@ export default function AdminCampagnesPage() {
 }
 
 function CampaignCard({
-  campaign, expanded, onToggle,
+  campaign, expanded, onToggle, onActiveChange,
 }: {
   campaign: PromoCodeRow
   expanded: boolean
   onToggle: () => void
+  onActiveChange: (id: string, next: boolean) => void
 }) {
   const url = signupUrl(campaign.code)
+  const [switching, setSwitching] = useState(false)
+  const [switchError, setSwitchError] = useState<string | null>(null)
+
+  const toggleActive = async () => {
+    if (switching) return
+    const next = !campaign.is_active
+    setSwitching(true)
+    setSwitchError(null)
+    try {
+      const res = await fetch(`/api/admin/promo-codes/${campaign.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: next }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setSwitchError(data?.error || "Erreur")
+        return
+      }
+      onActiveChange(campaign.id, data.code.is_active)
+    } catch (e: any) {
+      setSwitchError(e?.message || "Erreur réseau")
+    } finally {
+      setSwitching(false)
+    }
+  }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-4 px-5 py-3.5 text-left hover:bg-gray-50/60 transition"
-      >
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-          campaign.is_active ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400"
-        }`}>
-          <QrCode className="h-4 w-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="font-mono text-sm font-semibold text-gray-900">{campaign.code}</span>
-            {!campaign.is_active && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-200 uppercase">désactivé</span>
-            )}
+      <div className="w-full flex items-center gap-4 px-5 py-3.5">
+        <button type="button" onClick={onToggle} className="flex items-center gap-4 min-w-0 flex-1 text-left group">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+            campaign.is_active ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400"
+          }`}>
+            <QrCode className="h-4 w-4" />
           </span>
-          <span className="block text-xs text-gray-500 truncate">{campaign.description || "—"}</span>
-        </span>
-        <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 shrink-0">
-          <Users className="h-3.5 w-3.5 text-gray-400" />
-          <span className="tabular-nums font-medium text-gray-900">{campaign.users_count}</span>
-          inscription{campaign.users_count > 1 ? "s" : ""}
-        </span>
-        <ChevronDown className={`h-4 w-4 text-gray-400 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
-      </button>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="font-mono text-sm font-semibold text-gray-900">{campaign.code}</span>
+              {!campaign.is_active && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-200 uppercase">
+                  désactivé{campaign.deactivated_at ? ` le ${formatDate(campaign.deactivated_at)}` : ""}
+                </span>
+              )}
+            </span>
+            <span className="block text-xs text-gray-500 truncate">{campaign.description || "—"}</span>
+          </span>
+          <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 shrink-0">
+            <Users className="h-3.5 w-3.5 text-gray-400" />
+            <span className="tabular-nums font-medium text-gray-900">{campaign.users_count}</span>
+            inscription{campaign.users_count > 1 ? "s" : ""}
+          </span>
+        </button>
+
+        {/* Interrupteur : stoppe les nouvelles inscriptions, ne touche pas
+            aux comptes existants. Réversible en un clic. */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={campaign.is_active}
+          aria-label={campaign.is_active ? "Désactiver la campagne" : "Réactiver la campagne"}
+          title={campaign.is_active ? "Campagne active — cliquer pour stopper les nouvelles inscriptions" : "Campagne désactivée — cliquer pour réactiver"}
+          onClick={toggleActive}
+          disabled={switching}
+          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+            campaign.is_active ? "bg-orange-600" : "bg-gray-200"
+          }`}
+        >
+          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+            campaign.is_active ? "left-[18px]" : "left-0.5"
+          }`} />
+        </button>
+
+        <button type="button" onClick={onToggle} aria-label={expanded ? "Replier" : "Déplier"}>
+          <ChevronDown className={`h-4 w-4 text-gray-400 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {switchError && (
+        <p className="px-5 pb-2 text-xs text-red-600">{switchError}</p>
+      )}
 
       {expanded && (
         <div className="border-t border-gray-100">
           <div className="grid gap-5 p-5 sm:grid-cols-[auto,1fr]">
             <QrBlock code={campaign.code} url={url} />
+            <CampaignMonitor users={campaign.users} />
+          </div>
+          <div className="px-5 pb-5">
             <UsersTable users={campaign.users} />
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Zone de suivi de campagne : tuiles agrégées + inscriptions par jour. */
+function CampaignMonitor({ users }: { users: CampaignUser[] }) {
+  const stats = useMemo(() => {
+    const cutoff7d = Date.now() - 7 * 24 * 3600 * 1000
+    return {
+      signups: users.length,
+      confirmed: users.filter(u => u.email_confirmed_at).length,
+      active7d: users.filter(u => u.last_activity_at && new Date(u.last_activity_at).getTime() > cutoff7d).length,
+      sessions: users.reduce((s, u) => s + u.sessions_total, 0),
+      scrapings: users.reduce((s, u) => s + u.scrapings_total, 0),
+    }
+  }, [users])
+
+  // Inscriptions par jour, 14 derniers jours (fuseau local).
+  const days = useMemo(() => {
+    const out: Array<{ key: string; label: string; count: number }> = []
+    const today = new Date()
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i)
+      out.push({
+        key: d.toISOString().slice(0, 10),
+        label: d.toLocaleDateString("fr-CA", { day: "numeric", month: "short" }),
+        count: 0,
+      })
+    }
+    const index = new Map(out.map((d, i) => [d.key, i]))
+    for (const u of users) {
+      const d = new Date(u.created_at)
+      const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10)
+      const i = index.get(key)
+      if (i !== undefined) out[i].count++
+    }
+    return out
+  }, [users])
+
+  const max = Math.max(1, ...days.map(d => d.count))
+
+  return (
+    <div className="min-w-0">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
+        {[
+          { label: "Inscriptions", value: stats.signups },
+          { label: "Confirmés", value: stats.confirmed },
+          { label: "Actifs (7j)", value: stats.active7d },
+          { label: "Sessions", value: stats.sessions },
+          { label: "Comparaisons", value: stats.scrapings },
+        ].map(s => (
+          <div key={s.label} className="bg-white px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wider text-gray-500 font-medium truncate">{s.label}</p>
+            <p className="text-lg font-semibold text-gray-900 tabular-nums">{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-gray-200 p-4">
+        <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-gray-500 font-medium">
+          <TrendingUp className="h-3.5 w-3.5 text-gray-400" />
+          Inscriptions — 14 derniers jours
+        </p>
+        {days.every(d => d.count === 0) ? (
+          <p className="py-6 text-center text-xs text-gray-400">Aucune inscription sur la période.</p>
+        ) : (
+          <div>
+            <div className="mt-3 flex h-24 items-end gap-[3px]">
+              {days.map(d => (
+                <div
+                  key={d.key}
+                  title={`${d.label} — ${d.count} inscription${d.count > 1 ? "s" : ""}`}
+                  className="group relative flex-1 flex flex-col justify-end h-full"
+                >
+                  <div
+                    className={`w-full rounded-t-[3px] transition-colors ${
+                      d.count > 0 ? "bg-orange-600 group-hover:bg-orange-700" : "bg-gray-100"
+                    }`}
+                    style={{ height: d.count > 0 ? `${Math.max(8, (d.count / max) * 100)}%` : "3px" }}
+                  />
+                  {d.count > 0 && (
+                    <span className="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 text-[10px] font-semibold tabular-nums text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {d.count}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-1.5 flex justify-between text-[10px] text-gray-400">
+              <span>{days[0].label}</span>
+              <span>{days[7].label}</span>
+              <span>{days[13].label}</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

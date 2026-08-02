@@ -107,11 +107,12 @@ export default function AnnouncementModal() {
       aria-modal="true"
       aria-labelledby="announcement-title"
     >
-      {/* Fond flouté (les côtés sont floutés comme demandé) */}
-      <div className="absolute inset-0 bg-black/35 dark:bg-black/55 backdrop-blur-md" />
+      {/* Fond assombri — sans backdrop-blur : Safari iOS rend mal les
+          backdrop-filter animés (carte invisible, seul le fond reste). */}
+      <div className="absolute inset-0 bg-black/50 dark:bg-black/60" />
 
-      {/* Carte */}
-      <div className="relative w-full max-w-[560px] max-h-[90vh] flex flex-col bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl shadow-2xl shadow-black/25 dark:shadow-black/60 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      {/* Carte (dvh : la barre d'outils iOS ne doit pas manger la carte) */}
+      <div className="relative w-full max-w-[560px] max-h-[85dvh] flex flex-col bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-2xl shadow-2xl shadow-black/25 dark:shadow-black/60 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Bande décorative haute */}
         <div className="h-1 bg-gradient-to-r from-orange-500 via-orange-400 to-orange-600" />
 

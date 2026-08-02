@@ -91,6 +91,12 @@ interface SpotlightState {
 export default function OnboardingChecklist() {
   const [dismissed, setDismissed] = useState(true)
   const [minimized, setMinimized] = useState(false)
+
+  // Sur mobile le panneau complet mangerait la moitié de l'écran : on
+  // démarre replié (pastille), l'utilisateur l'ouvre s'il le veut.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 640) setMinimized(true)
+  }, [])
   const [welcomeOpen, setWelcomeOpen] = useState(false)
   const { user } = useAuth()
   const router = useRouter()
@@ -385,8 +391,15 @@ export default function OnboardingChecklist() {
     const firstName = user?.name?.split(" ")[0]
 
     return createPortal(
-      <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center animate-in fade-in duration-200">
-        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] shadow-2xl shadow-black/30 animate-in slide-in-from-bottom-4 fade-in duration-300">
+      // Pas de backdrop-blur ni d'ancrage bas ici : Safari iOS rend mal les
+      // backdrop-filter animés (contenu invisible, seul le fond assombri
+      // reste → écran « gelé ») et items-end place la carte derrière la
+      // barre d'outils. Centré, hauteur bornée en dvh, tap sur le fond = passer.
+      <div
+        className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200"
+        onClick={(e) => { if (e.target === e.currentTarget) handleWelcomeSkip() }}
+      >
+        <div className="w-full max-w-md max-h-[85dvh] overflow-y-auto rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] shadow-2xl shadow-black/30 animate-in slide-in-from-bottom-4 fade-in duration-300">
           <div className="relative p-6 sm:p-7">
             <button
               type="button"
@@ -470,7 +483,7 @@ export default function OnboardingChecklist() {
           {hasRect && spotlight.rect ? (
             <>
               <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-[3px] transition-all duration-300"
+                className="absolute inset-0 bg-black/60 transition-all duration-300"
                 style={{
                   clipPath: `polygon(
                     0% 0%, 0% 100%,
@@ -495,12 +508,12 @@ export default function OnboardingChecklist() {
               />
             </>
           ) : (
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-[3px] transition-all duration-300" />
+            <div className="absolute inset-0 bg-black/60 transition-all duration-300" />
           )}
         </div>
 
-        {/* Widget fixe en bas à gauche */}
-        <div className="fixed bottom-6 left-6 z-[91] w-80 animate-in slide-in-from-bottom-4 fade-in duration-300">
+        {/* Widget fixe en bas à gauche (pleine largeur sur mobile, safe-area) */}
+        <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 right-4 z-[91] animate-in slide-in-from-bottom-4 fade-in duration-300 sm:bottom-6 sm:left-6 sm:right-auto sm:w-80">
           <div className="bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/20 border border-[var(--color-border-secondary)] overflow-hidden">
             {/* Header avec progress */}
             <div className="px-5 pt-4 pb-3 border-b border-[var(--color-border-tertiary)]">
@@ -633,7 +646,7 @@ export default function OnboardingChecklist() {
         <button
           type="button"
           onClick={() => setMinimized(false)}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/30 hover:bg-orange-700 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-50 sm:bottom-6 sm:right-6 flex items-center gap-2 px-4 py-3 rounded-full bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/30 hover:bg-orange-700 hover:shadow-xl hover:-translate-y-0.5 transition-all"
         >
           <Sparkles className="h-4 w-4" />
           {completedCount}/{steps.length}
@@ -642,7 +655,7 @@ export default function OnboardingChecklist() {
     }
 
     return (
-      <div className="fixed bottom-6 right-6 z-50 w-80 bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-[var(--color-border-secondary)] overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
+      <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 right-4 z-50 sm:bottom-6 sm:left-auto sm:right-6 sm:w-80 bg-[var(--color-background-primary)] rounded-2xl shadow-2xl shadow-black/15 dark:shadow-black/40 border border-[var(--color-border-secondary)] overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
         <div className="relative px-5 pt-5 pb-4">
           <div className="absolute top-3 right-3 flex items-center gap-1">
             <button
