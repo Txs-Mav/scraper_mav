@@ -26,12 +26,19 @@ export interface SendEmailOptions {
   html?: string
   text?: string
   replyTo?: string
+  /** URL de gestion des notifications, exposée en List-Unsubscribe. */
+  unsubscribeUrl?: string
 }
 
 /**
- * Envoie un email via Resend depuis le domaine Go-data
+ * Envoie un email via Resend depuis le domaine Go-data.
+ *
+ * Délivrabilité : on envoie TOUJOURS une version texte à côté du HTML
+ * (les emails HTML-seuls pèsent lourd dans le score spam), et un en-tête
+ * List-Unsubscribe quand une URL de préférences est fournie (exigence
+ * Gmail/Yahoo pour les expéditeurs en volume).
  */
-export async function sendEmail({ to, subject, html, text, replyTo }: SendEmailOptions) {
+export async function sendEmail({ to, subject, html, text, replyTo, unsubscribeUrl }: SendEmailOptions) {
   const client = getResendClient()
   if (!client) {
     throw new Error('Resend non configuré. Définissez RESEND_API_KEY et RESEND_FROM_EMAIL dans .env.local')
@@ -43,8 +50,13 @@ export async function sendEmail({ to, subject, html, text, replyTo }: SendEmailO
     subject,
   }
   if (html) emailPayload.html = html
-  else if (text) emailPayload.text = text
+  if (text) emailPayload.text = text
   if (replyTo) emailPayload.replyTo = replyTo
+  if (unsubscribeUrl) {
+    emailPayload.headers = {
+      'List-Unsubscribe': `<${unsubscribeUrl}>`,
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await client.emails.send(emailPayload as any)
