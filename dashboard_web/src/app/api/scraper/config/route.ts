@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { syncAlertFromConfig } from '@/lib/alerts/sync-alert-from-config'
 
 const DEFAULT_INTERVAL_MINUTES = 40
 
@@ -203,121 +204,6 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
-
-// ─── Sync config → scraper_alerts so the hourly cron picks it up ────
-
-async function syncAlertFromConfig(
-  userId: string,
-  referenceUrl: string,
-  competitorUrls: string[]
-): Promise<{ synced: boolean; alertId?: string }> {
-  const serviceSupabase = createServiceClient()
-
-  const normalizeUrl = (url: string) => {
-    try {
-      const u = new URL(url)
-      return `${u.protocol}//${u.hostname.replace(/^www\./, '').toLowerCase()}${u.pathname.replace(/\/+$/, '')}`
-    } catch {
-      return url.toLowerCase().replace(/\/+$/, '').replace(/^https?:\/\/www\./, 'https://')
-    }
-  }
-
-  // Fetch ALL active alerts for this user to find a match (exact or normalized)
-  const { data: userAlerts } = await serviceSupabase
-    .from('scraper_alerts')
-    .select('id, reference_url, competitor_urls')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-
-  const normalizedRef = normalizeUrl(referenceUrl)
-  const existing = userAlerts?.find(a =>
-    a.reference_url === referenceUrl || normalizeUrl(a.reference_url) === normalizedRef
-  )
-
-  // Read current config to get filter_catalogue_reference
-  const { data: currentConfig } = await serviceSupabase
-    .from('scraper_config')
-    .select('filter_catalogue_reference')
-    .eq('user_id', userId)
-    .single()
-  const filterCatalogue = currentConfig?.filter_catalogue_reference ?? true
-
-  if (existing) {
-    // Update the matched alert AND fix reference_url to the canonical form
-    const { error } = await serviceSupabase
-      .from('scraper_alerts')
-      .update({
-        reference_url: referenceUrl,
-        competitor_urls: competitorUrls,
-        is_active: true,
-        filter_catalogue_reference: filterCatalogue,
-      })
-      .eq('id', existing.id)
-
-    if (error) {
-      console.error('[Config] Alert update failed:', error.message)
-      return { synced: false }
-    }
-
-    // Deactivate ALL other alerts for this user (stale alerts from old configs)
-    const otherAlertIds = (userAlerts || [])
-      .filter(a => a.id !== existing.id)
-      .map(a => a.id)
-    if (otherAlertIds.length > 0) {
-      await serviceSupabase
-        .from('scraper_alerts')
-        .update({ is_active: false })
-        .in('id', otherAlertIds)
-      console.log(`[Config] Deactivated ${otherAlertIds.length} stale alert(s)`)
-    }
-
-    console.log(`[Config] Alert updated: ${existing.id}`)
-    return { synced: true, alertId: existing.id }
-  }
-
-  // No matching alert found — deactivate ALL existing alerts for this user
-  if (userAlerts && userAlerts.length > 0) {
-    await serviceSupabase
-      .from('scraper_alerts')
-      .update({ is_active: false })
-      .eq('user_id', userId)
-    console.log(`[Config] Deactivated ${userAlerts.length} old alert(s)`)
-  }
-
-  // Create new alert entry
-  const { data: newAlert, error } = await serviceSupabase
-    .from('scraper_alerts')
-    .insert({
-      user_id: userId,
-      reference_url: referenceUrl,
-      competitor_urls: competitorUrls,
-      categories: ['inventaire', 'occasion', 'catalogue'],
-      filter_catalogue_reference: filterCatalogue,
-      schedule_type: 'interval',
-      schedule_hour: 0,
-      schedule_minute: 0,
-      schedule_interval_minutes: 40,
-      is_active: true,
-      email_notification: true,
-      watch_price_increase: true,
-      watch_price_decrease: true,
-      watch_new_products: true,
-      watch_removed_products: true,
-      watch_stock_changes: true,
-      min_price_change_pct: 1,
-      min_price_change_abs: 2,
-    })
-    .select('id')
-    .single()
-
-  if (error) {
-    console.error('[Config] Alert creation failed:', error.message)
-    return { synced: false }
-  }
-
-  console.log(`[Config] New alert created: ${newAlert.id} for ref=${referenceUrl}`)
-  return { synced: true, alertId: newAlert.id }
 }
 
 // ─── Fire-and-forget: trigger immediate scraping via alerts/check ────

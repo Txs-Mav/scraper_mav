@@ -1,19 +1,19 @@
 /**
- * Récap quotidien agrégé des variations d'alertes.
+ * Récap quotidien des changements détectés, envoyé par email UNE fois par
+ * jour, à l'heure choisie par chaque utilisateur (heure de l'Est).
  *
- * Pour chaque utilisateur ayant au moins une alerte active, on agrège
- * toutes les variations détectées (table `alert_changes`) sur la fenêtre
- * `since_hours` (24 h par défaut). Un seul email digest est envoyé par
- * utilisateur, et UNIQUEMENT si le total de variations > 0.
+ * Déclenchement :
+ *  - GitHub Actions appelle GET toutes les heures (`.github/workflows/email-digest.yml`).
+ *    Chaque passage n'envoie qu'aux utilisateurs dont l'heure choisie == heure courante.
+ *  - Vercel Cron appelle GET une fois par jour en fin de journée (filet de
+ *    sécurité) : détecté via le user-agent `vercel-cron`, il passe en mode
+ *    « rattrapage » et envoie aux utilisateurs dont l'heure est déjà passée
+ *    mais qui n'ont rien reçu (ex. panne du cron horaire).
+ *  - POST manuel depuis le dashboard (« Envoyer le récap maintenant ») :
+ *    limité à l'utilisateur de la session, ignore l'heure et l'anti-doublon.
  *
- * Appelé par Vercel Cron (voir `vercel.json`).
+ * Un email n'est envoyé QUE s'il y a au moins un changement dans la fenêtre.
  * Sécurisé par `CRON_SECRET` (header `Authorization: Bearer <token>`).
- *
- * Test manuel :
- *   curl -X POST https://app.go-data.co/api/alerts/daily-digest \
- *     -H "Authorization: Bearer $CRON_SECRET" \
- *     -H "Content-Type: application/json" \
- *     -d '{"user_id": "<uuid>", "since_hours": 24, "dry_run": true}'
  */
 
 import { NextResponse } from 'next/server'
@@ -21,10 +21,16 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 import {
   dispatchDailyDigest,
-  type DigestAlertGroup,
   type UserChannelsConfig,
   type AlertChange,
 } from '@/lib/notifications/dispatcher'
+import {
+  currentEasternHour,
+  fetchDigestPrefsMap,
+  defaultDigestPrefs,
+  updateDigestPrefs,
+  wasSentRecently,
+} from '@/lib/notifications/digest-settings'
 
 export const maxDuration = 300
 
@@ -34,9 +40,13 @@ interface DigestRunOptions {
   sinceHours: number
   userId?: string
   dryRun: boolean
+  /** Mode rattrapage : heure choisie <= heure courante (au lieu de ==). */
+  catchUp: boolean
+  /** Déclenchement manuel : ignore l'heure choisie et l'anti-doublon. */
+  force: boolean
 }
 
-// ─── GET — Vercel Cron quotidien ────────────────────────────────────
+// ─── GET — Cron horaire (GitHub Actions) ou filet Vercel ────────────
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
@@ -53,46 +63,60 @@ export async function GET(request: Request) {
   const sinceHours = parseInt(url.searchParams.get('since_hours') || '', 10) || DEFAULT_SINCE_HOURS
   const dryRun = url.searchParams.get('dry_run') === 'true'
 
-  return runDailyDigest({ sinceHours, dryRun })
+  // Le cron Vercel (quotidien, fin de journée) sert de rattrapage.
+  const userAgent = request.headers.get('user-agent') || ''
+  const catchUp = url.searchParams.get('catch_up') === 'true' || userAgent.includes('vercel-cron')
+
+  return runDailyDigest({ sinceHours, dryRun, catchUp, force: false })
 }
 
-// ─── POST — Déclenchement manuel ou test ────────────────────────────
+// ─── POST — Déclenchement manuel (dashboard) ou test cron ──────────
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({} as Record<string, unknown>))
 
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && process.env.NODE_ENV === 'production') {
-    const authHeader = request.headers.get('authorization')
+  const authHeader = request.headers.get('authorization')
+  const hasCronAuth = !!cronSecret && authHeader === `Bearer ${cronSecret}`
+
+  let userId = typeof body.user_id === 'string' ? body.user_id : undefined
+
+  if (!hasCronAuth) {
+    // Sans secret cron, il faut une session — et on ne peut déclencher
+    // le récap QUE pour soi-même.
     const sessionUser = await getCurrentUser().catch(() => null)
-    const hasCronAuth = authHeader === `Bearer ${cronSecret}`
-    if (!hasCronAuth && !sessionUser) {
+    if (!sessionUser) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
     }
+    userId = sessionUser.id
   }
 
   const sinceHours = typeof body.since_hours === 'number' ? body.since_hours : DEFAULT_SINCE_HOURS
-  const userId = typeof body.user_id === 'string' ? body.user_id : undefined
   const dryRun = body.dry_run === true
+  // Un envoi manuel ignore l'heure programmée et l'anti-doublon.
+  const force = hasCronAuth ? body.force === true : true
 
-  return runDailyDigest({ sinceHours, userId, dryRun })
+  return runDailyDigest({ sinceHours, userId, dryRun, catchUp: false, force })
 }
 
 // ─── Logique principale ─────────────────────────────────────────────
 
 async function runDailyDigest(options: DigestRunOptions) {
   const startedAt = Date.now()
+  const now = new Date()
   const serviceSupabase = createServiceClient()
-  const sinceIso = new Date(Date.now() - options.sinceHours * 3600_000).toISOString()
+  const sinceIso = new Date(now.getTime() - options.sinceHours * 3600_000).toISOString()
+  const localHour = currentEasternHour(now)
 
   console.log(
     `[Daily Digest] Démarrage` +
     `${options.userId ? ` user=${options.userId}` : ''}` +
-    ` since=${options.sinceHours}h${options.dryRun ? ' (dry_run)' : ''}`
+    ` since=${options.sinceHours}h localHour=${localHour}` +
+    `${options.catchUp ? ' (catch_up)' : ''}${options.force ? ' (force)' : ''}${options.dryRun ? ' (dry_run)' : ''}`
   )
 
   try {
-    // ── 1) Récupérer toutes les variations de la fenêtre ──
+    // ── 1) Variations de la fenêtre ──
     let changesQuery = serviceSupabase
       .from('alert_changes')
       .select('id, alert_id, user_id, change_type, product_name, old_value, new_value, percentage_change, details, source_site, detected_at')
@@ -116,6 +140,7 @@ async function runDailyDigest(options: DigestRunOptions) {
       return NextResponse.json({
         success: true,
         period_hours: options.sinceHours,
+        local_hour: localHour,
         users_processed: 0,
         digests_sent: 0,
         total_changes: 0,
@@ -123,14 +148,28 @@ async function runDailyDigest(options: DigestRunOptions) {
       })
     }
 
-    // ── 2) Grouper par user puis par alerte ──
-    const changesByUser = new Map<string, Map<string, AlertChange[]>>()
+    // ── 2) Filtrer les alertes dont l'email a été explicitement coupé ──
+    // (une alerte supprimée ou désactivée ne bloque PAS le récap : les
+    // changements détectés restent pertinents pour l'utilisateur)
+    const alertIds = Array.from(new Set(changesRows.map(r => r.alert_id).filter(Boolean)))
+    const mutedAlertIds = new Set<string>()
+    if (alertIds.length > 0) {
+      const { data: alertsRows } = await serviceSupabase
+        .from('scraper_alerts')
+        .select('id, email_notification')
+        .in('id', alertIds)
+      for (const a of alertsRows || []) {
+        if (a.email_notification === false) mutedAlertIds.add(a.id)
+      }
+    }
+
+    // ── 3) Grouper par utilisateur ──
+    const changesByUser = new Map<string, AlertChange[]>()
     for (const row of changesRows) {
-      if (!row.user_id || !row.alert_id) continue
-      if (!changesByUser.has(row.user_id)) changesByUser.set(row.user_id, new Map())
-      const byAlert = changesByUser.get(row.user_id)!
-      if (!byAlert.has(row.alert_id)) byAlert.set(row.alert_id, [])
-      byAlert.get(row.alert_id)!.push({
+      if (!row.user_id) continue
+      if (row.alert_id && mutedAlertIds.has(row.alert_id)) continue
+      if (!changesByUser.has(row.user_id)) changesByUser.set(row.user_id, [])
+      changesByUser.get(row.user_id)!.push({
         change_type: row.change_type,
         product_name: row.product_name || '',
         old_value: row.old_value,
@@ -141,43 +180,21 @@ async function runDailyDigest(options: DigestRunOptions) {
       })
     }
 
-    // ── 3) Charger les URLs de référence des alertes concernées ──
-    const allAlertIds = new Set<string>()
-    for (const byAlert of changesByUser.values()) {
-      for (const aid of byAlert.keys()) allAlertIds.add(aid)
-    }
-
-    const alertUrlMap = new Map<string, string>()
-    if (allAlertIds.size > 0) {
-      const { data: alertsRows } = await serviceSupabase
-        .from('scraper_alerts')
-        .select('id, reference_url, is_active, email_notification')
-        .in('id', Array.from(allAlertIds))
-
-      for (const a of alertsRows || []) {
-        // On ne digère que les alertes encore actives avec l'email activé.
-        if (a.is_active === false) continue
-        if (a.email_notification === false) continue
-        if (a.reference_url) alertUrlMap.set(a.id, a.reference_url as string)
-      }
-    }
-
-    // ── 4) Charger users + canaux ──
+    // ── 4) Charger users + canaux + préférences digest ──
     const userIds = Array.from(changesByUser.keys())
-    const { data: usersRows } = await serviceSupabase
-      .from('users')
-      .select('id, email, name')
-      .in('id', userIds)
+    const [{ data: usersRows }, { data: channelsRows }, prefsMap] = await Promise.all([
+      serviceSupabase.from('users').select('id, email, name').in('id', userIds),
+      serviceSupabase
+        .from('user_notification_channels')
+        .select('user_id, email_enabled, email_address, sms_enabled, sms_phone, slack_enabled, slack_webhook_url, slack_channel')
+        .in('user_id', userIds),
+      fetchDigestPrefsMap(serviceSupabase, userIds),
+    ])
 
     const userById = new Map<string, { email: string | null; name: string | null }>()
     for (const u of usersRows || []) {
       userById.set(u.id, { email: u.email || null, name: u.name || null })
     }
-
-    const { data: channelsRows } = await serviceSupabase
-      .from('user_notification_channels')
-      .select('user_id, email_enabled, email_address, sms_enabled, sms_phone, slack_enabled, slack_webhook_url, slack_channel')
-      .in('user_id', userIds)
 
     const channelsByUser = new Map<string, UserChannelsConfig>()
     for (const c of channelsRows || []) {
@@ -192,26 +209,35 @@ async function runDailyDigest(options: DigestRunOptions) {
       })
     }
 
-    // ── 5) Construire et envoyer chaque digest ──
+    // ── 5) Envoyer chaque récap éligible ──
     let digestsSent = 0
-    let usersSkippedNoChanges = 0
-    let usersSkippedNoEmail = 0
+    let skippedNotDue = 0
+    let skippedAlreadySent = 0
+    let skippedNoEmail = 0
     let totalChangesAggregated = 0
+    const perUser: Array<Record<string, unknown>> = []
 
-    for (const [userId, byAlert] of changesByUser) {
-      const groups: DigestAlertGroup[] = []
-      for (const [alertId, changes] of byAlert) {
-        const refUrl = alertUrlMap.get(alertId)
-        if (!refUrl) continue // alerte inactive, supprimée, ou email désactivé
-        groups.push({ alertId, siteUrl: refUrl, changes })
-      }
+    for (const [userId, changes] of changesByUser) {
+      totalChangesAggregated += changes.length
+      const prefs = prefsMap.get(userId) || defaultDigestPrefs()
 
-      const totalForUser = groups.reduce((s, g) => s + g.changes.length, 0)
-      totalChangesAggregated += totalForUser
-
-      if (totalForUser === 0 || groups.length === 0) {
-        usersSkippedNoChanges++
-        continue
+      // Heure d'envoi choisie par l'utilisateur
+      if (!options.force) {
+        if (!prefs.enabled) {
+          skippedNotDue++
+          perUser.push({ user_id: userId, sent: false, reason: 'digest_disabled' })
+          continue
+        }
+        const due = options.catchUp ? prefs.hour <= localHour : prefs.hour === localHour
+        if (!due) {
+          skippedNotDue++
+          continue
+        }
+        if (wasSentRecently(prefs, now)) {
+          skippedAlreadySent++
+          perUser.push({ user_id: userId, sent: false, reason: 'already_sent_recently' })
+          continue
+        }
       }
 
       const userInfo = userById.get(userId)
@@ -228,15 +254,15 @@ async function runDailyDigest(options: DigestRunOptions) {
       const emailEnabled = channels.email_enabled ?? true
       const emailTarget = channels.email_address || userInfo?.email
       if (!emailEnabled || !emailTarget) {
-        usersSkippedNoEmail++
+        skippedNoEmail++
+        perUser.push({ user_id: userId, sent: false, reason: 'email_disabled_or_missing' })
         continue
       }
 
       if (options.dryRun) {
-        console.log(
-          `[Daily Digest] [dry_run] user=${userId} → ${totalForUser} variations sur ${groups.length} alerte(s) (cible: ${emailTarget})`
-        )
+        console.log(`[Daily Digest] [dry_run] user=${userId} → ${changes.length} changements (cible: ${emailTarget}, heure choisie: ${prefs.hour}h)`)
         digestsSent++
+        perUser.push({ user_id: userId, sent: true, dry_run: true, changes: changes.length, target: emailTarget })
         continue
       }
 
@@ -247,20 +273,26 @@ async function runDailyDigest(options: DigestRunOptions) {
             userName: userInfo?.name || 'Utilisateur',
             userEmail: userInfo?.email || null,
             periodHours: options.sinceHours,
-            groups,
+            changes,
+            sendHourLocal: prefs.hour,
           },
           channels
         )
 
         if (result.email.attempted && result.email.ok) {
           digestsSent++
-          console.log(
-            `[Daily Digest] ✅ user=${userId} → email envoyé (${totalForUser} variations / ${groups.length} alertes)`
-          )
+          perUser.push({ user_id: userId, sent: true, changes: changes.length, target: emailTarget })
+          console.log(`[Daily Digest] ✅ user=${userId} → email envoyé (${changes.length} changements)`)
+          const marked = await updateDigestPrefs(serviceSupabase, userId, { lastSentAt: now.toISOString() }, prefs)
+          if (!marked.ok) {
+            console.warn(`[Daily Digest] Impossible de marquer l'envoi pour user=${userId}: ${marked.error}`)
+          }
         } else if (result.email.attempted && !result.email.ok) {
+          perUser.push({ user_id: userId, sent: false, reason: 'send_failed', error: result.email.error })
           console.warn(`[Daily Digest] ❌ user=${userId} → email échoué: ${result.email.error}`)
         }
       } catch (err: any) {
+        perUser.push({ user_id: userId, sent: false, reason: 'exception', error: err?.message })
         console.error(`[Daily Digest] Erreur user=${userId}:`, err?.message || err)
       }
     }
@@ -268,20 +300,25 @@ async function runDailyDigest(options: DigestRunOptions) {
     const elapsedMs = Date.now() - startedAt
     console.log(
       `[Daily Digest] Terminé en ${elapsedMs}ms — ` +
-      `users_processed=${userIds.length} digests_sent=${digestsSent} ` +
-      `skipped_no_changes=${usersSkippedNoChanges} skipped_no_email=${usersSkippedNoEmail} ` +
-      `total_changes=${totalChangesAggregated}`
+      `users=${userIds.length} sent=${digestsSent} not_due=${skippedNotDue} ` +
+      `already_sent=${skippedAlreadySent} no_email=${skippedNoEmail} changes=${totalChangesAggregated}`
     )
 
     return NextResponse.json({
       success: true,
       period_hours: options.sinceHours,
+      local_hour: localHour,
+      catch_up: options.catchUp,
+      force: options.force,
       dry_run: options.dryRun,
       users_processed: userIds.length,
       digests_sent: digestsSent,
-      skipped_no_changes: usersSkippedNoChanges,
-      skipped_no_email: usersSkippedNoEmail,
+      skipped_not_due: skippedNotDue,
+      skipped_already_sent: skippedAlreadySent,
+      skipped_no_email: skippedNoEmail,
       total_changes: totalChangesAggregated,
+      // Détail par utilisateur uniquement pour un envoi ciblé (manuel/test)
+      ...(options.userId ? { detail: perUser } : {}),
       elapsed_ms: elapsedMs,
     })
   } catch (error: any) {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/helpers'
 import { canAccessOrganisation, getAlertLimit, type PlanId } from '@/lib/plan-restrictions'
+import { ensureActiveAlertForUser } from '@/lib/alerts/sync-alert-from-config'
 
 const VALID_INTERVALS_HOURS = [1, 2, 4, 6, 12, 24]
 const VALID_INTERVALS_MINUTES = [20, 30, 40, 60, 120, 240, 360, 720, 1440]
@@ -34,6 +35,15 @@ export async function GET() {
     }
 
     const supabase = await createClient()
+
+    // Self-heal : si une config scraper existe mais qu'aucune alerte n'est
+    // active (ex. désactivée par une ancienne synchro), on la réactive pour
+    // que la surveillance et le récap quotidien fonctionnent.
+    try {
+      await ensureActiveAlertForUser(user.id)
+    } catch (healErr: any) {
+      console.warn('[Alerts GET] Self-heal non bloquant échoué:', healErr?.message)
+    }
 
     const { data: alerts, error } = await supabase
       .from('scraper_alerts')

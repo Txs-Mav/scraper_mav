@@ -325,7 +325,7 @@ export default function AlertePage() {
   } | null>(null)
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null)
 
-  // Planification de l'actualisation
+  // Planification de la surveillance (détection des changements)
   const [scheduleMode, setScheduleMode] = useState<'interval' | 'daily'>('interval')
   const [scheduleIntervalMin, setScheduleIntervalMin] = useState<number>(60)
   const [scheduleDailyHour, setScheduleDailyHour] = useState<number>(8)
@@ -334,6 +334,18 @@ export default function AlertePage() {
   const [scheduleDirty, setScheduleDirty] = useState(false)
   const [scheduleSavedAt, setScheduleSavedAt] = useState<Date | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
+
+  // Email quotidien (récap des changements)
+  const [digestEnabled, setDigestEnabled] = useState(true)
+  const [digestHour, setDigestHour] = useState(8)
+  const [digestLastSentAt, setDigestLastSentAt] = useState<string | null>(null)
+  const [digestEmailTarget, setDigestEmailTarget] = useState<string | null>(null)
+  const [digestDirty, setDigestDirty] = useState(false)
+  const [savingDigest, setSavingDigest] = useState(false)
+  const [digestSavedAt, setDigestSavedAt] = useState<Date | null>(null)
+  const [digestError, setDigestError] = useState<string | null>(null)
+  const [sendingDigest, setSendingDigest] = useState(false)
+  const [digestSendResult, setDigestSendResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   // ─── Auth checks ────────────────────────────────────────────
   useEffect(() => {
@@ -349,12 +361,22 @@ export default function AlertePage() {
     setLoading(true)
     setApiError(null)
     try {
-      const [alertsRes, changesRes, cacheRes, configRes] = await Promise.all([
+      const [alertsRes, changesRes, cacheRes, configRes, digestRes] = await Promise.all([
         fetch('/api/alerts'),
         fetch('/api/alerts/changes?limit=100'),
         fetch('/api/scraper-ai/cache'),
         fetch('/api/scraper/config'),
+        fetch('/api/alerts/digest-settings'),
       ])
+
+      if (digestRes.ok) {
+        const digestData = await digestRes.json()
+        setDigestEnabled(digestData.digest_enabled !== false)
+        if (typeof digestData.digest_hour === 'number') setDigestHour(digestData.digest_hour)
+        setDigestLastSentAt(digestData.digest_last_sent_at || null)
+        setDigestEmailTarget(digestData.email_target || null)
+        setDigestDirty(false)
+      }
 
       if (configRes.ok) {
         const configData = await configRes.json()
@@ -376,13 +398,14 @@ export default function AlertePage() {
         // Hydrate schedule UI from the user's active alert
         const primary = loadedAlerts.find(a => a.is_active) || loadedAlerts[0]
         if (primary) {
-          const mode = primary.schedule_type === 'daily' ? 'daily' : 'interval'
-          setScheduleMode(mode)
-          if (mode === 'interval') {
+          if (primary.schedule_type === 'interval') {
             const mins = primary.schedule_interval_minutes
               || (primary.schedule_interval_hours ? primary.schedule_interval_hours * 60 : 60)
+            setScheduleMode('interval')
             setScheduleIntervalMin(mins)
           } else {
+            // Mode « heure fixe » : une vérification par jour à heure choisie
+            setScheduleMode('daily')
             setScheduleDailyHour(primary.schedule_hour ?? 8)
             setScheduleDailyMinute(primary.schedule_minute ?? 0)
           }
@@ -599,19 +622,21 @@ export default function AlertePage() {
     setSavingSchedule(true)
     setScheduleError(null)
     try {
-      const payload: Record<string, any> = {}
-      if (scheduleMode === 'interval') {
-        payload.schedule_type = 'interval'
-        payload.schedule_interval_minutes = scheduleIntervalMin
-      } else {
-        payload.schedule_type = 'daily'
-        payload.schedule_hour = scheduleDailyHour
-        payload.schedule_minute = scheduleDailyMinute
-      }
       const res = await fetch(`/api/alerts/${primary.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(
+          scheduleMode === 'daily'
+            ? {
+                schedule_type: 'daily',
+                schedule_hour: scheduleDailyHour,
+                schedule_minute: scheduleDailyMinute,
+              }
+            : {
+                schedule_type: 'interval',
+                schedule_interval_minutes: scheduleIntervalMin,
+              }
+        ),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -620,14 +645,69 @@ export default function AlertePage() {
       }
       setScheduleDirty(false)
       setScheduleSavedAt(new Date())
-      if (scheduleMode === 'interval') {
-        setAlertIntervalMinutes(scheduleIntervalMin)
-      }
+      if (scheduleMode === 'interval') setAlertIntervalMinutes(scheduleIntervalMin)
       await loadData()
     } catch (err: any) {
       setScheduleError(err?.message || t("alerts.scheduleSaveError"))
     } finally {
       setSavingSchedule(false)
+    }
+  }
+
+  const saveDigestSettings = async () => {
+    if (savingDigest) return
+    setSavingDigest(true)
+    setDigestError(null)
+    try {
+      const res = await fetch('/api/alerts/digest-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ digest_enabled: digestEnabled, digest_hour: digestHour }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setDigestError(data?.error || t("alerts.digestSaveError"))
+        return
+      }
+      setDigestDirty(false)
+      setDigestSavedAt(new Date())
+    } catch (err: any) {
+      setDigestError(err?.message || t("alerts.digestSaveError"))
+    } finally {
+      setSavingDigest(false)
+    }
+  }
+
+  const sendDigestNow = async () => {
+    if (sendingDigest) return
+    setSendingDigest(true)
+    setDigestSendResult(null)
+    try {
+      const res = await fetch('/api/alerts/daily-digest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setDigestSendResult({ ok: false, message: data?.error || t("alerts.digestSendError") })
+        return
+      }
+      if (data.digests_sent > 0) {
+        const target = data.detail?.[0]?.target || digestEmailTarget || ''
+        setDigestSendResult({ ok: true, message: t("alerts.digestSentOk").replace("{0}", target) })
+        setDigestLastSentAt(new Date().toISOString())
+      } else if (!data.total_changes) {
+        setDigestSendResult({ ok: false, message: t("alerts.digestNoChanges") })
+      } else if (data.detail?.[0]?.reason === 'email_disabled_or_missing') {
+        setDigestSendResult({ ok: false, message: t("alerts.digestNoEmailTarget") })
+      } else {
+        setDigestSendResult({ ok: false, message: data.detail?.[0]?.error || t("alerts.digestSendError") })
+      }
+    } catch (err: any) {
+      setDigestSendResult({ ok: false, message: err?.message || t("alerts.digestSendError") })
+    } finally {
+      setSendingDigest(false)
     }
   }
 
@@ -698,7 +778,10 @@ export default function AlertePage() {
     [showAllChanges, changes]
   )
 
-  const activeAlerts = useMemo(() => alerts.filter(a => a.is_active).length, [alerts])
+  const monitoredSources = useMemo(
+    () => (configReferenceUrl ? 1 + configCompetitorUrls.length : 0),
+    [configReferenceUrl, configCompetitorUrls]
+  )
   const priceIncreases = useMemo(
     () => changes.filter(c => c.change_type === 'price_increase' && !c.is_read).length,
     [changes]
@@ -746,7 +829,7 @@ export default function AlertePage() {
         {/* ── KPI ── */}
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: t("alerts.activeAlerts"), value: activeAlerts, icon: Radar },
+            { label: t("alerts.activeAlerts"), value: monitoredSources, icon: Radar },
             { label: t("alerts.unread"), value: unreadCount, icon: Activity },
             { label: t("alerts.upTrend"), value: priceIncreases, icon: TrendingUp },
             { label: t("alerts.downTrend"), value: priceDecreases, icon: TrendingDown },
@@ -842,11 +925,9 @@ export default function AlertePage() {
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Timer className="h-3 w-3" />
-                  {scheduleMode === 'interval'
-                    ? (scheduleIntervalMin < 60
-                        ? t("alerts.everyXMinutes").replace("{0}", String(scheduleIntervalMin))
-                        : t("alerts.everyXHours").replace("{0}", String(Math.round(scheduleIntervalMin / 60))))
-                    : t("alerts.dailyAt").replace("{0}", `${String(scheduleDailyHour).padStart(2, '0')}:${String(scheduleDailyMinute).padStart(2, '0')}`)}
+                  {scheduleIntervalMin < 60
+                    ? t("alerts.everyXMinutes").replace("{0}", String(scheduleIntervalMin))
+                    : t("alerts.everyXHours").replace("{0}", String(Math.round(scheduleIntervalMin / 60)))}
                 </span>
                 {lastRefreshAt && (
                   <span className="inline-flex items-center gap-1.5">

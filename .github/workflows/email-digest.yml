@@ -1,0 +1,39 @@
+name: Récap quotidien par email
+
+# Appelle /api/alerts/daily-digest toutes les heures. L'endpoint n'envoie
+# l'email qu'aux utilisateurs dont l'heure choisie (heure de l'Est)
+# correspond à l'heure courante — un seul email par jour par utilisateur.
+# Minute 7 pour éviter scraper-cron (0), usine-cron (30) et surveillance (45).
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: email-digest
+  cancel-in-progress: false
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Déclencher le récap quotidien
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${APP_URL:-https://go-data-dashboard.vercel.app}"
+          echo "Appel de $BASE_URL/api/alerts/daily-digest"
+          HTTP_CODE=$(curl -sS -o /tmp/digest-response.json -w "%{http_code}" \
+            --max-time 280 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/alerts/daily-digest")
+          cat /tmp/digest-response.json
+          echo
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::daily-digest a répondu HTTP $HTTP_CODE"
+            exit 1
+          fi

@@ -363,7 +363,33 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
                 )
               }
 
-              const siteChanges = detectChanges(previousSiteProducts, currentSiteProducts, alertConfig, siteHostname)
+              let siteChanges = detectChanges(previousSiteProducts, currentSiteProducts, alertConfig, siteHostname)
+
+              // ── Garde-fou anti-tempête ──
+              // Un scrape partiel (page ratée, timeout, changement de layout)
+              // fait « disparaître » une grosse tranche de l'inventaire, puis
+              // la fait « réapparaître » au scrape suivant. Un concessionnaire
+              // ne retire ni n'ajoute réellement 30 % de son stock en un jour :
+              // au-delà de ce seuil, on considère que c'est une anomalie de
+              // scraping et on supprime les nouveaux/retirés de ce site (les
+              // variations de prix sur les produits présents restent fiables).
+              const CHURN_RATIO = 0.3
+              const CHURN_MIN = 5
+              const removedCount = siteChanges.filter(c => c.change_type === 'removed_product').length
+              const newCount = siteChanges.filter(c => c.change_type === 'new_product').length
+              if (removedCount > CHURN_MIN && removedCount / previousSiteProducts.length > CHURN_RATIO) {
+                console.warn(
+                  `[Alert Check] Alerte ${alert.id} (${siteHostname}): ${removedCount} retraits sur ${previousSiteProducts.length} produits — anomalie de scraping probable, retraits ignorés`
+                )
+                siteChanges = siteChanges.filter(c => c.change_type !== 'removed_product')
+              }
+              if (newCount > CHURN_MIN && newCount / Math.max(currentSiteProducts.length, 1) > CHURN_RATIO) {
+                console.warn(
+                  `[Alert Check] Alerte ${alert.id} (${siteHostname}): ${newCount} nouveaux sur ${currentSiteProducts.length} produits — probable retour après scrape partiel, nouveaux ignorés`
+                )
+                siteChanges = siteChanges.filter(c => c.change_type !== 'new_product')
+              }
+
               allChanges.push(...siteChanges)
             }
 
@@ -411,18 +437,20 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
                 console.error(`[Alert Check] Erreur insertion changements:`, insertErr)
               }
 
-            const wantsEmail = alert.email_notification !== false
+            // L'email n'est JAMAIS envoyé ici : il part une seule fois par
+            // jour via /api/alerts/daily-digest, à l'heure choisie par
+            // l'utilisateur. Seuls SMS et Slack restent en temps réel.
             const wantsSms = alert.sms_notification !== false
             const wantsSlack = alert.slack_notification !== false
 
-            if (wantsEmail || wantsSms || wantsSlack) {
+            if (wantsSms || wantsSlack) {
               await sendAlertNotificationsSafe(
                 userId,
                 refUrl,
                 cappedChanges,
                 totalCurrentCount,
                 totalPreviousCount,
-                { email: wantsEmail, sms: wantsSms, slack: wantsSlack },
+                { email: false, sms: wantsSms, slack: wantsSlack },
                 serviceSupabase
               )
             }
