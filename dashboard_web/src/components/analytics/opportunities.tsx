@@ -154,9 +154,11 @@ export default function OpportunitiesDetection({ opportunites }: OpportunitiesPr
                         />
                       </div>
                     </div>
+                    {/* impactPotentiel est une grandeur (toujours positive) :
+                        le signe affiché suit le sens de la recommandation. */}
                     <span className="text-sm font-bold tabular-nums text-[var(--color-text-primary)] shrink-0 whitespace-nowrap">
-                      {opp.impactPotentiel > 0 ? '+' : ''}
-                      {opp.impactPotentiel.toLocaleString(lc, { maximumFractionDigits: 0 })}$
+                      {opp.type === 'baisse' ? '−' : '+'}
+                      {magnitude.toLocaleString(lc, { maximumFractionDigits: 0 })}$
                     </span>
                   </button>
                   {isOpen && (
