@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, Suspense, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Bricolage_Grotesque } from "next/font/google"
 import { useAuth } from "@/contexts/auth-context"
@@ -53,6 +53,13 @@ function CreateAccountContent() {
   const { register } = useAuth()
   const { t } = useLanguage()
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Lien de campagne (flyers QR) : /create-account?code=XXXX valide le code
+  // magique automatiquement et saute l'étape du choix de plan.
+  const urlCode = searchParams.get("code")
+  const [campaignChecking, setCampaignChecking] = useState(!!urlCode)
+  const [fromCampaign, setFromCampaign] = useState(false)
 
   // Seul le plan gratuit peut être créé en ligne. Un code magique valide
   // active le plan Ultime; les autres plans passent par un contact humain.
@@ -131,6 +138,40 @@ function CreateAccountContent() {
   useEffect(() => {
     if (promoCodeValid === true) setSelectedPlan("ultime")
   }, [promoCodeValid])
+
+  // Valide le code passé dans l'URL (scan d'un QR de campagne). Si le code
+  // est bon, on atterrit directement sur l'étape Informations.
+  useEffect(() => {
+    if (!urlCode) return
+    let cancelled = false
+    const code = urlCode.toUpperCase().trim()
+    setPromoCode(code)
+    ;(async () => {
+      try {
+        const res = await fetch("/api/promo-codes/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        })
+        const data = await res.json()
+        if (cancelled) return
+        if (data.valid) {
+          setPromoCodeValid(true)
+          setFromCampaign(true)
+          setStep(1)
+        } else {
+          setPromoCodeValid(false)
+          setError(data.error || t("register.promoInvalid"))
+        }
+      } catch {
+        if (!cancelled) { setPromoCodeValid(false); setError(t("register.promoError")) }
+      } finally {
+        if (!cancelled) setCampaignChecking(false)
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlCode])
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -228,6 +269,29 @@ function CreateAccountContent() {
       </span>
     </button>
   )
+
+  const campaignBanner = fromCampaign && (
+    <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+      <Crown className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+      <div>
+        <p className="text-[13px] font-semibold text-emerald-800 dark:text-emerald-300">
+          {t("register.promoActivated")}
+        </p>
+        <p className="mt-0.5 text-[12px] text-emerald-700/80 dark:text-emerald-400/80">
+          {t("register.campaignApplied")}
+        </p>
+      </div>
+    </div>
+  )
+
+  if (campaignChecking) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#fafafa] dark:bg-[#0b0c0d]">
+        <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+        <p className="text-[13px] text-gray-500 dark:text-gray-400">{t("register.campaignChecking")}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#fafafa] dark:bg-[#0b0c0d]">
@@ -494,6 +558,7 @@ function CreateAccountContent() {
           {/* ══ Étape 2 — Vos informations ══ */}
           {step === 1 && (
             <section className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-7 dark:border-white/10 dark:bg-[#131517]">
+              {campaignBanner}
               {planRecap}
 
               <h2 className={`${display.className} mt-6 text-lg font-bold text-gray-900 dark:text-white`}>
@@ -606,6 +671,7 @@ function CreateAccountContent() {
           {/* ══ Étape 3 — Sécurité ══ */}
           {step === 2 && (
             <section className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-7 dark:border-white/10 dark:bg-[#131517]">
+              {campaignBanner}
               {planRecap}
 
               <h2 className={`${display.className} mt-6 text-lg font-bold text-gray-900 dark:text-white`}>
