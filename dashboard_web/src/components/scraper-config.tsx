@@ -8,6 +8,7 @@ import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { MARKETPLACE_SOURCES, type MarketplaceSource } from "@/lib/marketplace-sources"
+import { searchComingCfmotoDealers, type CfmotoDealer } from "@/lib/cfmoto-dealers"
 
 const DEFAULT_REFERENCE_URL = ""
 const SCRAPING_SESSION_KEY = "go-data-scraping-session"
@@ -84,6 +85,30 @@ function SiteFavicon({ url, name }: { url: string; name: string }) {
   return (
     <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e] flex items-center justify-center text-[11px] font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
       {initial}
+    </div>
+  )
+}
+
+// ── Logo d'un concessionnaire « à venir » (logo local ou initiales) ──
+function ComingDealerLogo({ dealer }: { dealer: CfmotoDealer }) {
+  if (dealer.logo) {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-white dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e] flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={dealer.logo} alt={dealer.name} width={24} height={24} className="w-6 h-6 object-contain" />
+      </div>
+    )
+  }
+  const initials = dealer.name
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join("")
+  return (
+    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e] flex items-center justify-center text-[11px] font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
+      {initials}
     </div>
   )
 }
@@ -652,6 +677,12 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     }
   }, [])
 
+  // Concessionnaires CFMoto « à venir » correspondant à la recherche (pas encore
+  // dans shared_scrapers) — affichés avec un badge, non sélectionnables.
+  const comingDealerMatches = searchComingCfmotoDealers(sharedSearchQuery).filter(
+    (d) => !d.website || !sharedSearchResults.some((r) => r.site_domain === d.website)
+  )
+
   const otherValidUrls = urls.filter((url, idx) => competitorEnabled[idx] && url.trim() !== "" && url.trim() !== referenceUrl.trim())
   const totalSitesToScrape = referenceUrl.trim() ? 1 + otherValidUrls.length : otherValidUrls.length
   const timeEstimate = getTimeEstimate()
@@ -786,7 +817,36 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                       )
                     })}
                   </div>
-                ) : !isSearchingShared ? (
+                ) : null}
+
+                {/* Concessionnaires « à venir » (réseau CFMoto, pas encore scrapés) */}
+                {comingDealerMatches.length > 0 && (
+                  <div className="divide-y divide-[var(--color-border-tertiary)] border-t border-[var(--color-border-tertiary)]">
+                    {comingDealerMatches.map((dealer) => (
+                      <div key={dealer.slug} className="flex items-center gap-3 px-3.5 py-3">
+                        <ComingDealerLogo dealer={dealer} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                              {dealer.name}
+                            </p>
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-orange-50 dark:bg-orange-500/10 text-[10px] font-medium text-orange-600 dark:text-orange-400 flex-shrink-0">
+                              <Clock className="w-2.5 h-2.5" />
+                              {t("config.comingSoon")}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--color-text-secondary)] truncate">
+                            {dealer.city}
+                            {dealer.website ? ` · ${dealer.website}` : ""}
+                            {` · ${t("config.comingSoonHint")}`}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {sharedSearchResults.length === 0 && comingDealerMatches.length === 0 && !isSearchingShared ? (
                   <div className="px-3.5 py-4 text-center">
                     <p className="text-xs text-[var(--color-text-secondary)]">{t("config.noResultsSearch")}</p>
                   </div>
