@@ -1,6 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" rx="108" fill="#1F2937"/>
-  <rect x="124" y="258" width="64" height="130" rx="32" fill="#FFFFFF"/>
-  <rect x="224" y="188" width="64" height="200" rx="32" fill="#FFFFFF"/>
-  <rect x="324" y="118" width="64" height="270" rx="32" fill="#FFFFFF"/>
+  <!-- Monogramme Go-Data : G contenant un point de données orange -->
+  <rect width="512" height="512" rx="108" fill="#111827"/>
+  <g transform="translate(16,16) scale(4.8)">
+    <path d="M 73.5 24.5 A 36 36 0 1 0 79 68" fill="none" stroke="#FFFFFF" stroke-width="21" stroke-linecap="round"/>
+    <path d="M 62 42 H 93.5 A 3 3 0 0 1 96.5 45 V 59 A 3 3 0 0 1 93.5 62 H 62 Z" fill="#FFFFFF"/>
+    <circle cx="47" cy="51" r="11" fill="#F97316"/>
+  </g>
 </svg>
