@@ -85,9 +85,15 @@ export default function RootLayout({
       contactType: "customer service",
       availableLanguage: ["French", "English"],
     },
-    // TODO: ajouter l'URL de la page LinkedIn entreprise dès qu'elle existe,
+    founder: {
+      "@type": "Person",
+      name: "Maverick Menard",
+      sameAs: ["https://www.linkedin.com/in/maverick-menard-479371386"],
+    },
+    // TODO: ajouter l'URL de la page LinkedIn ENTREPRISE dès qu'elle existe,
     // ex. sameAs: ["https://www.linkedin.com/company/go-data"]. Ne jamais
-    // publier de placeholder ici — Google lit ce bloc tel quel.
+    // publier de placeholder ici — Google lit ce bloc tel quel. (Le profil
+    // personnel du fondateur vit dans `founder.sameAs`, pas ici.)
     sameAs: [],
   }
 
