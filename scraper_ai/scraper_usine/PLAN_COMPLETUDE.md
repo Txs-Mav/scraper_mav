@@ -27,7 +27,7 @@ incomplet, en silence. Pour un comparateur de prix, incomplet = faux.
 
 ## 2. Preuve empirique — Audit v0 (lecture seule) du 2026-08-02
 
-Script : [`../scripts/completeness_audit.py`](../scripts/completeness_audit.py). Compare le
+Script : [`../../scripts/completeness_audit.py`](../../scripts/completeness_audit.py). Compare le
 `product_count` du dernier `scraped_site_data` à la **cible = nb d'URLs produit du sitemap que le
 scraper déclare lui-même** (`shared_scrapers.selectors.discovery.sitemap_url`). Aucune écriture.
 
