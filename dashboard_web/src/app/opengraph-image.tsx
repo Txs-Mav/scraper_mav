@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og"
 
-export const alt = "Go-Data — Vos données, prêtes à l'emploi"
+export const alt = "Go-Data — Veille de prix pour concessionnaires moto et sports motorisés"
 export const size = { width: 1200, height: 630 }
 export const contentType = "image/png"
 
@@ -13,114 +13,99 @@ export default function OGImage() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 50%, #0a0a1a 100%)",
+          justifyContent: "space-between",
+          background: "#111827",
+          padding: "72px 80px",
           position: "relative",
         }}
       >
-        {/* Grid pattern overlay */}
+        {/* Grille discrète */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
-            backgroundSize: "60px 60px",
+              "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)",
+            backgroundSize: "64px 64px",
           }}
         />
-
-        {/* Logo */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 120,
-            height: 120,
-            borderRadius: 28,
-            background: "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)",
-            marginBottom: 32,
-            boxShadow: "0 20px 60px rgba(37,99,235,0.3)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 52,
-              fontWeight: 900,
-              color: "white",
-              letterSpacing: -2,
-              lineHeight: 1,
-              marginBottom: 2,
-            }}
-          >
-            GO
-          </div>
-          <div style={{ display: "flex", gap: 4, alignItems: "flex-end" }}>
-            <div
-              style={{
-                width: 10,
-                height: 14,
-                background: "rgba(255,255,255,0.6)",
-                borderRadius: 3,
-              }}
-            />
-            <div
-              style={{
-                width: 10,
-                height: 22,
-                background: "rgba(255,255,255,0.7)",
-                borderRadius: 3,
-              }}
-            />
-            <div
-              style={{
-                width: 10,
-                height: 30,
-                background: "rgba(255,255,255,0.85)",
-                borderRadius: 3,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Title */}
-        <div
-          style={{
-            fontSize: 64,
-            fontWeight: 900,
-            color: "white",
-            letterSpacing: -2,
-            marginBottom: 16,
-            textAlign: "center",
-          }}
-        >
-          Go-Data
-        </div>
-
-        {/* Subtitle */}
-        <div
-          style={{
-            fontSize: 28,
-            color: "rgba(255,255,255,0.6)",
-            textAlign: "center",
-            maxWidth: 700,
-          }}
-        >
-          Vos données. Prêtes à l'emploi.
-        </div>
-
-        {/* URL */}
+        {/* Halo orange bas-droite */}
         <div
           style={{
             position: "absolute",
-            bottom: 40,
-            fontSize: 20,
-            color: "rgba(255,255,255,0.35)",
+            right: -160,
+            bottom: -220,
+            width: 560,
+            height: 560,
+            borderRadius: 9999,
+            background: "radial-gradient(circle, rgba(249,115,22,0.22) 0%, rgba(249,115,22,0) 70%)",
           }}
-        >
-          go-data.co
+        />
+
+        {/* En-tête : monogramme + wordmark */}
+        <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
+          <svg width="104" height="104" viewBox="0 0 512 512" fill="none">
+            <rect width="512" height="512" rx="108" fill="#1f2937" />
+            <g transform="translate(16,16) scale(4.8)">
+              <path
+                d="M 73.5 24.5 A 36 36 0 1 0 79 68"
+                fill="none"
+                stroke="#FFFFFF"
+                strokeWidth="21"
+                strokeLinecap="round"
+              />
+              <path d="M 62 42 H 93.5 A 3 3 0 0 1 96.5 45 V 59 A 3 3 0 0 1 93.5 62 H 62 Z" fill="#FFFFFF" />
+              <circle cx="47" cy="51" r="11" fill="#F97316" />
+            </g>
+          </svg>
+          <div
+            style={{
+              fontSize: 54,
+              fontWeight: 800,
+              color: "white",
+              letterSpacing: -1.5,
+            }}
+          >
+            Go-Data
+          </div>
+        </div>
+
+        {/* Message principal */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div
+            style={{
+              fontSize: 68,
+              fontWeight: 800,
+              color: "white",
+              letterSpacing: -2.5,
+              lineHeight: 1.08,
+              maxWidth: 1010,
+            }}
+          >
+            Veille de prix pour concessionnaires moto et sports motorisés
+          </div>
+          <div
+            style={{
+              fontSize: 30,
+              color: "rgba(255,255,255,0.66)",
+              letterSpacing: -0.5,
+            }}
+          >
+            Comparez votre position. Détectez les écarts. Ajustez vos prix.
+          </div>
+        </div>
+
+        {/* Pied : URL */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: 9999,
+              background: "#F97316",
+            }}
+          />
+          <div style={{ fontSize: 26, fontWeight: 600, color: "#F97316" }}>go-data.co</div>
         </div>
       </div>
     ),
