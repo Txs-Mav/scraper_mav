@@ -62,7 +62,7 @@ function formatLabel(key: string, gran: Granularity, locale: string): string {
   }
   if (gran === "week") {
     const [y, w] = key.split("-W")
-    return `S${w} ${y.slice(-2)}`
+    return `${locale === "en" ? "W" : "S"}${w} ${y.slice(-2)}`
   }
   const [y, m] = key.split("-")
   const d = new Date(Number(y), Number(m) - 1, 1)
@@ -74,7 +74,7 @@ interface RetailerSeries {
   color: string
 }
 
-function PriceTooltip({ active, payload, label }: any) {
+function PriceTooltip({ active, payload, label, lc }: any) {
   if (!active || !payload?.length) return null
   const visible = payload.filter((e: any) => e.value !== null && e.value !== undefined)
   if (visible.length === 0) return null
@@ -87,7 +87,7 @@ function PriceTooltip({ active, payload, label }: any) {
             <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
             <span className="text-[var(--color-text-secondary)] truncate flex-1 min-w-0">{entry.name}</span>
             <span className="font-semibold text-[var(--color-text-primary)] tabular-nums whitespace-nowrap">
-              {Number(entry.value).toLocaleString("fr-CA", { maximumFractionDigits: 0 })}$
+              {Number(entry.value).toLocaleString(lc || "fr-CA", { maximumFractionDigits: 0 })}$
             </span>
           </div>
         ))}
@@ -98,6 +98,7 @@ function PriceTooltip({ active, payload, label }: any) {
 
 export default function RetailerPriceTrends({ evolutionPrix }: RetailerPriceTrendsProps) {
   const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
   const [granularity, setGranularity] = useState<Granularity>("day")
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set())
 
@@ -260,7 +261,7 @@ export default function RetailerPriceTrends({ evolutionPrix }: RetailerPriceTren
                   v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k$` : `${v}$`
                 }
               />
-              <Tooltip content={<PriceTooltip />} />
+              <Tooltip content={<PriceTooltip lc={lc} />} />
               <Legend
                 wrapperStyle={{ paddingTop: 8, fontSize: 11 }}
                 iconType="circle"

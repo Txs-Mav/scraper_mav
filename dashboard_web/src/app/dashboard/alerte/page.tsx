@@ -716,7 +716,7 @@ export default function AlertePage() {
     setRefreshingProducts(true)
     setRefreshResult(null)
     try {
-      const res = await fetch('/api/products/analyze', { method: 'POST' })
+      const res = await fetch(`/api/products/analyze?locale=${locale === 'fr' ? 'fr' : 'en'}`, { method: 'POST' })
       const data = await res.json()
       if (res.ok && data.success) {
         setRefreshResult({

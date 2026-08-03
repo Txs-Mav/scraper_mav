@@ -15,7 +15,7 @@ interface PricePositioningProps {
 }
 
 export default function PricePositioningCard({ positionnement }: PricePositioningProps) {
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
 
   const getPositionLabel = () => {
     switch (positionnement.position) {
@@ -79,7 +79,7 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
               {t("ap.ranking")}
             </span>
             <span className="tabular-nums text-sm font-semibold text-[var(--color-text-primary)]">
-              {rank}<span className="text-[var(--color-text-secondary)] font-normal text-xs">{getOrdinalSuffix(rank)} / {total}</span>
+              {rank}<span className="text-[var(--color-text-secondary)] font-normal text-xs">{getOrdinalSuffix(rank, locale)} / {total}</span>
             </span>
           </div>
           <div className="relative h-1.5 rounded-full bg-[var(--color-background-secondary)] overflow-visible">
@@ -93,8 +93,8 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
             />
           </div>
           <div className="flex items-center justify-between mt-1.5 text-[10px] tabular-nums text-[var(--color-text-secondary)]">
-            <span>1er · {t("ap.lowest").toLowerCase()}</span>
-            <span>{total}{getOrdinalSuffix(total)}</span>
+            <span>1{getOrdinalSuffix(1, locale)} · {t("ap.lowest").toLowerCase()}</span>
+            <span>{total}{getOrdinalSuffix(total, locale)}</span>
           </div>
         </div>
       )}
@@ -102,7 +102,17 @@ export default function PricePositioningCard({ positionnement }: PricePositionin
   )
 }
 
-function getOrdinalSuffix(n: number): string {
+function getOrdinalSuffix(n: number, locale: string): string {
+  if (locale === 'en') {
+    const mod100 = n % 100
+    if (mod100 >= 11 && mod100 <= 13) return 'th'
+    switch (n % 10) {
+      case 1: return 'st'
+      case 2: return 'nd'
+      case 3: return 'rd'
+      default: return 'th'
+    }
+  }
   if (n === 1) return 'er'
   return 'e'
 }

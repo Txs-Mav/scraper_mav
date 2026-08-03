@@ -3,23 +3,24 @@
 import { Info } from "lucide-react"
 import type { ValuationReliability, ValuationResult } from "@/lib/search-valuation/types"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/contexts/language-context"
 import CompTable from "./comp-table"
 import PriceBand from "./price-band"
 
-function formatMoney(value: number | null): string {
+function formatMoney(value: number | null, lc: string): string {
   if (value == null) return "—"
-  return new Intl.NumberFormat("fr-CA", {
+  return new Intl.NumberFormat(lc, {
     style: "currency",
     currency: "CAD",
     maximumFractionDigits: 0,
   }).format(value)
 }
 
-function reliabilityLabel(reliability: ValuationReliability): string {
-  if (reliability === "good") return "Fiable"
-  if (reliability === "indicative") return "Indicatif"
-  if (reliability === "low") return "Fragile"
-  return "Trop peu de données"
+function reliabilityLabelKey(reliability: ValuationReliability): string {
+  if (reliability === "good") return "psc.reliabilityGood"
+  if (reliability === "indicative") return "psc.reliabilityIndicative"
+  if (reliability === "low") return "psc.reliabilityLow"
+  return "psc.reliabilityInsufficient"
 }
 
 function reliabilityTone(reliability: ValuationReliability): string {
@@ -39,14 +40,24 @@ function reliabilityTitle(result: ValuationResult): string {
   ].join(" · ")
 }
 
-function evaluationSpecChips(result: ValuationResult): string[] {
+function evaluationSpecChips(
+  result: ValuationResult,
+  t: (key: string) => string,
+  lc: string,
+): string[] {
   const parsed = result.parsed
   const chips: string[] = []
-  if (parsed.condition) chips.push(parsed.condition === "new" ? "Neuf" : "Usagé")
-  if (parsed.mileage != null) chips.push(`${parsed.mileage.toLocaleString("fr-CA")} km`)
-  if (parsed.priceTarget != null) chips.push(`Prix demandé ${formatMoney(parsed.priceTarget)}`)
+  if (parsed.condition) chips.push(parsed.condition === "new" ? t("psc.newCondition") : t("psc.usedCondition"))
+  if (parsed.mileage != null) chips.push(`${parsed.mileage.toLocaleString(lc)} km`)
+  if (parsed.priceTarget != null) {
+    chips.push(t("psc.askingPriceChip").replace("{price}", formatMoney(parsed.priceTarget, lc)))
+  }
   if (parsed.variantHints.length > 0) {
-    chips.push(`${parsed.variantHints.length} option${parsed.variantHints.length > 1 ? "s" : ""}`)
+    chips.push(
+      parsed.variantHints.length > 1
+        ? t("psc.nOptionsChip").replace("{n}", String(parsed.variantHints.length))
+        : t("psc.oneOptionChip"),
+    )
   }
   return chips
 }
@@ -55,11 +66,13 @@ function ValueStat({
   label,
   value,
   hint,
+  lc,
   emphasis = false,
 }: {
   label: string
   value: number | null
   hint: string
+  lc: string
   emphasis?: boolean
 }) {
   return (
@@ -80,7 +93,7 @@ function ValueStat({
           emphasis ? "text-2xl" : "text-lg",
         )}
       >
-        {formatMoney(value)}
+        {formatMoney(value, lc)}
       </div>
       <div className="mt-0.5 text-[10px] text-[var(--color-text-tertiary)]">{hint}</div>
     </div>
@@ -88,7 +101,9 @@ function ValueStat({
 }
 
 export default function EvaluationCard({ result }: { result: ValuationResult }) {
-  const specChips = evaluationSpecChips(result)
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
+  const specChips = evaluationSpecChips(result, t, lc)
 
   if (result.status === "insufficient") {
     return (
@@ -97,10 +112,10 @@ export default function EvaluationCard({ result }: { result: ValuationResult }) 
           <Info className="h-5 w-5 text-[var(--color-text-tertiary)] shrink-0 mt-0.5" />
           <div>
             <div className="text-sm font-semibold text-[var(--color-text-primary)]">
-              Échantillon insuffisant
+              {t("psc.insufficientSample")}
             </div>
             <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-              {result.message || "Affinez la recherche ou élargissez les sources pour obtenir au moins 3 comparables."}
+              {result.message || t("psc.refineSearchHint")}
             </p>
           </div>
         </div>
@@ -113,10 +128,10 @@ export default function EvaluationCard({ result }: { result: ValuationResult }) 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
-            Valeur estimée
+            {t("psc.estimatedValue")}
           </h2>
           <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-            Fourchette calculée automatiquement à partir de {result.comps.length} comparables.
+            {t("psc.rangeFromComps").replace("{n}", String(result.comps.length))}
           </p>
           {specChips.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -136,14 +151,14 @@ export default function EvaluationCard({ result }: { result: ValuationResult }) 
           title={reliabilityTitle(result)}
         >
           <span className={cn("h-2.5 w-2.5 rounded-full", reliabilityTone(result.reliability))} />
-          {reliabilityLabel(result.reliability)}
+          {t(reliabilityLabelKey(result.reliability))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <ValueStat label="Bas" value={result.lowValue} hint="Vente rapide" />
-        <ValueStat label="Prix juste" value={result.medianValue} hint="Référence principale" emphasis />
-        <ValueStat label="Haut" value={result.highValue} hint="Prix ambitieux" />
+        <ValueStat label={t("psc.low")} value={result.lowValue} hint={t("psc.quickSale")} lc={lc} />
+        <ValueStat label={t("psc.fairPrice")} value={result.medianValue} hint={t("psc.mainReference")} lc={lc} emphasis />
+        <ValueStat label={t("psc.high")} value={result.highValue} hint={t("psc.ambitiousPrice")} lc={lc} />
       </div>
 
       {result.pricePosition && <PriceBand position={result.pricePosition} />}

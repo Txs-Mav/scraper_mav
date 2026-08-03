@@ -458,8 +458,10 @@ function avgPrice(prods: Product[]): number {
  */
 export function calculatePricePositioning(
   products: Product[],
-  referenceSite: string
+  referenceSite: string,
+  locale: 'fr' | 'en' = 'fr'
 ): AnalyticsData['positionnement'] {
+  const en = locale === 'en'
   if (!products.length) {
     return {
       position: 'average',
@@ -467,7 +469,9 @@ export function calculatePricePositioning(
       ecartValeur: 0,
       classement: 1,
       totalDetailleurs: 0,
-      message: 'Aucune donnée disponible — effectuez un scraping pour voir les analyses.',
+      message: en
+        ? 'No data available — run a scraping to see the analytics.'
+        : 'Aucune donnée disponible — effectuez un scraping pour voir les analyses.',
     }
   }
 
@@ -486,7 +490,9 @@ export function calculatePricePositioning(
         ecartValeur: 0,
         classement: 1,
         totalDetailleurs: 1,
-        message: 'Un seul site analysé. Ajoutez des concurrents pour obtenir des comparaisons.',
+        message: en
+          ? 'Only one site analyzed. Add competitors to get comparisons.'
+          : 'Un seul site analysé. Ajoutez des concurrents pour obtenir des comparaisons.',
       }
     }
 
@@ -496,7 +502,9 @@ export function calculatePricePositioning(
       ecartValeur: 0,
       classement: 1,
       totalDetailleurs: sites.size,
-      message: 'Aucun produit identique trouvé entre votre site et les concurrents. Vérifiez que les noms de produits correspondent.',
+      message: en
+        ? 'No identical products found between your site and the competitors. Check that product names match.'
+        : 'Aucun produit identique trouvé entre votre site et les concurrents. Vérifiez que les noms de produits correspondent.',
     }
   }
 
@@ -541,9 +549,15 @@ export function calculatePricePositioning(
     position = 'average'
   }
 
-  const signe = ecartPourcentage >= 0 ? 'supérieur' : 'inférieur'
   const valeurAbs = Math.abs(ecartPourcentage)
-  const message = `Votre prix est ${signe} de ${valeurAbs.toFixed(1)}% à la moyenne des concurrents (basé sur ${refSite.produitsComparables} produit(s) comparable(s)). Classement: ${classement}${getOrdinalSuffix(classement)} sur ${totalDetailleurs} détaillant(s).`
+  let message: string
+  if (en) {
+    const signe = ecartPourcentage >= 0 ? 'higher' : 'lower'
+    message = `Your price is ${valeurAbs.toFixed(1)}% ${signe} than the competitor average (based on ${refSite.produitsComparables} comparable product(s)). Ranking: ${classement}${getOrdinalSuffix(classement, locale)} of ${totalDetailleurs} retailer(s).`
+  } else {
+    const signe = ecartPourcentage >= 0 ? 'supérieur' : 'inférieur'
+    message = `Votre prix est ${signe} de ${valeurAbs.toFixed(1)}% à la moyenne des concurrents (basé sur ${refSite.produitsComparables} produit(s) comparable(s)). Classement: ${classement}${getOrdinalSuffix(classement, locale)} sur ${totalDetailleurs} détaillant(s).`
+  }
 
   return {
     position,
@@ -624,8 +638,10 @@ export function calculateProductAnalysis(
  */
 export function calculateOpportunities(
   products: Product[],
-  referenceSite: string
+  referenceSite: string,
+  locale: 'fr' | 'en' = 'fr'
 ): AnalyticsData['opportunites'] {
+  const en = locale === 'en'
   const opportunites: AnalyticsData['opportunites'] = []
 
   const groups = buildMatchedProducts(products, referenceSite)
@@ -649,7 +665,9 @@ export function calculateOpportunities(
         type: 'augmentation',
         produit: g.name,
         categorie: g.categorie,
-        recommandation: `Augmenter le prix de ${augmentationPossible.toFixed(2)}$ pour se rapprocher de la moyenne des concurrents (${prixMoyenComp.toFixed(2)}$)`,
+        recommandation: en
+          ? `Increase the price by $${augmentationPossible.toFixed(2)} to move closer to the competitor average ($${prixMoyenComp.toFixed(2)})`
+          : `Augmenter le prix de ${augmentationPossible.toFixed(2)}$ pour se rapprocher de la moyenne des concurrents (${prixMoyenComp.toFixed(2)}$)`,
         impactPotentiel: augmentationPossible,
       })
     }
@@ -661,7 +679,9 @@ export function calculateOpportunities(
         type: 'baisse',
         produit: g.name,
         categorie: g.categorie,
-        recommandation: `Baisser le prix de ${baisseRecommandee.toFixed(2)}$ pour redevenir compétitif (concurrents à ${prixMoyenComp.toFixed(2)}$ en moyenne)`,
+        recommandation: en
+          ? `Lower the price by $${baisseRecommandee.toFixed(2)} to become competitive again (competitors average $${prixMoyenComp.toFixed(2)})`
+          : `Baisser le prix de ${baisseRecommandee.toFixed(2)}$ pour redevenir compétitif (concurrents à ${prixMoyenComp.toFixed(2)}$ en moyenne)`,
         impactPotentiel: prixRef - prixMoyenComp,
       })
     }
@@ -677,7 +697,9 @@ export function calculateOpportunities(
         type: 'marge',
         produit: g.name,
         categorie: g.categorie,
-        recommandation: `Marge potentielle: ${sitesCherCount}/${totalCompSites} concurrents sont plus chers de >8%`,
+        recommandation: en
+          ? `Potential margin: ${sitesCherCount}/${totalCompSites} competitors are >8% more expensive`
+          : `Marge potentielle: ${sitesCherCount}/${totalCompSites} concurrents sont plus chers de >8%`,
         impactPotentiel: prixRef * 0.05,
       })
     }
@@ -920,8 +942,10 @@ export function calculateCategoryAnalysis(
  */
 export function calculateAlerts(
   products: Product[],
-  referenceSite: string
+  referenceSite: string,
+  locale: 'fr' | 'en' = 'fr'
 ): AnalyticsData['alertes'] {
+  const en = locale === 'en'
   const alertes: AnalyticsData['alertes'] = []
   const groups = buildMatchedProducts(products, referenceSite)
   const now = new Date().toISOString()
@@ -944,7 +968,9 @@ export function calculateAlerts(
   if (produitsTresCher > 0) {
     alertes.push({
       type: 'ecart',
-      message: `${produitsTresCher} produit(s) sont >15% plus chers que les concurrents`,
+      message: en
+        ? `${produitsTresCher} product(s) are >15% more expensive than competitors`
+        : `${produitsTresCher} produit(s) sont >15% plus chers que les concurrents`,
       severite: 'high',
       date: now,
     })
@@ -953,7 +979,9 @@ export function calculateAlerts(
   if (produitsNonCompetitifs > produitsTresCher && produitsNonCompetitifs > 0) {
     alertes.push({
       type: 'ecart',
-      message: `${produitsNonCompetitifs} produit(s) non compétitifs (>0.5% plus chers que la moyenne concurrente)`,
+      message: en
+        ? `${produitsNonCompetitifs} non-competitive product(s) (>0.5% above the competitor average)`
+        : `${produitsNonCompetitifs} produit(s) non compétitifs (>0.5% plus chers que la moyenne concurrente)`,
       severite: produitsNonCompetitifs > 10 ? 'high' : produitsNonCompetitifs > 5 ? 'medium' : 'low',
       date: now,
     })
@@ -966,7 +994,9 @@ export function calculateAlerts(
   if (refOnlyCount > 0) {
     alertes.push({
       type: 'nouveau',
-      message: `${refOnlyCount} produit(s) de votre site n'ont aucune correspondance chez les concurrents`,
+      message: en
+        ? `${refOnlyCount} product(s) from your site have no match among competitors`
+        : `${refOnlyCount} produit(s) de votre site n'ont aucune correspondance chez les concurrents`,
       severite: 'low',
       date: now,
     })
@@ -979,7 +1009,9 @@ export function calculateAlerts(
   if (compOnlyCount > 0) {
     alertes.push({
       type: 'concurrent',
-      message: `${compOnlyCount} produit(s) trouvés chez les concurrents mais absents de votre site`,
+      message: en
+        ? `${compOnlyCount} product(s) found at competitors but missing from your site`
+        : `${compOnlyCount} produit(s) trouvés chez les concurrents mais absents de votre site`,
       severite: compOnlyCount > 5 ? 'medium' : 'low',
       date: now,
     })
@@ -1026,7 +1058,17 @@ export function calculatePriceEvolution(
   return []
 }
 
-function getOrdinalSuffix(n: number): string {
+function getOrdinalSuffix(n: number, locale: 'fr' | 'en' = 'fr'): string {
+  if (locale === 'en') {
+    const mod100 = n % 100
+    if (mod100 >= 11 && mod100 <= 13) return 'th'
+    switch (n % 10) {
+      case 1: return 'st'
+      case 2: return 'nd'
+      case 3: return 'rd'
+      default: return 'th'
+    }
+  }
   if (n === 1) return 'er'
   return 'e'
 }

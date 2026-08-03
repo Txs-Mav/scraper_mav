@@ -25,22 +25,24 @@ interface CategoryAnalysisProps {
   categories: CategoryStats[]
 }
 
-const categoryLabels: Record<string, string> = {
-  moto: "Moto",
-  motoneige: "Motoneige",
-  motocross: "Motocross",
-  scooter: "Scooter",
-  quad: "Quad",
-  "side-by-side": "Side-by-Side",
-  vtt: "VTT",
-  autre: "Autre",
+const categoryLabelKeys: Record<string, string> = {
+  moto: "ap.categoryAnalysis.catMoto",
+  motoneige: "ap.categoryAnalysis.catMotoneige",
+  motocross: "ap.categoryAnalysis.catMotocross",
+  scooter: "ap.categoryAnalysis.catScooter",
+  quad: "ap.categoryAnalysis.catQuad",
+  "side-by-side": "ap.categoryAnalysis.catSideBySide",
+  vtt: "ap.categoryAnalysis.catVtt",
+  autre: "ap.categoryAnalysis.catAutre",
 }
 
-const fmtPrice = (v: number) =>
-  v.toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "$"
+const fmtPrice = (v: number, lc: string) =>
+  v.toLocaleString(lc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "$"
 
 export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) {
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
+  const catLabel = (c: string) => (categoryLabelKeys[c] ? t(categoryLabelKeys[c]) : c)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
 
   const ecartColor = (ecart: number) => {
@@ -78,7 +80,7 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                     className="w-full grid grid-cols-[1fr_5rem_5rem_2rem] gap-3 items-center px-5 py-2.5 text-sm hover:bg-[var(--color-background-hover)]/40 transition-colors"
                   >
                     <span className="text-[var(--color-text-primary)] text-left truncate">
-                      {categoryLabels[cat.categorie] || cat.categorie}
+                      {catLabel(cat.categorie)}
                     </span>
                     <span className="text-right tabular-nums text-[var(--color-text-secondary)]">
                       {cat.nombreProduits}
@@ -99,13 +101,13 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                         <span>
                           {t("ap.yourAvgPrice")}{" "}
                           <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
-                            {cat.prixMoyenReference > 0 ? fmtPrice(cat.prixMoyenReference) : 'N/A'}
+                            {cat.prixMoyenReference > 0 ? fmtPrice(cat.prixMoyenReference, lc) : 'N/A'}
                           </span>
                         </span>
                         <span>
                           {t("ap.compAvgPrice")}{" "}
                           <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
-                            {cat.prixMoyenConcurrents > 0 ? fmtPrice(cat.prixMoyenConcurrents) : 'N/A'}
+                            {cat.prixMoyenConcurrents > 0 ? fmtPrice(cat.prixMoyenConcurrents, lc) : 'N/A'}
                           </span>
                         </span>
                       </div>
@@ -127,7 +129,7 @@ export default function CategoryAnalysis({ categories }: CategoryAnalysisProps) 
                               >
                                 <span className="text-[var(--color-text-primary)] truncate">{det.site}</span>
                                 <span className="text-right tabular-nums text-[var(--color-text-primary)]">
-                                  {fmtPrice(det.prixMoyen)}
+                                  {fmtPrice(det.prixMoyen, lc)}
                                 </span>
                                 <span className={`text-right tabular-nums font-semibold ${ecartColor(det.ecartPourcentage)}`}>
                                   {det.ecartPourcentage >= 0 ? '+' : ''}{det.ecartPourcentage.toFixed(1)}%

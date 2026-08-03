@@ -95,7 +95,7 @@ export default function BusinessTypeOnboardingModal({
         body: JSON.stringify({ business_types: arr }),
       })
       if (res.status === 401) {
-        toast.error("Session expirée — reconnectez-vous pour sauvegarder")
+        toast.error(t("psc.sessionExpired"))
         if (typeof window !== "undefined") {
           setTimeout(() => {
             window.location.href = `/login?next=${encodeURIComponent("/dashboard/recherche")}`
@@ -111,11 +111,11 @@ export default function BusinessTypeOnboardingModal({
       await onConfirm(arr)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      toast.error(`Impossible de sauvegarder : ${msg}`)
+      toast.error(t("psc.saveError").replace("{msg}", msg))
     } finally {
       setSaving(false)
     }
-  }, [selected, refreshUser, onConfirm])
+  }, [selected, refreshUser, onConfirm, t])
 
   if (!open) return null
 
@@ -136,18 +136,16 @@ export default function BusinessTypeOnboardingModal({
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400 text-xs font-semibold uppercase tracking-wide mb-1.5">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Recherche par produit</span>
+              <span>{t("nav.productSearch")}</span>
             </div>
             <h2
               id="bt-modal-title"
               className="text-xl font-bold text-[var(--color-text-primary)] leading-snug"
             >
-              Dans quels domaines recherchez-vous des produits&nbsp;?
+              {t("psc.btTitle")}
             </h2>
             <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] leading-relaxed">
-              Cochez tous ceux qui s&apos;appliquent. Votre réponse sert à pré-sélectionner
-              la catégorie la plus pertinente. Vous pourrez toujours en choisir une autre au
-              cas par cas, et changer ce réglage plus tard depuis votre profil.
+              {t("psc.btDesc")}
             </p>
           </div>
           {!required && onDismiss && (
@@ -155,7 +153,7 @@ export default function BusinessTypeOnboardingModal({
               type="button"
               onClick={onDismiss}
               className="shrink-0 p-1.5 rounded-lg text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
-              aria-label="Fermer"
+              aria-label={t("close")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -219,10 +217,10 @@ export default function BusinessTypeOnboardingModal({
         <div className="px-6 py-4 border-t border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] flex items-center justify-between gap-3">
           <p className="text-[11.5px] text-[var(--color-text-tertiary)] flex-1 min-w-0">
             {selected.size === 0
-              ? "Sélectionne au moins un domaine pour continuer."
+              ? t("psc.btSelectOne")
               : selected.size === 1
-                ? "1 domaine sélectionné."
-                : `${selected.size} domaines sélectionnés.`}
+                ? t("psc.btOneSelected")
+                : t("psc.btManySelected").replace("{n}", String(selected.size))}
           </p>
           <button
             type="button"
@@ -236,7 +234,7 @@ export default function BusinessTypeOnboardingModal({
             )}
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {saving ? "Sauvegarde…" : "Confirmer"}
+            {saving ? t("psc.saving") : t("confirm")}
           </button>
         </div>
       </div>

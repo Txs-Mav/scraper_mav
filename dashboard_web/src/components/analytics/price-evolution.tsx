@@ -14,7 +14,7 @@ interface PriceEvolutionProps {
   scrapesParJour: Array<{ date: string; count: number }>
 }
 
-function PriceTooltip({ active, payload, label }: any) {
+function PriceTooltip({ active, payload, label, lc = 'fr-CA' }: any) {
   if (!active || !payload?.length) return null
   return (
     <div className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-xl px-3 py-2 shadow-2xl text-xs">
@@ -25,7 +25,7 @@ function PriceTooltip({ active, payload, label }: any) {
             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: entry.color }} />
             <span className="text-[var(--color-text-secondary)]">{entry.name}</span>
             <span className="font-semibold text-[var(--color-text-primary)] ml-auto tabular-nums">
-              {Number(entry.value).toLocaleString('fr-CA')}$
+              {Number(entry.value).toLocaleString(lc)}$
             </span>
           </div>
         ))}
@@ -136,7 +136,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
                 {avgPerActiveDay > 0 && (
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
-                      Moy. / jour
+                      {t("ap.priceEvolution.avgPerDay")}
                     </p>
                     <p className="text-base font-bold tabular-nums text-[var(--color-text-primary)] mt-0.5">
                       {avgPerActiveDay.toFixed(1)}
@@ -213,7 +213,7 @@ export default function PriceEvolutionChart({ evolutionPrix, scrapesParJour }: P
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip content={<PriceTooltip />} cursor={{ stroke: 'currentColor', strokeOpacity: 0.15 }} />
+          <Tooltip content={<PriceTooltip lc={lc} />} cursor={{ stroke: 'currentColor', strokeOpacity: 0.15 }} />
           <Legend
             wrapperStyle={{ paddingTop: 12, fontSize: 11 }}
             iconType="circle"

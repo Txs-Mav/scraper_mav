@@ -42,22 +42,23 @@ interface Bucket {
   count: number
 }
 
-const BUCKET_DEFS: Array<Omit<Bucket, "count">> = [
-  { key: "lt-15", label: "< -15%", min: -Infinity, max: -15 },
-  { key: "-15-10", label: "-15 à -10%", min: -15, max: -10 },
-  { key: "-10-5", label: "-10 à -5%", min: -10, max: -5 },
-  { key: "-5-0", label: "-5 à 0%", min: -5, max: 0 },
-  { key: "0-5", label: "0 à +5%", min: 0, max: 5 },
-  { key: "5-10", label: "+5 à +10%", min: 5, max: 10 },
-  { key: "10-15", label: "+10 à +15%", min: 10, max: 15 },
-  { key: "gt15", label: "> +15%", min: 15, max: Infinity },
+const BUCKET_DEFS: Array<Omit<Bucket, "count" | "label">> = [
+  { key: "lt-15", min: -Infinity, max: -15 },
+  { key: "-15-10", min: -15, max: -10 },
+  { key: "-10-5", min: -10, max: -5 },
+  { key: "-5-0", min: -5, max: 0 },
+  { key: "0-5", min: 0, max: 5 },
+  { key: "5-10", min: 5, max: 10 },
+  { key: "10-15", min: 10, max: 15 },
+  { key: "gt15", min: 15, max: Infinity },
 ]
 
-const fmtPrice = (v: number) =>
-  v.toLocaleString("fr-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + "$"
+const fmtPrice = (v: number, lc: string) =>
+  v.toLocaleString(lc, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + "$"
 
 export default function Visualizations({ produits }: VisualizationsProps) {
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
   const [view, setView] = useState<"cheapest" | "expensive">("cheapest")
 
   const compared = useMemo(
@@ -66,11 +67,20 @@ export default function Visualizations({ produits }: VisualizationsProps) {
   )
 
   const buckets: Bucket[] = useMemo(() => {
+    const fmtBound = (v: number) => (v > 0 ? `+${v}` : `${v}`)
+    const bucketLabel = (min: number, max: number) => {
+      if (min === -Infinity) return "< -15%"
+      if (max === Infinity) return "> +15%"
+      return t("ap.visualizations.bucketRange")
+        .replace("{a}", fmtBound(min))
+        .replace("{b}", fmtBound(max))
+    }
     return BUCKET_DEFS.map(def => ({
       ...def,
+      label: bucketLabel(def.min, def.max),
       count: compared.filter(p => p.ecartPourcentage >= def.min && p.ecartPourcentage < def.max).length,
     }))
-  }, [compared])
+  }, [compared, t])
 
   const maxCount = Math.max(1, ...buckets.map(b => b.count))
   const total = compared.length
@@ -219,8 +229,8 @@ export default function Visualizations({ produits }: VisualizationsProps) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-[var(--color-text-primary)] truncate">{p.name}</p>
                   <p className="text-[11px] text-[var(--color-text-secondary)] tabular-nums">
-                    {fmtPrice(p.prix)}{" "}
-                    <span className="opacity-50">/ {fmtPrice(p.prixMoyenMarche)}</span>
+                    {fmtPrice(p.prix, lc)}{" "}
+                    <span className="opacity-50">/ {fmtPrice(p.prixMoyenMarche, lc)}</span>
                   </p>
                 </div>
                 <span

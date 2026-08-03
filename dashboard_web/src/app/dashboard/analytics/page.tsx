@@ -148,7 +148,7 @@ export default function AnalyticsPage() {
         setLoading(true)
       }
 
-      const response = await fetch('/api/analytics')
+      const response = await fetch(`/api/analytics?locale=${locale === 'fr' ? 'fr' : 'en'}`)
       const data = await response.json()
 
       if (!response.ok) {
@@ -171,7 +171,7 @@ export default function AnalyticsPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [locale])
 
   const handleReset = useCallback(async () => {
     if (!confirm(t("analytics.resetConfirm"))) {
@@ -203,7 +203,7 @@ export default function AnalyticsPage() {
           response.status === 408 ||
           response.status === 524
         const message = isTimeout
-          ? "La suppression a pris trop de temps. Vous avez beaucoup de données accumulées — réessayez, l'opération se poursuivra par lots successifs."
+          ? t("ap.page.resetTimeout")
           : data.error || t("analytics.resetError")
         const detail = data.details || data.hint || ''
         alert(detail ? `${message}\n\n${detail}` : message)
@@ -422,7 +422,7 @@ export default function AnalyticsPage() {
                     <span className="font-semibold text-emerald-600 dark:text-emerald-400">{competitifCount}</span>
                     <span className="opacity-60"> / </span>
                     <span className="font-semibold text-[var(--color-text-primary)]">{comparableCount}</span>
-                    <span className="opacity-60"> produits</span>
+                    <span className="opacity-60"> {t("ap.products").toLowerCase()}</span>
                   </p>
                 </div>
               </div>

@@ -17,6 +17,13 @@ import type {
 
 const CURRENT_YEAR = new Date().getFullYear()
 
+/** Locale des messages construits par la lib (pas de t() ici — paires fr/en inline). */
+export type ValuationLocale = "fr" | "en"
+
+function numberLocale(locale: ValuationLocale): string {
+  return locale === "en" ? "en-CA" : "fr-CA"
+}
+
 function normalizeText(value: string): string {
   return value
     .toLowerCase()
@@ -27,8 +34,9 @@ function normalizeText(value: string): string {
     .trim()
 }
 
-function money(value: number): string {
-  return `${Math.round(value).toLocaleString("fr-CA")} $`
+function money(value: number, locale: ValuationLocale = "fr"): string {
+  const formatted = Math.round(value).toLocaleString(numberLocale(locale))
+  return locale === "en" ? `$${formatted}` : `${formatted} $`
 }
 
 function formatFactor(factor: number): string {
@@ -201,6 +209,7 @@ function buildAdjustments(
   hit: Hit,
   parsed: ParsedValuationQuery,
   categoryKey: string,
+  locale: ValuationLocale = "fr",
 ): Adjustment[] {
   const config = getDepreciationConfig(categoryKey)
   const originalPrice = hit.prix || 0
@@ -237,9 +246,9 @@ function buildAdjustments(
     if (Math.abs(factor - 1) > 0.005) {
       const amount = originalPrice * (factor - 1)
       const reasonBits: string[] = []
-      reasonBits.push(`${parsed.mileage.toLocaleString("fr-CA")} km`)
+      reasonBits.push(`${parsed.mileage.toLocaleString(numberLocale(locale))} km`)
       if (compMileage != null) {
-        reasonBits.push(`vs ${compMileage.toLocaleString("fr-CA")} km`)
+        reasonBits.push(`vs ${compMileage.toLocaleString(numberLocale(locale))} km`)
       }
       reasonBits.push(`(${formatFactor(factor)})`)
       adjustments.push({
@@ -263,13 +272,15 @@ function buildAdjustments(
       factor = 1 / config.newToUsedFactor
     }
     const amount = originalPrice * (factor - 1)
+    const conditionWord = (condition: VehicleCondition): string =>
+      locale === "en"
+        ? condition === "new" ? "new" : "used"
+        : condition === "new" ? "neuf" : "usagé"
     adjustments.push({
       type: "condition",
       factor,
       amount,
-      reason: `${compCondition === "new" ? "neuf" : "usagé"} → ${
-        targetCondition === "new" ? "neuf" : "usagé"
-      } (${formatFactor(factor)})`,
+      reason: `${conditionWord(compCondition)} → ${conditionWord(targetCondition)} (${formatFactor(factor)})`,
     })
   }
 
@@ -302,7 +313,7 @@ function buildAdjustments(
     adjustments.push({
       type: "variant",
       amount: variantAmount,
-      reason: "options en + sur la cible",
+      reason: locale === "en" ? "extra options on target" : "options en + sur la cible",
     })
   }
 
@@ -464,6 +475,7 @@ function insufficient(
   parsed: ParsedValuationQuery,
   categoryKey: string,
   compCount: number,
+  locale: ValuationLocale = "fr",
 ): ValuationResult {
   return {
     status: "insufficient",
@@ -484,7 +496,9 @@ function insufficient(
     comps: [],
     targetPrice: parsed.priceTarget,
     message:
-      "Échantillon insuffisant pour évaluer. Affinez la recherche ou élargissez les sources.",
+      locale === "en"
+        ? "Sample too small to evaluate. Refine the search or broaden the sources."
+        : "Échantillon insuffisant pour évaluer. Affinez la recherche ou élargissez les sources.",
   }
 }
 
@@ -492,6 +506,7 @@ export function evaluateValue(
   queryText: string,
   categoryPath: string | null | undefined,
   hits: Hit[],
+  locale: ValuationLocale = "fr",
 ): ValuationResult {
   const categoryKey = deriveCategoryKey(categoryPath)
   const config = getDepreciationConfig(categoryKey)
@@ -531,10 +546,10 @@ export function evaluateValue(
     // dispersion.
   }
 
-  if (filtered.length < 3) return insufficient(parsed, categoryKey, filtered.length)
+  if (filtered.length < 3) return insufficient(parsed, categoryKey, filtered.length, locale)
 
   const adjusted = filtered.map<AdjustedComparable>((hit) => {
-    const adjustments = buildAdjustments(hit, parsed, categoryKey)
+    const adjustments = buildAdjustments(hit, parsed, categoryKey, locale)
     const originalPrice = hit.prix || 0
     const adjustedPrice = combineAdjustments(originalPrice, adjustments, config, parsed, hit)
     return {
@@ -573,7 +588,7 @@ export function evaluateValue(
     )
   }
 
-  if (withoutOutliers.length < 3) return insufficient(parsed, categoryKey, withoutOutliers.length)
+  if (withoutOutliers.length < 3) return insufficient(parsed, categoryKey, withoutOutliers.length, locale)
 
   const rawLowValue = weightedPercentile(withoutOutliers, 0.25)
   const medianValue = weightedPercentile(withoutOutliers, 0.5)
@@ -591,11 +606,18 @@ export function evaluateValue(
   const highValue = Math.max(rawHighValue, medianValue * (1 + SPREAD_FLOOR))
   const signals = reliabilitySignals(withoutOutliers, lowValue, medianValue, highValue)
 
-  const baseMessage = `${withoutOutliers.length} comparables retenus, valeur estimée ${money(medianValue)}.`
+  const baseMessage =
+    locale === "en"
+      ? `${withoutOutliers.length} comparables retained, estimated value ${money(medianValue, locale)}.`
+      : `${withoutOutliers.length} comparables retenus, valeur estimée ${money(medianValue, locale)}.`
   const trimNote = trimFilterApplied
-    ? ` Filtré au trim demandé (${targetTrimKeys.join(", ")}).`
+    ? locale === "en"
+      ? ` Filtered to the requested trim (${targetTrimKeys.join(", ")}).`
+      : ` Filtré au trim demandé (${targetTrimKeys.join(", ")}).`
     : targetTrimKeys.length > 0
-      ? ` Trim demandé non trouvé (${targetTrimKeys.join(", ")}) — comparables mélangés, fourchette indicative.`
+      ? locale === "en"
+        ? ` Requested trim not found (${targetTrimKeys.join(", ")}) — mixed comparables, indicative range.`
+        : ` Trim demandé non trouvé (${targetTrimKeys.join(", ")}) — comparables mélangés, fourchette indicative.`
       : ""
 
   return {

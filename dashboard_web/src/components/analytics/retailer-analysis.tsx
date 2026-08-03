@@ -25,19 +25,19 @@ interface RetailerAnalysisProps {
   detailleurs: Retailer[]
 }
 
-const categoryLabels: Record<string, string> = {
-  moto: "Moto",
-  motoneige: "Motoneige",
-  motocross: "Motocross",
-  scooter: "Scooter",
-  quad: "Quad",
-  "side-by-side": "Side-by-Side",
-  vtt: "VTT",
-  autre: "Autre",
+const categoryLabelKeys: Record<string, string> = {
+  moto: "ap.categoryAnalysis.catMoto",
+  motoneige: "ap.categoryAnalysis.catMotoneige",
+  motocross: "ap.categoryAnalysis.catMotocross",
+  scooter: "ap.categoryAnalysis.catScooter",
+  quad: "ap.categoryAnalysis.catQuad",
+  "side-by-side": "ap.categoryAnalysis.catSideBySide",
+  vtt: "ap.categoryAnalysis.catVtt",
+  autre: "ap.categoryAnalysis.catAutre",
 }
 
-const fmtPrice = (v: number) =>
-  v.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '$'
+const fmtPrice = (v: number, lc: string) =>
+  v.toLocaleString(lc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '$'
 
 function ecartTextColor(ecart: number): string {
   if (ecart > 0.5) return 'text-red-600 dark:text-red-400'
@@ -46,7 +46,9 @@ function ecartTextColor(ecart: number): string {
 }
 
 export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps) {
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
+  const catLabel = (c: string) => (categoryLabelKeys[c] ? t(categoryLabelKeys[c]) : c)
   const [expandedRetailer, setExpandedRetailer] = useState<string | null>(null)
 
   if (detailleurs.length === 0) {
@@ -162,10 +164,10 @@ export default function RetailerAnalysis({ detailleurs }: RetailerAnalysisProps)
                         className="grid grid-cols-[1fr_6rem_4rem_3rem] gap-3 items-center py-1.5 text-xs"
                       >
                         <span className="text-[var(--color-text-primary)] truncate">
-                          {categoryLabels[cs.categorie] || cs.categorie}
+                          {catLabel(cs.categorie)}
                         </span>
                         <span className="text-right tabular-nums text-[var(--color-text-secondary)]">
-                          {fmtPrice(cs.prixMoyen)}
+                          {fmtPrice(cs.prixMoyen, lc)}
                         </span>
                         <span className={`text-right tabular-nums font-semibold ${ecartTextColor(cs.agressivite)}`}>
                           {cs.agressivite >= 0 ? '+' : ''}{cs.agressivite.toFixed(1)}%

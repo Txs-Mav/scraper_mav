@@ -1,19 +1,32 @@
 "use client"
 
 import type { PricePosition } from "@/lib/search-valuation/types"
+import { useLanguage } from "@/contexts/language-context"
 
 function formatPercent(value: number): string {
   const sign = value > 0 ? "+" : ""
   return `${sign}${Math.round(value * 100)}%`
 }
 
+// Les valeurs du type union `PricePosition["label"]` restent en français
+// (source dans search-valuation/types.ts) — traduction au point d'affichage.
+const POSITION_LABEL_KEYS: Record<string, string> = {
+  "Sous le marché": "psc.belowMarket",
+  "Aligné au marché": "psc.alignedMarket",
+  "Au-dessus du marché": "psc.aboveMarket",
+  "Hors marché": "psc.offMarket",
+}
+
 export default function PriceBand({ position }: { position: PricePosition }) {
+  const { t } = useLanguage()
   return (
     <div className="rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] p-3">
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="font-semibold text-[var(--color-text-primary)]">{position.label}</span>
+        <span className="font-semibold text-[var(--color-text-primary)]">
+          {t(POSITION_LABEL_KEYS[position.label] ?? position.label)}
+        </span>
         <span className="text-[var(--color-text-secondary)]">
-          {formatPercent(position.percentVsMedian)} vs médiane
+          {t("psc.vsMedian").replace("{pct}", formatPercent(position.percentVsMedian))}
         </span>
       </div>
       <div className="relative mt-3 h-2 rounded-full bg-[var(--color-background-primary)] overflow-hidden">
@@ -24,9 +37,9 @@ export default function PriceBand({ position }: { position: PricePosition }) {
         />
       </div>
       <div className="mt-1 flex justify-between text-[10px] text-[var(--color-text-tertiary)]">
-        <span>Sous marché</span>
-        <span>Aligné</span>
-        <span>Ambitieux</span>
+        <span>{t("psc.bandBelow")}</span>
+        <span>{t("psc.bandAligned")}</span>
+        <span>{t("psc.bandAmbitious")}</span>
       </div>
     </div>
   )

@@ -21,8 +21,10 @@ export type OptionGroup = "engine" | "package" | "drivetrain" | "equipment"
 export interface VehicleOption {
   /** Identifiant unique stocké dans le state utilisateur. */
   key: string
-  /** Libellé affiché dans le chip. */
+  /** Libellé affiché dans le chip (français). */
   label: string
+  /** Libellé anglais optionnel — utilisé par `optionLabel()` quand locale = "en". */
+  labelEn?: string
   /**
    * Texte injecté dans `valuationQueryText` quand l'option est cochée.
    * Doit correspondre à un alias dans `variant-premiums.ts` pour être pris en
@@ -51,6 +53,23 @@ export const OPTION_GROUP_LABELS: Record<OptionGroup, string> = {
   package: "Package",
   drivetrain: "Drivetrain",
   equipment: "Équipement",
+}
+
+const OPTION_GROUP_LABELS_EN: Record<OptionGroup, string> = {
+  engine: "Engine",
+  package: "Package",
+  drivetrain: "Drivetrain",
+  equipment: "Equipment",
+}
+
+/** Libellé de groupe localisé (fr par défaut). */
+export function optionGroupLabel(group: OptionGroup, locale: "fr" | "en" = "fr"): string {
+  return locale === "en" ? OPTION_GROUP_LABELS_EN[group] : OPTION_GROUP_LABELS[group]
+}
+
+/** Libellé d'option localisé (fr par défaut, retombe sur `label` si pas de `labelEn`). */
+export function optionLabel(option: VehicleOption, locale: "fr" | "en" = "fr"): string {
+  return locale === "en" && option.labelEn ? option.labelEn : option.label
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +107,7 @@ const AUTO_OPTIONS: VehicleOption[] = [
   { key: "tremor-pkg", label: "Tremor Package", alias: "tremor", premium: 5000, group: "drivetrain", appliesTo: ["vehicule.auto"], appliesToMakes: ["ford"] },
 
   // Cabines Ford
-  { key: "supercrew", label: "SuperCrew (4 portes)", alias: "supercrew", premium: 3000, group: "equipment", appliesTo: ["vehicule.auto"], appliesToMakes: ["ford"] },
+  { key: "supercrew", label: "SuperCrew (4 portes)", labelEn: "SuperCrew (4-door)", alias: "supercrew", premium: 3000, group: "equipment", appliesTo: ["vehicule.auto"], appliesToMakes: ["ford"] },
   { key: "supercab", label: "SuperCab", alias: "supercab", premium: 1500, group: "equipment", appliesTo: ["vehicule.auto"], appliesToMakes: ["ford"] },
 
   // ════════════════════════════════════════════════════════════════════
@@ -131,29 +150,29 @@ const AUTO_OPTIONS: VehicleOption[] = [
   { key: "awd", label: "AWD", alias: "awd", premium: 1800, group: "drivetrain", appliesTo: ["vehicule.auto"] },
 
   // Motorisations universelles
-  { key: "engine-hybrid-generic", label: "Hybride", alias: "hybrid hybride", premium: 3000, group: "engine", appliesTo: ["vehicule.auto"] },
+  { key: "engine-hybrid-generic", label: "Hybride", labelEn: "Hybrid", alias: "hybrid hybride", premium: 3000, group: "engine", appliesTo: ["vehicule.auto"] },
   { key: "engine-plug-in", label: "Plug-in Hybrid", alias: "plug in hybrid phev", premium: 5000, group: "engine", appliesTo: ["vehicule.auto"] },
-  { key: "engine-electric", label: "Électrique (EV)", alias: "electric ev", premium: 6000, group: "engine", appliesTo: ["vehicule.auto"] },
+  { key: "engine-electric", label: "Électrique (EV)", labelEn: "Electric (EV)", alias: "electric ev", premium: 6000, group: "engine", appliesTo: ["vehicule.auto"] },
 
   // Équipement intérieur (toutes marques)
-  { key: "leather", label: "Cuir", alias: "cuir leather", premium: 1000, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "heated-seats", label: "Sièges chauffants", alias: "heated seats sieges chauffants", premium: 400, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "ventilated-seats", label: "Sièges ventilés", alias: "ventilated cooled seats", premium: 600, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "moonroof", label: "Toit ouvrant", alias: "moonroof sunroof toit ouvrant", premium: 1500, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "panoramic-roof", label: "Toit panoramique", alias: "panoramic roof toit panoramique", premium: 2200, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "leather", label: "Cuir", labelEn: "Leather", alias: "cuir leather", premium: 1000, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "heated-seats", label: "Sièges chauffants", labelEn: "Heated seats", alias: "heated seats sieges chauffants", premium: 400, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "ventilated-seats", label: "Sièges ventilés", labelEn: "Ventilated seats", alias: "ventilated cooled seats", premium: 600, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "moonroof", label: "Toit ouvrant", labelEn: "Moonroof", alias: "moonroof sunroof toit ouvrant", premium: 1500, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "panoramic-roof", label: "Toit panoramique", labelEn: "Panoramic roof", alias: "panoramic roof toit panoramique", premium: 2200, group: "equipment", appliesTo: ["vehicule.auto"] },
 
   // Technologie universelle
   { key: "nav", label: "GPS Navigation", alias: "navigation nav", premium: 500, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "adaptive-cruise", label: "Cruise adaptatif", alias: "adaptive cruise", premium: 700, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "blind-spot", label: "Angles morts", alias: "blind spot bsm", premium: 400, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "360-camera", label: "Caméra 360°", alias: "360 camera", premium: 800, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "head-up", label: "Affichage tête haute", alias: "head up display", premium: 600, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "adaptive-cruise", label: "Cruise adaptatif", labelEn: "Adaptive cruise", alias: "adaptive cruise", premium: 700, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "blind-spot", label: "Angles morts", labelEn: "Blind-spot monitor", alias: "blind spot bsm", premium: 400, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "360-camera", label: "Caméra 360°", labelEn: "360° camera", alias: "360 camera", premium: 800, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "head-up", label: "Affichage tête haute", labelEn: "Head-up display", alias: "head up display", premium: 600, group: "equipment", appliesTo: ["vehicule.auto"] },
 
   // Utilitaire / remorquage générique
   { key: "tow-pkg", label: "Trailer Tow Package", alias: "tow trailer", premium: 1200, group: "equipment", appliesTo: ["vehicule.auto"] },
   { key: "max-tow", label: "Max Tow Package", alias: "max tow", premium: 1800, group: "equipment", appliesTo: ["vehicule.auto"] },
   { key: "bedliner", label: "Bedliner", alias: "bedliner spray", premium: 400, group: "equipment", appliesTo: ["vehicule.auto"] },
-  { key: "running-boards", label: "Marchepieds", alias: "running boards marchepieds", premium: 500, group: "equipment", appliesTo: ["vehicule.auto"] },
+  { key: "running-boards", label: "Marchepieds", labelEn: "Running boards", alias: "running boards marchepieds", premium: 500, group: "equipment", appliesTo: ["vehicule.auto"] },
 ]
 
 // ---------------------------------------------------------------------------
@@ -161,7 +180,7 @@ const AUTO_OPTIONS: VehicleOption[] = [
 // ---------------------------------------------------------------------------
 
 const MOTO_OPTIONS: VehicleOption[] = [
-  { key: "moto-grande-roue", label: "Grande roue 19/16", alias: "grande roue 19 16", premium: 300, group: "equipment", appliesTo: ["vehicule.moto"] },
+  { key: "moto-grande-roue", label: "Grande roue 19/16", labelEn: "Big wheel 19/16", alias: "grande roue 19 16", premium: 300, group: "equipment", appliesTo: ["vehicule.moto"] },
   { key: "moto-factory", label: "Factory Edition", alias: "factory edition", premium: 1200, group: "package", appliesTo: ["vehicule.moto"] },
   { key: "moto-heritage", label: "Heritage", alias: "heritage", premium: 500, group: "package", appliesTo: ["vehicule.moto"] },
 ]
@@ -171,11 +190,11 @@ const MOTO_OPTIONS: VehicleOption[] = [
 // ---------------------------------------------------------------------------
 
 const POWERSPORT_OPTIONS: VehicleOption[] = [
-  { key: "ps-eps", label: "EPS (direction assistée)", alias: "eps", premium: 500, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
-  { key: "ps-winch", label: "Treuil", alias: "treuil winch", premium: 600, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
-  { key: "ps-roof", label: "Toit", alias: "toit roof", premium: 700, group: "equipment", appliesTo: ["vehicule.sxs"] },
-  { key: "ps-windshield", label: "Pare-brise", alias: "pare brise windshield", premium: 400, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
-  { key: "ps-tracks", label: "Chenilles", alias: "chenilles tracks", premium: 2500, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
+  { key: "ps-eps", label: "EPS (direction assistée)", labelEn: "EPS (power steering)", alias: "eps", premium: 500, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
+  { key: "ps-winch", label: "Treuil", labelEn: "Winch", alias: "treuil winch", premium: 600, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
+  { key: "ps-roof", label: "Toit", labelEn: "Roof", alias: "toit roof", premium: 700, group: "equipment", appliesTo: ["vehicule.sxs"] },
+  { key: "ps-windshield", label: "Pare-brise", labelEn: "Windshield", alias: "pare brise windshield", premium: 400, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
+  { key: "ps-tracks", label: "Chenilles", labelEn: "Tracks", alias: "chenilles tracks", premium: 2500, group: "equipment", appliesTo: ["vehicule.vtt", "vehicule.sxs"] },
   { key: "ps-turbo", label: "Turbo", alias: "turbo", premium: 2500, group: "engine", appliesTo: ["vehicule.vtt", "vehicule.sxs", "vehicule.motoneige"] },
 ]
 

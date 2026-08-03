@@ -22,22 +22,24 @@ interface ProductAnalysisProps {
   produits: Product[]
 }
 
-const categoryLabels: Record<string, string> = {
-  moto: "Moto",
-  motoneige: "Motoneige",
-  motocross: "Motocross",
-  scooter: "Scooter",
-  quad: "Quad",
-  "side-by-side": "Side-by-Side",
-  vtt: "VTT",
-  autre: "Autre",
+const categoryLabelKeys: Record<string, string> = {
+  moto: "ap.categoryAnalysis.catMoto",
+  motoneige: "ap.categoryAnalysis.catMotoneige",
+  motocross: "ap.categoryAnalysis.catMotocross",
+  scooter: "ap.categoryAnalysis.catScooter",
+  quad: "ap.categoryAnalysis.catQuad",
+  "side-by-side": "ap.categoryAnalysis.catSideBySide",
+  vtt: "ap.categoryAnalysis.catVtt",
+  autre: "ap.categoryAnalysis.catAutre",
 }
 
 const DEFAULT_THRESHOLD = 0.5
 const ROWS_PER_PAGE = 25
 
 export default function ProductCategoryAnalysis({ produits }: ProductAnalysisProps) {
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
+  const catLabel = (c: string) => (categoryLabelKeys[c] ? t(categoryLabelKeys[c]) : c)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [sortBy, setSortBy] = useState<"name" | "prix" | "ecart">("ecart")
@@ -169,7 +171,7 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
         >
           <option value="all">{t("ap.allCategories")}</option>
           {categories.map(cat => (
-            <option key={cat} value={cat}>{categoryLabels[cat] || cat}</option>
+            <option key={cat} value={cat}>{catLabel(cat)}</option>
           ))}
         </select>
         <select
@@ -259,14 +261,14 @@ export default function ProductCategoryAnalysis({ produits }: ProductAnalysisPro
                   {produit.name}
                 </td>
                 <td className="py-2.5 px-3 text-sm text-[var(--color-text-secondary)]">
-                  {categoryLabels[produit.categorie] || produit.categorie}
+                  {catLabel(produit.categorie)}
                 </td>
                 <td className="py-2.5 px-3 text-sm text-right font-medium text-[var(--color-text-primary)] tabular-nums">
-                  {produit.prix.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$
+                  {produit.prix.toLocaleString(lc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$
                 </td>
                 <td className="py-2.5 px-3 text-sm text-right text-[var(--color-text-secondary)] tabular-nums">
                   {produit.hasCompetitor
-                    ? `${getCompPrice(produit).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$`
+                    ? `${getCompPrice(produit).toLocaleString(lc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$`
                     : '—'}
                 </td>
                 <td className={`py-2.5 px-5 text-sm text-right font-semibold tabular-nums ${ecartColor(getEcart(produit), produit.hasCompetitor)}`}>

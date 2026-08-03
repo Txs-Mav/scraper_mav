@@ -147,7 +147,7 @@ export function buildMatchKey(product: any, ignoreColors: boolean = true): strin
 
 // ─── Fonction principale ─────────────────────────────────────────────
 
-export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
+export async function analyzeFromCache(userId: string, locale: 'fr' | 'en' = 'fr'): Promise<AnalyzeResult> {
   const serviceSupabase = createServiceClient()
   const startTime = Date.now()
 
@@ -158,7 +158,13 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
     .maybeSingle()
 
   if (!config?.reference_url) {
-    return { ok: false, error: 'no_config', message: 'Aucune configuration de surveillance trouvée.' }
+    return {
+      ok: false,
+      error: 'no_config',
+      message: locale === 'en'
+        ? 'No monitoring configuration found.'
+        : 'Aucune configuration de surveillance trouvée.',
+    }
   }
 
   const referenceUrl = config.reference_url
@@ -194,7 +200,9 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
     return {
       ok: false,
       error: 'no_reference_cache',
-      message: `Aucun produit pré-scrapé pour le site de référence (${refDomain}).`,
+      message: locale === 'en'
+        ? `No pre-scraped products for the reference site (${refDomain}).`
+        : `Aucun produit pré-scrapé pour le site de référence (${refDomain}).`,
     }
   }
 
@@ -315,7 +323,13 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
 
   if (saveError) {
     console.error('[analyze-from-cache] Save error:', saveError.message)
-    return { ok: false, error: 'save_error', message: `Erreur lors de la sauvegarde: ${saveError.message}` }
+    return {
+      ok: false,
+      error: 'save_error',
+      message: locale === 'en'
+        ? `Error while saving: ${saveError.message}`
+        : `Erreur lors de la sauvegarde: ${saveError.message}`,
+    }
   }
 
   console.log(
@@ -324,7 +338,9 @@ export async function analyzeFromCache(userId: string): Promise<AnalyzeResult> {
 
   return {
     ok: true,
-    message: `Comparaison terminée: ${matchedCount} correspondances trouvées`,
+    message: locale === 'en'
+      ? `Comparison complete: ${matchedCount} matches found`
+      : `Comparaison terminée: ${matchedCount} correspondances trouvées`,
     stats: {
       referenceProducts: referenceProducts.length,
       matchedProducts: matchedCount,

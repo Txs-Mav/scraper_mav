@@ -141,7 +141,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   ref
 ) {
   const { user } = useAuth()
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
   const scrapingLimit = useScrapingLimit()
   const router = useRouter()
   const [referenceUrl, setReferenceUrl] = useState(DEFAULT_REFERENCE_URL)
@@ -484,7 +484,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
       ))
       setLogContent(prev => [...prev, `Comparaison en cours...`])
 
-      const response = await fetch("/api/products/analyze", { method: "POST" })
+      const response = await fetch(`/api/products/analyze?locale=${locale === "fr" ? "fr" : "en"}`, { method: "POST" })
       const data = await response.json()
 
       if (data.success) {

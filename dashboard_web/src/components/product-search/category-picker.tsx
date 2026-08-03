@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { ChevronRight, Check, Loader2, FolderTree } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/contexts/language-context"
 import type { CategoryNode } from "./types"
 
 interface CategoryPickerProps {
@@ -88,6 +89,7 @@ export default function CategoryPicker({
   triggerClassName,
   labelMaxWidthClassName,
 }: CategoryPickerProps) {
+  const { t } = useLanguage()
   const [tree, setTree] = useState<CategoryNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -157,7 +159,7 @@ export default function CategoryPicker({
   }, [value, findNode])
 
   const labelText = breadcrumb.length === 0
-    ? "Toutes les catégories"
+    ? t("psc.allCategories")
     : breadcrumb.map(b => b.name).join(" › ")
 
   return (
@@ -210,7 +212,7 @@ export default function CategoryPicker({
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--color-border-secondary)] bg-[var(--color-background-secondary)] gap-3">
               <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide">
-                Choisir une catégorie
+                {t("psc.chooseCategory")}
               </span>
               <div className="flex items-center gap-2">
                 {(allowedPaths && allowedPaths.length > 0) && (
@@ -223,9 +225,9 @@ export default function CategoryPicker({
                         ? "bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300"
                         : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]",
                     )}
-                    title="Affiche aussi les catégories hors de ton domaine d'activité"
+                    title={t("psc.showAllHint")}
                   >
-                    {showAll ? "Vue : tout" : "Voir tout"}
+                    {showAll ? t("psc.viewingAll") : t("psc.seeAll")}
                   </button>
                 )}
                 <button
@@ -236,7 +238,7 @@ export default function CategoryPicker({
                   }}
                   className="text-xs text-[var(--color-text-primary)] hover:opacity-80 font-medium"
                 >
-                  Toutes les catégories
+                  {t("psc.allCategories")}
                 </button>
               </div>
             </div>
@@ -249,14 +251,14 @@ export default function CategoryPicker({
 
             {error && (
               <div className="px-4 py-3 text-sm text-red-600">
-                Erreur : {error}
+                {t("psc.errorPrefix").replace("{msg}", error)}
               </div>
             )}
 
             {!loading && !error && displayedTree.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <p className="text-sm text-[var(--color-text-secondary)]">
-                  Aucune catégorie ne correspond à ton domaine d&apos;activité.
+                  {t("psc.noCategoryForBusiness")}
                 </p>
                 {isFiltered && (
                   <button
@@ -264,7 +266,7 @@ export default function CategoryPicker({
                     onClick={() => setShowAll(true)}
                     className="mt-2 text-xs font-medium text-[var(--color-text-primary)] hover:opacity-80"
                   >
-                    Voir tout l&apos;arbre
+                    {t("psc.seeFullTree")}
                   </button>
                 )}
               </div>
@@ -300,6 +302,7 @@ function MillerColumns({
   value: string | null
   onSelect: (path: string) => void
 }) {
+  const { t } = useLanguage()
   // État local : chemin "en survol" pendant la navigation (différent de `value` qui est le sélectionné)
   const [hoverPath, setHoverPath] = useState<string | null>(value)
 
@@ -373,7 +376,7 @@ function MillerColumns({
                 onClick={() => onSelect(hoverPath)}
                 className="w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md bg-[var(--color-text-primary)] text-[var(--color-background-primary)] hover:opacity-90 transition-opacity"
               >
-                Choisir cette catégorie
+                {t("psc.pickThisCategory")}
               </button>
             </div>
           )}

@@ -16,8 +16,9 @@ import {
   type ScrapeMetadata
 } from '@/lib/analytics-calculations'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const locale = new URL(request.url).searchParams.get('locale') === 'en' ? 'en' as const : 'fr' as const
     let products: Product[] = []
     let metadata: ScrapeMetadata = {}
     let dataAsOf: string | null = null
@@ -155,13 +156,13 @@ export async function GET() {
     
     // Calculer toutes les métriques
     const analytics: AnalyticsData = {
-      positionnement: calculatePricePositioning(products, referenceDomain),
+      positionnement: calculatePricePositioning(products, referenceDomain, locale),
       produits: calculateProductAnalysis(products, referenceDomain),
       evolutionPrix: calculatePriceEvolution(products),
-      opportunites: calculateOpportunities(products, referenceDomain),
+      opportunites: calculateOpportunities(products, referenceDomain, locale),
       detailleurs: calculateRetailerAnalysis(products, referenceDomain),
       categories: calculateCategoryAnalysis(products, referenceDomain),
-      alertes: calculateAlerts(products, referenceDomain),
+      alertes: calculateAlerts(products, referenceDomain, locale),
       stats: calculateStats(products, scrapesParJour, totalScrapes)
     }
 

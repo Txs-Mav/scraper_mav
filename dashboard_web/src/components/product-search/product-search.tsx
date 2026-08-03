@@ -17,8 +17,8 @@ import { evaluateValue } from "@/lib/search-valuation/evaluate-value"
 import {
   buildOptionAliases,
   detectMakeFromQuery,
+  optionLabel,
   optionsForVehicle,
-  OPTION_GROUP_LABELS,
   type OptionGroup,
   type VehicleOption,
 } from "@/lib/search-valuation/vehicle-options"
@@ -1345,20 +1345,22 @@ function VehicleSpecsBox({
           <div className="flex items-baseline justify-between gap-2 mb-2.5">
             <div className="min-w-0 flex items-baseline gap-2 flex-wrap">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-                Options & équipement
+                {t("ps.optionsEquipment")}
               </span>
               {detectedMake && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--color-text-secondary)] bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)] px-1.5 py-0.5 rounded">
                   <span className="capitalize">{detectedMake}</span>
-                  <span className="text-[var(--color-text-tertiary)] font-normal">détecté</span>
+                  <span className="text-[var(--color-text-tertiary)] font-normal">{t("ps.detected")}</span>
                 </span>
               )}
               <span className="text-[10px] text-[var(--color-text-tertiary)]">
                 {specs.options.length === 0
                   ? detectedMake
-                    ? "Cochez ce qui s'applique à votre véhicule"
-                    : "Tapez une marque pour voir les options spécifiques (ex: Ford → packages 502A, FX4…)"
-                  : `${specs.options.length} sélectionnée${specs.options.length > 1 ? "s" : ""} (≈ +${totalOptionsPremium.toLocaleString("fr-CA")} $)`}
+                    ? t("ps.checkApplicable")
+                    : t("ps.typeMakeHint")
+                  : (specs.options.length > 1 ? t("ps.optionsSelectedPlural") : t("ps.optionsSelectedOne"))
+                      .replace("{n}", String(specs.options.length))
+                      .replace("{amount}", totalOptionsPremium.toLocaleString(lc))}
               </span>
             </div>
             {specs.options.length > 0 && (
@@ -1368,7 +1370,7 @@ function VehicleSpecsBox({
                 disabled={disabled}
                 className="text-[10px] font-medium text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] underline decoration-dotted shrink-0"
               >
-                Tout désélectionner
+                {t("ps.deselectAll")}
               </button>
             )}
           </div>
@@ -1380,7 +1382,7 @@ function VehicleSpecsBox({
               return (
                 <div key={group}>
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-secondary)] mb-1.5">
-                    {OPTION_GROUP_LABELS[group]}
+                    {t(`ps.optGroup.${group}`)}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {opts.map((opt) => {
@@ -1400,7 +1402,7 @@ function VehicleSpecsBox({
                           )}
                           aria-pressed={checked}
                         >
-                          <span>{opt.label}</span>
+                          <span>{optionLabel(opt, locale === "fr" ? "fr" : "en")}</span>
                           <span
                             className={cn(
                               "tabular-nums",
@@ -1409,7 +1411,7 @@ function VehicleSpecsBox({
                                 : "text-[var(--color-text-tertiary)]",
                             )}
                           >
-                            {opt.premium === 0 ? "—" : `+${opt.premium.toLocaleString("fr-CA")} $`}
+                            {opt.premium === 0 ? "—" : `+${opt.premium.toLocaleString(lc)} $`}
                           </span>
                         </button>
                       )
@@ -1426,12 +1428,13 @@ function VehicleSpecsBox({
 }
 
 function LoadingSkeleton() {
+  const { t } = useLanguage()
   return (
     <div className="space-y-3">
       <div className="bg-[var(--color-background-primary)] border border-[var(--color-border-secondary)] rounded-xl px-4 py-3 flex items-center gap-3">
         <Loader2 className="h-4 w-4 animate-spin text-[var(--color-text-secondary)]" />
         <span className="text-sm text-[var(--color-text-secondary)]">
-          Interrogation des sources en parallèle…
+          {t("ps.queryingSources")}
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -1465,6 +1468,7 @@ function EmptyState({
   isVehicle: boolean
   onPick: (query: string) => void
 }) {
+  const { t } = useLanguage()
   const [recent, setRecent] = useState<string[]>([])
 
   useEffect(() => {
@@ -1482,7 +1486,7 @@ function EmptyState({
   const examples = (
     isVehicle
       ? ["Ski-Doo Summit 850", "Yamaha MT-07 2022", "Can-Am Outlander 850", "KTM 300 XC-W"]
-      : ["iPhone 15 Pro 256GB", "casque Bell moto", "Ski-Doo Summit 850"]
+      : ["iPhone 15 Pro 256GB", t("ps.exampleHelmet"), "Ski-Doo Summit 850"]
   ).filter((e) => !recent.includes(e))
 
   const chipClass = cn(
@@ -1494,17 +1498,16 @@ function EmptyState({
   return (
     <div className="bg-[var(--color-background-primary)]/40 border border-dashed border-[var(--color-border-secondary)] rounded-2xl py-8 px-6 text-center backdrop-blur-sm">
       <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
-        Cherchez un produit
+        {t("ps.searchProductTitle")}
       </h3>
       <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] max-w-md mx-auto">
-        Tapez un nom de produit ci-dessus — la catégorie et les sources se
-        règlent dans le panneau de droite.
+        {t("ps.emptyStateHint")}
       </p>
 
       {recent.length > 0 && (
         <div className="mt-5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-            Reprendre une recherche
+            {t("ps.resumeSearch")}
           </div>
           <div className="mt-2 flex flex-wrap justify-center gap-1.5">
             {recent.map((q) => (
@@ -1519,7 +1522,7 @@ function EmptyState({
       {examples.length > 0 && (
         <div className="mt-4">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-            Exemples
+            {t("ps.examples")}
           </div>
           <div className="mt-2 flex flex-wrap justify-center gap-1.5">
             {examples.map((q) => (
@@ -1547,6 +1550,8 @@ function ResultsView({
   categoryPath: string | null
   showValuation: boolean
 }) {
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
   const successCount = result.adapters_run.filter((a) => !a.error).length
   const errorCount = result.adapters_run.filter((a) => !!a.error).length
   const scoredHits = useMemo(() => {
@@ -1567,8 +1572,8 @@ function ResultsView({
     // résultats à l'écran et les comparables utilisés. Si le toggle évaluateur
     // est éteint ou qu'on n'est pas dans une catégorie véhicule, on ne calcule
     // pas la valuation (gain de perf + on cache la carte).
-    () => (showValuation ? evaluateValue(valuationQueryText, categoryPath, scoredHits) : null),
-    [showValuation, valuationQueryText, categoryPath, scoredHits],
+    () => (showValuation ? evaluateValue(valuationQueryText, categoryPath, scoredHits, locale === "fr" ? "fr" : "en") : null),
+    [showValuation, valuationQueryText, categoryPath, scoredHits, locale],
   )
   const totalHits = scoredHits.length
   const hasErrors = errorCount > 0
@@ -1579,12 +1584,9 @@ function ResultsView({
         <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/[0.08] px-4 py-3 flex items-start gap-3">
           <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-900 dark:text-amber-200 min-w-0 flex-1">
-            <div className="font-semibold">Aucun match exact — voici des comparables approchants</div>
+            <div className="font-semibold">{t("ps.approxBannerTitle")}</div>
             <p className="mt-0.5 text-amber-800/90 dark:text-amber-200/80 text-[13px]">
-              Les sources interrogées n&apos;ont rien qui matche parfaitement ta requête.
-              Ces produits diffèrent par l&apos;année, le modèle exact ou la marque.
-              Affine ta recherche (retire l&apos;année, garde juste la marque) pour
-              re-filtrer.
+              {t("ps.approxBannerDesc")}
             </p>
           </div>
         </div>
@@ -1595,14 +1597,16 @@ function ResultsView({
           <div className="flex items-center gap-1.5 text-[var(--color-text-primary)] font-semibold">
             <span className="tabular-nums">{totalHits}</span>
             <span className="text-[var(--color-text-secondary)] font-normal">
-              résultat{totalHits > 1 ? "s" : ""}
+              {totalHits > 1 ? t("dash.results") : t("dash.result")}
             </span>
             {filteredOut > 0 && (
               <span
                 className="text-[11px] font-normal text-[var(--color-text-tertiary)]"
-                title={`Le backend a renvoyé ${backendTotal} hits ; ${filteredOut} ont été masqués par le filtre de pertinence textuelle local.`}
+                title={t("ps.filteredOutTooltip")
+                  .replace("{total}", String(backendTotal))
+                  .replace("{n}", String(filteredOut))}
               >
-                ({filteredOut} masqué{filteredOut > 1 ? "s" : ""})
+                {(filteredOut > 1 ? t("ps.hiddenPlural") : t("ps.hiddenOne")).replace("{n}", String(filteredOut))}
               </span>
             )}
           </div>
@@ -1614,17 +1618,17 @@ function ResultsView({
           </span>
           {result.cache_hits > 0 && (
             <span className="text-[var(--color-text-secondary)] tabular-nums text-xs">
-              {result.cache_hits} en cache
+              {t("ps.cachedCount").replace("{n}", String(result.cache_hits))}
             </span>
           )}
           {hasErrors && (
             <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs ml-auto">
               <AlertCircle className="h-3.5 w-3.5" />
-              <span>{errorCount} en échec</span>
+              <span>{t("ps.failedCount").replace("{n}", String(errorCount))}</span>
             </div>
           )}
           <div className="ml-auto flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-            <span>Détails</span>
+            <span>{t("ps.details")}</span>
             <ChevronDown className="h-3.5 w-3.5 group-open:rotate-180 transition-transform" />
           </div>
         </summary>
@@ -1654,7 +1658,8 @@ function ResultsView({
                     className="tabular-nums"
                     title={
                       a.products_scanned
-                        ? `${a.products_scanned} produit${a.products_scanned > 1 ? "s" : ""} scanné${a.products_scanned > 1 ? "s" : ""}`
+                        ? (a.products_scanned > 1 ? t("ps.productsScannedPlural") : t("ps.productsScannedOne"))
+                            .replace("{n}", String(a.products_scanned))
                         : undefined
                     }
                   >
@@ -1666,7 +1671,7 @@ function ResultsView({
                     ) : null}
                     {a.hits_returned === 0 && a.products_scanned ? (
                       <span className="ml-1 text-[var(--color-text-tertiary)]">
-                        / {a.products_scanned} scannés
+                        {t("ps.scannedSuffix").replace("{n}", String(a.products_scanned))}
                       </span>
                     ) : null}
                   </span>
@@ -1683,11 +1688,12 @@ function ResultsView({
       {totalHits === 0 ? (
         <div className="bg-[var(--color-background-primary)] border border-dashed border-[var(--color-border-secondary)] rounded-xl py-12 text-center px-4">
           <Info className="h-8 w-8 text-[var(--color-text-tertiary)] mx-auto mb-2" />
-          <p className="text-sm font-medium text-[var(--color-text-primary)]">Aucun produit ne correspond</p>
+          <p className="text-sm font-medium text-[var(--color-text-primary)]">{t("ps.noProductMatches")}</p>
           <p className="text-xs text-[var(--color-text-tertiary)] mt-1 max-w-sm mx-auto">
             {totalScanned > 0
-              ? `${totalScanned.toLocaleString("fr-CA")} produit${totalScanned > 1 ? "s" : ""} scanné${totalScanned > 1 ? "s" : ""} dans les inventaires — aucun ne matche cette combinaison. Essaie de retirer l'année ou de garder juste la marque + le modèle.`
-              : "Les caches d'inventaire sont vides pour ces sources. Active d'autres sources (Kijiji, AutoTrader) ou réessaie dans quelques minutes."}
+              ? (totalScanned > 1 ? t("ps.noMatchScannedPlural") : t("ps.noMatchScannedOne"))
+                  .replace("{n}", totalScanned.toLocaleString(lc))
+              : t("ps.emptyCaches")}
           </p>
         </div>
       ) : (
@@ -1748,12 +1754,25 @@ function useResolvedListingImage(hit: ScoredHit) {
   return resolvedImage
 }
 
+/**
+ * Traduit l'état d'une annonce (valeur libre venant du backend) au moment de
+ * l'affichage. Les valeurs inconnues sont rendues telles quelles.
+ */
+function displayEtat(etat: string, t: (key: string) => string): string {
+  const v = etat.trim().toLowerCase()
+  if (v === "neuf" || v === "new") return t("etat.new")
+  if (v === "usagé" || v === "usage" || v === "used" || v === "occasion") return t("etat.used")
+  return etat
+}
+
 function ResultCard({ hit }: { hit: ScoredHit }) {
+  const { t, locale } = useLanguage()
+  const lc = locale === "en" ? "en-CA" : "fr-CA"
   const resolvedImage = useResolvedListingImage(hit)
   const [imageFailed, setImageFailed] = useState(false)
   const formatPrice = (p: number | null) => {
     if (p == null) return null
-    return new Intl.NumberFormat("fr-CA", {
+    return new Intl.NumberFormat(lc, {
       style: "currency",
       currency: "CAD",
       maximumFractionDigits: 0,
@@ -1762,9 +1781,12 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
   const priceStr = formatPrice(hit.prix)
   const matchPct = hit.evalScore
   const matchTone = evaluationBadgeTone(hit.evalScore)
-  const breakdownTitle =
-    `Texte ${hit.breakdown.text}% · Année ${hit.breakdown.year}% · ` +
-    `KM ${hit.breakdown.mileage}% · Prix ${hit.breakdown.price}% · Variante ${hit.breakdown.variant}%`
+  const breakdownTitle = t("ps.breakdownTooltip")
+    .replace("{text}", String(hit.breakdown.text))
+    .replace("{year}", String(hit.breakdown.year))
+    .replace("{mileage}", String(hit.breakdown.mileage))
+    .replace("{price}", String(hit.breakdown.price))
+    .replace("{variant}", String(hit.breakdown.variant))
   const displayImage = imageFailed ? "" : resolvedImage
 
   useEffect(() => {
@@ -1794,7 +1816,7 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-            Sans image
+            {t("ps.noImage")}
           </div>
         )}
 
@@ -1814,21 +1836,21 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
         {hit.is_approximate && (
           <span
             className="absolute top-2 left-1/2 -translate-x-1/2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-sm bg-amber-500/90 text-white"
-            title={hit.match_reason || "Comparable approchant — un veto strict aurait été appliqué"}
+            title={hit.match_reason || t("ps.approxTooltip")}
           >
-            Approchant
+            {t("ps.approxBadge")}
           </span>
         )}
 
         {hit.etat && (
           <span className="absolute top-2 right-2 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold backdrop-blur-sm capitalize bg-[var(--color-background-primary)]/90 text-[var(--color-text-primary)] border border-[var(--color-border-secondary)]">
-            {hit.etat}
+            {displayEtat(hit.etat, t)}
           </span>
         )}
 
         {hit.isDeal && (
           <span className="absolute bottom-2 left-2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-sm bg-[var(--color-text-primary)] text-[var(--color-background-primary)]">
-            Aubaine · {Math.abs(Math.round(hit.priceVsMedian * 100))}% sous médian
+            {t("ps.dealBadge").replace("{n}", String(Math.abs(Math.round(hit.priceVsMedian * 100))))}
           </span>
         )}
       </div>
@@ -1846,7 +1868,7 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
               </span>
             ) : (
               <span className="text-xs text-[var(--color-text-tertiary)] italic">
-                Prix non listé
+                {t("ps.priceNotListed")}
               </span>
             )}
             {hit.annee && (
@@ -1856,7 +1878,7 @@ function ResultCard({ hit }: { hit: ScoredHit }) {
             )}
             {hit.kilometrage != null && (
               <span className="ml-2 text-xs text-[var(--color-text-tertiary)] tabular-nums">
-                {hit.kilometrage.toLocaleString("fr-CA")} km
+                {hit.kilometrage.toLocaleString(lc)} km
               </span>
             )}
           </div>

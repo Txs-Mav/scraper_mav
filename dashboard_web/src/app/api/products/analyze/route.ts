@@ -10,8 +10,9 @@ export const maxDuration = 30
  * Comparaison rapide depuis les données pré-scrapées (scraped_site_data).
  * Exécute le matching directement via Supabase (~2-5s).
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const locale = new URL(request.url).searchParams.get('locale') === 'en' ? 'en' as const : 'fr' as const
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
@@ -22,7 +23,7 @@ export async function POST() {
       )
     }
 
-    const result = await analyzeFromCache(user.id)
+    const result = await analyzeFromCache(user.id, locale)
 
     if (!result.ok) {
       const status = result.error === 'no_config' || result.error === 'no_reference_cache' ? 404 : 500
