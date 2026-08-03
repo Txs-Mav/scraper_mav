@@ -6,7 +6,7 @@ import Reveal from "@/components/marketing/reveal"
 export const metadata: Metadata = {
   title: "Tarifs",
   description:
-    "Trois plans simples. Le gratuit se crée en ligne, sans carte de crédit. Les plans payants s'activent en parlant à l'équipe Go-Data — ou avec un code magique.",
+    "Trois forfaits simples : Gratuit, Pro et Ultime. Commencez sans carte de crédit, activez un plan payant en parlant à l'équipe ou avec un code magique.",
 }
 
 const PLANS = [

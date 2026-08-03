@@ -16,42 +16,34 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.go-data.co"
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://go-data.co"
 
 export const metadata: Metadata = {
   title: {
-    default: "Go-Data | Données concurrentielles pour marchés ciblés",
+    default: "Go-Data | Veille de prix pour concessionnaires moto et sports motorisés",
     template: "%s | Go-Data",
   },
   description:
-    "Go-Data aide les entreprises à collecter, comparer et suivre des données publiques de prix et d'inventaire, avec un focus actuel sur le marché moto et sports motorisés.",
+    "Go-Data surveille chaque jour les prix et inventaires publics des concessionnaires concurrents. Comparez votre position, détectez les écarts, ajustez vos prix. Essai gratuit.",
   metadataBase: new URL(siteUrl),
   alternates: {
-    canonical: "/",
+    // "./" (exactement) se résout contre le pathname de la requête : chaque
+    // page se canonicalise elle-même. "/" canonicaliserait tout le site vers
+    // l'accueil.
+    canonical: "./",
   },
+  // openGraph/twitter sans title, description ni images : Next remplit
+  // og:title/og:description depuis le title/description résolus DE CHAQUE
+  // page, et la convention fichier opengraph-image.tsx fournit og:image
+  // (URL hashée, cache-bust automatique) — uniquement si `images` est absent.
   openGraph: {
     type: "website",
     locale: "fr_CA",
-    url: siteUrl,
+    url: "./",
     siteName: "Go-Data",
-    title: "Go-Data | Collecte et structuration de données automatisée",
-    description:
-      "Go-Data aide les entreprises à collecter, comparer et suivre des données publiques de prix et d'inventaire.",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "Go-Data — Vos données, prêtes à l'emploi",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Go-Data | Collecte de données automatisée",
-    description:
-      "Collectez et comparez des données publiques de prix et d'inventaire avec Go-Data.",
-    images: ["/og-image.png"],
   },
   robots: {
     index: true,
@@ -93,6 +85,9 @@ export default function RootLayout({
       contactType: "customer service",
       availableLanguage: ["French", "English"],
     },
+    // TODO: ajouter l'URL de la page LinkedIn entreprise dès qu'elle existe,
+    // ex. sameAs: ["https://www.linkedin.com/company/go-data"]. Ne jamais
+    // publier de placeholder ici — Google lit ce bloc tel quel.
     sameAs: [],
   }
 

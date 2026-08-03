@@ -7,7 +7,7 @@ import Reveal from "@/components/marketing/reveal"
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Parlez directement au fondateur de Go-Data. Téléphone : 819-448-2882. Courriel : mavmenard@gmail.com.",
+    "Une question sur la veille de prix ? Appelez le 819-448-2882 ou écrivez à gestion@go-data.co — vous parlez directement au fondateur de Go-Data, basé au Québec.",
 }
 
 const CONTACTS = [

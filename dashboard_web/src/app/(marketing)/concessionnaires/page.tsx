@@ -10,9 +10,9 @@ import {
 } from "@/lib/cfmoto-dealers"
 
 export const metadata: Metadata = {
-  title: "Concessionnaires CFMOTO | Go-Data",
+  title: "Concessionnaires CFMOTO",
   description:
-    "Le réseau CFMOTO au Canada sur Go-Data : concessionnaires déjà surveillés et concessionnaires à venir, province par province.",
+    "Le réseau CFMOTO au Canada vu par Go-Data : concessionnaires déjà surveillés et à venir, province par province. Trouvez le vôtre et comparez ses prix.",
 }
 
 function initials(name: string): string {

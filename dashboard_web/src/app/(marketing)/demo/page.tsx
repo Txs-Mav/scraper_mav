@@ -6,9 +6,9 @@ import Reveal from "@/components/marketing/reveal"
 import DemoSimulator from "@/components/marketing/demo-simulator"
 
 export const metadata: Metadata = {
-  title: "Démo — Go-Data",
+  title: "Démo",
   description:
-    "Explorez Go-Data sans créer de compte : surveillance des prix concurrents, comparaison par détaillant et opportunités chiffrées, avec des données de démonstration.",
+    "Explorez le tableau de bord Go-Data sans créer de compte : surveillance des prix concurrents, comparaisons par détaillant, opportunités chiffrées. Essayez-le.",
 }
 
 const GUIDED_STEPS = [
