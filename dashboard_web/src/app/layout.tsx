@@ -90,11 +90,7 @@ export default function RootLayout({
       name: "Maverick Menard",
       sameAs: ["https://www.linkedin.com/in/maverick-menard-479371386"],
     },
-    // TODO: ajouter l'URL de la page LinkedIn ENTREPRISE dès qu'elle existe,
-    // ex. sameAs: ["https://www.linkedin.com/company/go-data"]. Ne jamais
-    // publier de placeholder ici — Google lit ce bloc tel quel. (Le profil
-    // personnel du fondateur vit dans `founder.sameAs`, pas ici.)
-    sameAs: [],
+    sameAs: ["https://www.linkedin.com/company/godataco"],
   }
 
   const softwareJsonLd = {

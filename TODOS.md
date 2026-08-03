@@ -2,8 +2,8 @@
 
 ## Reportés par /autoplan SEO de marque (2026-08-02)
 
-- [ ] Créer la page LinkedIn entreprise Go-Data (puis remplir `sameAs` du JSON-LD Organization dans `dashboard_web/src/app/layout.tsx`) et une fiche Google Business Profile — chacune prend un slot du SERP de marque en quelques jours.
-- [ ] Refondre `dashboard_web/src/app/opengraph-image.tsx` avec l'identité orange actuelle (l'image générée utilise encore l'ancien dégradé bleu/violet et l'ancien slogan).
+- [x] ~~Créer la page LinkedIn entreprise~~ — faite le 2026-08-02 (linkedin.com/company/godataco, dans `sameAs`). Reste : fiche **Google Business Profile** (slot SERP de marque en quelques jours).
+- [x] ~~Refondre `opengraph-image.tsx` à l'identité orange~~ — fait le 2026-08-02.
 - [ ] noindex sur /login et /create-account (client components → petits layouts serveur requis).
 - [ ] Rédiger le vrai contenu des pages /scrape/[site] (« Page SEO préparatoire… » rendu public) et assainir les fiches /compare/[competitor] (notes de positionnement internes rendues publiques via `comp.oneLiner` dans `marketing-data.ts`).
 - [ ] hreflang / versions EN des pages marketing.
