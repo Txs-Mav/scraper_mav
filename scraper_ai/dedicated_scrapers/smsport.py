@@ -1,24 +1,32 @@
 """
-Scraper dédié pour SM Sport (smsport.ca).
-Plateforme : PowerGo / Next.js.
-Découverte : sitemap inventory-detail.xml.
-Extraction : JSON-LD Vehicle (présent dans chaque page produit).
-"""
-from __future__ import annotations
+Scraper dédié pour SM Sport (smsport.ca) — Québec (Valcartier).
+Sélecteurs hardcodés — aucun appel Gemini.
 
+Stratégie :
+  1. Découverte via sitemap PowerGO (inventory-detail.xml), URLs /fr/ SANS CAP
+     — les listings sont 100 % rendus côté client (RSC), inutilisables en
+     requests ; le sitemap est la seule source de découverte.
+  2. Pages détail (parallèle, pipeline de base) → JSON-LD "Vehicle" dans
+     @graph (marque, modèle, année, couleur, km, prix, sku, état) + prix
+     barré depuis le bloc CSS pg-vehicle-price.
+
+Pièges connus de cette plateforme (PowerGO / Next.js) :
+  - JSON-LD niché dans @graph (jamais au niveau racine)
+  - Descriptions (et bloc prix CSS) en mojibake UTF-8 double-encodé
+    (« hÃ©roÃ¯ne ») → réparation latin-1 → utf-8
+  - mileageFromOdometer.value = None sur le neuf
+  - L'ancien scraper généré plafonnait à 400 URLs (silencieux) : le site
+    en a ~634 — ne JAMAIS plafonner la découverte.
+
+Réécrit à la main le 2026-08-11 (remplace la version scraper_usine).
+"""
 import json
 import re
-import logging
 from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
-try:
-    from .base import DedicatedScraper
-except Exception:  # pragma: no cover
-    from base import DedicatedScraper  # type: ignore
-
-logger = logging.getLogger(__name__)
+from .base import DedicatedScraper
 
 
 class SmsportScraper(DedicatedScraper):
@@ -28,347 +36,302 @@ class SmsportScraper(DedicatedScraper):
     SITE_URL = "https://smsport.ca/fr/"
     SITE_DOMAIN = "smsport.ca"
 
+    MAX_WORKERS = 10
+
     SITEMAP_CANDIDATES = (
         "https://smsport.ca/sitemaps/inventory-detail.xml",
         "https://smsport.ca/sitemap.xml",
     )
 
-    PRODUCT_URL_PATTERNS = ("/fr/neuf/", "/fr/usage/")
-    EXCLUDE_SEGMENTS = ("sitemap",)
+    _PRODUCT_URL_RE = re.compile(r'/fr/(neuf|usage)/[a-z0-9-]+/inventaire/[^/]*a-vendre-\d+/?$')
 
-    MAX_PRODUCT_URLS = 400
+    # Segment d'URL → type de véhicule lisible
+    VEHICLE_TYPE_MAP = {
+        'motocyclette': 'Moto',
+        'vtt': 'VTT',
+        'cote-a-cote': 'Côte-à-côte',
+        'motoneige': 'Motoneige',
+        'motomarine': 'Motomarine',
+        'moteur-hors-bord': 'Moteur hors-bord',
+        'remorque': 'Remorque',
+        'souffleuses': 'Souffleuse',
+        'equipement-mecanique': 'Équipement mécanique',
+        'scooter': 'Scooter',
+        'velo-electrique': 'Vélo électrique',
+    }
 
-    # ------------------------------------------------------------------
-    # 1) Découverte des URLs produit via sitemap
-    # ------------------------------------------------------------------
+    _LD_TYPE_PRIORITY = ('Vehicle', 'Car', 'AutomotiveVehicle', 'MotorVehicle',
+                         'Motorcycle', 'Product', 'IndividualProduct')
+
+    # ──────────────────────────────────────────────────────────────
+    # DÉCOUVERTE (sitemap — les listings sont client-side)
+    # ──────────────────────────────────────────────────────────────
+
     def discover_product_urls(self, categories: List[str] = None) -> List[str]:
         urls: List[str] = []
         seen = set()
 
-        for sm_url in self.SITEMAP_CANDIDATES:
+        for sitemap_url in self.SITEMAP_CANDIDATES:
             try:
-                found = self._fetch_sitemap_urls(sm_url, depth=0)
-            except Exception as exc:
-                logger.debug("[%s] sitemap %s: %s", self.SITE_SLUG, sm_url, exc)
-                continue
-            for u in found:
-                if u in seen:
+                resp = self.session.get(sitemap_url, timeout=30)
+                if resp.status_code != 200 or '<loc>' not in resp.text:
                     continue
-                if self._is_product_url(u):
-                    seen.add(u)
-                    urls.append(u)
+            except Exception:
+                continue
+
+            locs = re.findall(r'<loc>\s*([^<\s]+)\s*</loc>', resp.text)
+
+            # Index de sitemaps → suivre les sous-sitemaps inventaire
+            if '<sitemapindex' in resp.text:
+                sub_locs = []
+                for sub in locs[:15]:
+                    try:
+                        sub_resp = self.session.get(sub, timeout=30)
+                        if sub_resp.status_code == 200:
+                            sub_locs.extend(re.findall(
+                                r'<loc>\s*([^<\s]+)\s*</loc>', sub_resp.text))
+                    except Exception:
+                        continue
+                locs = sub_locs
+
+            for url in locs:
+                norm = url.rstrip('/').lower()
+                if norm in seen:
+                    continue
+                if self._is_product_url(url):
+                    seen.add(norm)
+                    urls.append(url)
+
             if urls:
-                logger.info("[%s] %d URLs via %s", self.SITE_SLUG, len(urls), sm_url)
+                neuf = sum(1 for u in urls if '/neuf/' in u)
+                print(f"   🗺️  Sitemap {sitemap_url}: {len(urls)} URLs produit "
+                      f"({neuf} neuf, {len(urls) - neuf} usagé) — AUCUN plafond")
                 break
 
-        if len(urls) > self.MAX_PRODUCT_URLS:
-            urls = urls[: self.MAX_PRODUCT_URLS]
-
-        logger.info("[%s] Total URLs produit : %d", self.SITE_SLUG, len(urls))
         return urls
 
-    def _fetch_sitemap_urls(self, sitemap_url: str, depth: int = 0) -> List[str]:
-        if depth > 2:
-            return []
-        try:
-            resp = self.session.get(sitemap_url, timeout=self.HTTP_TIMEOUT)
-            if resp.status_code != 200 or not resp.text:
-                return []
-            text = resp.text
-        except Exception:
-            return []
-
-        if "<sitemapindex" in text:
-            sub_urls = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", text)
-            collected: List[str] = []
-            inv_subs = [s for s in sub_urls if any(
-                k in s.lower() for k in ("inventory", "vehicle", "neuf", "usage", "inventaire")
-            )]
-            for sub in (inv_subs or sub_urls)[:15]:
-                try:
-                    collected.extend(self._fetch_sitemap_urls(sub, depth + 1))
-                except Exception:
-                    continue
-            return collected
-
-        return re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", text)
-
     def _is_product_url(self, url: str) -> bool:
-        if not url or not isinstance(url, str):
+        if not url or self.SITE_DOMAIN not in url.lower():
             return False
-        low = url.lower()
-        if self.SITE_DOMAIN not in low:
-            return False
-        if not any(p in low for p in self.PRODUCT_URL_PATTERNS):
-            return False
-        if any(e in low for e in self.EXCLUDE_SEGMENTS):
-            return False
-        # Doit comporter /inventaire/ + slug produit final
-        if "/inventaire/" not in low:
-            return False
-        path = low.split(self.SITE_DOMAIN, 1)[-1]
-        segments = [s for s in path.split("/") if s]
-        if len(segments) < 5:
-            return False
-        last = segments[-1]
-        if last in ("inventaire", "inventory"):
-            return False
-        return True
+        return bool(self._PRODUCT_URL_RE.search(url.lower().rstrip('/') + '/'))
 
-    # ------------------------------------------------------------------
-    # 2) Extraction depuis une page produit
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
+    # EXTRACTION PAGE DÉTAIL
+    # ──────────────────────────────────────────────────────────────
+
     def extract_from_detail_page(self, url: str, html: str, soup: BeautifulSoup) -> Optional[Dict]:
-        # a) JSON-LD Vehicle/Product
-        product = self._find_jsonld_vehicle(html)
+        specs: Dict[str, Any] = {}
 
-        data: Dict[str, Any] = {}
+        ld = self._find_vehicle_json_ld(html)
+        if ld:
+            name = ld.get('name')
+            if self._valid(name):
+                specs['name'] = self._clean_name(str(name))
 
-        if product:
-            self._fill_from_jsonld(data, product)
+            brand = ld.get('brand') or ld.get('manufacturer')
+            if isinstance(brand, dict):
+                brand = brand.get('name')
+            if self._valid(brand):
+                specs['marque'] = str(brand).strip()
 
-        # b) Fallbacks via meta OG si JSON-LD incomplet
-        if not data.get("name"):
-            og_title = self._meta(soup, "og:title")
-            if og_title:
-                data["name"] = self._clean_text(og_title)
-        if not data.get("description"):
-            og_desc = self._meta(soup, "og:description")
-            if og_desc:
-                data["description"] = self._clean_text(og_desc)
-        if not data.get("image"):
-            og_image = self._meta(soup, "og:image")
-            if og_image:
-                data["image"] = [og_image]
+            model = ld.get('model')
+            if isinstance(model, dict):
+                model = model.get('name')
+            if self._valid(model):
+                specs['modele'] = str(model).strip()
 
-        # c) Enrichissement depuis URL (catégorie, condition)
-        self._enrich_from_url(data, url)
+            year = self.clean_year(str(
+                ld.get('vehicleModelDate') or ld.get('modelDate')
+                or ld.get('productionDate') or ''))
+            if year:
+                specs['annee'] = year
 
-        # d) Enrichissement depuis le nom (année, marque, modèle si manquants)
-        self._enrich_from_name(data)
+            color = ld.get('color')
+            if self._valid(color):
+                specs['couleur'] = str(color).strip()
 
-        if not data.get("name"):
-            return None
+            mileage = ld.get('mileageFromOdometer')
+            if isinstance(mileage, dict):
+                km = self.clean_mileage(str(mileage.get('value') or ''))
+                # None/0 = odomètre non renseigné (systématique sur le neuf)
+                if km:
+                    specs['kilometrage'] = km
 
-        # Garantir clés attendues côté validation
-        data.setdefault("prix", None)
-        data.setdefault("marque", None)
-        data.setdefault("modele", None)
-        data.setdefault("annee", None)
-        data.setdefault("kilometrage", None)
-        data.setdefault("vin", None)
-        data.setdefault("couleur", None)
-        data.setdefault("image", [])
-        data.setdefault("description", None)
+            sku = ld.get('sku') or ld.get('mpn') or ld.get('productID')
+            if self._valid(sku):
+                specs['inventaire'] = str(sku).strip()
 
-        return data
+            vin = ld.get('vehicleIdentificationNumber') or ld.get('vin')
+            if self._valid(vin) and len(str(vin).strip()) >= 11:
+                specs['vin'] = str(vin).strip()
 
-    # ------------------------------------------------------------------
-    # JSON-LD helpers
-    # ------------------------------------------------------------------
-    def _find_jsonld_vehicle(self, html: str) -> Optional[Dict[str, Any]]:
-        blocks = re.findall(
-            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            condition = str(ld.get('itemCondition', ''))
+            if 'New' in condition:
+                specs['etat'] = 'neuf'
+            elif 'Used' in condition:
+                specs['etat'] = 'occasion'
+
+            offers = ld.get('offers')
+            if isinstance(offers, list):
+                offers = offers[0] if offers else None
+            if isinstance(offers, dict):
+                price = self.clean_price(str(offers.get('price', '')))
+                if price:
+                    specs['prix'] = price
+
+            image = ld.get('image')
+            if isinstance(image, list):
+                image = image[0] if image else None
+            elif isinstance(image, dict):
+                image = image.get('url') or image.get('contentUrl')
+            if self._valid(image) and str(image).startswith('http'):
+                specs['image'] = str(image)
+
+            description = ld.get('description')
+            if self._valid(description):
+                specs['description'] = self._clean_description(str(description))
+
+        # Fallbacks OG si JSON-LD incomplet
+        if not specs.get('name'):
+            og_title = soup.select_one('meta[property="og:title"]')
+            if og_title and og_title.get('content'):
+                specs['name'] = self._clean_name(og_title['content'])
+        if not specs.get('image'):
+            og_image = soup.select_one('meta[property="og:image"]')
+            if og_image and og_image.get('content'):
+                specs['image'] = og_image['content']
+
+        # Prix : fallback + prix barré depuis le bloc CSS PowerGO
+        price_box = soup.select_one('[class*="pg-vehicle-price"]')
+        if price_box:
+            strike = price_box.select_one('del, s, [class*="line-through"], [class*="strike"]')
+            if strike:
+                old_price = self.clean_price(strike.get_text())
+                if old_price and old_price != specs.get('prix'):
+                    specs['prix_original'] = old_price
+            if not specs.get('prix'):
+                box_text = price_box.get_text(' ', strip=True)
+                strike_text = strike.get_text(strip=True) if strike else ''
+                current = self.clean_price(box_text.replace(strike_text, ''))
+                if current:
+                    specs['prix'] = current
+
+        # État + catégories depuis l'URL
+        url_lower = url.lower()
+        if not specs.get('etat'):
+            specs['etat'] = 'occasion' if '/usage/' in url_lower else 'neuf'
+        specs['sourceCategorie'] = (
+            'vehicules_occasion' if specs['etat'] == 'occasion' else 'inventaire')
+
+        seg_match = re.search(r'/fr/(?:neuf|usage)/([a-z0-9-]+)/', url_lower)
+        if seg_match:
+            segment = seg_match.group(1)
+            specs['vehicule_type'] = self.VEHICLE_TYPE_MAP.get(
+                segment, segment.replace('-', ' ').capitalize())
+
+        name = specs.get('name', '')
+        if name and re.search(r'\b(démo|demo|démonstrateur)\b', name.lower()):
+            specs['etat'] = 'demonstrateur'
+
+        return specs if specs.get('name') else None
+
+    def _find_vehicle_json_ld(self, html: str) -> Optional[Dict]:
+        """Déballe les blocs JSON-LD (@graph inclus) et retourne le meilleur
+        candidat par priorité de type — sur PowerGO le Vehicle est TOUJOURS
+        niché dans un @graph, jamais au niveau racine."""
+        candidates: List[Dict] = []
+
+        for match in re.finditer(
+            r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
             html, re.DOTALL | re.IGNORECASE,
-        )
-        product_types = {"Vehicle", "Car", "Motorcycle", "Product"}
-        for raw in blocks:
+        ):
             try:
-                data = json.loads(raw.strip())
-            except Exception:
-                # Parfois plusieurs JSON concaténés ; tenter une réparation simple.
-                try:
-                    data = json.loads(re.sub(r",\s*}", "}", raw.strip()))
-                except Exception:
-                    continue
-            found = self._search_product(data, product_types)
-            if found:
-                return found
+                data = json.loads(match.group(1).strip())
+            except (json.JSONDecodeError, TypeError):
+                continue
+            candidates.extend(self._unpack_ld(data))
+
+        candidates.sort(key=lambda item: next(
+            (i for i, t in enumerate(self._LD_TYPE_PRIORITY)
+             if item.get('@type') == t), 99))
+
+        for item in candidates:
+            if item.get('@type') in self._LD_TYPE_PRIORITY:
+                return item
         return None
 
-    def _search_product(self, node: Any, types: set) -> Optional[Dict[str, Any]]:
-        if isinstance(node, dict):
-            t = node.get("@type")
-            if isinstance(t, str) and t in types:
-                return node
-            if isinstance(t, list) and any(x in types for x in t):
-                return node
-            graph = node.get("@graph")
+    def _unpack_ld(self, node: Any) -> List[Dict]:
+        results: List[Dict] = []
+        if isinstance(node, list):
+            for sub in node:
+                results.extend(self._unpack_ld(sub))
+        elif isinstance(node, dict):
+            graph = node.get('@graph')
             if isinstance(graph, list):
-                for it in graph:
-                    f = self._search_product(it, types)
-                    if f:
-                        return f
-            for v in node.values():
-                if isinstance(v, (dict, list)):
-                    f = self._search_product(v, types)
-                    if f:
-                        return f
-        elif isinstance(node, list):
-            for it in node:
-                f = self._search_product(it, types)
-                if f:
-                    return f
-        return None
+                for sub in graph:
+                    results.extend(self._unpack_ld(sub))
+            else:
+                results.append(node)
+        return results
 
-    def _fill_from_jsonld(self, data: Dict[str, Any], p: Dict[str, Any]) -> None:
-        # Nom
-        name = p.get("name")
-        if isinstance(name, str) and name.strip():
-            data["name"] = self._clean_text(name)
+    # ──────────────────────────────────────────────────────────────
+    # DÉDUP & NETTOYAGE
+    # ──────────────────────────────────────────────────────────────
 
-        # Description
-        desc = p.get("description")
-        if isinstance(desc, str) and desc.strip():
-            data["description"] = self._clean_text(desc)
-
-        # Marque
-        brand = p.get("brand") or p.get("manufacturer")
-        if isinstance(brand, dict):
-            brand = brand.get("name")
-        if isinstance(brand, str) and brand.strip():
-            data["marque"] = brand.strip()
-
-        # Modèle
-        model = p.get("model")
-        if isinstance(model, dict):
-            model = model.get("name")
-        if isinstance(model, str) and model.strip():
-            data["modele"] = model.strip()
-
-        # Année
-        year = p.get("vehicleModelDate") or p.get("modelDate") or p.get("productionDate")
-        if year:
-            yr = self.clean_year(str(year))
-            if yr:
-                data["annee"] = yr
-
-        # Couleur
-        color = p.get("color") or p.get("vehicleInteriorColor")
-        if isinstance(color, str) and color.strip():
-            data["couleur"] = color.strip()
-
-        # VIN
-        vin = p.get("vehicleIdentificationNumber") or p.get("vin")
-        if isinstance(vin, str) and vin.strip():
-            data["vin"] = vin.strip()
-
-        # SKU / inventaire
-        sku = p.get("sku") or p.get("mpn") or p.get("productID")
-        if sku:
-            data["inventaire"] = str(sku).strip()
-            data["sku"] = str(sku).strip()
-
-        # Kilométrage
-        mileage = p.get("mileageFromOdometer")
-        if isinstance(mileage, dict):
-            val = mileage.get("value")
-            if val not in (None, "", "null"):
-                km = self.clean_mileage(str(val))
-                if km is not None:
-                    data["kilometrage"] = km
-        elif isinstance(mileage, (str, int, float)):
-            km = self.clean_mileage(str(mileage))
-            if km is not None:
-                data["kilometrage"] = km
-
-        # Images
-        images_raw = p.get("image") or []
-        if isinstance(images_raw, str):
-            images_raw = [images_raw]
-        elif isinstance(images_raw, dict):
-            images_raw = [images_raw.get("url") or images_raw.get("contentUrl")]
-        images = [i for i in images_raw if isinstance(i, str) and i.startswith("http")]
-        if images:
-            data["image"] = images
-
-        # Prix via offers
-        offers = p.get("offers")
-        if isinstance(offers, list) and offers:
-            offers = offers[0]
-        if isinstance(offers, dict):
-            price = offers.get("price") or offers.get("lowPrice") or offers.get("highPrice")
-            if price not in (None, "", 0, "0"):
-                price_val = self.clean_price(str(price))
-                if price_val:
-                    data["prix"] = price_val
-            currency = offers.get("priceCurrency")
-            if currency:
-                data["devise"] = currency
-            availability = offers.get("availability")
-            if availability:
-                # Normaliser disponibilité
-                data["disponibilite"] = str(availability).split("/")[-1]
-
-        # Condition
-        cond = p.get("itemCondition")
-        if isinstance(cond, str):
-            low = cond.lower()
-            if "new" in low:
-                data["condition"] = "Neuf"
-            elif "used" in low:
-                data["condition"] = "Usagé"
-
-    # ------------------------------------------------------------------
-    # Enrichissement URL / nom
-    # ------------------------------------------------------------------
-    def _enrich_from_url(self, data: Dict[str, Any], url: str) -> None:
-        low = url.lower()
-        path = low.split(self.SITE_DOMAIN, 1)[-1]
-        segments = [s for s in path.split("/") if s]
-
-        if not data.get("condition"):
-            if "/neuf/" in low:
-                data["condition"] = "Neuf"
-            elif "/usage/" in low:
-                data["condition"] = "Usagé"
-
-        # /fr/neuf/<categorie>/inventaire/<slug>
-        if not data.get("categorie") and len(segments) >= 3:
-            cat = segments[2].replace("-", " ").strip()
-            if cat and cat not in ("inventaire", "inventory"):
-                data["categorie"] = cat
-
-    def _enrich_from_name(self, data: Dict[str, Any]) -> None:
-        name = data.get("name")
-        if not name:
-            return
-        if not data.get("annee"):
-            yr = self.clean_year(name)
-            if yr:
-                data["annee"] = yr
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _meta(soup: BeautifulSoup, prop: str) -> Optional[str]:
-        tag = soup.find("meta", attrs={"property": prop})
-        if tag and tag.get("content"):
-            return tag["content"].strip()
-        tag = soup.find("meta", attrs={"name": prop})
-        if tag and tag.get("content"):
-            return tag["content"].strip()
-        return None
+    def _deduplicate(self, products: List[Dict]) -> List[Dict]:
+        """Chaque unité PowerGO a une URL unique (…a-vendre-#####) : clé =
+        sourceUrl UNIQUEMENT, jamais nom+prix (plusieurs unités identiques
+        du même modèle coexistent)."""
+        seen_urls: set = set()
+        unique: List[Dict] = []
+        for product in products:
+            url = product.get('sourceUrl', '').rstrip('/')
+            if url and url in seen_urls:
+                continue
+            if url:
+                seen_urls.add(url)
+            unique.append(product)
+        return unique
 
     @staticmethod
-    def _clean_text(text: str) -> str:
-        if not text:
+    def _fix_mojibake(text: str) -> str:
+        """Répare l'UTF-8 double-encodé des champs PowerGO (« hÃ©roÃ¯ne »)."""
+        if not text or ('Ã' not in text and 'Â' not in text and 'â' not in text):
             return text
-        # Décodage simple de séquences moji-bake fréquentes (Ã©, Ã , etc.)
-        # Le HTML est servi en UTF-8 mais certains champs JSON-LD sont mal encodés.
         try:
-            if "Ã" in text or "Â" in text:
-                fixed = text.encode("latin-1", errors="ignore").decode("utf-8", errors="ignore")
-                if fixed and ("Ã" not in fixed or len(fixed) < len(text)):
-                    text = fixed
+            fixed = text.encode('latin-1', errors='ignore').decode('utf-8', errors='ignore')
+            if fixed and ('Ã' not in fixed or len(fixed) < len(text)):
+                return fixed
         except Exception:
             pass
-        text = re.sub(r"\s+", " ", text).strip()
-        # Couper le suffixe « Neuf À Québec », « | SM Sport » etc.
-        for suf in (" Neuf À Québec", " Usagé À Québec", " À Québec",
-                    " | SM Sport", " - SM Sport"):
-            idx = text.lower().rfind(suf.lower())
-            if idx > 0:
-                text = text[:idx].strip()
-        return text.strip(" -|")
+        return text
+
+    def _clean_name(self, name: str) -> str:
+        if not name:
+            return name
+        name = self._fix_mojibake(name)
+        name = re.sub(r'\s+(neuf|usagé|usage)?\s*[àa]\s+Québec.*$', '', name, flags=re.I)
+        name = re.sub(r'\s*[|–-]\s*SM\s*Sport.*$', '', name, flags=re.I)
+        name = re.sub(r'\s*[àa]\s+vendre.*$', '', name, flags=re.I)
+        name = re.sub(r'\s*(\.{3}|…)\s*$', '', name)
+        name = re.sub(r'\s+', ' ', name).strip(' -|')
+        # Tokens adjacents dupliqués (« Husqvarna HUSQVARNA … »)
+        tokens = name.split(' ')
+        deduped = [t for i, t in enumerate(tokens)
+                   if i == 0 or t.casefold() != tokens[i - 1].casefold()]
+        return ' '.join(deduped)
+
+    def _clean_description(self, description: str) -> str:
+        description = self._fix_mojibake(description)
+        description = re.sub(r'\s+', ' ', description).strip()
+        # Couper le boilerplate marketing du concessionnaire
+        description = re.sub(
+            r'\s*SM Sport\s*[—–-]?\s*Votre destination.*$', '', description, flags=re.I)
+        return description[:2000]
+
+    @staticmethod
+    def _valid(value) -> bool:
+        if value is None:
+            return False
+        text = str(value).strip()
+        return bool(text) and text.lower() not in ('s/o', 'n/a', 'null', '-', 'none')

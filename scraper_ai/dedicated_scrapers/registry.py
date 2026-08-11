@@ -28,6 +28,7 @@ from .morin_sports import MorinSportsScraper
 # Sources de marché (annonces multi-vendeurs)
 from .marketplace_kijiji import KijijiMarketplaceScraper
 from .centre_du_sport_lac_st_jean import CentreDuSportLacStJeanScraper
+from .smsport import SmsportScraper
 from .marketplace_lespac import LesPacMarketplaceScraper
 from .marketplace_autotrader import AutoTraderMarketplaceScraper
 from .marketplace_cycletrader import CycleTraderMarketplaceScraper
@@ -54,6 +55,7 @@ _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'picotte-motosport': PicotteMotosportScraper,
     'morin-sports': MorinSportsScraper,
     'centre-du-sport-lac-st-jean': CentreDuSportLacStJeanScraper,
+    'smsport': SmsportScraper,
 
     # Marketplaces (multi-vendeurs)
     'marketplace-kijiji-ca': KijijiMarketplaceScraper,
@@ -85,6 +87,7 @@ _DOMAIN_MAP: Dict[str, str] = {
     'picottemotosport.com': 'picotte-motosport',
     'morinsports.com': 'morin-sports',
     'centredusportlacstjean.com': 'centre-du-sport-lac-st-jean',
+    'smsport.ca': 'smsport',
 
     # Marketplaces
     'kijiji.ca': 'marketplace-kijiji-ca',

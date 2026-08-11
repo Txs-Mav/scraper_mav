@@ -16,12 +16,9 @@ try:
 except Exception:
     pass
 
-try:
-    from .smsport import SmsportScraper
-    GENERATED_SCRAPERS['smsport'] = SmsportScraper
-    GENERATED_DOMAINS['smsport.ca'] = 'smsport'
-except Exception:
-    pass
+# smsport : promu dans registry.py (réécrit à la main le 2026-08-11) —
+# retiré d'ici car GENERATED_SCRAPERS est mergé APRÈS _SCRAPERS et
+# écraserait l'entrée principale.
 
 try:
     from .excelmoto import ExcelmotoScraper
