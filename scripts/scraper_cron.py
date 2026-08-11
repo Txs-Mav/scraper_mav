@@ -54,6 +54,14 @@ from _http_helpers import post_with_retry
 from scraper_ai.dedicated_scrapers.registry import DedicatedScraperRegistry
 
 STALE_THRESHOLD_MINUTES = 55
+
+# Cadence personnalisée par domaine (minutes). Un site listé ici n'est
+# re-scrapé que si son cache est plus vieux que la valeur indiquée — sur
+# un cron horaire, 100 min ≈ un passage toutes les 2 heures (marge pour
+# la durée du scrape précédent).
+STALE_OVERRIDES_MINUTES = {
+    'centredusportlacstjean.com': 100,   # toutes les 2 h
+}
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45
 
@@ -314,9 +322,10 @@ def _hide_failing_sites(supabase_url: str, supabase_key: str, sites: list[dict])
 
 
 def _get_stale_sites(supabase, sites: list) -> list:
-    """Filtre les sites dont le cache est vieux de >STALE_THRESHOLD_MINUTES ou inexistant."""
-    threshold = datetime.now(timezone.utc) - timedelta(minutes=STALE_THRESHOLD_MINUTES)
-    threshold_iso = threshold.isoformat()
+    """Filtre les sites dont le cache est vieux de plus que leur seuil de
+    staleness (STALE_THRESHOLD_MINUTES par défaut, STALE_OVERRIDES_MINUTES
+    pour les sites à cadence personnalisée) ou inexistant."""
+    now = datetime.now(timezone.utc)
 
     domains = [s["site_domain"] for s in sites]
 
@@ -337,6 +346,8 @@ def _get_stale_sites(supabase, sites: list) -> list:
     fresh = []
     for site in sites:
         domain = site["site_domain"]
+        stale_minutes = STALE_OVERRIDES_MINUTES.get(domain, STALE_THRESHOLD_MINUTES)
+        threshold_iso = (now - timedelta(minutes=stale_minutes)).isoformat()
         row = cached.get(domain)
         if not row:
             stale.append(site)
@@ -348,7 +359,7 @@ def _get_stale_sites(supabase, sites: list) -> list:
             fresh.append(site)
 
     if fresh:
-        _log(f"   ✅ {len(fresh)} site(s) frais (<{STALE_THRESHOLD_MINUTES} min), skippés")
+        _log(f"   ✅ {len(fresh)} site(s) frais (sous leur seuil de staleness), skippés")
     return stale
 
 
