@@ -73,7 +73,8 @@ SELECT
     "discovery": {
       "method": "paginated_listing",
       "page_param": "page",
-      "per_page": 24,
+      "per_page": 100,
+      "query": "limit=100&namedSorting=priceASC",
       "inventory_url": "https://www.centredusportlacstjean.com/fr/inventaire-neuf",
       "used_url": "https://www.centredusportlacstjean.com/fr/inventaire-occasion"
     }
@@ -95,8 +96,9 @@ SELECT
   '{
     "type": "page_param",
     "page_param": "page",
-    "per_page": 24,
-    "note": "Pagination SM360 classique ?page=N (24 produits/page). Le nombre total de pages est lu dans les liens de pagination de la page 1. Extraction hybride : cartes listing + JSON-LD Car et blob JS (stockNumber/vin) sur les pages détail."
+    "per_page": 100,
+    "query": "limit=100&namedSorting=priceASC",
+    "note": "Pagination SM360 ?page=N. ATTENTION : le tri par défaut répète des produits entre les pages (~20 % de l''inventaire jamais listé) — le tri déterministe namedSorting=priceASC rend la pagination stable et complète ; limit est plafonné à 100 par le serveur. Extraction hybride : cartes listing + JSON-LD Car et blob JS (stockNumber/vin) sur les pages détail."
   }'::jsonb,
   true,
   'approved',

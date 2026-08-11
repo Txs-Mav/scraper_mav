@@ -43,10 +43,17 @@ class CentreDuSportLacStJeanScraper(DedicatedScraper):
         },
     }
 
-    LISTING_TIMEOUT = 25
+    LISTING_TIMEOUT = 30
     LISTING_MAX_PAGES = 80
+    LISTING_MAX_CONSECUTIVE_FAILS = 3
     WORKERS = 10
     DETAIL_TIMEOUT = 15
+
+    # ⚠️ Le tri par défaut de SM360 répète des produits d'une page à l'autre
+    # (~20 % de l'inventaire jamais affiché sur les 30 pages). Un tri
+    # déterministe (priceASC) rend la pagination stable et complète.
+    # limit est plafonné à 100 par le serveur (24 par défaut).
+    LISTING_QUERY = 'limit=100&namedSorting=priceASC'
 
     # Segment d'URL → type de véhicule lisible
     VEHICLE_TYPE_MAP = {
@@ -151,39 +158,51 @@ class CentreDuSportLacStJeanScraper(DedicatedScraper):
         listing_url = config['url']
         all_products = []
 
+        first_url = f"{listing_url}?{self.LISTING_QUERY}"
         try:
-            response = self.session.get(listing_url, timeout=self.LISTING_TIMEOUT)
+            response = self.session.get(first_url, timeout=self.LISTING_TIMEOUT)
             if response.status_code != 200:
-                print(f"      ⚠️ HTTP {response.status_code} pour {listing_url}")
+                print(f"      ⚠️ HTTP {response.status_code} pour {first_url}")
                 return []
         except Exception as exc:
             print(f"      ⚠️ Erreur listing: {exc}")
             return []
 
         total_pages = self._parse_max_page(response.text)
-        print(f"      📊 SM360: {total_pages} page(s) de 24 produits")
+        print(f"      📊 SM360: {total_pages} page(s) de 100 produits (tri priceASC)")
 
         all_products.extend(self._parse_listing_html(response.text, config))
 
+        consecutive_fails = 0
         for page in range(2, min(total_pages, self.LISTING_MAX_PAGES) + 1):
-            page_url = f"{listing_url}?page={page}"
+            page_url = f"{listing_url}?{self.LISTING_QUERY}&page={page}"
             try:
                 resp = self.session.get(page_url, timeout=self.LISTING_TIMEOUT)
-                if resp.status_code != 200:
-                    break
-                page_products = self._parse_listing_html(resp.text, config)
-                if not page_products:
-                    break
-                all_products.extend(page_products)
-                time.sleep(0.2)
+                page_products = (
+                    self._parse_listing_html(resp.text, config)
+                    if resp.status_code == 200 else []
+                )
             except Exception:
-                break
+                page_products = []
+
+            if page_products:
+                consecutive_fails = 0
+                all_products.extend(page_products)
+            else:
+                # Une page vide/échouée ne doit pas sacrifier le reste de
+                # la pagination — on continue, avec un plafond de sûreté.
+                consecutive_fails += 1
+                print(f"      ⚠️ Page {page} vide ou en erreur "
+                      f"({consecutive_fails}/{self.LISTING_MAX_CONSECUTIVE_FAILS})")
+                if consecutive_fails >= self.LISTING_MAX_CONSECUTIVE_FAILS:
+                    break
+            time.sleep(0.2)
 
         return all_products
 
     @staticmethod
     def _parse_max_page(html: str) -> int:
-        pages = [int(m) for m in re.findall(r'\?page=(\d+)', html)]
+        pages = [int(m) for m in re.findall(r'[?&]page=(\d+)', html)]
         return max(pages) if pages else 1
 
     def _parse_listing_html(self, html: str, config: Dict) -> List[Dict]:
@@ -305,11 +324,14 @@ class CentreDuSportLacStJeanScraper(DedicatedScraper):
                         if specs:
                             product = url_to_product[url]
                             for key, value in specs.items():
+                                # 'name' inclus : les cartes listing tronquent
+                                # les noms longs avec « … » — le JSON-LD de la
+                                # page détail a toujours le nom complet.
                                 if value is not None and (
                                     not product.get(key)
-                                    or key in ('marque', 'modele', 'annee', 'couleur',
-                                               'kilometrage', 'inventaire', 'etat',
-                                               'prix', 'prix_original')
+                                    or key in ('name', 'marque', 'modele', 'annee',
+                                               'couleur', 'kilometrage', 'inventaire',
+                                               'etat', 'prix', 'prix_original')
                                 ):
                                     product[key] = value
                             enriched_count += 1
@@ -492,5 +514,13 @@ class CentreDuSportLacStJeanScraper(DedicatedScraper):
             return name
         name = re.sub(r'\s+[àa]\s+Alma.*$', '', name, flags=re.I)
         name = re.sub(r'\s*\|\s*Centre\s+du\s+sport.*$', '', name, flags=re.I)
-        name = re.sub(r'\s+', ' ', name)
-        return name.strip()
+        # Cartes listing : noms longs tronqués avec une ellipse
+        name = re.sub(r'\s*(\.{3}|…)\s*$', '', name)
+        name = re.sub(r'\s+', ' ', name).strip()
+        # SM360 concatène marque + modèle qui répète parfois la marque
+        # (« Polaris POLARIS RANGER 500 2026 », « SRVIPER … 2020 2020 ») :
+        # on retire les tokens adjacents identiques (insensible à la casse).
+        tokens = name.split(' ')
+        deduped = [t for i, t in enumerate(tokens)
+                   if i == 0 or t.casefold() != tokens[i - 1].casefold()]
+        return ' '.join(deduped)
