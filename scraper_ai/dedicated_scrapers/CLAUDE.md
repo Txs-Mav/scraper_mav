@@ -178,4 +178,5 @@ silencieusement).
 | Mojibake PowerGO | « hÃ©roÃ¯ne discrÃ¨te » en prod | réparation latin-1→utf-8 |
 | smsport en double registry | l'ancienne classe générée écrasait la nouvelle | retirer de `_generated_registry.py` |
 | INSERT pendant un run de cron | site pas scrapé au passage attendu | `scrape_single_site.py --force` pour la dispo immédiate |
+| Run cron parti AVANT le push (checkout figé) | l'ancien code écrase une sauvegarde fraîche (634 → 400) | vérifier `gh run list` (run in_progress ?) ; re-`scrape_single_site --force` après la fin du run, le run suivant a le bon code |
 | `gh` sur le mauvais remote | 404 « workflow not found » | toujours `-R Txs-Mav/scraper_mav` |
