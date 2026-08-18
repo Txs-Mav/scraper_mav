@@ -118,7 +118,7 @@ export default function CampaignDemoClient({
   const ecartLabel = `${pos.ecartPourcentage > 0 ? "+" : ""}${pos.ecartPourcentage.toFixed(1)} %`
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] dark:bg-[#0e0f10]">
+    <div className="min-h-screen bg-[#edf0f4] dark:bg-[#0b0c0e]">
       {/* ── Bandeau supérieur ─────────────────────────────── */}
       <header className="bg-[#0b0c0d]">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
@@ -145,7 +145,9 @@ export default function CampaignDemoClient({
       </header>
 
       {/* ── Héro ──────────────────────────────────────────── */}
-      <section className="border-b border-gray-200 bg-white dark:border-white/[0.06] dark:bg-[#131415]">
+      {/* Gradation marquée : lavis orange en haut → blanc, pour détacher
+          nettement le héro du reste de la page. */}
+      <section className="border-b border-gray-200 bg-gradient-to-b from-orange-100/70 via-white to-[#fafbfc] dark:border-white/[0.06] dark:from-orange-500/[0.10] dark:via-[#141516] dark:to-[#101112]">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-600/10 px-3 py-1 text-[12px] font-semibold text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-400/10 dark:text-orange-300 dark:ring-orange-400/25">
             Démo privée · préparée pour {config.reference.name}
@@ -197,7 +199,7 @@ export default function CampaignDemoClient({
       </section>
 
       {/* ── Navigation sections (parcours numéroté) ───────── */}
-      <nav id="campaign-nav" className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur dark:border-white/[0.06] dark:bg-[#131415]/95">
+      <nav id="campaign-nav" className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 shadow-[0_1px_8px_rgba(16,24,40,0.06)] backdrop-blur dark:border-white/[0.06] dark:bg-[#131415]/95 dark:shadow-none">
         <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-2 sm:px-6">
           {SECTIONS.map(({ id, label, icon: Icon }, i) => (
             <button
@@ -327,7 +329,7 @@ export default function CampaignDemoClient({
 
 function StatChip({ value, label }: { value: string; label: string }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 dark:border-white/[0.08] dark:bg-white/[0.03]">
+    <span className="inline-flex items-baseline gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04] dark:shadow-none">
       <span className="text-[15px] font-bold tabular-nums text-gray-900 dark:text-white">{value}</span>
       <span className="text-[12px] text-gray-500 dark:text-gray-400">{label}</span>
     </span>
@@ -353,7 +355,7 @@ function InsightCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-4 text-left transition-all hover:border-orange-400 hover:shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-orange-400/60"
+      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:border-orange-400 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.04] dark:shadow-none dark:hover:border-orange-400/60"
     >
       <span className={`${display.className} text-[24px] font-bold tabular-nums leading-none ${INSIGHT_ACCENTS[accent]}`}>
         {value}
