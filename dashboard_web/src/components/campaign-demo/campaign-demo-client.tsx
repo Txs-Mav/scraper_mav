@@ -118,7 +118,9 @@ export default function CampaignDemoClient({
   const ecartLabel = `${pos.ecartPourcentage > 0 ? "+" : ""}${pos.ecartPourcentage.toFixed(1)} %`
 
   return (
-    <div className="min-h-screen bg-[#edf0f4] dark:bg-[#0b0c0e]">
+    // Écart de couleur volontairement marqué entre le haut (héro blanc) et
+    // le bas (zone de contenu grise) pour délimiter les deux mondes.
+    <div className="min-h-screen bg-[#e3e7ee] dark:bg-[#08090b]">
       {/* ── Bandeau supérieur ─────────────────────────────── */}
       <header className="bg-[#0b0c0d]">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
@@ -145,9 +147,7 @@ export default function CampaignDemoClient({
       </header>
 
       {/* ── Héro ──────────────────────────────────────────── */}
-      {/* Gradation marquée : lavis orange en haut → blanc, pour détacher
-          nettement le héro du reste de la page. */}
-      <section className="border-b border-gray-200 bg-gradient-to-b from-orange-100/70 via-white to-[#fafbfc] dark:border-white/[0.06] dark:from-orange-500/[0.10] dark:via-[#141516] dark:to-[#101112]">
+      <section className="border-b border-gray-200 bg-white dark:border-white/[0.06] dark:bg-[#131415]">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-600/10 px-3 py-1 text-[12px] font-semibold text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-400/10 dark:text-orange-300 dark:ring-orange-400/25">
             Démo privée · préparée pour {config.reference.name}
@@ -238,10 +238,6 @@ export default function CampaignDemoClient({
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {section === "surveillance" && (
           <div className="space-y-4">
-            <SectionIntro
-              title="Surveillance de prix"
-              text={`Votre inventaire (${data.referenceCount} unités) comparé ligne par ligne aux prix affichés chez ${data.sites.length} concessionnaires concurrents. Astuce : le filtre « Non compétitif » montre les unités où vous êtes battu, et chaque ligne se déplie pour voir le détail.`}
-            />
             <PriceComparisonTable
               products={products}
               competitorsUrls={data.competitorUrls}
