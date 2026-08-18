@@ -17,6 +17,7 @@ const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["600", "700"]
 const CAMPAIGN_PARTNERS: Record<string, string> = {
   CFMOTO: "CFMOTO",
   FALARDEAU: "MOTO FALARDEAU",
+  SMSPORT: "SM SPORT",
 }
 
 /**

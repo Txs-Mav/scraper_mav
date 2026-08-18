@@ -1,12 +1,14 @@
 "use client"
 
 /**
- * Dashboard public « Moto Falardeau » — démo privée sans compte pour Miguel.
+ * Dashboard public des campagnes « démo privée » (/falardeau, /smsport…).
  * Quatre sections réelles (Surveillance, Analyse, Stratégie de pricing,
- * Fiches de prix) alimentées par les données scrapées ; le reste de la
- * navigation est visible mais verrouillé (compte requis — alertes incluses).
- * La stratégie de pricing est éphémère (état local) : elle recalcule en
- * direct la colonne « Prix recommandé » de la surveillance et les fiches.
+ * Fiches de prix) alimentées par les données scrapées ; le reste des outils
+ * est regroupé derrière un seul verrou « compte requis » (alertes incluses).
+ *
+ * UX pensée pour quelqu'un qui découvre Go-Data : trois cartes « ce que
+ * Go-Data a trouvé » dans le héro mènent directement aux sections, et les
+ * onglets sont numérotés pour suggérer un ordre de lecture.
  */
 
 import { useMemo, useState } from "react"
@@ -14,9 +16,9 @@ import Link from "next/link"
 import Image from "next/image"
 import { Bricolage_Grotesque } from "next/font/google"
 import {
-  ArrowRight, BarChart2, Bell, CircleDollarSign, ClipboardList,
-  FileBarChart, LayoutGrid, Lock, Minus, Plus, Radar, Search, X,
-  TrendingDown, Target, Scale, type LucideIcon,
+  ArrowRight, BarChart2, ChevronRight, CircleDollarSign, ClipboardList,
+  Lock, Minus, Plus, Radar, TrendingDown, Target, Scale, X,
+  type LucideIcon,
 } from "lucide-react"
 
 import PriceComparisonTable from "@/components/price-comparison-table"
@@ -39,7 +41,7 @@ import {
   type PricingStrategySettings,
   type VehicleType,
 } from "@/lib/pricing-strategy"
-import type { FalardeauData } from "@/lib/falardeau-campaign"
+import type { CampaignDemoData, DealerCampaignConfig } from "@/lib/campaign-demo"
 
 const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["600", "700"] })
 
@@ -52,12 +54,7 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: LucideIcon }> = [
   { id: "fiches", label: "Fiches de prix", icon: ClipboardList },
 ]
 
-const LOCKED_ITEMS: Array<{ label: string; icon: LucideIcon }> = [
-  { label: "Recherche produit", icon: Search },
-  { label: "Alertes prix", icon: Bell },
-  { label: "Rapports", icon: FileBarChart },
-  { label: "Par détaillant", icon: LayoutGrid },
-]
+const LOCKED_TOOLS = "Recherche produit, Alertes prix, Rapports, Par détaillant"
 
 const STRATEGY_META: Record<PricingStrategyKey, { label: string; tagline: string; icon: LucideIcon }> = {
   lowest_minus_amount: { label: "Sous le plus bas", tagline: "Battre le concurrent le moins cher.", icon: TrendingDown },
@@ -76,7 +73,12 @@ function timeAgo(iso: string | null): string {
   return `il y a ${Math.round(ms / 86400_000)} j`
 }
 
-export default function FalardeauClient({ data }: { data: FalardeauData }) {
+export default function CampaignDemoClient({
+  config, data,
+}: {
+  config: DealerCampaignConfig
+  data: CampaignDemoData
+}) {
   const [section, setSection] = useState<SectionId>("surveillance")
   const [searchQuery, setSearchQuery] = useState("")
   const [pricingEnabled, setPricingEnabled] = useState(true)
@@ -84,6 +86,7 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
     normalizePricingSettings({ ...DEFAULT_PRICING_SETTINGS, apply_enabled: true }))
 
   const products = data.products as any[]
+  const signupHref = `/c/${config.code.toLowerCase()}`
 
   const pricingRows = useMemo(
     () => buildPricingRowsFromProducts(products, data.competitorUrls),
@@ -102,6 +105,18 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
     [pricingRows]
   )
 
+  const goTo = (id: SectionId) => {
+    setSection(id)
+    // Amène le contenu sous la nav collante — le visiteur voit tout de
+    // suite la section qu'il vient de choisir.
+    requestAnimationFrame(() => {
+      document.getElementById("campaign-nav")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
+  }
+
+  const pos = data.analytics.positionnement
+  const ecartLabel = `${pos.ecartPourcentage > 0 ? "+" : ""}${pos.ecartPourcentage.toFixed(1)} %`
+
   return (
     <div className="min-h-screen bg-[#f7f8fa] dark:bg-[#0e0f10]">
       {/* ── Bandeau supérieur ─────────────────────────────── */}
@@ -116,11 +131,11 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
               <X className="h-3.5 w-3.5 text-orange-400" strokeWidth={3} aria-label="×" />
             </span>
             <span className="relative h-9 w-24 shrink-0 overflow-hidden rounded-[8px] bg-white px-1.5 py-1 ring-1 ring-white/15">
-              <Image src="/dealers/moto-falardeau.png" alt="Moto Falardeau" fill sizes="96px" className="object-contain p-1" />
+              <Image src={config.logo} alt={config.reference.name} fill sizes="96px" className="object-contain p-1" />
             </span>
           </div>
           <Link
-            href="/c/falardeau"
+            href={signupHref}
             className="group flex h-9 items-center gap-1.5 rounded-lg bg-orange-500 px-3.5 text-[13px] font-semibold text-black transition-all hover:bg-orange-400"
           >
             Activer l&apos;accès complet
@@ -129,17 +144,17 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
         </div>
       </header>
 
-      {/* ── Héro Miguel ───────────────────────────────────── */}
+      {/* ── Héro ──────────────────────────────────────────── */}
       <section className="border-b border-gray-200 bg-white dark:border-white/[0.06] dark:bg-[#131415]">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-600/10 px-3 py-1 text-[12px] font-semibold text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-400/10 dark:text-orange-300 dark:ring-orange-400/25">
-            Démo privée · préparée pour Moto Falardeau
+            Démo privée · préparée pour {config.reference.name}
           </span>
           <h1 className={`${display.className} mt-4 text-[30px] font-bold leading-tight tracking-tight text-gray-900 sm:text-[36px] dark:text-white`}>
-            Bonjour Miguel
+            Bonjour {config.contactName}
           </h1>
           <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-gray-600 dark:text-gray-300">
-            L&apos;inventaire de <span className="font-semibold text-gray-900 dark:text-white">Moto Falardeau</span>,
+            L&apos;inventaire de <span className="font-semibold text-gray-900 dark:text-white">{config.reference.name}</span>,
             comparé en direct aux prix de {data.sites.length} concurrents.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -148,13 +163,43 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
             <StatChip value={String(data.sites.length)} label="concurrents surveillés" />
             <StatChip value={timeAgo(data.scrapedAt)} label="dernière synchronisation" />
           </div>
+
+          {/* Ce que Go-Data a trouvé — le visiteur sait où aller en 5 s. */}
+          <div className="mt-6">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              Ce que Go-Data a trouvé dans vos données
+            </p>
+            <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <InsightCard
+                value={String(data.nonCompetitiveCount)}
+                accent="red"
+                label="unités où un concurrent est moins cher que vous"
+                action="Voir lesquelles"
+                onClick={() => goTo("surveillance")}
+              />
+              <InsightCard
+                value={ecartLabel}
+                accent="amber"
+                label={`vs le marché — ${pos.classement}e sur ${pos.totalDetailleurs} détaillants`}
+                action="Comprendre pourquoi"
+                onClick={() => goTo("analyse")}
+              />
+              <InsightCard
+                value={String(recommendations.length)}
+                accent="orange"
+                label="changements de prix recommandés, prêts à appliquer"
+                action="Voir les fiches"
+                onClick={() => goTo("fiches")}
+              />
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* ── Navigation sections ───────────────────────────── */}
-      <nav className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur dark:border-white/[0.06] dark:bg-[#131415]/95">
+      {/* ── Navigation sections (parcours numéroté) ───────── */}
+      <nav id="campaign-nav" className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur dark:border-white/[0.06] dark:bg-[#131415]/95">
         <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-2 sm:px-6">
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
+          {SECTIONS.map(({ id, label, icon: Icon }, i) => (
             <button
               key={id}
               type="button"
@@ -165,22 +210,25 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/[0.06] dark:hover:text-white"
               }`}
             >
+              <span className={`flex h-4.5 w-4.5 items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
+                section === id
+                  ? "bg-white/25 text-white dark:bg-black/20 dark:text-black"
+                  : "bg-gray-200 text-gray-500 dark:bg-white/10 dark:text-gray-400"
+              }`} style={{ height: 18, width: 18 }}>
+                {i + 1}
+              </span>
               <Icon className="h-4 w-4" />
               {label}
             </button>
           ))}
           <span className="mx-1.5 h-5 w-px shrink-0 bg-gray-200 dark:bg-white/10" aria-hidden />
-          {LOCKED_ITEMS.map(({ label, icon: Icon }) => (
-            <span
-              key={label}
-              title="Réservé aux comptes Go-Data"
-              className="flex h-9 shrink-0 cursor-not-allowed items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-gray-400 dark:text-gray-500"
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-              <Lock className="h-3 w-3" />
-            </span>
-          ))}
+          <span
+            title={`Avec un compte Go-Data : ${LOCKED_TOOLS}.`}
+            className="flex h-9 shrink-0 cursor-not-allowed items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-gray-400 dark:text-gray-500"
+          >
+            <Lock className="h-3.5 w-3.5" />
+            Plus d&apos;outils avec un compte
+          </span>
         </div>
       </nav>
 
@@ -190,14 +238,14 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
           <div className="space-y-4">
             <SectionIntro
               title="Surveillance de prix"
-              text={`Votre inventaire (${data.referenceCount} unités) comparé ligne par ligne aux prix affichés chez ${data.sites.length} concessionnaires concurrents.`}
+              text={`Votre inventaire (${data.referenceCount} unités) comparé ligne par ligne aux prix affichés chez ${data.sites.length} concessionnaires concurrents. Astuce : le filtre « Non compétitif » montre les unités où vous êtes battu, et chaque ligne se déplie pour voir le détail.`}
             />
             <PriceComparisonTable
               products={products}
               competitorsUrls={data.competitorUrls}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
-              searchPlaceholder="Rechercher un modèle (ex. KLX, UFORCE, Ponton)…"
+              searchPlaceholder="Rechercher un modèle…"
               pricingSettings={settings}
               pricingEnabled={pricingEnabled}
               onPricingEnabledChange={setPricingEnabled}
@@ -229,6 +277,7 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
             onChange={setSettings}
             vehicleTypes={vehicleTypesPresent}
             recommendationsCount={recommendations.length}
+            onSeeFiches={() => goTo("fiches")}
           />
         )}
 
@@ -243,14 +292,14 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
           <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
             <div className="max-w-xl">
               <p className="text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-                Cette démonstration privée a été préparée pour Moto Falardeau par l&apos;équipe Go-Data.
+                Cette démonstration privée a été préparée pour {config.reference.name} par l&apos;équipe Go-Data.
                 Les alertes de prix automatiques, la recherche produit et les rapports nécessitent un
                 compte — l&apos;activation prend deux minutes.
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2.5">
               <Link
-                href="/c/falardeau"
+                href={signupHref}
                 className="flex h-11 items-center gap-2 rounded-xl bg-orange-600 px-5 text-[14px] font-semibold text-white transition-all hover:bg-orange-700 dark:bg-orange-500 dark:text-black dark:hover:bg-orange-400"
               >
                 Activer l&apos;accès complet
@@ -285,6 +334,39 @@ function StatChip({ value, label }: { value: string; label: string }) {
   )
 }
 
+const INSIGHT_ACCENTS = {
+  red: "text-red-600 dark:text-red-400",
+  amber: "text-amber-600 dark:text-amber-400",
+  orange: "text-orange-600 dark:text-orange-400",
+} as const
+
+function InsightCard({
+  value, label, action, accent, onClick,
+}: {
+  value: string
+  label: string
+  action: string
+  accent: keyof typeof INSIGHT_ACCENTS
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex flex-col rounded-xl border border-gray-200 bg-white p-4 text-left transition-all hover:border-orange-400 hover:shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-orange-400/60"
+    >
+      <span className={`${display.className} text-[24px] font-bold tabular-nums leading-none ${INSIGHT_ACCENTS[accent]}`}>
+        {value}
+      </span>
+      <span className="mt-1.5 text-[13px] leading-snug text-gray-600 dark:text-gray-300">{label}</span>
+      <span className="mt-2.5 inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 group-hover:gap-1.5 dark:text-orange-400" style={{ transition: "gap 150ms" }}>
+        {action}
+        <ChevronRight className="h-3.5 w-3.5" />
+      </span>
+    </button>
+  )
+}
+
 function SectionIntro({ title, text }: { title: string; text: string }) {
   return (
     <div>
@@ -297,12 +379,13 @@ function SectionIntro({ title, text }: { title: string; text: string }) {
 }
 
 function StrategySection({
-  settings, onChange, vehicleTypes, recommendationsCount,
+  settings, onChange, vehicleTypes, recommendationsCount, onSeeFiches,
 }: {
   settings: PricingStrategySettings
   onChange: (next: PricingStrategySettings) => void
   vehicleTypes: VehicleType[]
   recommendationsCount: number
+  onSeeFiches: () => void
 }) {
   const defaultKey = settings.default_strategy.key
   const amount = settings.default_strategy.amount ?? 1
@@ -418,11 +501,14 @@ function StrategySection({
         </div>
       </div>
 
-      <p className="text-[12px] text-gray-500 dark:text-gray-400">
-        Avec la règle actuelle, Go-Data génère{" "}
-        <span className="font-semibold text-gray-900 dark:text-white">{recommendationsCount} recommandations de prix</span>{" "}
-        — consultez l&apos;onglet <span className="font-medium">Fiches de prix</span>.
-      </p>
+      <button
+        type="button"
+        onClick={onSeeFiches}
+        className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-orange-600 hover:underline dark:text-orange-400"
+      >
+        Avec cette règle, Go-Data génère {recommendationsCount} recommandations de prix — voir les fiches
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }
