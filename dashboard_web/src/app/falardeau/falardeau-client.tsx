@@ -136,13 +136,11 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
             Démo privée · préparée pour Moto Falardeau
           </span>
           <h1 className={`${display.className} mt-4 text-[30px] font-bold leading-tight tracking-tight text-gray-900 sm:text-[36px] dark:text-white`}>
-            Bonjour Miguel <span aria-hidden>👋</span>
+            Bonjour Miguel
           </h1>
           <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-gray-600 dark:text-gray-300">
-            Voici Go-Data, branché en direct sur l&apos;inventaire de{" "}
-            <span className="font-semibold text-gray-900 dark:text-white">Moto Falardeau</span>.
-            Chaque unité de votre site est comparée aux prix de {data.sites.length} concessionnaires
-            concurrents — vraies données, resynchronisées automatiquement toutes les 2 heures.
+            L&apos;inventaire de <span className="font-semibold text-gray-900 dark:text-white">Moto Falardeau</span>,
+            comparé en direct aux prix de {data.sites.length} concurrents.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <StatChip value={String(data.referenceCount)} label="unités suivies chez vous" />
@@ -192,7 +190,7 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
           <div className="space-y-4">
             <SectionIntro
               title="Surveillance de prix"
-              text={`Votre inventaire (${data.referenceCount} unités) comparé ligne par ligne aux prix affichés chez ${data.sites.map(s => s.name).join(", ")}.`}
+              text={`Votre inventaire (${data.referenceCount} unités) comparé ligne par ligne aux prix affichés chez ${data.sites.length} concessionnaires concurrents.`}
             />
             <PriceComparisonTable
               products={products}
@@ -244,10 +242,7 @@ export default function FalardeauClient({ data }: { data: FalardeauData }) {
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
           <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
             <div className="max-w-xl">
-              <p className={`${display.className} text-[17px] font-bold text-gray-900 dark:text-white`}>
-                Ce tableau de bord vous plaît, Miguel ?
-              </p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
+              <p className="text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
                 Cette démonstration privée a été préparée pour Moto Falardeau par l&apos;équipe Go-Data.
                 Les alertes de prix automatiques, la recherche produit et les rapports nécessitent un
                 compte — l&apos;activation prend deux minutes.

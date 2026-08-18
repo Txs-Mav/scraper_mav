@@ -32,13 +32,19 @@ export const FALARDEAU_REFERENCE = {
   url: 'https://motofalardeau.com/fr/',
 } as const
 
+// Sélection 2026-08-18 : les 8 sites qui maximisent les correspondances
+// exactes avec l'inventaire Falardeau ET le nombre d'unités où Falardeau est
+// non compétitif (concurrent moins cher) — 204 lignes appariées, 17 unités
+// non compétitives. Nadon Sport et Laval Moto retirés (0 et 5 matches).
 export const FALARDEAU_COMPETITORS = [
-  { name: 'Nadon Sport', domain: 'nadonsport.com', url: 'https://nadonsport.com' },
-  { name: 'Motoplex Mirabel', domain: 'motoplexmirabel.ca', url: 'https://motoplexmirabel.ca' },
-  { name: 'Laval Moto', domain: 'lavalmoto.com', url: 'https://lavalmoto.com' },
   { name: 'Motos Illimitées', domain: 'motosillimitees.com', url: 'https://motosillimitees.com' },
-  { name: 'Moto Pro Granby', domain: 'motoprogranby.com', url: 'https://motoprogranby.com' },
   { name: 'Mathias Sports', domain: 'mathiassports.com', url: 'https://mathiassports.com' },
+  { name: 'Moto Pro Granby', domain: 'motoprogranby.com', url: 'https://motoprogranby.com' },
+  { name: 'Motoplex Mirabel', domain: 'motoplexmirabel.ca', url: 'https://motoplexmirabel.ca' },
+  { name: 'DB Moto', domain: 'dbmoto.ca', url: 'https://dbmoto.ca' },
+  { name: 'Motoplex St-Eustache', domain: 'motoplex.ca', url: 'https://motoplex.ca' },
+  { name: 'Centre du Sport Lac-St-Jean', domain: 'centredusportlacstjean.com', url: 'https://centredusportlacstjean.com' },
+  { name: 'SM Sport', domain: 'smsport.ca', url: 'https://smsport.ca' },
 ] as const
 
 export interface FalardeauAnalytics {
