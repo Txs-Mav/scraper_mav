@@ -141,7 +141,6 @@ const SOURCES: SourceMeta[] = [
   { key: "lespac", label: "LesPAC", hint: "ps.src.lespacHint", group: "marketplace" },
   { key: "autotrader", label: "AutoTrader", hint: "ps.src.autotraderHint", group: "vehicle" },
   { key: "cycletrader", label: "CycleTrader", hint: "ps.src.connectHint", group: "vehicle", disabled: true, badge: "ps.src.badgeConnect" },
-  { key: "facebook", label: "Facebook Marketplace", hint: "ps.src.comingSoonHint", group: "api", disabled: true, badge: "ps.src.badgeSoon" },
 ]
 
 const QUERY_COMPLETIONS = [

@@ -904,16 +904,17 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
             </div>
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
               {MARKETPLACE_SOURCES.map((source) => {
-                const isAdded = urls.some(u => u.trim() && getDomain(u) === source.site_domain)
+                const isComing = source.status === 'coming'
+                const isAdded = !isComing && urls.some(u => u.trim() && getDomain(u) === source.site_domain)
                 const isReference = referenceUrl.trim() && getDomain(referenceUrl) === source.site_domain
-                const disabled = !!isReference
+                const disabled = !!isReference || isComing
                 return (
                   <button
                     key={source.id}
                     type="button"
                     onClick={() => toggleMarketplaceCompetitor(source)}
                     disabled={disabled}
-                    title={disabled ? t("config.marketplaceIsReference") : source.description}
+                    title={isComing ? t("config.comingSoonHint") : disabled ? t("config.marketplaceIsReference") : source.description}
                     className={`group flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all ${
                       isAdded
                         ? 'border-orange-300 dark:border-orange-500/40 bg-orange-50/60 dark:bg-orange-500/[0.07]'
@@ -931,6 +932,11 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                         {source.site_domain}
                       </p>
                     </div>
+                    {isComing && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] flex-shrink-0">
+                        {t("config.comingSoon")}
+                      </span>
+                    )}
                     {isAdded && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />}
                   </button>
                 )

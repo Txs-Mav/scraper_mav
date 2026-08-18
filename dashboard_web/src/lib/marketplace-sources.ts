@@ -21,6 +21,14 @@ export interface MarketplaceSource {
   site_domain: string
   description: string
   vehicle_types: string[]
+  /**
+   * `active`  → le scraper Python alimente `scraped_site_data` avec status=success ;
+   *             la source livre réellement des produits comparés.
+   * `coming`  → pas encore de produits exploitables (scraper absent, en erreur ou
+   *             status≠success — analyze-from-cache ignore ces lignes) : affichée
+   *             avec un badge « À venir », non sélectionnable.
+   */
+  status: 'active' | 'coming'
 }
 
 export const MARKETPLACE_SOURCES: MarketplaceSource[] = [
@@ -32,6 +40,7 @@ export const MARKETPLACE_SOURCES: MarketplaceSource[] = [
     site_domain: 'autotrader.ca',
     description: 'Annonces véhicules motorisés au Canada',
     vehicle_types: ['auto', 'moto', 'vtt'],
+    status: 'coming',
   },
   {
     id: 'marketplace-kijiji-ca',
@@ -41,6 +50,7 @@ export const MARKETPLACE_SOURCES: MarketplaceSource[] = [
     site_domain: 'kijiji.ca',
     description: 'Petites annonces locales au Canada',
     vehicle_types: ['auto', 'moto', 'vtt', 'motoneige', 'sxs'],
+    status: 'active',
   },
   {
     id: 'marketplace-lespac',
@@ -50,25 +60,12 @@ export const MARKETPLACE_SOURCES: MarketplaceSource[] = [
     site_domain: 'lespac.com',
     description: 'Petites annonces québécoises',
     vehicle_types: ['auto', 'moto', 'vtt', 'motoneige'],
+    status: 'active',
   },
-  {
-    id: 'marketplace-cycletrader',
-    site_name: 'CycleTrader.com',
-    site_slug: 'cycletrader',
-    site_url: 'https://www.cycletrader.com',
-    site_domain: 'cycletrader.com',
-    description: 'Powersports : moto, VTT, motoneige, SXS',
-    vehicle_types: ['moto', 'vtt', 'motoneige', 'sxs'],
-  },
-  {
-    id: 'marketplace-motorcycledealers-ca',
-    site_name: 'MotorcycleDealers.ca',
-    site_slug: 'motorcycledealers-ca',
-    site_url: 'https://www.motorcycledealers.ca',
-    site_domain: 'motorcycledealers.ca',
-    description: 'Annuaire de concessionnaires moto au Canada',
-    vehicle_types: ['moto'],
-  },
+  // CycleTrader.com et MotorcycleDealers.ca retirés le 2026-08-18 : leur
+  // protection anti-bot bloque le cron GitHub Actions depuis mai (0 produit).
+  // Désactivés dans shared_scrapers (migration_deactivate_dead_marketplaces.sql) ;
+  // les restaurer ici en cas de réactivation (proxy résidentiel ou runner local).
 ]
 
 export function isMarketplaceDomain(domain: string): boolean {
