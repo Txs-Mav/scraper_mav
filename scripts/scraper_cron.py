@@ -62,6 +62,7 @@ STALE_THRESHOLD_MINUTES = 55
 STALE_OVERRIDES_MINUTES = {
     'centredusportlacstjean.com': 100,   # toutes les 2 h
     'smsport.ca': 100,                   # toutes les 2 h
+    'motofalardeau.com': 100,            # toutes les 2 h
 }
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45
