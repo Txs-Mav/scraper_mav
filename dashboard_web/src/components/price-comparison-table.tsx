@@ -1755,7 +1755,7 @@ function MobileComparisonCards({
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-[15px] font-bold tabular-nums text-[var(--color-text-primary)]">
-                  {row.reference !== null ? fmt.format(row.reference) : "—"}
+                  {row.reference !== null && row.reference > 0 ? fmt.format(row.reference) : "—"}
                 </p>
               </div>
             </div>

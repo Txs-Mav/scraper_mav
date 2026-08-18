@@ -49,12 +49,19 @@ function formatDate(iso: string | null): string {
   } catch { return iso }
 }
 
+// Campagnes avec landing dédiée : le lien/QR pointe vers leur page publique
+// personnalisée plutôt que vers le /c/[code] générique.
+const CAMPAIGN_LANDING_PATHS: Record<string, string> = {
+  FALARDEAU: "/falardeau",
+}
+
 // URL d'inscription encodée dans le QR : la page campagne /c/[code]
 // (inscription 1 écran, accès instantané). En prod NEXT_PUBLIC_APP_URL
 // pointe vers le domaine public ; en local on retombe sur l'origin courant.
 function signupUrl(code: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "")
-  return `${base.replace(/\/$/, "")}/c/${encodeURIComponent(code.toLowerCase())}`
+  const path = CAMPAIGN_LANDING_PATHS[code.toUpperCase()] || `/c/${encodeURIComponent(code.toLowerCase())}`
+  return `${base.replace(/\/$/, "")}${path}`
 }
 
 export default function AdminCampagnesPage() {
