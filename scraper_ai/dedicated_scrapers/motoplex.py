@@ -785,48 +785,8 @@ class MotoplexScraper(DedicatedScraper):
 
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
         """Regroupe les produits identiques (marque+modèle+année+état, couleurs ignorées)."""
-        seen_urls: set = set()
-        unique: List[Dict] = []
-        for product in products:
-            url = product.get('sourceUrl', '').rstrip('/')
-            if url and url in seen_urls:
-                continue
-            if url:
-                seen_urls.add(url)
-            unique.append(product)
-
-        groups: Dict[tuple, Dict] = {}
-
-        for product in unique:
-            marque = product.get('marque', '').lower().strip()
-            modele = product.get('modele', '').lower().strip()
-            annee = product.get('annee', 0)
-            etat = product.get('etat', 'neuf')
-
-            if marque and modele:
-                key = (marque, modele, annee, etat)
-            else:
-                key = (product.get('name', '').lower().strip(), annee, etat)
-
-            if key not in groups:
-                product['quantity'] = 1
-                product['groupedUrls'] = [product.get('sourceUrl', '')]
-                groups[key] = product
-            else:
-                groups[key]['quantity'] = groups[key].get('quantity', 1) + 1
-                url = product.get('sourceUrl', '')
-                if url:
-                    groups[key].setdefault('groupedUrls', []).append(url)
-                existing_price = groups[key].get('prix')
-                new_price = product.get('prix')
-                if existing_price and new_price:
-                    try:
-                        if float(new_price) < float(existing_price):
-                            groups[key]['prix'] = new_price
-                    except (ValueError, TypeError):
-                        pass
-
-        return list(groups.values())
+        from ..grouping import group_identical_products
+        return group_identical_products(products, dedupe_by_url=True)
 
     @staticmethod
     def _fix_mojibake(text: str) -> str:

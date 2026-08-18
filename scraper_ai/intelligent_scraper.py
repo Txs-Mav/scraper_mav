@@ -2208,46 +2208,10 @@ class IntelligentScraper:
         Passe 2 : regrouper les unités identiques (marque+modèle+année+état) avec
         un champ ``quantity`` et la liste ``groupedUrls``.
         """
-        # ── Passe 1 : éliminer les doublons exacts (même page crawlée 2 fois) ──
-        seen_urls: set = set()
-        seen_inv: set = set()
-        unique: List[Dict] = []
-        for product in products:
-            url = product.get('sourceUrl', '').rstrip('/')
-            inv = product.get('inventaire', '')
-            if url and url in seen_urls:
-                continue
-            if inv and inv in seen_inv:
-                continue
-            if url:
-                seen_urls.add(url)
-            if inv:
-                seen_inv.add(inv)
-            unique.append(product)
-
-        # ── Passe 2 : regrouper par modèle identique ──
-        groups: Dict[tuple, Dict] = {}
-
-        for product in unique:
-            marque = product.get('marque', '').lower().strip()
-            modele = product.get('modele', '').lower().strip()
-
-            if marque and modele:
-                key = (marque, modele, product.get('annee', 0), product.get('etat', 'neuf'))
-            else:
-                key = (product.get('name', '').lower().strip(), product.get('annee', 0), product.get('etat', 'neuf'))
-
-            if key not in groups:
-                product['quantity'] = 1
-                product['groupedUrls'] = [product.get('sourceUrl', '')]
-                groups[key] = product
-            else:
-                groups[key]['quantity'] = groups[key].get('quantity', 1) + 1
-                url = product.get('sourceUrl', '')
-                if url:
-                    groups[key].setdefault('groupedUrls', []).append(url)
-
-        return list(groups.values())
+        from .grouping import group_identical_products
+        return group_identical_products(
+            products, dedupe_by_url=True, dedupe_by_inventaire=True
+        )
 
     def _generate_scraper_code(
         self,
