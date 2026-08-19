@@ -153,7 +153,7 @@ export async function analyzeFromCache(userId: string, locale: 'fr' | 'en' = 'fr
 
   const { data: config } = await serviceSupabase
     .from('scraper_config')
-    .select('reference_url, competitor_urls, ignore_colors, match_mode, filter_catalogue_reference')
+    .select('reference_url, competitor_urls, ignore_colors, match_mode')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -172,7 +172,6 @@ export async function analyzeFromCache(userId: string, locale: 'fr' | 'en' = 'fr
   const refDomain = extractDomain(referenceUrl)
   // Options utilisateur (mêmes défauts que /api/scraper/config)
   const ignoreColors = config.ignore_colors === true
-  const filterCatalogue = config.filter_catalogue_reference !== false
 
   const allDomains = new Map<string, string>()
   allDomains.set(refDomain, referenceUrl)
@@ -195,7 +194,7 @@ export async function analyzeFromCache(userId: string, locale: 'fr' | 'en' = 'fr
     }
   }
 
-  let referenceProducts = siteProducts.get(refDomain)
+  const referenceProducts = siteProducts.get(refDomain)
   if (!referenceProducts || referenceProducts.length === 0) {
     return {
       ok: false,
@@ -203,22 +202,6 @@ export async function analyzeFromCache(userId: string, locale: 'fr' | 'en' = 'fr
       message: locale === 'en'
         ? `No pre-scraped products for the reference site (${refDomain}).`
         : `Aucun produit pré-scrapé pour le site de référence (${refDomain}).`,
-    }
-  }
-
-  // « Filtrer catalogue (site de ref.) » : la référence ne garde que son
-  // inventaire réel (pas le catalogue fabricant) ; les concurrents gardent
-  // tout. Même logique que filterCatalogueFromReference (alerts/check).
-  if (filterCatalogue) {
-    const filtered = referenceProducts.filter(
-      (p: any) => (p.sourceCategorie || '').toLowerCase() !== 'catalogue'
-    )
-    if (filtered.length > 0) {
-      referenceProducts = filtered
-    } else {
-      console.warn(
-        `[analyze-from-cache] filter_catalogue_reference actif mais la référence (${refDomain}) n'a que des produits catalogue — filtre ignoré pour ne pas vider l'analyse`
-      )
     }
   }
 
@@ -313,7 +296,6 @@ export async function analyzeFromCache(userId: string, locale: 'fr' | 'en' = 'fr
       source: 'direct_supabase_with_comparison',
       cache_hits: siteProducts.size,
       ignore_colors: ignoreColors,
-      filter_catalogue_reference: filterCatalogue,
     },
     scraping_time_seconds: Math.round(elapsed * 10) / 10,
     mode: 'from_cache',

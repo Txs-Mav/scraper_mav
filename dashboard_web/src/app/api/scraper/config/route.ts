@@ -48,8 +48,7 @@ export async function GET() {
         referenceUrl: "",
         urls: [],
         priceDifferenceFilter: null,
-        ignoreColors: false,
-        inventoryOnly: true
+        ignoreColors: false
       })
     }
 
@@ -77,7 +76,6 @@ export async function GET() {
       priceDifferenceFilter: config.price_difference_filter,
       categories: config.categories || [],
       ignoreColors: config.ignore_colors || false,
-      inventoryOnly: config.filter_catalogue_reference ?? true,
       matchMode: config.match_mode || 'exact',
       updatedAt: config.updated_at,
       alertLastRunAt,
@@ -134,7 +132,6 @@ export async function POST(request: Request) {
       price_difference_filter: body.priceDifferenceFilter ?? null,
       categories: body.categories || [],
       ignore_colors: body.ignoreColors || false,
-      filter_catalogue_reference: body.inventoryOnly || false,
       match_mode: body.matchMode || 'exact'
     }
 
@@ -192,7 +189,6 @@ export async function POST(request: Request) {
         priceDifferenceFilter: data.price_difference_filter,
         categories: data.categories || [],
         ignoreColors: data.ignore_colors || false,
-        inventoryOnly: data.filter_catalogue_reference ?? true,
         matchMode: data.match_mode || 'exact',
         updatedAt: data.updated_at
       }

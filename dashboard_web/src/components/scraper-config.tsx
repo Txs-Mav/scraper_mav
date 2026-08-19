@@ -183,7 +183,6 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const [competitorEnabled, setCompetitorEnabled] = useState<boolean[]>([])
   const [forceRefresh, setForceRefresh] = useState(false)
   const [ignoreColors, setIgnoreColors] = useState(false)
-  const [inventoryOnly, setInventoryOnly] = useState(true)
   const [matchMode, setMatchMode] = useState<string>('exact')
   const [isScraping, setIsScraping] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
@@ -573,7 +572,7 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     onScrapeComplete?.()
   }
 
-  const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[]; skipAutoScrape?: boolean; ignoreColors?: boolean; inventoryOnly?: boolean }) => {
+  const saveConfig = async (overrides?: { referenceUrl?: string; urls?: string[]; skipAutoScrape?: boolean; ignoreColors?: boolean }) => {
     try {
       const refUrl = overrides?.referenceUrl ?? referenceUrl.trim()
       const competitorUrls = overrides?.urls
@@ -582,7 +581,6 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
         referenceUrl: refUrl,
         urls: competitorUrls,
         ignoreColors: overrides?.ignoreColors ?? ignoreColors,
-        inventoryOnly: overrides?.inventoryOnly ?? inventoryOnly,
         matchMode: matchMode,
         skipAutoScrape: overrides?.skipAutoScrape || false,
       }
@@ -614,9 +612,6 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
         }
         if (config.matchMode) {
           setMatchMode(config.matchMode)
-        }
-        if (typeof config.inventoryOnly === 'boolean') {
-          setInventoryOnly(config.inventoryOnly)
         }
       }
     } catch { }
@@ -1161,21 +1156,6 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   <span className="ml-1.5 text-[11px] text-[var(--color-text-secondary)]">{t("config.moreMatches")}</span>
                 </span>
               </label>
-
-              <label htmlFor="inventoryOnly" className="flex items-center gap-2.5 py-1.5 px-1 rounded-lg hover:bg-[var(--color-background-hover)] cursor-pointer transition-colors">
-                <input
-                  type="checkbox"
-                  id="inventoryOnly"
-                  checked={inventoryOnly}
-                  onChange={(e) => { setInventoryOnly(e.target.checked); saveConfig({ inventoryOnly: e.target.checked, skipAutoScrape: true }) }}
-                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[var(--color-text-primary)] focus:ring-[var(--color-border-primary)]/10 focus:ring-offset-0"
-                />
-                <span className="text-sm text-[var(--color-text-secondary)]">
-                  {t("config.filterCatalog")}
-                </span>
-              </label>
-
-
             </div>
           </div>
 

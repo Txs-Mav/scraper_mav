@@ -39,14 +39,6 @@ export async function syncAlertFromConfig(
     a.reference_url === referenceUrl || normalizeUrl(a.reference_url) === normalizedRef
   )
 
-  // Read current config to get filter_catalogue_reference
-  const { data: currentConfig } = await serviceSupabase
-    .from('scraper_config')
-    .select('filter_catalogue_reference')
-    .eq('user_id', userId)
-    .single()
-  const filterCatalogue = currentConfig?.filter_catalogue_reference ?? true
-
   if (existing) {
     // Update the matched alert AND fix reference_url to the canonical form
     const { error } = await serviceSupabase
@@ -55,7 +47,6 @@ export async function syncAlertFromConfig(
         reference_url: referenceUrl,
         competitor_urls: competitorUrls,
         is_active: true,
-        filter_catalogue_reference: filterCatalogue,
       })
       .eq('id', existing.id)
 
@@ -97,7 +88,6 @@ export async function syncAlertFromConfig(
       reference_url: referenceUrl,
       competitor_urls: competitorUrls,
       categories: ['inventaire', 'occasion', 'catalogue'],
-      filter_catalogue_reference: filterCatalogue,
       schedule_type: 'interval',
       schedule_hour: 0,
       schedule_minute: 0,

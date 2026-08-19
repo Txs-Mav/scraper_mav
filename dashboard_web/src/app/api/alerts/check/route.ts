@@ -284,26 +284,11 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
             let hasAnyPreviousData = false
 
             for (const siteUrl of allSiteUrls) {
-              const isReference = normalizeUrl(siteUrl) === normalizeUrl(refUrl)
-              let currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
-              let previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
-              let prevPreviousSiteProducts = prevPreviousProducts
+              const currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
+              const previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
+              const prevPreviousSiteProducts = prevPreviousProducts
                 ? filterProductsBySite(prevPreviousProducts, siteUrl)
                 : null
-
-              if (isReference && alert.filter_catalogue_reference !== false) {
-                const preFilterCount = currentSiteProducts.length
-                currentSiteProducts = filterCatalogueFromReference(currentSiteProducts)
-                previousSiteProducts = filterCatalogueFromReference(previousSiteProducts)
-                if (prevPreviousSiteProducts) {
-                  prevPreviousSiteProducts = filterCatalogueFromReference(prevPreviousSiteProducts)
-                }
-                if (preFilterCount !== currentSiteProducts.length) {
-                  console.log(
-                    `[Alert Check] Alerte ${alert.id}: filtrage catalogue référence ${preFilterCount} → ${currentSiteProducts.length} produits`
-                  )
-                }
-              }
 
               const siteHostname = extractHostname(siteUrl)
 
@@ -780,19 +765,6 @@ function filterProductsBySite(products: Product[], siteUrl: string): Product[] {
     } catch {
       return productSite.toLowerCase().includes(targetHost)
     }
-  })
-}
-
-/**
- * Filtre les produits catalogue du site référence.
- * Le site référence ne garde que les produits en inventaire réel (pas le catalogue
- * fabricant), pour comparer uniquement le stock en concession.
- * Les sites concurrents gardent TOUS leurs produits (catalogue inclus).
- */
-function filterCatalogueFromReference(products: Product[]): Product[] {
-  return products.filter(p => {
-    const cat = (p.sourceCategorie || '').toLowerCase()
-    return cat !== 'catalogue'
   })
 }
 

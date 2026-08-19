@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
     const userId = user.id
     const body = await request.json()
-    const { referenceUrl, urls, forceRefresh, ignoreColors, inventoryOnly, matchMode } = body
+    const { referenceUrl, urls, forceRefresh, ignoreColors, matchMode } = body
 
     // --- Proxy vers le backend Railway si on est sur Vercel ---
     if (hasBackend()) {
@@ -55,7 +55,6 @@ export async function POST(request: Request) {
     console.log(`[ScraperAI]   - urls reçues (${(urls || []).length}):`, JSON.stringify(urls || []))
     console.log(`[ScraperAI]   - forceRefresh: ${forceRefresh}`)
     console.log(`[ScraperAI]   - ignoreColors: ${ignoreColors}`)
-    console.log(`[ScraperAI]   - inventoryOnly: ${inventoryOnly}`)
 
     if (!referenceUrl) {
       return NextResponse.json(
@@ -108,12 +107,6 @@ export async function POST(request: Request) {
       args.push('--match-mode', matchMode)
     }
 
-    // NOTE: --inventory-only n'est PLUS passé au Python.
-    // Le filtrage catalogue pour le site de référence se fait maintenant
-    // côté comparaison (filterCatalogueFromReference dans alerts/check/route.ts).
-    // Cela permet de sauvegarder TOUS les produits en Supabase et de filtrer
-    // uniquement au moment de la comparaison, sans perdre de données.
-
     // Ajouter toutes les URLs à scraper
     args.push(...allUrls)
 
@@ -124,7 +117,6 @@ export async function POST(request: Request) {
     console.log(`[ScraperAI]   - Référence: ${referenceUrl}`)
     console.log(`[ScraperAI]   - Force refresh: ${forceRefresh || false}`)
     console.log(`[ScraperAI]   - Ignorer couleurs: ${ignoreColors || false}`)
-    console.log(`[ScraperAI]   - Filtrer catalogue (comparaison): ${inventoryOnly || false}`)
     console.log(`[ScraperAI] 🚀 Commande: python3 ${args.join(' ')}`)
 
     const pythonCmd = process.platform === 'win32' ? 'python -u' : 'python3 -u'
