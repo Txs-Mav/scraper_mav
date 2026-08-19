@@ -72,6 +72,7 @@ STALE_OVERRIDES_MINUTES = {
     'evasion-sport.com': 100,            # toutes les 2 h
     'properformance.ca': 100,            # toutes les 2 h
     'excelmoto.com': 100,                # toutes les 2 h
+    'alarysport.com': 100,               # toutes les 2 h
 }
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45

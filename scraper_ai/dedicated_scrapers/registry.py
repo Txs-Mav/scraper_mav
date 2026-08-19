@@ -39,6 +39,7 @@ from .sports_drc import SportsDrcScraper
 from .evasion_sport import EvasionSportScraper
 from .pro_performance import ProPerformanceScraper
 from .excelmoto import ExcelmotoScraper
+from .alary_sport import AlarySportScraper
 from .marketplace_lespac import LesPacMarketplaceScraper
 from .marketplace_autotrader import AutoTraderMarketplaceScraper
 from .marketplace_cycletrader import CycleTraderMarketplaceScraper
@@ -76,6 +77,7 @@ _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'evasion-sport': EvasionSportScraper,
     'pro-performance': ProPerformanceScraper,
     'excelmoto': ExcelmotoScraper,
+    'alary-sport': AlarySportScraper,
 
     # Marketplaces (multi-vendeurs)
     'marketplace-kijiji-ca': KijijiMarketplaceScraper,
@@ -118,6 +120,7 @@ _DOMAIN_MAP: Dict[str, str] = {
     'evasion-sport.com': 'evasion-sport',
     'properformance.ca': 'pro-performance',
     'excelmoto.com': 'excelmoto',
+    'alarysport.com': 'alary-sport',
 
     # Marketplaces
     'kijiji.ca': 'marketplace-kijiji-ca',
