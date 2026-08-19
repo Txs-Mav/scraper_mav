@@ -20,10 +20,7 @@ except Exception:
 # retiré d'ici car GENERATED_SCRAPERS est mergé APRÈS _SCRAPERS et
 # écraserait l'entrée principale.
 
-try:
-    from .excelmoto import ExcelmotoScraper
-    GENERATED_SCRAPERS['excelmoto'] = ExcelmotoScraper
-    GENERATED_DOMAINS['excelmoto.com'] = 'excelmoto'
-except Exception:
-    pass
+# excelmoto : promu dans registry.py (réécrit à la main le 2026-08-19) —
+# retiré d'ici car GENERATED_SCRAPERS est mergé APRÈS _SCRAPERS et
+# écraserait l'entrée principale.
 
