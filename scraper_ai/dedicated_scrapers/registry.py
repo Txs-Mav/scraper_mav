@@ -37,6 +37,7 @@ from .sport_cgr import SportCgrScraper
 from .saguenay_marine import SaguenayMarineScraper
 from .sports_drc import SportsDrcScraper
 from .evasion_sport import EvasionSportScraper
+from .pro_performance import ProPerformanceScraper
 from .marketplace_lespac import LesPacMarketplaceScraper
 from .marketplace_autotrader import AutoTraderMarketplaceScraper
 from .marketplace_cycletrader import CycleTraderMarketplaceScraper
@@ -72,6 +73,7 @@ _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'saguenay-marine': SaguenayMarineScraper,
     'sports-drc': SportsDrcScraper,
     'evasion-sport': EvasionSportScraper,
+    'pro-performance': ProPerformanceScraper,
 
     # Marketplaces (multi-vendeurs)
     'marketplace-kijiji-ca': KijijiMarketplaceScraper,
@@ -112,6 +114,7 @@ _DOMAIN_MAP: Dict[str, str] = {
     'saguenaymarine.com': 'saguenay-marine',
     'sportsdrc.com': 'sports-drc',
     'evasion-sport.com': 'evasion-sport',
+    'properformance.ca': 'pro-performance',
 
     # Marketplaces
     'kijiji.ca': 'marketplace-kijiji-ca',

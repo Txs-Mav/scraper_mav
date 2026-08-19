@@ -70,6 +70,7 @@ STALE_OVERRIDES_MINUTES = {
     'saguenaymarine.com': 100,           # toutes les 2 h
     'sportsdrc.com': 100,                # toutes les 2 h
     'evasion-sport.com': 100,            # toutes les 2 h
+    'properformance.ca': 100,            # toutes les 2 h
 }
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45
