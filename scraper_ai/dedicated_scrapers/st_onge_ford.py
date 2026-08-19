@@ -521,30 +521,9 @@ class StOngeFordScraper(DedicatedScraper):
         return out
 
     def _group_identical_products(self, products: List[Dict]) -> List[Dict]:
-        groups: Dict[str, Dict] = {}
-        for p in products:
-            # Chaque VIN identifie un véhicule unique — ne jamais fusionner
-            vin = str(p.get('vin', '')).strip().upper()
-            if vin and len(vin) >= 10:
-                key = f"vin:{vin}"
-            else:
-                marque = str(p.get('marque', '')).lower().strip()
-                modele = str(p.get('modele', '')).lower().strip()
-                annee = str(p.get('annee', ''))
-                etat = str(p.get('etat', ''))
-                key = f"{marque}|{modele}|{annee}|{etat}" if marque and modele else f"{p.get('name', '')}|{annee}|{etat}"
-                key = key.lower()
-
-            if key in groups:
-                existing = groups[key]
-                existing['quantity'] = existing.get('quantity', 1) + 1
-                existing['groupedUrls'] = existing.get('groupedUrls', []) + p.get('groupedUrls', [p.get('sourceUrl', '')])
-                if p.get('prix') and (not existing.get('prix') or p['prix'] < existing['prix']):
-                    existing['prix'] = p['prix']
-            else:
-                groups[key] = p
-
-        return list(groups.values())
+        # Chaque VIN identifie un véhicule unique — jamais fusionné (vin_split)
+        from ..grouping import group_identical_products
+        return group_identical_products(products, dedupe_by_url=False, vin_split=True)
 
     def _parse_price(self, text: str) -> Optional[float]:
         if not text:

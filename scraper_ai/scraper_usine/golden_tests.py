@@ -47,7 +47,7 @@ from typing import Any, Dict, List, Optional, Tuple
 GOLDEN_DIR = Path(__file__).resolve().parent.parent.parent / "scraper_cache" / "golden"
 
 # Champs métadonnées qu'on ne compare jamais (volatils par essence)
-DEFAULT_IGNORED = {"sourceUrl", "groupedUrls", "quantity"}
+DEFAULT_IGNORED = {"sourceUrl", "groupedUrls", "quantity", "units", "multi_unit"}
 
 
 @dataclass
