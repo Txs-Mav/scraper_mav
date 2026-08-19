@@ -89,6 +89,28 @@ export const DEALER_CAMPAIGNS: Record<string, DealerCampaignConfig> = {
       { name: 'Jean Dumas Maximum Sport', domain: 'jeandumasmaximumsport.ca', url: 'https://jeandumasmaximumsport.ca' },
     ],
   },
+  excelmoto: {
+    slug: 'excelmoto',
+    code: 'EXCELMOTO',
+    contactName: 'Excel Moto',
+    logo: '/dealers/excelmoto.png',
+    reference: { name: 'Excel Moto', domain: 'excelmoto.com', url: 'https://www.excelmoto.com/fr/' },
+    // Sélection 2026-08-19 (scripts/select-campaign-competitors.ts,
+    // couverture gloutonne) : 386 prix appariés, 73 unités Excel Moto sur
+    // 404 battues par au moins un concurrent (dont 22 rien que chez Motos
+    // Illimitées). Couronne de Montréal d'abord — Saguenay Marine écartée
+    // (55 matches mais 2 unités battues seulement).
+    competitors: [
+      { name: 'Motos Illimitées', domain: 'motosillimitees.com', url: 'https://motosillimitees.com' },
+      { name: 'Nadon Sport', domain: 'nadonsport.com', url: 'https://nadonsport.com' },
+      { name: 'Moto Ducharme', domain: 'motoducharme.com', url: 'https://motoducharme.com' },
+      { name: 'Laval Moto', domain: 'lavalmoto.com', url: 'https://lavalmoto.com' },
+      { name: 'Moto Falardeau', domain: 'motofalardeau.com', url: 'https://motofalardeau.com' },
+      { name: 'Moto Pro Granby', domain: 'motoprogranby.com', url: 'https://motoprogranby.com' },
+      { name: 'Mathias Sports', domain: 'mathiassports.com', url: 'https://mathiassports.com' },
+      { name: 'Morin Sports', domain: 'morinsports.com', url: 'https://morinsports.com' },
+    ],
+  },
   smsport: {
     slug: 'smsport',
     code: 'SMSPORT',

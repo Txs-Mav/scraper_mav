@@ -55,6 +55,7 @@ const CAMPAIGN_LANDING_PATHS: Record<string, string> = {
   FALARDEAU: "/falardeau",
   SMSPORT: "/smsport",
   MORINSPORTS: "/morinsports",
+  EXCELMOTO: "/excelmoto",
 }
 
 // URL d'inscription encodée dans le QR : la page campagne /c/[code]
