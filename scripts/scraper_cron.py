@@ -67,6 +67,7 @@ STALE_OVERRIDES_MINUTES = {
     'evolutionxjonquiere.ca': 100,       # toutes les 2 h
     'gobeilequipement.ca': 100,          # toutes les 2 h
     'sportcgr.com': 100,                 # toutes les 2 h
+    'saguenaymarine.com': 100,           # toutes les 2 h
 }
 CRON_LOCK_DOMAIN = '__cron_lock__'
 CRON_LOCK_TIMEOUT_MINUTES = 45
