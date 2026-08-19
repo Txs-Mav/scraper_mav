@@ -32,6 +32,7 @@ from .smsport import SmsportScraper
 from .moto_falardeau import MotoFalardeauScraper
 from .jean_dumas_maximum_sport import JeanDumasMaximumSportScraper
 from .evolution_x_jonquiere import EvolutionXJonquiereScraper
+from .gobeil_equipement import GobeilEquipementScraper
 from .marketplace_lespac import LesPacMarketplaceScraper
 from .marketplace_autotrader import AutoTraderMarketplaceScraper
 from .marketplace_cycletrader import CycleTraderMarketplaceScraper
@@ -62,6 +63,7 @@ _SCRAPERS: Dict[str, Type[DedicatedScraper]] = {
     'moto-falardeau': MotoFalardeauScraper,
     'jean-dumas-maximum-sport': JeanDumasMaximumSportScraper,
     'evolution-x-jonquiere': EvolutionXJonquiereScraper,
+    'gobeil-equipement': GobeilEquipementScraper,
 
     # Marketplaces (multi-vendeurs)
     'marketplace-kijiji-ca': KijijiMarketplaceScraper,
@@ -97,6 +99,7 @@ _DOMAIN_MAP: Dict[str, str] = {
     'motofalardeau.com': 'moto-falardeau',
     'jeandumasmaximumsport.ca': 'jean-dumas-maximum-sport',
     'evolutionxjonquiere.ca': 'evolution-x-jonquiere',
+    'gobeilequipement.ca': 'gobeil-equipement',
 
     # Marketplaces
     'kijiji.ca': 'marketplace-kijiji-ca',
