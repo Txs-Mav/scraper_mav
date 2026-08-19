@@ -42,6 +42,9 @@ jobs:
           pip install -r scraper_ai/requirements.txt
           pip install requests supabase
 
+      - name: Installer Chromium (rendu navigateur anti-bot)
+        run: playwright install chromium --with-deps
+
       - name: Scraping Évasion Sport
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

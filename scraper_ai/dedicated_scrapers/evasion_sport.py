@@ -9,10 +9,14 @@ inventaire equipmentsearch.com. Les listings sont rendus côté serveur avec
 des cartes COMPLÈTES (nom, stock #, prix/MSRP/solde, image, adid).
 
 ⚠️ ANTI-BOT DUR (leçons du 2026-08-19) : l'IP est bannie temporairement
-(« temporarily blocked — JavaScript needs to be enabled ») après ~100
-requêtes sans JS, quel que soit le rythme (vu : 8 workers ET 2 workers via
-GitHub Actions — la découverte de ~91 pages passait, la phase détail de
-577 fiches se faisait bannir à 9/577). D'où l'architecture LISTING-ONLY :
+(« temporarily blocked — JavaScript needs to be enabled ») après quelques
+dizaines de requêtes SANS JavaScript, quel que soit le rythme (vu : 8
+workers, puis 2 workers, puis 1 requête/1,2 s via GitHub Actions — tous
+bannis ; le ban est plat, sans challenge à résoudre, et couvre TOUTE
+l'infra TurnkeyWebSolutions incl. equipmentsearch.com). D'où la double
+parade : rendu NAVIGATEUR (BrowserRuntime/Playwright — le beacon JS du
+site s'exécute, le compteur anti-bot ne se déclenche pas) + architecture
+LISTING-ONLY :
 
   1. EXTRACTION 100 % depuis les cartes des listings paginés
      /fr/Inventaire/page/N/ (58 pages ≈ 577 unités au 2026-08-19) —
@@ -24,7 +28,7 @@ GitHub Actions — la découverte de ~91 pages passait, la phase détail de
   3. Garde-fou anti-partiel : si la pagination du listing principal est
      interrompue avant la dernière page annoncée, échec FRANC (l'ancien
      cache est conservé) — jamais de sauvegarde tronquée « success ».
-  4. Pacing REQUEST_DELAY_S entre chaque page + backoff long sur 403.
+  4. Pacing REQUEST_DELAY_S entre les pages (en plus des 2-4 s de rendu).
 
 Champs indisponibles côté listing : km, couleur, VIN, description utile
 (la description carte = écho du nom + boilerplate) → omis honnêtement.
@@ -53,10 +57,10 @@ class EvasionSportScraper(DedicatedScraper):
     SITE_URL = "https://evasion-sport.com/fr/"
     SITE_DOMAIN = "evasion-sport.com"
 
-    # Jamais de fiches détail sur ce site (anti-bot) — listing-only.
+    # Jamais de fiches détail sur ce site (anti-bot) — listing-only via
+    # navigateur (le rendu ajoute ~2-4 s/page, pacing léger en plus).
     MAX_WORKERS = 1
-    REQUEST_DELAY_S = 1.2
-    BLOCK_BACKOFF_S = 45
+    REQUEST_DELAY_S = 0.4
     LISTING_MAX_PAGES = 200
     LISTING_MAX_CONSECUTIVE_FAILS = 3
 
@@ -92,16 +96,28 @@ class EvasionSportScraper(DedicatedScraper):
     def __init__(self):
         super().__init__()
         self._request_count = 0
+        self._browser = None
 
     # ──────────────────────────────────────────────────────────────
     # PIPELINE LISTING-ONLY (surcharge complète de scrape)
     # ──────────────────────────────────────────────────────────────
 
     def scrape(self, categories: List[str] = None, inventory_only: bool = False) -> Dict[str, Any]:
+        try:
+            return self._scrape_inner(categories, inventory_only)
+        finally:
+            if self._browser is not None:
+                try:
+                    self._browser.close()
+                except Exception:
+                    pass
+                self._browser = None
+
+    def _scrape_inner(self, categories: List[str] = None, inventory_only: bool = False) -> Dict[str, Any]:
         start_time = time.time()
 
         print(f"\n{'='*70}")
-        print(f"🔧 SCRAPER DÉDIÉ: {self.SITE_NAME} (listing-only, anti-bot)")
+        print(f"🔧 SCRAPER DÉDIÉ: {self.SITE_NAME} (listing-only navigateur, anti-bot)")
         print(f"{'='*70}")
         print(f"🌐 Site: {self.SITE_URL}")
         print(f"📦 Catégories: {categories or ['toutes']}")
@@ -214,20 +230,25 @@ class EvasionSportScraper(DedicatedScraper):
         return None
 
     # ──────────────────────────────────────────────────────────────
-    # FETCH LISTING (pacing + backoff 403)
+    # FETCH LISTING (navigateur Playwright — le JS du site s'exécute,
+    # le compteur anti-bot « JavaScript needs to be enabled » ne se
+    # déclenche pas)
     # ──────────────────────────────────────────────────────────────
 
-    def _polite_get(self, url: str):
-        """GET avec pacing systématique et backoff long sur 403 (anti-bot)."""
+    def _polite_render(self, url: str) -> str:
+        if self._browser is None:
+            from ._browser_runtime import BrowserRuntime
+            self._browser = BrowserRuntime(log_fn=lambda _m: None).start()
         if self._request_count:
             time.sleep(self.REQUEST_DELAY_S)
         self._request_count += 1
-        resp = self.session.get(url, timeout=self.HTTP_TIMEOUT)
-        if resp.status_code == 403:
-            print(f"   🛑 403 anti-bot — backoff {self.BLOCK_BACKOFF_S}s puis nouvel essai")
-            time.sleep(self.BLOCK_BACKOFF_S)
-            resp = self.session.get(url, timeout=self.HTTP_TIMEOUT)
-        return resp
+        result = self._browser.render(url, networkidle_ms=3000, post_load_wait_ms=800)
+        html = result.html or ''
+        if result.status == 403 or 'temporarily blocked' in html:
+            raise RuntimeError("403 anti-bot")
+        if not html:
+            raise RuntimeError(f"render vide (status={result.status}, err={result.error})")
+        return html
 
     def _fetch_listing_pages(self, base_url: str) -> Tuple[List[str], bool]:
         """Pagine base_url + page/N/ en suivant le pager serveur. Retourne
@@ -242,10 +263,7 @@ class EvasionSportScraper(DedicatedScraper):
         while page <= min(max_page, self.LISTING_MAX_PAGES) or page == 1:
             page_url = base_url if page == 1 else f"{base_url}page/{page}/"
             try:
-                resp = self._polite_get(page_url)
-                if resp.status_code != 200:
-                    raise RuntimeError(f"HTTP {resp.status_code}")
-                html = resp.text
+                html = self._polite_render(page_url)
                 fails = 0
             except Exception:
                 fails += 1
