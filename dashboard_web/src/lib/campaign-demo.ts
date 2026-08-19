@@ -22,6 +22,9 @@ import {
   calculateOpportunities,
   calculateRetailerAnalysis,
   calculateCategoryAnalysis,
+  calculatePriceEvolution,
+  calculateAlerts,
+  calculateStats,
   type AnalyticsData,
 } from '@/lib/analytics-calculations'
 
@@ -126,6 +129,9 @@ export interface CampaignAnalytics {
   opportunites: AnalyticsData['opportunites']
   detailleurs: AnalyticsData['detailleurs']
   categories: AnalyticsData['categories']
+  evolutionPrix: AnalyticsData['evolutionPrix']
+  alertes: AnalyticsData['alertes']
+  stats: AnalyticsData['stats']
 }
 
 export interface CampaignSiteInfo {
@@ -287,6 +293,9 @@ async function computeCampaignData(config: DealerCampaignConfig): Promise<Campai
     opportunites: calculateOpportunities(allProducts, config.reference.domain, 'fr'),
     detailleurs: calculateRetailerAnalysis(allProducts, config.reference.domain),
     categories: calculateCategoryAnalysis(allProducts, config.reference.domain),
+    evolutionPrix: calculatePriceEvolution(allProducts),
+    alertes: calculateAlerts(allProducts, config.reference.domain, 'fr'),
+    stats: calculateStats(allProducts, [], 1),
   }
 
   const sites: CampaignSiteInfo[] = config.competitors

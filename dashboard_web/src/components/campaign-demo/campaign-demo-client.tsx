@@ -9,17 +9,23 @@
  */
 
 import { useMemo, useState } from "react"
-import { ChevronRight, Minus, Plus, TrendingDown, Target, Scale, type LucideIcon } from "lucide-react"
+import { ChevronRight, Minus, Plus, Printer, TrendingDown, Target, Scale, type LucideIcon } from "lucide-react"
 
 import DemoLayout, { type DemoSectionId } from "@/components/campaign-demo/demo-shell"
 import PriceComparisonTable from "@/components/price-comparison-table"
+import SurveillanceBackground from "@/components/kokonutui/surveillance-background"
 import PricePositioningCard from "@/components/analytics/price-positioning"
+import PriceEvolutionChart from "@/components/analytics/price-evolution"
 import OpportunitiesDetection from "@/components/analytics/opportunities"
+import AlertsAndInsights from "@/components/analytics/alerts-insights"
+import RetailerPriceTrends from "@/components/analytics/retailer-price-trends"
 import ExplanatoryFactors from "@/components/analytics/explanatory-factors"
 import ProductCategoryAnalysis from "@/components/analytics/product-analysis"
 import CategoryAnalysis from "@/components/analytics/category-analysis"
 import RetailerAnalysis from "@/components/analytics/retailer-analysis"
 import Visualizations from "@/components/analytics/visualizations"
+import { printCurrentPage } from "@/lib/export-utils"
+import { useLanguage } from "@/contexts/language-context"
 
 import {
   buildPricingRowsFromProducts,
@@ -42,14 +48,6 @@ const STRATEGY_META: Record<PricingStrategyKey, { label: string; tagline: string
 const STRATEGY_ORDER: PricingStrategyKey[] = ["lowest_minus_amount", "match_lowest", "market_average"]
 
 const money = new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return "—"
-  const ms = Date.now() - new Date(iso).getTime()
-  if (ms < 3600_000) return `il y a ${Math.max(1, Math.round(ms / 60_000))} min`
-  if (ms < 86400_000) return `il y a ${Math.round(ms / 3600_000)} h`
-  return `il y a ${Math.round(ms / 86400_000)} j`
-}
 
 export default function CampaignDemoClient({
   config, data,
@@ -100,9 +98,6 @@ export default function CampaignDemoClient({
     })
   }
 
-  const pos = data.analytics.positionnement
-  const ecartLabel = `${pos.ecartPourcentage > 0 ? "+" : ""}${pos.ecartPourcentage.toFixed(1)} %`
-
   return (
     <DemoLayout
       section={section}
@@ -112,41 +107,7 @@ export default function CampaignDemoClient({
       dealerName={config.reference.name}
     >
       <div id="demo-content-top" />
-
-      {/* Accueil personnalisé + constats, présentés comme un widget du
-          dashboard (mêmes tokens que les cartes du vrai site). */}
-      <div className="mb-4 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-4 sm:p-5">
-        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
-          Bonjour {config.contactName}
-        </h1>
-        <p className="mt-0.5 text-sm text-[var(--color-text-secondary)]">
-          L&apos;inventaire de {config.reference.name} ({data.referenceCount} unités), comparé en direct
-          aux prix de {data.sites.length} concurrents · synchronisé {timeAgo(data.scrapedAt)}
-        </p>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <InsightButton
-            value={String(data.nonCompetitiveCount)}
-            valueClass="text-red-600 dark:text-red-400"
-            label="unités où un concurrent est moins cher"
-            active={section === "surveillance"}
-            onClick={() => goTo("surveillance")}
-          />
-          <InsightButton
-            value={ecartLabel}
-            valueClass="text-amber-600 dark:text-amber-400"
-            label={`vs le marché — ${pos.classement}e sur ${pos.totalDetailleurs} détaillants`}
-            active={section === "analyse"}
-            onClick={() => goTo("analyse")}
-          />
-          <InsightButton
-            value={String(recommendations.length)}
-            valueClass="text-orange-600 dark:text-orange-400"
-            label="changements de prix recommandés"
-            active={section === "fiches"}
-            onClick={() => goTo("fiches")}
-          />
-        </div>
-      </div>
+      <SurveillanceBackground />
 
       {section === "surveillance" && (
         <PriceComparisonTable
@@ -162,17 +123,7 @@ export default function CampaignDemoClient({
       )}
 
       {section === "analyse" && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <PricePositioningCard positionnement={data.analytics.positionnement} />
-            <OpportunitiesDetection opportunites={data.analytics.opportunites} />
-          </div>
-          <ExplanatoryFactors produits={data.analytics.produits} />
-          <ProductCategoryAnalysis produits={data.analytics.produits} />
-          <CategoryAnalysis categories={data.analytics.categories} />
-          <RetailerAnalysis detailleurs={data.analytics.detailleurs} />
-          <Visualizations produits={data.analytics.produits} detailleurs={data.analytics.detailleurs} />
-        </div>
+        <AnalyseSection analytics={data.analytics} scrapedAt={data.scrapedAt} />
       )}
 
       {section === "strategie" && (
@@ -194,29 +145,152 @@ export default function CampaignDemoClient({
 
 // ─── Sous-composants ───────────────────────────────────────
 
-function InsightButton({
-  value, valueClass, label, active, onClick,
+/**
+ * Réplique de /dashboard/analytics : même en-tête (pastille, titre, bande
+ * KPI + anneau compétitif) et mêmes sections dans le même ordre. Seuls les
+ * boutons Actualiser/Réinitialiser (actions de compte) sont omis.
+ */
+function AnalyseSection({
+  analytics, scrapedAt,
 }: {
-  value: string
-  valueClass: string
-  label: string
-  active: boolean
-  onClick: () => void
+  analytics: CampaignDemoData["analytics"]
+  scrapedAt: string | null
 }) {
+  const { t } = useLanguage()
+
+  const totalProducts = analytics.produits.length
+  const competitifCount = analytics.produits.filter(p => p.competitif && p.hasCompetitor).length
+  const nonCompetitifCount = analytics.produits.filter(p => !p.competitif && p.hasCompetitor).length
+  const comparableCount = competitifCount + nonCompetitifCount
+  const competitifRatio = comparableCount > 0 ? (competitifCount / comparableCount) * 100 : 0
+
+  const updatedAgoLabel = (() => {
+    if (!scrapedAt) return null
+    const diffMin = Math.floor((Date.now() - new Date(scrapedAt).getTime()) / 60000)
+    if (diffMin < 1) return t("analytics.updatedJustNow")
+    if (diffMin < 60) return t("analytics.updatedMinAgo").replace("{n}", String(diffMin))
+    return t("analytics.updatedHAgo").replace("{n}", String(Math.floor(diffMin / 60)))
+  })()
+
+  const headerKpis = [
+    { label: t("analytics.productsAnalyzed"), value: totalProducts.toLocaleString("fr-CA") },
+    { label: t("analytics.retailers"), value: analytics.detailleurs.length.toLocaleString("fr-CA") },
+    { label: t("analytics.opportunities"), value: analytics.opportunites.length.toLocaleString("fr-CA") },
+    { label: t("analytics.scrapes"), value: analytics.stats.nombreScrapes.toLocaleString("fr-CA") },
+  ]
+
+  const ringSize = 64
+  const ringStroke = 6
+  const ringRadius = (ringSize - ringStroke) / 2
+  const ringCircumference = 2 * Math.PI * ringRadius
+  const ringOffset = ringCircumference * (1 - competitifRatio / 100)
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group flex items-center gap-3 rounded-lg border p-3 text-left transition ${
-        active
-          ? "border-orange-500/50 bg-orange-50/60 dark:bg-orange-500/5"
-          : "border-[var(--color-border-secondary)] hover:bg-[var(--color-background-hover)]"
-      }`}
-    >
-      <span className={`text-xl font-bold tabular-nums ${valueClass}`}>{value}</span>
-      <span className="min-w-0 flex-1 text-[12px] leading-snug text-[var(--color-text-secondary)]">{label}</span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-text-tertiary)] transition-transform group-hover:translate-x-0.5" />
-    </button>
+    <div className="space-y-4 relative">
+      <header className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
+        <div className="flex items-center justify-between gap-5 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+              </span>
+              <span className="font-medium uppercase tracking-wider">{t("analytics.title")}</span>
+              {updatedAgoLabel && <span className="tabular-nums opacity-70">· {updatedAgoLabel}</span>}
+            </div>
+            <h1 className="mt-1.5 text-2xl md:text-[1.8rem] font-semibold text-[var(--color-text-primary)] tracking-tight leading-tight">
+              {t("analytics.subtitle")}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="inline-flex items-stretch h-9 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]/85 shadow-sm overflow-hidden divide-x divide-[var(--color-border-tertiary)] backdrop-blur-sm">
+              <button
+                onClick={() => printCurrentPage(t("analytics.title"))}
+                className="inline-flex items-center justify-center gap-1.5 px-3 text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
+                title={t("analytics.printAction")}
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t("analytics.printAction")}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── KPI strip : 4 chiffres XL + anneau ratio compétitif ── */}
+        <div className="mt-5 grid grid-cols-2 md:grid-cols-[repeat(4,1fr)_auto] gap-x-5 gap-y-4 items-end">
+          {headerKpis.map((k, i) => (
+            <div key={i} className={i > 0 ? "md:pl-5 md:border-l border-[var(--color-border-tertiary)]/40" : ""}>
+              <p className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
+                {k.label}
+              </p>
+              <p className="text-[1.85rem] md:text-3xl font-extrabold tabular-nums leading-none mt-1.5 text-[var(--color-text-primary)] tracking-tight">
+                {k.value}
+              </p>
+            </div>
+          ))}
+
+          {comparableCount > 0 && (
+            <div className="md:pl-5 md:border-l border-[var(--color-border-tertiary)]/40 flex items-center gap-3 col-span-2 md:col-span-1">
+              <div className="relative shrink-0" style={{ width: ringSize, height: ringSize }}>
+                <svg width={ringSize} height={ringSize} className="rotate-[-90deg]">
+                  <circle cx={ringSize / 2} cy={ringSize / 2} r={ringRadius} stroke="currentColor" strokeOpacity="0.15" strokeWidth={ringStroke} fill="none" />
+                  <circle
+                    cx={ringSize / 2} cy={ringSize / 2} r={ringRadius}
+                    stroke="currentColor" strokeWidth={ringStroke} strokeLinecap="round" fill="none"
+                    strokeDasharray={ringCircumference} strokeDashoffset={ringOffset}
+                    className="text-emerald-500 transition-all duration-500"
+                  />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold tabular-nums text-[var(--color-text-primary)]">
+                  {Math.round(competitifRatio)}%
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wider text-[var(--color-text-secondary)] font-medium">
+                  {t("analytics.competitive")}
+                </p>
+                <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 tabular-nums">
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">{competitifCount}</span>
+                  <span className="opacity-60"> / </span>
+                  <span className="font-semibold text-[var(--color-text-primary)]">{comparableCount}</span>
+                  <span className="opacity-60"> {t("ap.products").toLowerCase()}</span>
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* ── Sections d'analyse (ordre identique au vrai site) ── */}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-1">
+            <PricePositioningCard positionnement={analytics.positionnement} />
+          </div>
+          <div className="lg:col-span-2">
+            <PriceEvolutionChart evolutionPrix={analytics.evolutionPrix} scrapesParJour={analytics.stats.scrapesParJour} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <OpportunitiesDetection opportunites={analytics.opportunites} />
+          <AlertsAndInsights alertes={analytics.alertes} stats={analytics.stats} />
+        </div>
+
+        <RetailerPriceTrends evolutionPrix={analytics.evolutionPrix} />
+
+        <ExplanatoryFactors produits={analytics.produits} />
+
+        <ProductCategoryAnalysis produits={analytics.produits} />
+
+        <CategoryAnalysis categories={analytics.categories} />
+
+        <RetailerAnalysis detailleurs={analytics.detailleurs} />
+
+        <Visualizations produits={analytics.produits} detailleurs={analytics.detailleurs} />
+      </div>
+    </div>
   )
 }
 
