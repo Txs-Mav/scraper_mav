@@ -6,54 +6,14 @@ import path from 'path'
 import { hasBackend, proxyToBackend } from '@/lib/backend-proxy'
 import { dispatchAlertNotifications, type UserChannelsConfig } from '@/lib/notifications/dispatcher'
 import { analyzeFromCache } from '@/lib/analyze-from-cache'
+import {
+  detectChanges,
+  type AlertConfig,
+  type Change,
+  type Product,
+} from '@/lib/alerts/detect-changes'
 
 export const maxDuration = 300
-
-// ─── Types ──────────────────────────────────────────────────────────
-
-interface Product {
-  name: string
-  prix: number
-  disponibilite?: string
-  sourceUrl?: string
-  sourceSite?: string
-  marque?: string
-  modele?: string
-  image?: string
-  // Champs enrichis par /api/products/analyze (matching vs référence)
-  prixReference?: number
-  differencePrix?: number | null
-  produitReference?: {
-    name?: string
-    sourceUrl?: string
-    prix?: number
-    image?: string
-  } | null
-  matchLevel?: string
-  [key: string]: any
-}
-
-interface Change {
-  change_type: string
-  product_name: string
-  old_value: string | null
-  new_value: string | null
-  percentage_change: number | null
-  details: Record<string, any>
-  source_site: string
-}
-
-interface AlertConfig {
-  watch_price_increase: boolean
-  watch_price_decrease: boolean
-  watch_new_products: boolean
-  watch_removed_products: boolean
-  watch_stock_changes: boolean
-  min_price_change_pct: number
-  min_price_change_abs: number
-}
-
-const MIN_VALID_PRICE = 1
 
 // ─── GET — Vercel Cron (quotidien 08:00 UTC, analyse seule) ─────────
 
@@ -240,13 +200,15 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
               continue
             }
 
+            // 3 scrapings : le 3e sert à confirmer les absences sur 2 scrapes
+            // consécutifs (un scrape partiel ne fabrique plus de retrait).
             let { data: scrapings } = await serviceSupabase
               .from('scrapings')
               .select('id, products, metadata, created_at, reference_url')
               .eq('user_id', userId)
               .eq('reference_url', refUrl)
               .order('created_at', { ascending: false })
-              .limit(2)
+              .limit(3)
 
             if (!scrapings || scrapings.length < 2) {
               const normalizedRefUrl = normalizeUrl(refUrl)
@@ -262,7 +224,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
                   (s: any) => normalizeUrl(s.reference_url) === normalizedRefUrl
                 )
                 if (matchingScrapings.length >= 2) {
-                  scrapings = matchingScrapings.slice(0, 2)
+                  scrapings = matchingScrapings.slice(0, 3)
                   console.log(
                     `[Alert Check] Alerte ${alert.id}: fallback URL normalisée trouvé ` +
                     `(${matchingScrapings[0].reference_url} ≈ ${refUrl})`
@@ -300,6 +262,7 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
 
             const currentProducts: Product[] = scrapings[0].products || []
             const previousProducts: Product[] = scrapings[1].products || []
+            const prevPreviousProducts: Product[] | null = scrapings[2]?.products || null
 
             // ── Config de l'alerte pour les seuils et filtres ──
             const alertConfig: AlertConfig = {
@@ -324,11 +287,17 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
               const isReference = normalizeUrl(siteUrl) === normalizeUrl(refUrl)
               let currentSiteProducts = filterProductsBySite(currentProducts, siteUrl)
               let previousSiteProducts = filterProductsBySite(previousProducts, siteUrl)
+              let prevPreviousSiteProducts = prevPreviousProducts
+                ? filterProductsBySite(prevPreviousProducts, siteUrl)
+                : null
 
               if (isReference && alert.filter_catalogue_reference !== false) {
                 const preFilterCount = currentSiteProducts.length
                 currentSiteProducts = filterCatalogueFromReference(currentSiteProducts)
                 previousSiteProducts = filterCatalogueFromReference(previousSiteProducts)
+                if (prevPreviousSiteProducts) {
+                  prevPreviousSiteProducts = filterCatalogueFromReference(prevPreviousSiteProducts)
+                }
                 if (preFilterCount !== currentSiteProducts.length) {
                   console.log(
                     `[Alert Check] Alerte ${alert.id}: filtrage catalogue référence ${preFilterCount} → ${currentSiteProducts.length} produits`
@@ -363,7 +332,13 @@ async function runAlertCheck(options: { alertId?: string; fromCron: boolean; tri
                 )
               }
 
-              let siteChanges = detectChanges(previousSiteProducts, currentSiteProducts, alertConfig, siteHostname)
+              let siteChanges = detectChanges(
+                previousSiteProducts,
+                currentSiteProducts,
+                alertConfig,
+                siteHostname,
+                prevPreviousSiteProducts?.length ? prevPreviousSiteProducts : null,
+              )
 
               // ── Garde-fou anti-tempête ──
               // Un scrape partiel (page ratée, timeout, changement de layout)
@@ -819,183 +794,6 @@ function filterCatalogueFromReference(products: Product[]): Product[] {
     const cat = (p.sourceCategorie || '').toLowerCase()
     return cat !== 'catalogue'
   })
-}
-
-// ─── Normalisation des noms de produits ──────────────────────────────
-
-function normalizeProductName(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
-    .replace(/[""''«»]/g, '')
-    .replace(/\s+/g, ' ')
-}
-
-function productSecondaryKey(p: Product): string | null {
-  const marque = (p.marque || '').toLowerCase().trim()
-  const modele = (p.modele || '').toLowerCase().trim()
-  if (!marque && !modele) return null
-  return `${marque}|${modele}`
-}
-
-// ─── Détection des changements (avec seuils configurables) ──────────
-
-function formatPrice(price: number): string {
-  return `${price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} $`
-}
-
-function matchInfoFromProduct(p: Product): Record<string, any> {
-  const matched = !!p.produitReference || typeof p.prixReference === 'number'
-  if (!matched) return { is_matched_with_reference: false }
-  return {
-    is_matched_with_reference: true,
-    reference_product_name: p.produitReference?.name || null,
-    reference_product_url: p.produitReference?.sourceUrl || null,
-    reference_price: typeof p.prixReference === 'number' ? p.prixReference : (p.produitReference?.prix ?? null),
-    price_diff_vs_reference: typeof p.differencePrix === 'number' ? p.differencePrix : null,
-    match_level: p.matchLevel || 'exact',
-  }
-}
-
-function detectChanges(previous: Product[], current: Product[], config: AlertConfig, sourceSite: string): Change[] {
-  const changes: Change[] = []
-
-  const prevByName = new Map<string, Product>()
-  const prevByKey  = new Map<string, Product>()
-  for (const p of previous) {
-    if (!p.name) continue
-    prevByName.set(normalizeProductName(p.name), p)
-    const sk = productSecondaryKey(p)
-    if (sk) prevByKey.set(sk, p)
-  }
-
-  const currByName = new Map<string, Product>()
-  const currByKey  = new Map<string, Product>()
-  for (const p of current) {
-    if (!p.name) continue
-    currByName.set(normalizeProductName(p.name), p)
-    const sk = productSecondaryKey(p)
-    if (sk) currByKey.set(sk, p)
-  }
-
-  const matchedPrevKeys = new Set<string>()
-
-  for (const [nameKey, curr] of currByName) {
-    let prev = prevByName.get(nameKey)
-    let prevMatchKey = nameKey
-
-    if (!prev) {
-      const sk = productSecondaryKey(curr)
-      if (sk) {
-        prev = prevByKey.get(sk)
-        if (prev) prevMatchKey = normalizeProductName(prev.name)
-      }
-    }
-
-    if (!prev) {
-      if (config.watch_new_products && curr.prix && curr.prix >= MIN_VALID_PRICE) {
-        changes.push({
-          change_type: 'new_product',
-          product_name: curr.name,
-          old_value: null,
-          new_value: formatPrice(curr.prix),
-          percentage_change: null,
-          details: {
-            prix: curr.prix,
-            disponibilite: curr.disponibilite,
-            sourceUrl: curr.sourceUrl,
-            image: curr.image || null,
-            ...matchInfoFromProduct(curr),
-          },
-          source_site: sourceSite,
-        })
-      }
-      continue
-    }
-
-    matchedPrevKeys.add(prevMatchKey)
-
-    if (
-      prev.prix && curr.prix &&
-      prev.prix >= MIN_VALID_PRICE && curr.prix >= MIN_VALID_PRICE &&
-      prev.prix !== curr.prix
-    ) {
-      const diff = curr.prix - prev.prix
-      const pct = (diff / prev.prix) * 100
-
-      if (Math.abs(pct) >= config.min_price_change_pct && Math.abs(diff) >= config.min_price_change_abs) {
-        const isIncrease = pct > 0
-        const changeType = isIncrease ? 'price_increase' : 'price_decrease'
-
-        if ((isIncrease && config.watch_price_increase) || (!isIncrease && config.watch_price_decrease)) {
-          changes.push({
-            change_type: changeType,
-            product_name: curr.name,
-            old_value: formatPrice(prev.prix),
-            new_value: formatPrice(curr.prix),
-            percentage_change: Math.round(pct * 100) / 100,
-            details: {
-              old_prix: prev.prix,
-              new_prix: curr.prix,
-              diff: Math.round(diff * 100) / 100,
-              sourceUrl: curr.sourceUrl,
-              image: curr.image || null,
-              ...matchInfoFromProduct(curr),
-            },
-            source_site: sourceSite,
-          })
-        }
-      }
-    }
-
-    if (
-      config.watch_stock_changes &&
-      prev.disponibilite && curr.disponibilite &&
-      prev.disponibilite.toLowerCase().trim() !== curr.disponibilite.toLowerCase().trim()
-    ) {
-      changes.push({
-        change_type: 'stock_change',
-        product_name: curr.name,
-        old_value: prev.disponibilite,
-        new_value: curr.disponibilite,
-        percentage_change: null,
-        details: {
-          sourceUrl: curr.sourceUrl,
-          image: curr.image || null,
-          ...matchInfoFromProduct(curr),
-        },
-        source_site: sourceSite,
-      })
-    }
-  }
-
-  if (config.watch_removed_products) {
-    for (const [nameKey, prev] of prevByName) {
-      if (matchedPrevKeys.has(nameKey)) continue
-      const sk = productSecondaryKey(prev)
-      if (sk && currByKey.has(sk)) continue
-
-      if (prev.prix && prev.prix >= MIN_VALID_PRICE) {
-        changes.push({
-          change_type: 'removed_product',
-          product_name: prev.name,
-          old_value: formatPrice(prev.prix),
-          new_value: null,
-          percentage_change: null,
-          details: {
-            prix: prev.prix,
-            sourceUrl: prev.sourceUrl,
-            image: prev.image || null,
-            ...matchInfoFromProduct(prev),
-          },
-          source_site: sourceSite,
-        })
-      }
-    }
-  }
-
-  return changes
 }
 
 // Le rendu HTML des emails d'alerte est désormais géré par
