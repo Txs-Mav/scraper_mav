@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react"
 import Image from "next/image"
-import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette, CircleDollarSign, ClipboardList, MoreHorizontal, LayoutGrid } from "lucide-react"
+import { X, Printer, FileSpreadsheet, Mail, Send, Loader2, Check, AlertCircle, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Search, Palette, CircleDollarSign, ClipboardList, MoreHorizontal, LayoutGrid } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import { createPortal } from "react-dom"
 import { normalizeProductGroupKeyWithMode, getProductFamilyKey, type MatchMode, type Product as AnalyticsProduct } from "@/lib/analytics-calculations"
@@ -338,6 +338,9 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       reference: number | null
       vehicleType: VehicleType
       competitorPrices: Record<string, number>
+      // Toutes les unités en vente par concurrent (avec leur état) — sert au
+      // calcul du prix recommandé (min par concurrent dans l'état comparable).
+      competitorEntries: Array<{ dealer: string; price: number; url?: string; etat?: string }>
       quantity: number
       groupedUrls: string[]
       isMatchedGroup: boolean
@@ -406,6 +409,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           reference: p.prixReference ?? null,
           vehicleType: inferVehicleType({ sourceUrl: referenceUrl || p.sourceUrl, name: displayProduct.name }),
           competitorPrices: {},
+          competitorEntries: [],
           quantity: refInfo?.quantity || 1,
           groupedUrls: refInfo?.groupedUrls || [],
           isMatchedGroup: true,
@@ -415,14 +419,20 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
       if (p.produitReference?.image && !group.image) group.image = p.produitReference.image
       const siteLabel = p.sourceSite ? hostnameFromUrl(p.sourceSite) : ''
       if (siteLabel && hasListedPrice(p)) {
-        if (!group.competitorPrices[siteLabel]) {
+        group.competitorEntries.push({
+          dealer: siteLabel,
+          price: p.prix,
+          url: p.sourceUrl,
+          etat: p.etat || p.sourceCategorie,
+        })
+        // Colonne affichée : le prix le plus bas du concurrent (pas le premier vu),
+        // avec l'URL et l'état de cette unité-là.
+        if (group.competitorPrices[siteLabel] == null || p.prix < group.competitorPrices[siteLabel]) {
           group.competitorPrices[siteLabel] = p.prix
-        }
-        if (p.sourceUrl && !group.competitorUrls[siteLabel]) {
-          group.competitorUrls[siteLabel] = p.sourceUrl
-        }
-        if (p.etat || p.sourceCategorie) {
-          group.competitorEtats[siteLabel] = p.etat || p.sourceCategorie || ''
+          if (p.sourceUrl) group.competitorUrls[siteLabel] = p.sourceUrl
+          if (p.etat || p.sourceCategorie) {
+            group.competitorEtats[siteLabel] = p.etat || p.sourceCategorie || ''
+          }
         }
       }
       if (group.reference === null && p.prixReference != null) {
@@ -459,6 +469,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         competitorUrls: {},
         reference: refPrice,
         competitorPrices: {},
+        competitorEntries: [],
         quantity: p.quantity || 1,
         groupedUrls: p.groupedUrls || (p.sourceUrl ? [p.sourceUrl] : []),
         vehicleType: inferVehicleType(p),
@@ -498,6 +509,7 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
         kilometrage: g.kilometrage,
         reference: g.reference,
         prices,
+        priceEntries: g.competitorEntries,
         quantity: g.quantity,
         groupedUrls: g.groupedUrls,
         vehicleType: g.vehicleType,
@@ -614,8 +626,9 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
           productKey,
           reference: row.reference,
           referenceUrl: row.referenceUrl,
+          referenceEtat: row.etat,
           vehicleType: row.vehicleType,
-          prices: row.prices,
+          prices: row.priceEntries?.length ? row.priceEntries : row.prices,
         },
         pricingSettings
       )
@@ -1153,6 +1166,19 @@ const PriceComparisonTable = forwardRef<PriceComparisonTableHandle, PriceCompari
                                       <span className={`text-xs font-semibold ${displayedDifference < 0 ? "text-red-600 dark:text-red-400" : displayedDifference > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-secondary)]"}`}>
                                         {displayedDifference > 0 ? "+" : ""}{displayedDifference.toFixed(0)} $
                                       </span>
+                                      {recommendation.reliability === "low" && (
+                                        <span
+                                          className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                                          title={
+                                            recommendation.basisEtat === "occasion"
+                                              ? "Aucun concurrent neuf trouvé : estimation basée sur des annonces d'occasion."
+                                              : "Aucun concurrent d'occasion trouvé : estimation basée sur des annonces neuves."
+                                          }
+                                        >
+                                          <AlertTriangle className="h-2.5 w-2.5" />
+                                          moins fiable ({recommendation.basisEtat})
+                                        </span>
+                                      )}
                                       <div className="flex items-center justify-center gap-1.5">
                                         <span className="text-[10px] text-[var(--color-text-secondary)]">{recommendation.strategyLabel}</span>
                                         {hasOverride && (

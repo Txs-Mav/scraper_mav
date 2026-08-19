@@ -33,8 +33,11 @@ export type PricingRowInput = {
   productKey?: string
   reference: number | null
   referenceUrl?: string
+  referenceEtat?: string | null
   vehicleType?: VehicleType
-  prices: Array<{ dealer: string; price: number | null; url?: string }>
+  // Plusieurs entrées par concurrent possibles (une par unité en vente) :
+  // le calcul retient le prix minimum par concurrent dans l'état comparable.
+  prices: Array<{ dealer: string; price: number | null; url?: string; etat?: string | null }>
 }
 
 export type PricingProduct = {
@@ -48,7 +51,7 @@ export type PricingProduct = {
   prixReference?: number | null
   sourceSite?: string
   sourceUrl?: string
-  produitReference?: { sourceUrl?: string; name?: string; prix?: number | null }
+  produitReference?: { sourceUrl?: string; name?: string; prix?: number | null; etat?: string }
 }
 
 export type PricingRecommendation = {
@@ -61,6 +64,14 @@ export type PricingRecommendation = {
   difference: number
   strategy: PricingStrategyRule
   strategyLabel: string
+  /**
+   * `normal` : ancrée sur des concurrents du même état que la référence.
+   * `low`    : aucun concurrent du même état — repli sur l'autre état
+   *            (ex. référence neuve évaluée contre des occasions) : à
+   *            afficher comme estimation moins fiable.
+   */
+  reliability: "normal" | "low"
+  basisEtat?: "neuf" | "occasion"
   basis: {
     competitorPrices: Array<{ dealer: string; price: number; url?: string }>
     minimum: number
@@ -186,6 +197,14 @@ export function buildPricingProductKey(row: Pick<PricingRowInput, "name" | "refe
   return row.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
 }
 
+/** Normalise un libellé d'état ("Neuf", "occasion", "usagé", "démo"…) en famille comparable. */
+export function normalizeEtatLabel(etat?: string | null): "neuf" | "occasion" | null {
+  const value = (etat || "").toLowerCase()
+  if (/occas|usag|used|pre.?owned|d[ée]mo/.test(value)) return "occasion"
+  if (/neuf|new/.test(value)) return "neuf"
+  return null
+}
+
 export function hostnameFromPricingUrl(url: string) {
   try {
     const h = new URL(url).hostname.replace(/^www\./, "")
@@ -197,25 +216,17 @@ export function hostnameFromPricingUrl(url: string) {
 
 export function buildPricingRowsFromProducts(
   products: PricingProduct[],
-  competitorUrls: string[] = [],
+  _competitorUrls: string[] = [],
   matchMode: MatchMode = "exact"
 ): PricingRowInput[] {
-  const competitors = Array.from(
-    new Set([
-      ...competitorUrls.filter(Boolean).map(hostnameFromPricingUrl),
-      ...products
-        .filter(product => product.prixReference != null && product.sourceSite)
-        .map(product => hostnameFromPricingUrl(product.sourceSite || "")),
-    ].filter(Boolean))
-  )
-
   const groups = new Map<string, {
     productKey: string
     displayName: string
     referenceUrl?: string
+    referenceEtat?: string
     reference: number | null
     vehicleType: VehicleType
-    competitorPrices: Record<string, { price: number; url?: string }>
+    competitorEntries: Array<{ dealer: string; price: number; url?: string; etat?: string }>
   }>()
 
   const toAnalyticsProduct = (product: PricingProduct): AnalyticsProduct => ({
@@ -232,7 +243,7 @@ export function buildPricingRowsFromProducts(
 
   const productsWithComparison = products.filter(product => product.prixReference != null)
   const productsRefOnly = products.filter(product => product.prixReference == null)
-  const refInfoByKey = new Map<string, { sourceUrl?: string; name?: string; price: number | null }>()
+  const refInfoByKey = new Map<string, { sourceUrl?: string; name?: string; price: number | null; etat?: string }>()
 
   const getGroupKey = (product: PricingProduct) => {
     const referenceUrl = product.produitReference?.sourceUrl
@@ -247,6 +258,7 @@ export function buildPricingRowsFromProducts(
         sourceUrl: product.sourceUrl,
         name: product.name,
         price: !product.price_on_request && typeof product.prix === "number" && product.prix > 0 ? product.prix : null,
+        etat: product.etat,
       })
     }
   }
@@ -263,21 +275,21 @@ export function buildPricingRowsFromProducts(
         productKey: key,
         displayName,
         referenceUrl,
+        referenceEtat: product.produitReference?.etat ?? refInfo?.etat,
         reference,
         vehicleType: inferVehicleType({ sourceUrl: referenceUrl || product.sourceUrl, name: displayName }),
-        competitorPrices: {},
+        competitorEntries: [],
       })
     }
 
     const siteLabel = product.sourceSite ? hostnameFromPricingUrl(product.sourceSite) : ""
     if (siteLabel && !product.price_on_request && typeof product.prix === "number" && product.prix > 0) {
-      const group = groups.get(key)!
-      if (!group.competitorPrices[siteLabel]) {
-        group.competitorPrices[siteLabel] = {
-          price: product.prix,
-          url: product.sourceUrl,
-        }
-      }
+      groups.get(key)!.competitorEntries.push({
+        dealer: siteLabel,
+        price: product.prix,
+        url: product.sourceUrl,
+        etat: product.etat,
+      })
     }
   }
 
@@ -286,12 +298,9 @@ export function buildPricingRowsFromProducts(
     productKey: group.productKey,
     reference: group.reference,
     referenceUrl: group.referenceUrl,
+    referenceEtat: group.referenceEtat,
     vehicleType: group.vehicleType,
-    prices: competitors.map(dealer => ({
-      dealer,
-      price: group.competitorPrices[dealer]?.price ?? null,
-      url: group.competitorPrices[dealer]?.url,
-    })),
+    prices: group.competitorEntries,
   }))
 }
 
@@ -301,11 +310,42 @@ export function calculatePricingRecommendation(
 ): PricingRecommendation | null {
   if (row.reference === null || row.reference <= 0) return null
 
-  const competitorPrices = row.prices
-    .filter((entry): entry is { dealer: string; price: number; url?: string } => typeof entry.price === "number" && entry.price > 0)
-    .map(entry => ({ dealer: entry.dealer, price: entry.price, url: entry.url }))
+  const priced = row.prices.filter(
+    (entry): entry is { dealer: string; price: number; url?: string; etat?: string | null } =>
+      typeof entry.price === "number" && entry.price > 0
+  )
+  if (priced.length === 0) return null
 
-  if (competitorPrices.length === 0) return null
+  // Cohérence neuf/occasion : on n'ancre le prix que sur des concurrents du
+  // même état que la référence. Sans concurrent comparable, on se replie sur
+  // l'autre état mais la recommandation est marquée `low` (moins fiable).
+  const referenceEtat = normalizeEtatLabel(row.referenceEtat)
+  let pool = priced
+  let reliability: "normal" | "low" = "normal"
+  let basisEtat: "neuf" | "occasion" | undefined
+  if (referenceEtat) {
+    const sameEtat = priced.filter(entry => {
+      const etat = normalizeEtatLabel(entry.etat)
+      return etat === null || etat === referenceEtat
+    })
+    if (sameEtat.length > 0) {
+      pool = sameEtat
+    } else {
+      reliability = "low"
+      basisEtat = referenceEtat === "neuf" ? "occasion" : "neuf"
+    }
+  }
+
+  // Un concurrent peut lister plusieurs unités du même modèle : on retient
+  // son prix le plus bas (et non le premier rencontré).
+  const byDealer = new Map<string, { dealer: string; price: number; url?: string }>()
+  for (const entry of pool) {
+    const current = byDealer.get(entry.dealer)
+    if (!current || entry.price < current.price) {
+      byDealer.set(entry.dealer, { dealer: entry.dealer, price: entry.price, url: entry.url })
+    }
+  }
+  const competitorPrices = Array.from(byDealer.values())
 
   const vehicleType = row.vehicleType || "autre"
   const strategy = getStrategyForVehicleType(settings, vehicleType)
@@ -334,6 +374,8 @@ export function calculatePricingRecommendation(
     difference: recommendedPrice - row.reference,
     strategy,
     strategyLabel: getStrategyLabel(strategy),
+    reliability,
+    basisEtat,
     basis: {
       competitorPrices,
       minimum,

@@ -326,12 +326,16 @@ export async function POST(request: Request) {
       old_price: item.oldPrice,
       new_price: item.recommendedPrice,
       strategy_key: item.strategy.key,
-      strategy_label: getStrategyLabel(item.strategy),
+      strategy_label:
+        getStrategyLabel(item.strategy) +
+        (item.reliability === "low" ? ` · moins fiable (basé ${item.basisEtat})` : ""),
       basis: {
         ...item.basis,
         strategy: item.strategy,
         difference: item.difference,
         recommendedPrice: item.recommendedPrice,
+        reliability: item.reliability,
+        basisEtat: item.basisEtat,
       },
       applied: false,
     }))
