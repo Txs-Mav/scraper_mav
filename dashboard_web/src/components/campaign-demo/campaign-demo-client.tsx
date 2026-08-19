@@ -65,6 +65,22 @@ export default function CampaignDemoClient({
   // passe par l'équipe (un vrai code promo est envoyé au concessionnaire).
   const signupHref = "/contact"
 
+  // La table ne filtre PAS elle-même sur searchQuery (elle ne fait qu'en
+  // afficher le champ) : comme dans le vrai dashboard, le filtrage vit chez
+  // le parent. Mêmes champs que scraper-dashboard, plus le nom du produit
+  // référent pour garder les lignes concurrentes appariées attachées.
+  const visibleProducts = useMemo(() => {
+    const tokens = searchQuery.toLowerCase().split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return products
+    return products.filter((p: any) => {
+      const hay = [p.name, p.marque, p.modele, p.annee, p.produitReference?.name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+      return tokens.every(tok => hay.includes(tok))
+    })
+  }, [products, searchQuery])
+
   const pricingRows = useMemo(
     () => buildPricingRowsFromProducts(products, data.competitorUrls),
     [products, data.competitorUrls]
@@ -106,7 +122,7 @@ export default function CampaignDemoClient({
       <div className="relative">
         {section === "surveillance" && (
           <PriceComparisonTable
-            products={products}
+            products={visibleProducts}
             competitorsUrls={data.competitorUrls}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
