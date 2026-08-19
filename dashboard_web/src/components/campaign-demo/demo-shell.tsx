@@ -12,10 +12,9 @@
  *   - un bandeau fin au-dessus identifie la démo et porte le CTA.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { createPortal } from "react-dom"
-import { useTheme } from "next-themes"
 import {
   ArrowRight, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList,
   Home, Lock, Menu, Radar, User, X, BarChart2,
@@ -61,14 +60,12 @@ interface DemoNavProps {
 export default function DemoLayout({
   section, onNavigate, signupHref, contactName, dealerName, children,
 }: DemoNavProps & { dealerName: string; children: ReactNode }) {
-  const { theme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => { setMounted(true) }, [])
-  if (!mounted) return null
-
+  // Contrairement au Layout du dashboard, pas de garde « mounted » : le
+  // thème vient de la classe posée sur <html> par le ThemeProvider racine,
+  // et la page doit être rendue côté serveur (lien ouvert depuis un
+  // courriel — le contenu ne peut pas attendre l'hydratation).
   return (
-    <div className={`min-h-screen flex flex-col ${theme === "dark" ? "dark" : ""}`}>
+    <div className="min-h-screen flex flex-col">
       {/* Bandeau démo : seul élément absent du vrai site — identifie la
           page privée et porte le CTA d'activation. */}
       <div className="flex items-center justify-between gap-3 border-b border-orange-200/70 bg-orange-50 px-3 py-1.5 text-[12px] dark:border-orange-500/20 dark:bg-orange-500/10 sm:px-6">
