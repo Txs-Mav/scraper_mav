@@ -15,10 +15,8 @@ import DemoLayout, { type DemoSectionId } from "@/components/campaign-demo/demo-
 import PriceComparisonTable from "@/components/price-comparison-table"
 import SurveillanceBackground from "@/components/kokonutui/surveillance-background"
 import PricePositioningCard from "@/components/analytics/price-positioning"
-import PriceEvolutionChart from "@/components/analytics/price-evolution"
 import OpportunitiesDetection from "@/components/analytics/opportunities"
 import AlertsAndInsights from "@/components/analytics/alerts-insights"
-import RetailerPriceTrends from "@/components/analytics/retailer-price-trends"
 import ExplanatoryFactors from "@/components/analytics/explanatory-factors"
 import ProductCategoryAnalysis from "@/components/analytics/product-analysis"
 import CategoryAnalysis from "@/components/analytics/category-analysis"
@@ -172,11 +170,14 @@ function AnalyseSection({
     return t("analytics.updatedHAgo").replace("{n}", String(Math.floor(diffMin / 60)))
   })()
 
+  // 4e KPI : l'écart vs marché plutôt que le compteur de scrapes du vrai
+  // site (toujours « 1 » en démo, ce qui semblerait cassé).
+  const ecart = analytics.positionnement.ecartPourcentage
   const headerKpis = [
     { label: t("analytics.productsAnalyzed"), value: totalProducts.toLocaleString("fr-CA") },
     { label: t("analytics.retailers"), value: analytics.detailleurs.length.toLocaleString("fr-CA") },
     { label: t("analytics.opportunities"), value: analytics.opportunites.length.toLocaleString("fr-CA") },
-    { label: t("analytics.scrapes"), value: analytics.stats.nombreScrapes.toLocaleString("fr-CA") },
+    { label: "Écart vs marché", value: `${ecart > 0 ? "+" : ""}${ecart.toFixed(1)} %` },
   ]
 
   const ringSize = 64
@@ -262,23 +263,20 @@ function AnalyseSection({
         </div>
       </header>
 
-      {/* ── Sections d'analyse (ordre identique au vrai site) ── */}
+      {/* ── Sections d'analyse (mêmes cartes que le vrai site ; les blocs à
+             séries temporelles — activité de scraping, tendances — sont
+             omis : sans historique de compte ils n'afficheraient que du
+             vide. Grille rééquilibrée en conséquence. ── */}
       <div className="space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-1">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+          <div className="lg:col-span-1 space-y-4">
             <PricePositioningCard positionnement={analytics.positionnement} />
+            <AlertsAndInsights alertes={analytics.alertes} stats={analytics.stats} />
           </div>
           <div className="lg:col-span-2">
-            <PriceEvolutionChart evolutionPrix={analytics.evolutionPrix} scrapesParJour={analytics.stats.scrapesParJour} />
+            <OpportunitiesDetection opportunites={analytics.opportunites} />
           </div>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <OpportunitiesDetection opportunites={analytics.opportunites} />
-          <AlertsAndInsights alertes={analytics.alertes} stats={analytics.stats} />
-        </div>
-
-        <RetailerPriceTrends evolutionPrix={analytics.evolutionPrix} />
 
         <ExplanatoryFactors produits={analytics.produits} />
 
