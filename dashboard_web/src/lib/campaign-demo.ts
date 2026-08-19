@@ -65,6 +65,27 @@ export const DEALER_CAMPAIGNS: Record<string, DealerCampaignConfig> = {
       { name: 'SM Sport', domain: 'smsport.ca', url: 'https://smsport.ca' },
     ],
   },
+  morinsports: {
+    slug: 'morinsports',
+    code: 'MORINSPORTS',
+    contactName: 'Morin Sports',
+    logo: '/dealers/morin-sports.png',
+    reference: { name: 'Morin Sports', domain: 'morinsports.com', url: 'https://morinsports.com' },
+    // Sélection 2026-08-19 : les 8 concessionnaires qui battent le plus
+    // Morin Sports (Trois-Rivières, inventaire quasi 100 % Kawasaki) —
+    // 592 lignes appariées, 108 unités sur 191 non compétitives (dont 90
+    // rien que chez Mathias Sports).
+    competitors: [
+      { name: 'Mathias Sports', domain: 'mathiassports.com', url: 'https://mathiassports.com' },
+      { name: 'Motoplex Mirabel', domain: 'motoplexmirabel.ca', url: 'https://motoplexmirabel.ca' },
+      { name: 'Moto Ducharme', domain: 'motoducharme.com', url: 'https://motoducharme.com' },
+      { name: 'Moto Pro Granby', domain: 'motoprogranby.com', url: 'https://motoprogranby.com' },
+      { name: 'Motos Illimitées', domain: 'motosillimitees.com', url: 'https://motosillimitees.com' },
+      { name: 'DB Moto', domain: 'dbmoto.ca', url: 'https://dbmoto.ca' },
+      { name: 'Excel Moto', domain: 'excelmoto.com', url: 'https://excelmoto.com' },
+      { name: 'Jean Dumas Maximum Sport', domain: 'jeandumasmaximumsport.ca', url: 'https://jeandumasmaximumsport.ca' },
+    ],
+  },
   smsport: {
     slug: 'smsport',
     code: 'SMSPORT',

@@ -70,7 +70,8 @@ export default function DemoLayout({
           page privée et porte le CTA d'activation. */}
       <div className="flex items-center justify-between gap-3 border-b border-orange-200/70 bg-orange-50 px-3 py-1.5 text-[12px] dark:border-orange-500/20 dark:bg-orange-500/10 sm:px-6">
         <span className="truncate font-medium text-orange-800 dark:text-orange-300">
-          Démo privée · préparée pour {contactName} ({dealerName}) — données réelles de votre marché
+          Démo privée · préparée pour {contactName}
+          {contactName !== dealerName ? ` (${dealerName})` : ""} — données réelles de votre marché
         </span>
         <Link
           href={signupHref}
