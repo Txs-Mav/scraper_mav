@@ -6,7 +6,7 @@ import {
   Bell, Loader2, Lock, Plus, Trash2, Clock, Mail, MailX,
   TrendingUp, TrendingDown, Package, PackageMinus, RefreshCw,
   CheckCheck, ChevronDown, ChevronUp, Eye, Globe, AlertTriangle,
-  Pause, Play, ShieldCheck, Link, Settings2, Timer, Star, X,
+  Pause, Play, ShieldCheck, Link, Settings2, Timer, X,
   Radar, Activity, MessageSquare, Slack, CheckCircle2, Database,
 } from "lucide-react"
 import Layout from "@/components/kokonutui/layout"
@@ -177,89 +177,6 @@ function isValidUrl(str: string): boolean {
   } catch {
     return false
   }
-}
-
-// ─── SourceRow: one configured site row in the data-refresh block ──
-
-function SourceRow({
-  url,
-  isReference,
-  cachedScrapers,
-  t,
-  locale,
-}: {
-  url: string
-  isReference: boolean
-  cachedScrapers: CachedScraper[]
-  t: (key: TranslationKey) => string
-  locale: string
-}) {
-  const hostname = getHostname(url)
-  const match = cachedScrapers.find((c) => {
-    try {
-      return new URL(c.url).hostname.replace(/^www\./, '').toLowerCase() === hostname.toLowerCase()
-    } catch {
-      return false
-    }
-  })
-  const faviconUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
-  const [imgError, setImgError] = useState(false)
-
-  return (
-    <div className="px-5 py-3.5 flex items-center gap-3 hover:bg-[var(--color-background-hover)]/40 transition">
-      <div className="w-7 h-7 rounded-lg bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)] overflow-hidden flex items-center justify-center shrink-0">
-        {!imgError ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={faviconUrl}
-            alt={hostname}
-            width={20}
-            height={20}
-            className="w-5 h-5 object-contain"
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          <Globe className="h-3.5 w-3.5 text-[var(--color-text-secondary)]" />
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          {isReference && <Star className="h-3.5 w-3.5 text-amber-500 shrink-0" fill="currentColor" />}
-          <span className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{hostname}</span>
-          {isReference && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-medium uppercase tracking-wide">
-              {t("alerts.referenceBadge")}
-            </span>
-          )}
-          {match ? (
-            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 font-medium">
-              <CheckCircle2 className="h-2.5 w-2.5" />
-              {t("alerts.cached")}
-            </span>
-          ) : (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] font-medium">
-              {t("alerts.noCache")}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-[var(--color-text-secondary)]">
-          {match?.lastProductCount ? (
-            <span className="inline-flex items-center gap-1">
-              <Package className="h-3 w-3" />
-              {match.lastProductCount} {t("alerts.productAbbr")}
-            </span>
-          ) : null}
-          {match?.lastRunAt && (
-            <span className="inline-flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {formatDate(match.lastRunAt, t, locale)}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // ─── Main Component ─────────────────────────────────────────────────
@@ -883,9 +800,6 @@ export default function AlertePage() {
                   <Database className="h-4 w-4 text-orange-500" />
                   {t("alerts.dataRefresh")}
                 </h2>
-                <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
-                  {t("alerts.dataRefreshDesc")}
-                </p>
               </div>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold shrink-0">
                 <span className="relative flex h-1.5 w-1.5">
@@ -896,102 +810,57 @@ export default function AlertePage() {
               </span>
             </div>
 
-            {/* Primary action + status */}
-            <div className="px-5 py-4 border-b border-[var(--color-border-tertiary)] flex flex-col md:flex-row md:items-center gap-3">
-              <button
-                type="button"
-                onClick={refreshProductsFromCache}
-                disabled={refreshingProducts}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:translate-y-0 shrink-0"
-              >
-                {refreshingProducts ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t("alerts.refreshing")}
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4" />
-                    {t("alerts.refreshProducts")}
-                  </>
-                )}
-              </button>
-
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--color-text-secondary)] flex-1 min-w-0">
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock className="h-3 w-3" />
-                  {t("alerts.lastCronRun")}{" "}
-                  <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
-                    {alertLastRunAt ? formatDate(alertLastRunAt, t, locale) : t("alerts.never")}
-                  </span>
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Timer className="h-3 w-3" />
-                  {scheduleIntervalMin < 60
-                    ? t("alerts.everyXMinutes").replace("{0}", String(scheduleIntervalMin))
-                    : t("alerts.everyXHours").replace("{0}", String(Math.round(scheduleIntervalMin / 60)))}
-                </span>
-                {lastRefreshAt && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                    {t("alerts.refreshedAt").replace("{0}", formatDate(lastRefreshAt.toISOString(), t, locale))}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Schedule configuration */}
-            <div className="px-5 py-4 border-b border-[var(--color-border-tertiary)] space-y-3">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
-                    {t("alerts.scheduleTitle")}
-                  </p>
-                  <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
-                    {t("alerts.scheduleDesc")}
-                  </p>
-                </div>
-                {scheduleSavedAt && !scheduleDirty && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                    <CheckCircle2 className="h-3 w-3" />
-                    {t("alerts.scheduleSaved")}
-                  </span>
-                )}
-              </div>
-
-              {/* Mode switch */}
-              <div className="inline-flex p-0.5 rounded-xl bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)]">
-                <button
-                  type="button"
-                  onClick={() => { setScheduleMode('interval'); setScheduleDirty(true) }}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                    scheduleMode === 'interval'
-                      ? 'bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm'
-                      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                  }`}
-                >
-                  <Timer className="inline h-3 w-3 mr-1" />
-                  {t("alerts.scheduleInterval")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setScheduleMode('daily'); setScheduleDirty(true) }}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                    scheduleMode === 'daily'
-                      ? 'bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm'
-                      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                  }`}
-                >
-                  <Clock className="inline h-3 w-3 mr-1" />
-                  {t("alerts.scheduleDaily")}
-                </button>
-              </div>
-
-              {/* Mode-specific controls */}
+            {/* Une seule rangée : actualiser + fréquence */}
+            <div className="px-5 py-4 space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
-                {scheduleMode === 'interval' ? (
-                  <label className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-                    <span>{t("alerts.everyLabel")}</span>
+                <button
+                  type="button"
+                  onClick={refreshProductsFromCache}
+                  disabled={refreshingProducts}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:translate-y-0 shrink-0"
+                >
+                  {refreshingProducts ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {t("alerts.refreshing")}
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      {t("alerts.refreshProducts")}
+                    </>
+                  )}
+                </button>
+
+                <div className="ml-auto flex items-center gap-2 flex-wrap">
+                  <div className="inline-flex p-0.5 rounded-xl bg-[var(--color-background-secondary)] border border-[var(--color-border-tertiary)]">
+                    <button
+                      type="button"
+                      onClick={() => { setScheduleMode('interval'); setScheduleDirty(true) }}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                        scheduleMode === 'interval'
+                          ? 'bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm'
+                          : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                      }`}
+                    >
+                      <Timer className="inline h-3 w-3 mr-1" />
+                      {t("alerts.scheduleInterval")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setScheduleMode('daily'); setScheduleDirty(true) }}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                        scheduleMode === 'daily'
+                          ? 'bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm'
+                          : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                      }`}
+                    >
+                      <Clock className="inline h-3 w-3 mr-1" />
+                      {t("alerts.scheduleDaily")}
+                    </button>
+                  </div>
+
+                  {scheduleMode === 'interval' ? (
                     <select
                       value={scheduleIntervalMin}
                       onChange={(e) => { setScheduleIntervalMin(parseInt(e.target.value)); setScheduleDirty(true) }}
@@ -1005,51 +874,49 @@ export default function AlertePage() {
                         </option>
                       ))}
                     </select>
-                  </label>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-[var(--color-text-secondary)]">{t("alerts.dailyAtLabel")}</span>
-                    <select
-                      value={scheduleDailyHour}
-                      onChange={(e) => { setScheduleDailyHour(parseInt(e.target.value)); setScheduleDirty(true) }}
-                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-                    >
-                      {Array.from({ length: 24 }).map((_, h) => (
-                        <option key={h} value={h}>{String(h).padStart(2, '0')}</option>
-                      ))}
-                    </select>
-                    <span className="text-sm font-semibold text-[var(--color-text-secondary)]">:</span>
-                    <select
-                      value={scheduleDailyMinute}
-                      onChange={(e) => { setScheduleDailyMinute(parseInt(e.target.value)); setScheduleDirty(true) }}
-                      className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-                    >
-                      {[0, 15, 30, 45].map((m) => (
-                        <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
-                      ))}
-                    </select>
-                    <span className="text-[11px] text-[var(--color-text-secondary)] italic">{t("alerts.utcNote")}</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={saveSchedule}
-                  disabled={savingSchedule || !scheduleDirty}
-                  className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-text-primary)] text-[var(--color-background-primary)] text-xs font-semibold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {savingSchedule ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      {t("alerts.saving")}
-                    </>
                   ) : (
-                    <>
-                      <CheckCircle2 className="h-3 w-3" />
-                      {t("alerts.saveSchedule")}
-                    </>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={scheduleDailyHour}
+                        onChange={(e) => { setScheduleDailyHour(parseInt(e.target.value)); setScheduleDirty(true) }}
+                        className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                      >
+                        {Array.from({ length: 24 }).map((_, h) => (
+                          <option key={h} value={h}>{String(h).padStart(2, '0')}</option>
+                        ))}
+                      </select>
+                      <span className="text-sm font-semibold text-[var(--color-text-secondary)]">:</span>
+                      <select
+                        value={scheduleDailyMinute}
+                        onChange={(e) => { setScheduleDailyMinute(parseInt(e.target.value)); setScheduleDirty(true) }}
+                        className="px-3 py-1.5 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] text-sm font-semibold text-[var(--color-text-primary)] tabular-nums focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                      >
+                        {[0, 15, 30, 45].map((m) => (
+                          <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                        ))}
+                      </select>
+                    </div>
                   )}
-                </button>
+
+                  <button
+                    type="button"
+                    onClick={saveSchedule}
+                    disabled={savingSchedule || !scheduleDirty}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-text-primary)] text-[var(--color-background-primary)] text-xs font-semibold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {savingSchedule ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {t("alerts.saving")}
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-3 w-3" />
+                        {t("alerts.saveSchedule")}
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {scheduleError && (
@@ -1063,7 +930,7 @@ export default function AlertePage() {
             {/* Refresh feedback */}
             {refreshResult && (
               <div
-                className={`px-5 py-3 border-b border-[var(--color-border-tertiary)] text-xs font-medium flex items-start gap-2 ${
+                className={`px-5 py-3 border-t border-[var(--color-border-tertiary)] text-xs font-medium flex items-start gap-2 ${
                   refreshResult.ok
                     ? 'bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
                     : 'bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200'
@@ -1076,15 +943,6 @@ export default function AlertePage() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p>{refreshResult.message}</p>
-                  {refreshResult.ok && refreshResult.stats && (
-                    <p className="mt-0.5 text-[11px] text-[var(--color-text-secondary)]">
-                      {t("alerts.refreshStats")
-                        .replace("{0}", String(refreshResult.stats.totalProducts))
-                        .replace("{1}", String(refreshResult.stats.matchedProducts))
-                        .replace("{2}", String(refreshResult.stats.cacheHits))
-                        .replace("{3}", String(refreshResult.stats.elapsed))}
-                    </p>
-                  )}
                 </div>
                 <button
                   type="button"
@@ -1097,34 +955,6 @@ export default function AlertePage() {
               </div>
             )}
 
-            {/* Sources list */}
-            <div className="px-5 py-3 bg-[var(--color-background-secondary)]/40 border-b border-[var(--color-border-tertiary)] flex items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
-                {t("alerts.monitoredSources")}
-              </p>
-              <span className="px-1.5 py-0.5 rounded-md bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] text-[11px] font-semibold tabular-nums">
-                {1 + configCompetitorUrls.length}
-              </span>
-            </div>
-            <div className="divide-y divide-[var(--color-border-tertiary)]">
-              <SourceRow
-                url={configReferenceUrl}
-                isReference
-                cachedScrapers={cachedScrapers}
-                t={t}
-                locale={locale}
-              />
-              {configCompetitorUrls.map((url, i) => (
-                <SourceRow
-                  key={`${url}-${i}`}
-                  url={url}
-                  isReference={false}
-                  cachedScrapers={cachedScrapers}
-                  t={t}
-                  locale={locale}
-                />
-              ))}
-            </div>
           </div>
         )}
 
