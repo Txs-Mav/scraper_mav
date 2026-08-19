@@ -87,6 +87,16 @@ export const DEALER_CAMPAIGNS: Record<string, DealerCampaignConfig> = {
   },
 }
 
+/**
+ * Codes réservés au gate des pages démo : ils ouvrent/ferment la page
+ * publique mais ne sont JAMAIS échangeables — ni inscription Ultime via
+ * /c/[code], ni application comme code promo en compte. L'accès complet
+ * d'un concessionnaire passe par un vrai code envoyé manuellement.
+ */
+export const DEMO_GATE_CODES: ReadonlySet<string> = new Set(
+  Object.values(DEALER_CAMPAIGNS).map(c => c.code)
+)
+
 // ─── Types de données ────────────────────────────────────────────────
 
 export interface CampaignAnalytics {

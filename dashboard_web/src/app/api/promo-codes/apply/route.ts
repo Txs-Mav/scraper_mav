@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getCurrentUser } from '@/lib/supabase/helpers'
+import { DEMO_GATE_CODES } from '@/lib/campaign-demo'
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +12,14 @@ export async function POST(request: Request) {
     if (!code) {
       return NextResponse.json(
         { error: 'Code promo requis' },
+        { status: 400 }
+      )
+    }
+
+    // Les codes de pages démo (FALARDEAU, SMSPORT…) ne donnent aucun plan.
+    if (DEMO_GATE_CODES.has(String(code).toUpperCase().trim())) {
+      return NextResponse.json(
+        { error: 'Code promo invalide' },
         { status: 400 }
       )
     }

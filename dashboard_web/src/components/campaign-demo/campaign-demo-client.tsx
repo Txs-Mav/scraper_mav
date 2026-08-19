@@ -72,7 +72,9 @@ export default function CampaignDemoClient({
   }
 
   const products = data.products as any[]
-  const signupHref = `/c/${config.code.toLowerCase()}`
+  // Pas d'inscription Ultime en libre-service depuis la démo : l'activation
+  // passe par l'équipe (un vrai code promo est envoyé au concessionnaire).
+  const signupHref = "/contact"
 
   const pricingRows = useMemo(
     () => buildPricingRowsFromProducts(products, data.competitorUrls),

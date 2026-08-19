@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { DEMO_GATE_CODES } from '@/lib/campaign-demo'
 
 export async function POST(request: Request) {
   try {
@@ -9,6 +10,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Code promo requis' },
         { status: 400 }
+      )
+    }
+
+    // Les codes de pages démo (FALARDEAU, SMSPORT…) ne sont pas échangeables.
+    if (DEMO_GATE_CODES.has(String(code).toUpperCase().trim())) {
+      return NextResponse.json(
+        { error: 'Code promo invalide', valid: false },
+        { status: 404 }
       )
     }
 

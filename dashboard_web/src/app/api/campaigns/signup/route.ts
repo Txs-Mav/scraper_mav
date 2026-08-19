@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { DEMO_GATE_CODES } from '@/lib/campaign-demo'
 
 /**
  * POST /api/campaigns/signup
@@ -27,6 +28,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Le mot de passe doit contenir au moins 6 caractères.' },
         { status: 400 }
+      )
+    }
+
+    // Les codes de pages démo (FALARDEAU, SMSPORT…) gardent leur page mais
+    // n'autorisent PAS la création d'un compte Ultime : l'accès complet est
+    // envoyé manuellement au concessionnaire.
+    if (DEMO_GATE_CODES.has(String(code).toUpperCase().trim())) {
+      return NextResponse.json(
+        { error: "Ce code n'autorise pas la création de compte." },
+        { status: 403 }
       )
     }
 
