@@ -9,9 +9,10 @@
  */
 
 import { useMemo, useState } from "react"
-import { ChevronRight, Minus, Plus, Printer, TrendingDown, Target, Scale, type LucideIcon } from "lucide-react"
+import { ChevronRight, Printer } from "lucide-react"
 
 import DemoLayout, { type DemoSectionId } from "@/components/campaign-demo/demo-shell"
+import StrategyEditor from "@/components/pricing/strategy-editor"
 import PriceComparisonTable from "@/components/price-comparison-table"
 import SurveillanceBackground from "@/components/kokonutui/surveillance-background"
 import PricePositioningCard from "@/components/analytics/price-positioning"
@@ -32,18 +33,10 @@ import {
   DEFAULT_PRICING_SETTINGS,
   VEHICLE_TYPE_LABELS,
   type PricingRecommendation,
-  type PricingStrategyKey,
   type PricingStrategySettings,
   type VehicleType,
 } from "@/lib/pricing-strategy"
 import type { CampaignDemoData, DealerCampaignConfig } from "@/lib/campaign-demo"
-
-const STRATEGY_META: Record<PricingStrategyKey, { label: string; tagline: string; icon: LucideIcon }> = {
-  lowest_minus_amount: { label: "Sous le plus bas", tagline: "Battre le concurrent le moins cher.", icon: TrendingDown },
-  match_lowest: { label: "Égaler le plus bas", tagline: "Rester compétitif sans rogner la marge.", icon: Target },
-  market_average: { label: "Moyenne du marché", tagline: "Équilibre entre marge et compétitivité.", icon: Scale },
-}
-const STRATEGY_ORDER: PricingStrategyKey[] = ["lowest_minus_amount", "match_lowest", "market_average"]
 
 const money = new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })
 
@@ -107,36 +100,41 @@ export default function CampaignDemoClient({
       <div id="demo-content-top" />
       <SurveillanceBackground />
 
-      {section === "surveillance" && (
-        <PriceComparisonTable
-          products={products}
-          competitorsUrls={data.competitorUrls}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Rechercher un modèle…"
-          pricingSettings={settings}
-          pricingEnabled={pricingEnabled}
-          onPricingEnabledChange={setPricingEnabled}
-        />
-      )}
+      {/* `relative` obligatoire : SurveillanceBackground est en `fixed z-0`
+          avec une base opaque — tout contenu non positionné serait peint
+          DESSOUS (sections invisibles, page « vide »). */}
+      <div className="relative">
+        {section === "surveillance" && (
+          <PriceComparisonTable
+            products={products}
+            competitorsUrls={data.competitorUrls}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchPlaceholder="Rechercher un modèle…"
+            pricingSettings={settings}
+            pricingEnabled={pricingEnabled}
+            onPricingEnabledChange={setPricingEnabled}
+          />
+        )}
 
-      {section === "analyse" && (
-        <AnalyseSection analytics={data.analytics} scrapedAt={data.scrapedAt} />
-      )}
+        {section === "analyse" && (
+          <AnalyseSection analytics={data.analytics} scrapedAt={data.scrapedAt} />
+        )}
 
-      {section === "strategie" && (
-        <StrategySection
-          settings={settings}
-          onChange={handleStrategyChange}
-          vehicleTypes={vehicleTypesPresent}
-          recommendationsCount={recommendations.length}
-          onSeeFiches={() => goTo("fiches")}
-        />
-      )}
+        {section === "strategie" && (
+          <StrategySection
+            settings={settings}
+            onChange={handleStrategyChange}
+            vehicleTypes={vehicleTypesPresent}
+            recommendationsCount={recommendations.length}
+            onSeeFiches={() => goTo("fiches")}
+          />
+        )}
 
-      {section === "fiches" && (
-        <FichesSection recommendations={recommendations} />
-      )}
+        {section === "fiches" && (
+          <FichesSection recommendations={recommendations} />
+        )}
+      </div>
     </DemoLayout>
   )
 }
@@ -310,28 +308,6 @@ function StrategySection({
   recommendationsCount: number
   onSeeFiches: () => void
 }) {
-  const defaultKey = settings.default_strategy.key
-  const amount = settings.default_strategy.amount ?? 1
-
-  const setDefault = (key: PricingStrategyKey) =>
-    onChange(normalizePricingSettings({
-      ...settings,
-      default_strategy: key === "lowest_minus_amount" ? { key, amount } : { key },
-    }))
-
-  const setAmount = (next: number) =>
-    onChange(normalizePricingSettings({
-      ...settings,
-      default_strategy: { key: "lowest_minus_amount", amount: Math.max(0, next) },
-    }))
-
-  const setOverride = (vt: VehicleType, key: PricingStrategyKey | "default") => {
-    const overrides = { ...settings.vehicle_type_strategies }
-    if (key === "default") delete overrides[vt]
-    else overrides[vt] = key === "lowest_minus_amount" ? { key, amount } : { key }
-    onChange(normalizePricingSettings({ ...settings, vehicle_type_strategies: overrides }))
-  }
-
   return (
     <div className="space-y-4">
       <SectionHeader
@@ -339,90 +315,7 @@ function StrategySection({
         text="Choisissez votre règle : les prix recommandés se recalculent instantanément dans la Surveillance et les Fiches de prix."
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {STRATEGY_ORDER.map(key => {
-          const meta = STRATEGY_META[key]
-          const Icon = meta.icon
-          const selected = defaultKey === key
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setDefault(key)}
-              className={`rounded-xl border p-4 text-left transition-all ${
-                selected
-                  ? "border-orange-600 bg-orange-50 ring-1 ring-orange-600 dark:border-orange-400 dark:bg-orange-400/10 dark:ring-orange-400"
-                  : "border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] hover:border-gray-300 dark:hover:border-white/20"
-              }`}
-            >
-              <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                selected ? "bg-orange-600 text-white dark:bg-orange-400 dark:text-black" : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)]"
-              }`}>
-                <Icon className="h-4 w-4" />
-              </span>
-              <p className="mt-2.5 text-[14px] font-semibold text-[var(--color-text-primary)]">{meta.label}</p>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--color-text-secondary)]">{meta.tagline}</p>
-            </button>
-          )
-        })}
-      </div>
-
-      {defaultKey === "lowest_minus_amount" && (
-        <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-4">
-          <p className="text-[13px] font-medium text-[var(--color-text-primary)]">
-            Montant sous le prix concurrent le plus bas :
-          </p>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setAmount(amount - 25)}
-              aria-label="Réduire le montant"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-hover)]"
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <span className="min-w-[72px] text-center text-[15px] font-bold tabular-nums text-[var(--color-text-primary)]">
-              −{money.format(amount)}
-            </span>
-            <button
-              type="button"
-              onClick={() => setAmount(amount + 25)}
-              aria-label="Augmenter le montant"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-hover)]"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)]">
-        <div className="border-b border-[var(--color-border-tertiary)] px-4 py-3">
-          <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">Exceptions par type de véhicule</p>
-          <p className="mt-0.5 text-[12px] text-[var(--color-text-secondary)]">
-            Par défaut, la règle ci-dessus s&apos;applique partout. Ajustez un type au besoin.
-          </p>
-        </div>
-        <div className="divide-y divide-[var(--color-border-tertiary)]">
-          {vehicleTypes.map(vt => (
-            <div key={vt} className="flex items-center justify-between gap-3 px-4 py-2.5">
-              <span className="text-[13px] font-medium text-[var(--color-text-primary)]">
-                {VEHICLE_TYPE_LABELS[vt] || vt}
-              </span>
-              <select
-                value={settings.vehicle_type_strategies[vt]?.key ?? "default"}
-                onChange={e => setOverride(vt, e.target.value as PricingStrategyKey | "default")}
-                className="h-8 rounded-lg border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] px-2 text-[12px] text-[var(--color-text-primary)] focus:border-orange-500 focus:outline-none"
-              >
-                <option value="default">Règle par défaut</option>
-                {STRATEGY_ORDER.map(key => (
-                  <option key={key} value={key}>{STRATEGY_META[key].label}</option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </div>
-      </div>
+      <StrategyEditor settings={settings} onChange={next => onChange(next)} vehicleTypes={vehicleTypes} />
 
       <button
         type="button"

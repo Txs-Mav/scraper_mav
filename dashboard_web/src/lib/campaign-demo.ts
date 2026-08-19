@@ -197,28 +197,51 @@ export async function isCampaignActive(code: string): Promise<boolean> {
 // calculé en mémoire d'instance (Fluid Compute réutilise les instances) et
 // on rafraîchit au plus toutes les 10 min — le cron scrape aux 2 h de toute
 // façon. Le gate, lui, reste par requête.
+//
+// Résilience : un échec de calcul (requête Supabase qui timeoute, re-scrape
+// en cours) ne doit JAMAIS fermer une démo qui marchait — on ressert les
+// dernières bonnes données et on retente vite. Seul un échec sans aucune
+// donnée antérieure affiche « en cours de préparation », sans être caché
+// longtemps.
 const DATA_TTL_MS = 10 * 60 * 1000
-const dataCache = new Map<string, { at: number; data: CampaignDemoData | null }>()
+const RETRY_TTL_MS = 60 * 1000
+const dataCache = new Map<string, { at: number; ttl: number; data: CampaignDemoData | null }>()
 
 export async function loadCampaignData(config: DealerCampaignConfig): Promise<CampaignDemoData | null> {
   const cached = dataCache.get(config.slug)
-  if (cached && Date.now() - cached.at < DATA_TTL_MS) {
+  if (cached && Date.now() - cached.at < cached.ttl) {
     return cached.data
   }
-  const data = await computeCampaignData(config)
-  dataCache.set(config.slug, { at: Date.now(), data })
-  return data
+
+  let data: CampaignDemoData | null = null
+  try {
+    data = await computeCampaignData(config)
+  } catch (error) {
+    console.error(`[campaign-demo] échec du calcul pour ${config.slug} :`, error)
+  }
+
+  if (data) {
+    dataCache.set(config.slug, { at: Date.now(), ttl: DATA_TTL_MS, data })
+    return data
+  }
+  const stale = cached?.data ?? null
+  dataCache.set(config.slug, { at: Date.now(), ttl: RETRY_TTL_MS, data: stale })
+  return stale
 }
 
 async function computeCampaignData(config: DealerCampaignConfig): Promise<CampaignDemoData | null> {
   const supabase = createServiceClient()
   const domains = [config.reference.domain, ...config.competitors.map(c => c.domain)]
 
-  const { data: rows } = await supabase
+  const { data: rows, error } = await supabase
     .from('scraped_site_data')
     .select('site_domain, products, product_count, scraped_at, status')
     .in('site_domain', domains)
     .eq('status', 'success')
+
+  if (error) {
+    throw new Error(`scraped_site_data: ${error.message}`)
+  }
 
   const bySite = new Map<string, { products: any[]; scraped_at: string | null }>()
   for (const row of rows || []) {
