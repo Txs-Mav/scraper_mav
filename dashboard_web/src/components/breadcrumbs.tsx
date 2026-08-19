@@ -32,7 +32,9 @@ export default function Breadcrumbs() {
   })
 
   return (
-    <nav className="flex items-center gap-1.5 text-sm mb-6 animate-in fade-in duration-300">
+    // `relative` : sans lui, SurveillanceBackground (fixed z-0 opaque) peint
+    // par-dessus sur les pages qui l'utilisent — fil d'Ariane invisible.
+    <nav className="relative z-10 flex items-center gap-1.5 text-sm mb-6 animate-in fade-in duration-300">
       {crumbs.map((crumb, i) => (
         <span key={crumb.href} className="flex items-center gap-1.5">
           {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-gray-300 dark:text-gray-600" />}

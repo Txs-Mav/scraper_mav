@@ -67,8 +67,9 @@ export default function DemoLayout({
   return (
     <div className="min-h-screen flex flex-col">
       {/* Bandeau démo : seul élément absent du vrai site — identifie la
-          page privée et porte le CTA d'activation. */}
-      <div className="flex items-center justify-between gap-3 border-b border-orange-200/70 bg-orange-50 px-3 py-1.5 text-[12px] dark:border-orange-500/20 dark:bg-orange-500/10 sm:px-6">
+          page privée et porte le CTA d'activation. `relative` obligatoire :
+          SurveillanceBackground (fixed z-0 opaque) peindrait par-dessus. */}
+      <div className="relative z-10 flex items-center justify-between gap-3 border-b border-orange-200/70 bg-orange-50 px-3 py-1.5 text-[12px] dark:border-orange-500/20 dark:bg-orange-500/10 sm:px-6">
         <span className="truncate font-medium text-orange-800 dark:text-orange-300">
           Démo privée · préparée pour {contactName}
           {contactName !== dealerName ? ` (${dealerName})` : ""} — données réelles de votre marché
@@ -100,7 +101,8 @@ export default function DemoLayout({
 
 function DemoBreadcrumbs({ section }: { section: DemoSectionId }) {
   return (
-    <nav className="flex items-center gap-1.5 text-sm mb-6 animate-in fade-in duration-300">
+    // `relative` : sinon peint sous SurveillanceBackground (fixed z-0).
+    <nav className="relative z-10 flex items-center gap-1.5 text-sm mb-6 animate-in fade-in duration-300">
       <span className="flex items-center gap-1.5">
         <Home className="h-3.5 w-3.5 text-[var(--color-text-secondary)] mr-0.5" />
         <span className="text-[var(--color-text-secondary)]">Dashboard</span>
