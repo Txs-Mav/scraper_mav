@@ -2,16 +2,18 @@
 
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck, Square, Store } from "lucide-react"
+import { Play, Plus, X, Loader2, Star, Clock, CheckCircle2, AlertCircle, Globe, Database, ChevronRight, Search, Sparkles, BadgeCheck, Square, Store, Building2 } from "lucide-react"
 import { logActivity } from "@/hooks/use-activity-tracker"
 import { useScrapingLimit } from "@/hooks/use-scraping-limit"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { MARKETPLACE_SOURCES, type MarketplaceSource } from "@/lib/marketplace-sources"
 import { searchComingCfmotoDealers, type CfmotoDealer } from "@/lib/cfmoto-dealers"
+import { getDealerLogo } from "@/lib/dealer-logos"
 
 const DEFAULT_REFERENCE_URL = ""
 const SCRAPING_SESSION_KEY = "go-data-scraping-session"
+const DEALER_BANK_VISIBLE_KEY = "go-data-dealer-bank-visible"
 
 interface ScrapingSession {
   logFile: string
@@ -113,6 +115,38 @@ function ComingDealerLogo({ dealer }: { dealer: CfmotoDealer }) {
   )
 }
 
+// ── Logo d'un concessionnaire de la banque (logo local/DB → favicon → initiales) ──
+function DealerBankLogo({ url, name, logo, imgClassName = "w-9 h-9" }: { url: string; name: string; logo: string | null; imgClassName?: string }) {
+  const [logoErrored, setLogoErrored] = useState(false)
+  const [faviconErrored, setFaviconErrored] = useState(false)
+  let hostname = ""
+  try { hostname = new URL(url.startsWith("http") ? url : "https://" + url).hostname } catch { hostname = "" }
+  const faviconUrl = hostname ? `https://www.google.com/s2/favicons?domain=${hostname}&sz=64` : ""
+
+  if (logo && !logoErrored) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={logo} alt={name} className={`${imgClassName} object-contain`} onError={() => setLogoErrored(true)} />
+    )
+  }
+  if (faviconUrl && !faviconErrored) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={faviconUrl} alt={name} className={`${imgClassName} object-contain`} onError={() => setFaviconErrored(true)} />
+    )
+  }
+  const initials = name
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join("")
+  return (
+    <span className="text-sm font-bold text-gray-500 dark:text-gray-400">{initials}</span>
+  )
+}
+
 export interface ScraperConfigHandle {
   runScrape: () => Promise<void>
   stopScrape: () => Promise<void>
@@ -168,6 +202,8 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const [isSearchingShared, setIsSearchingShared] = useState(false)
   const sharedSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const [showDealerBank, setShowDealerBank] = useState(true)
+  const [selectedDealer, setSelectedDealer] = useState<SharedScraper | null>(null)
 
   const getScraperInfo = useCallback((url: string): SharedScraper | null => {
     if (!url) return null
@@ -661,6 +697,11 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
     loadConfig()
     loadAllSharedScrapers()
 
+    try {
+      const visible = localStorage.getItem(DEALER_BANK_VISIBLE_KEY)
+      if (visible !== null) setShowDealerBank(visible === "1")
+    } catch {}
+
     const session = loadScrapingSession()
     if (session?.logFile) {
       const ageMs = Date.now() - session.startTime
@@ -693,6 +734,33 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
   const getDomain = (url: string) => {
     try { return new URL(url).hostname.replace('www.', '') }
     catch { return url }
+  }
+
+  // ── Banque de concessionnaires (scrapers actifs hors marketplaces) ──
+  const dealerBank = allSharedScrapers.filter(s => !s.site_slug.startsWith('marketplace-'))
+  const isDealerReference = (s: SharedScraper) => referenceUrl.trim() !== "" && getDomain(referenceUrl) === s.site_domain
+  const isDealerCompetitor = (s: SharedScraper) => urls.some(u => u.trim() && getDomain(u) === s.site_domain)
+
+  const toggleDealerBank = () => {
+    setShowDealerBank(prev => {
+      const next = !prev
+      try { localStorage.setItem(DEALER_BANK_VISIBLE_KEY, next ? "1" : "0") } catch {}
+      return next
+    })
+  }
+
+  const removeDealerCompetitor = (scraper: SharedScraper) => {
+    setUrls(prev => {
+      const next = prev.filter(u => !u.trim() || getDomain(u) !== scraper.site_domain)
+      return next.length ? next : ['']
+    })
+    setCompetitorEnabled(prev => {
+      const kept = prev.filter((_, i) => {
+        const u = urls[i]
+        return !u?.trim() || getDomain(u) !== scraper.site_domain
+      })
+      return kept.length ? kept : [true]
+    })
   }
 
   const removeUrlFromConfig = useCallback((urlOrDomain: string) => {
@@ -889,6 +957,74 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
                   {t("config.searchUniversal")}
                 </p>
               </div>
+            )}
+          </div>
+
+          {/* Séparateur */}
+          <div className="h-px bg-[var(--color-background-primary)]" />
+
+          {/* Banque de concessionnaires (logos cliquables) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-[var(--color-text-secondary)]" />
+                <span className="text-sm font-medium text-[var(--color-text-primary)]">{t("config.dealerBank")}</span>
+                <span className="text-[11px] text-[var(--color-text-secondary)]">{t("config.dealerBankHint")}</span>
+              </div>
+              <button
+                type="button"
+                onClick={toggleDealerBank}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] rounded-md transition-colors"
+              >
+                <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${showDealerBank ? 'rotate-90' : ''}`} />
+                {showDealerBank ? t("config.hideBank") : t("config.showBank")}
+              </button>
+            </div>
+
+            {showDealerBank && (
+              dealerBank.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {dealerBank.map((scraper) => {
+                    const isRef = isDealerReference(scraper)
+                    const isComp = !isRef && isDealerCompetitor(scraper)
+                    return (
+                      <button
+                        key={scraper.id}
+                        type="button"
+                        onClick={() => setSelectedDealer(scraper)}
+                        title={scraper.site_name}
+                        className={`relative w-14 h-14 rounded-xl border bg-white dark:bg-[#242628] flex items-center justify-center p-1.5 transition-all ${
+                          isRef
+                            ? 'border-amber-400 dark:border-amber-500/60 ring-2 ring-amber-200/60 dark:ring-amber-500/20'
+                            : isComp
+                              ? 'border-orange-300 dark:border-orange-500/40 ring-2 ring-orange-200/60 dark:ring-orange-500/15'
+                              : 'border-[var(--color-border-secondary)] hover:border-orange-200 dark:hover:border-orange-500/30 hover:shadow-sm'
+                        }`}
+                      >
+                        <DealerBankLogo
+                          url={scraper.site_url}
+                          name={scraper.site_name}
+                          logo={getDealerLogo(scraper.site_domain, scraper.logo_url)}
+                        />
+                        {isRef && (
+                          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 dark:bg-amber-500 flex items-center justify-center shadow-sm">
+                            <Star className="w-2.5 h-2.5 text-white fill-white" />
+                          </span>
+                        )}
+                        {isComp && (
+                          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center shadow-sm">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="px-3.5 py-3 rounded-xl border border-dashed border-[var(--color-border-secondary)]">
+                  <p className="text-[13px] text-[var(--color-text-secondary)] text-center">{t("config.dealerBankEmpty")}</p>
+                </div>
+              )
             )}
           </div>
 
@@ -1278,6 +1414,95 @@ const ScraperConfig = forwardRef<ScraperConfigHandle, ScraperConfigProps>(functi
           )}
         </div>
       )}
+
+      {/* Fiche concessionnaire (clic sur un logo de la banque) */}
+      {selectedDealer && (() => {
+        const isRef = isDealerReference(selectedDealer)
+        const isComp = isDealerCompetitor(selectedDealer)
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setSelectedDealer(null)}
+          >
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
+            <div
+              className="relative w-full max-w-xs rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedDealer(null)}
+                className="absolute top-3 right-3 p-1.5 text-gray-300 dark:text-gray-600 hover:text-[var(--color-text-secondary)] rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex flex-col items-center text-center gap-3">
+                <div className="w-20 h-20 rounded-2xl bg-white dark:bg-[#242628] border border-gray-200/60 dark:border-[#2a2c2e] flex items-center justify-center p-2 overflow-hidden shadow-sm">
+                  <DealerBankLogo
+                    url={selectedDealer.site_url}
+                    name={selectedDealer.site_name}
+                    logo={getDealerLogo(selectedDealer.site_domain, selectedDealer.logo_url)}
+                    imgClassName="w-14 h-14"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">{selectedDealer.site_name}</p>
+                    <BadgeCheck className="w-4 h-4 text-orange-500 dark:text-orange-400 flex-shrink-0" />
+                  </div>
+                  <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">{selectedDealer.site_domain}</p>
+                </div>
+                {isRef && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                    <Star className="w-3 h-3 fill-current" />
+                    {t("config.dealerIsReference")}
+                  </span>
+                )}
+                {!isRef && isComp && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-50 dark:bg-orange-500/10 text-[11px] font-medium text-orange-600 dark:text-orange-400">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {t("config.dealerIsCompetitor")}
+                  </span>
+                )}
+                <div className="flex gap-2 w-full pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setReferenceUrl(selectedDealer.site_url); setSelectedDealer(null) }}
+                    disabled={isRef}
+                    className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+                      isRef
+                        ? 'bg-amber-500 text-white cursor-default'
+                        : 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/20'
+                    }`}
+                  >
+                    {isRef ? t("config.ref") : t("config.referenceLabel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isComp) removeDealerCompetitor(selectedDealer)
+                      else selectSharedScraper(selectedDealer, false)
+                      setSelectedDealer(null)
+                    }}
+                    disabled={isRef && !isComp}
+                    className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+                      isRef && !isComp
+                        ? 'bg-[var(--color-background-secondary)] text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                        : isComp
+                          ? 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40'
+                          : 'bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-500/20'
+                    }`}
+                  >
+                    {isComp ? t("config.remove") : t("config.addCompetitor")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
     </div>
   )
