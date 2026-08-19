@@ -16,16 +16,11 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   FileText,
-  HelpCircle,
   Lock,
   Printer,
   RefreshCw,
   RotateCcw,
 } from "lucide-react"
-import PageOnboarding, {
-  replayPageOnboarding,
-  type PageOnboardingStep,
-} from "@/components/page-onboarding"
 import Layout from "@/components/kokonutui/layout"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
@@ -195,63 +190,6 @@ export default function ReportsPage() {
   const data = report ?? emptyReport()
   const isEmpty = data.meta.totalScrapings === 0
 
-  // Guide de première visite : les étapes s'adaptent à l'état de la page
-  // (vide → on pointe le CTA ; données → on fait le tour des sections).
-  const onboardingSteps: PageOnboardingStep[] = isEmpty
-    ? [
-        {
-          targetId: "report-empty-cta",
-          title: "Le rapport se remplit tout seul",
-          description:
-            "Chaque analyse lancée depuis le dashboard ajoute une capture ici : produits, prix, concurrents. Lancez la première pour démarrer l'historique.",
-        },
-        {
-          targetId: "report-actions",
-          title: "Vos actions",
-          description:
-            "Actualisez le rapport après une analyse, imprimez-le, ou réinitialisez l'historique au besoin.",
-        },
-      ]
-    : [
-        {
-          targetId: "report-coverage",
-          title: "Votre couverture de données",
-          description:
-            "Combien d'analyses, sur combien de jours, et le nombre de prix collectés. Plus vous analysez, plus le rapport devient précis.",
-        },
-        {
-          targetId: "report-present",
-          title: "L'état actuel du marché",
-          description:
-            "La photographie du dernier scraping : produits suivis, sites, fourchette de prix et répartitions.",
-        },
-        {
-          targetId: "report-accumulation",
-          title: "L'accumulation dans le temps",
-          description:
-            "La courbe montre les prix collectés qui s'additionnent à chaque analyse — c'est la matière première des tendances.",
-        },
-        data.meta.hasEnoughHistory
-          ? {
-              targetId: "report-trends",
-              title: "Les tendances",
-              description:
-                "Variations 7 et 30 jours, plus fortes baisses et hausses par produit, tendance par site et par catégorie.",
-            }
-          : {
-              targetId: "report-locked",
-              title: "Tendances à débloquer",
-              description:
-                "Les tendances comparent vos analyses entre elles — il en faut au moins deux. Ce panneau vous dit où vous en êtes.",
-            },
-        {
-          targetId: "report-actions",
-          title: "Vos actions",
-          description:
-            "Actualiser après une analyse, imprimer le rapport, ou repartir à zéro.",
-        },
-      ]
-
   return (
     <Layout>
       <div id="analytics-print-area" className="space-y-6">
@@ -282,14 +220,6 @@ export default function ReportsPage() {
           </div>
 
           <div id="report-actions" className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => replayPageOnboarding("reports")}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition"
-            >
-              <HelpCircle className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Revoir le guide</span>
-            </button>
             {updatedAgoLabel && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/25">
                 <span className="relative flex h-2 w-2">
@@ -442,12 +372,6 @@ export default function ReportsPage() {
           </>
         )}
       </div>
-
-      <PageOnboarding
-        pageKey="reports"
-        ready={!authLoading && !loading && report !== null}
-        steps={onboardingSteps}
-      />
     </Layout>
   )
 }

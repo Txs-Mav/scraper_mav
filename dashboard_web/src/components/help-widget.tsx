@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import {
   HelpCircle,
   X,
-  BookOpen,
   Mail,
   ChevronRight,
   Megaphone,
@@ -123,16 +122,6 @@ export default function HelpWidget() {
       },
       color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30",
       badge: unreadCount > 0 ? unreadCount : null,
-    },
-    {
-      icon: BookOpen,
-      label: "Guide & Tutoriel",
-      description: "Revoir les étapes de démarrage",
-      action: () => {
-        setOpen(false)
-        window.dispatchEvent(new CustomEvent("restart-onboarding"))
-      },
-      color: "text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30",
     },
     {
       icon: Mail,

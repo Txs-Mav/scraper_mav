@@ -452,7 +452,6 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
     justCompletedScrapingRef.current = true
     setLastScrapingTime(new Date())
     setShowCelebration(true)
-    if (user) localStorage.setItem(`has_scraped_${user.id}`, "true")
     // Delay to let Supabase commit the new scraping before refreshing
     setTimeout(() => setRefreshKey(prev => prev + 1), 2000)
     // Safety-net retry in case the first refresh was too early
@@ -824,10 +823,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
         // metadata inline > actions. Pas de card, pas de fond gris, pas
         // d'ombres. Le background ambient gère la séparation visuelle avec
         // le reste de la page.
-        <header
-          data-onboarding="scrape"
-          className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md"
-        >
+        <header className="rounded-2xl border border-[var(--color-border-tertiary)]/55 bg-[var(--color-background-primary)]/35 px-5 py-4 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.55)] backdrop-blur-md">
           {/* Mobile : pile verticale (statut → titre → stats en grille →
               actions pleine largeur). Desktop : disposition d'origine. */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:flex-wrap">
@@ -924,7 +920,6 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
                 </button>
 
                 <button
-                  data-onboarding="config"
                   type="button"
                   onClick={() => setShowScraperConfig(true)}
                   className="inline-flex items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)]"
@@ -968,7 +963,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
         </header>
       ) : (
         // ── KPI row (vue Comparaisons) — Stripe-style, conservée à l'identique ──
-        <div data-onboarding="scrape" className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
+        <div className="rounded-xl border border-[var(--color-border-tertiary)] bg-[var(--color-background-primary)] overflow-hidden">
           <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[var(--color-border-tertiary)]">
             <div className="px-6 py-5">
               <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">
@@ -1163,7 +1158,7 @@ export default function ScraperDashboard({ initialData, view }: ScraperDashboard
            ouvre un dropdown avec la liste des concessionnaires. Évite l'effet
            « tous les concessionnaires en vrac » qu'on avait avec 12 pills
            empilées à la suite des 3 principales. ── */}
-      <div data-onboarding="analyze" className="space-y-3">
+      <div className="space-y-3">
         <div className="flex items-center gap-1.5 flex-wrap pb-2">
           {[
             { key: "reference", label: t("dash.reference"), count: productsBySite.reference.length },

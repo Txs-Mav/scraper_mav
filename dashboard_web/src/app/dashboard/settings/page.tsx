@@ -220,7 +220,7 @@ export default function SettingsPage() {
         </div>
 
         {/* ── Profil ── */}
-        <section data-onboarding="profile" className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8 mb-6">
+        <section className="rounded-2xl border border-[var(--color-border-secondary)] bg-[var(--color-background-primary)] p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-orange-50 to-orange-50 dark:from-orange-950/40 dark:to-orange-950/30">
               <User className="h-5 w-5 text-orange-600 dark:text-orange-400" />

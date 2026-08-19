@@ -21,7 +21,6 @@ import {
   ChevronDown,
   Cog,
   Hammer,
-  HelpCircle,
   Loader2,
   Sailboat,
   Scale,
@@ -35,10 +34,6 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
-import PageOnboarding, {
-  replayPageOnboarding,
-  type PageOnboardingStep,
-} from "@/components/page-onboarding"
 
 type StrategyMeta = {
   label: string
@@ -224,42 +219,6 @@ export default function PricingStrategyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 
-  // Étapes du guide de première visite. L'étape « écart » n'existe que si
-  // la règle active est « Sous le plus bas ».
-  const onboardingSteps = useMemo<PageOnboardingStep[]>(() => {
-    const steps: PageOnboardingStep[] = [
-      {
-        targetId: "pricing-rule",
-        title: "Choisissez votre règle",
-        description:
-          "Trois façons de vous positionner face aux prix de vos concurrents. Un clic suffit — la sauvegarde est automatique, et vous gardez toujours le dernier mot avant qu'un prix change.",
-      },
-    ]
-    if (settings.default_strategy.key === "lowest_minus_amount") {
-      steps.push({
-        targetId: "pricing-amount",
-        title: "Réglez l'écart",
-        description:
-          "De combien voulez-vous passer sous le prix le plus bas ? Un petit écart (1 $) suffit à être premier tout en protégeant votre marge.",
-      })
-    }
-    steps.push(
-      {
-        targetId: "pricing-apply",
-        title: "Affichez les recommandations",
-        description:
-          "Activez ce commutateur pour voir la colonne « prix recommandé » directement dans votre tableau de surveillance, à chaque ouverture.",
-      },
-      {
-        targetId: "pricing-custom",
-        title: "Personnalisez par type (optionnel)",
-        description:
-          "Besoin d'une règle différente pour vos motoneiges et vos motos ? Ouvrez cette section pour définir des exceptions — tout le reste suit la règle principale.",
-      },
-    )
-    return steps
-  }, [settings.default_strategy.key])
-
   const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestSettingsRef = useRef<PricingStrategySettings>(settings)
   latestSettingsRef.current = settings
@@ -419,40 +378,24 @@ export default function PricingStrategyPage() {
           )}
         </div>
         {!loading && (
-          <div className="flex items-center gap-2">
-            <div
-              aria-live="polite"
-              className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-[var(--color-text-secondary)]"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Sauvegarde…
-                </>
-              ) : savedAt ? (
-                <>
-                  <Check className="h-3.5 w-3.5 text-orange-600" />
-                  Modifications enregistrées
-                </>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => replayPageOnboarding("strategie-pricing")}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[var(--color-border-tertiary)] text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-background-hover)] transition-colors"
-            >
-              <HelpCircle className="h-3.5 w-3.5" />
-              Revoir le guide
-            </button>
+          <div
+            aria-live="polite"
+            className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-[var(--color-text-secondary)]"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Sauvegarde…
+              </>
+            ) : savedAt ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-orange-600" />
+                Modifications enregistrées
+              </>
+            ) : null}
           </div>
         )}
       </section>
-
-      <PageOnboarding
-        pageKey="strategie-pricing"
-        ready={!loading}
-        steps={onboardingSteps}
-      />
 
       {error && (
         <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">

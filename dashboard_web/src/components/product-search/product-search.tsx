@@ -27,7 +27,6 @@ import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { isDevAdminUserPublic } from "@/lib/auth/admin"
-import PageOnboarding, { type PageOnboardingStep } from "@/components/page-onboarding"
 import {
   BUSINESS_TYPES,
   BUSINESS_TYPE_DEFAULT_CATEGORY,
@@ -586,37 +585,6 @@ export default function ProductSearch() {
       : (activeCount > 1 ? t("ps.readyToQueryPlural") : t("ps.readyToQueryOne")).replace("{n}", String(activeCount))
     : t("ps.typeQueryHint")
 
-  // Guide de première visite : barre → catégorie → sources (→ évaluateur si
-  // catégorie véhicule). Attend la fermeture de l'onboarding business_type
-  // pour ne jamais empiler deux overlays.
-  const onboardingSteps = useMemo<PageOnboardingStep[]>(() => {
-    const steps: PageOnboardingStep[] = [
-      {
-        targetId: "recherche-bar",
-        title: t("ps.searchProductTitle"),
-        description: t("ps.onbSearchDesc"),
-      },
-      {
-        targetId: "recherche-categorie",
-        title: t("ps.onbCategoryTitle"),
-        description: t("ps.onbCategoryDesc"),
-      },
-      {
-        targetId: "recherche-sources",
-        title: t("ps.onbSourcesTitle"),
-        description: t("ps.onbSourcesDesc"),
-      },
-    ]
-    if (isVehicleCat) {
-      steps.push({
-        targetId: "recherche-evaluateur",
-        title: t("ps.onbEvaluatorTitle"),
-        description: t("ps.onbEvaluatorDesc"),
-      })
-    }
-    return steps
-  }, [isVehicleCat, t])
-
   return (
     <div className="relative z-10 space-y-5 max-w-[1400px] mx-auto">
       <BusinessTypeOnboardingModal
@@ -629,12 +597,6 @@ export default function ProductSearch() {
         }
         onConfirm={handleOnboardingConfirm}
         onDismiss={() => setShowOnboarding(false)}
-      />
-
-      <PageOnboarding
-        pageKey="recherche"
-        ready={hasHydrated && !showOnboarding}
-        steps={onboardingSteps}
       />
 
       {/* ── En-tête compact ──

@@ -4,7 +4,6 @@ import type { ReactNode } from "react"
 import TopNav from "./top-nav"
 import MobileTabBar from "./mobile-tab-bar"
 import CommandSearch from "../command-search"
-import OnboardingChecklist from "../onboarding-checklist"
 import HelpWidget from "../help-widget"
 import Breadcrumbs from "../breadcrumbs"
 import AnnouncementModal from "../announcement-modal"
@@ -40,7 +39,6 @@ export default function Layout({ children }: LayoutProps) {
       </main>
       <MobileTabBar />
       <CommandSearch />
-      <OnboardingChecklist />
       <HelpWidget />
       <AnnouncementModal />
     </div>
