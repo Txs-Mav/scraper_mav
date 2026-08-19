@@ -59,9 +59,17 @@ export default function CampaignDemoClient({
 }) {
   const [section, setSection] = useState<DemoSectionId>("surveillance")
   const [searchQuery, setSearchQuery] = useState("")
-  const [pricingEnabled, setPricingEnabled] = useState(true)
+  // Comme dans le vrai produit : la stratégie de pricing n'est PAS appliquée
+  // par défaut — la colonne « Prix recommandé » n'apparaît que si le visiteur
+  // l'active dans la table ou choisit une règle dans l'onglet Stratégie.
+  const [pricingEnabled, setPricingEnabled] = useState(false)
   const [settings, setSettings] = useState<PricingStrategySettings>(() =>
-    normalizePricingSettings({ ...DEFAULT_PRICING_SETTINGS, apply_enabled: true }))
+    normalizePricingSettings(DEFAULT_PRICING_SETTINGS))
+
+  const handleStrategyChange = (next: PricingStrategySettings) => {
+    setSettings(next)
+    setPricingEnabled(true)
+  }
 
   const products = data.products as any[]
   const signupHref = `/c/${config.code.toLowerCase()}`
@@ -168,7 +176,7 @@ export default function CampaignDemoClient({
       {section === "strategie" && (
         <StrategySection
           settings={settings}
-          onChange={setSettings}
+          onChange={handleStrategyChange}
           vehicleTypes={vehicleTypesPresent}
           recommendationsCount={recommendations.length}
           onSeeFiches={() => goTo("fiches")}
