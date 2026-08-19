@@ -1,0 +1,53 @@
+name: 'Scraping Évasion Sport (manuel — IP GitHub Actions)'
+
+# DÉCLENCHEMENT MANUEL SEULEMENT. Le cron global `scraper-cron.yml` couvre
+# evasion-sport.com toutes les 2 h comme les autres concessionnaires.
+#
+# Ce workflow existe parce que l'anti-bot du site (TurnkeyWebSolutions)
+# bannit temporairement une IP jugée trop agressive : les runners GitHub
+# offrent une IP fraîche quand l'IP locale est bannie. Le scraper est
+# volontairement lent (MAX_WORKERS=2 + pauses) et échoue franchement en cas
+# de scrape partiel (l'ancien cache est alors conservé).
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Ignorer le cache de fraîcheur (--force)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: scraper-evasion-sport
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scraper_ai/requirements.txt
+
+      - name: Installer les dépendances Python
+        run: |
+          pip install -r scraper_ai/requirements.txt
+          pip install requests supabase
+
+      - name: Scraping Évasion Sport
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          python scripts/scrape_single_site.py \
+            --slug evasion-sport \
+            ${{ inputs.force && '--force' || '' }}
