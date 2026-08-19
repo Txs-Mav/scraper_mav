@@ -372,7 +372,7 @@ function CreateAccountContent() {
                 {/* Courbure de l'ovale */}
                 <div
                   aria-hidden
-                  className="absolute left-1/2 top-24 h-[560px] w-[130%] -translate-x-1/2 rounded-[50%] border border-gray-200/80 dark:border-white/[0.07]"
+                  className="pointer-events-none absolute left-1/2 top-24 h-[560px] w-[130%] -translate-x-1/2 rounded-[50%] border border-gray-200/80 dark:border-white/[0.07]"
                 />
                 {PLANS.map((plan, i) => {
                   const Icon = plan.icon
